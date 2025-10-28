@@ -1,0 +1,142 @@
+[project]
+name = "politician-trading-tracker"
+version = "1.0.0"
+description = "Comprehensive politician trading disclosure tracker with scrapers for US Congress, EU Parliament, UK Parliament, US states, and more"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "Luis Fernandez de la Vara", email = "luis@lefv.io" }]
+maintainers = [{ name = "Luis Fernandez de la Vara", email = "luis@lefv.io" }]
+license = { text = "MIT" }
+keywords = [
+  "politician", "trading", "disclosure", "scraper", "transparency",
+  "congress", "parliament", "government", "financial", "ethics"
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Legal Industry",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Sociology",
+  "Typing :: Typed",
+]
+dependencies = [
+  # Core dependencies
+  "click>=8.1.7",
+  "rich>=14.0.0",
+  "requests>=2.31.0",
+  "python-dotenv>=1.1.1",
+
+  # Async/HTTP support
+  "aiohttp>=3.9.0",
+  "httpx>=0.28.1",
+  "websockets>=12.0",
+  "aiosqlite>=0.20.0",
+
+  # Data parsing
+  "beautifulsoup4>=4.13.5",
+  "fuzzywuzzy>=0.18.0",
+  "pandas>=2.3.1",
+
+  # Database support
+  "supabase>=2.18.1",
+  "sqlalchemy>=2.0.0",
+  "psycopg2-binary>=2.9.7",
+  "asyncpg>=0.29.0",
+
+  # ML preprocessing
+  "torch>=2.0.0",
+  "scikit-learn>=1.3.0",
+  "numpy>=1.24.0",
+
+  # Utilities
+  "watchdog>=3.0.0",
+  "tqdm>=4.66.1",
+  "humanize>=4.9.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/gwicho38/politician-trading-tracker"
+"Repository" = "https://github.com/gwicho38/politician-trading-tracker"
+"Documentation" = "https://github.com/gwicho38/politician-trading-tracker#readme"
+"Issues" = "https://github.com/gwicho38/politician-trading-tracker/issues"
+
+[project.optional-dependencies]
+# Development tools
+dev = [
+  "pytest>=8.4.1",
+  "pytest-cov>=4.1.0",
+  "pytest-mock>=3.14.1",
+  "pytest-asyncio>=1.1.0",
+  "pytest-timeout>=2.2.0",
+  "black>=23.0.0",
+  "isort>=5.12.0",
+  "mypy>=1.7.1",
+  "ruff>=0.1.0",
+  "pre-commit>=3.6.0",
+]
+
+[tool.black]
+line-length = 100
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.mypy_cache
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 100
+known_first_party = ["politician_trading"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[build-system]
+requires = ["setuptools>=65.0.0", "wheel>=0.40.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = { find = { where = ["src"] } }
+include-package-data = true
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = [
+    "--strict-markers",
+    "--cov=src/politician_trading",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+[project.scripts]
+politician-trading = "politician_trading.workflow:main"
+politician-trading-seed = "politician_trading.scripts.seed_database:main"
