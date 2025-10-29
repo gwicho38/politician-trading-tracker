@@ -56,6 +56,55 @@ class DisclosureStatus(Enum):
     DUPLICATE = "duplicate"
 
 
+class SignalType(Enum):
+    """Types of trading signals"""
+
+    BUY = "buy"
+    SELL = "sell"
+    HOLD = "hold"
+    STRONG_BUY = "strong_buy"
+    STRONG_SELL = "strong_sell"
+
+
+class SignalStrength(Enum):
+    """Signal strength levels"""
+
+    VERY_WEAK = "very_weak"
+    WEAK = "weak"
+    MODERATE = "moderate"
+    STRONG = "strong"
+    VERY_STRONG = "very_strong"
+
+
+class OrderStatus(Enum):
+    """Order execution status"""
+
+    PENDING = "pending"
+    SUBMITTED = "submitted"
+    FILLED = "filled"
+    PARTIALLY_FILLED = "partially_filled"
+    CANCELED = "canceled"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
+class OrderType(Enum):
+    """Types of orders"""
+
+    MARKET = "market"
+    LIMIT = "limit"
+    STOP = "stop"
+    STOP_LIMIT = "stop_limit"
+    TRAILING_STOP = "trailing_stop"
+
+
+class TradingMode(Enum):
+    """Trading mode"""
+
+    PAPER = "paper"
+    LIVE = "live"
+
+
 @dataclass
 class Politician:
     """Politician information"""
@@ -322,6 +371,193 @@ class XBRLFiling:
     source: str = ""  # "xbrl_filings", "xbrl_us", etc.
     jurisdiction: str = ""
     raw_data: Dict[str, Any] = field(default_factory=dict)
+
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)
+
+
+# =============================================================================
+# Trading Signal and Order Models
+# =============================================================================
+
+
+@dataclass
+class TradingSignal:
+    """Predictive trading signal based on politician trading activity"""
+
+    id: Optional[str] = None
+    ticker: str = ""
+    asset_name: str = ""
+
+    # Signal details
+    signal_type: SignalType = SignalType.HOLD
+    signal_strength: SignalStrength = SignalStrength.MODERATE
+    confidence_score: float = 0.0  # 0.0 to 1.0
+
+    # Price targets
+    target_price: Optional[Decimal] = None
+    stop_loss: Optional[Decimal] = None
+    take_profit: Optional[Decimal] = None
+
+    # Signal generation info
+    generated_at: datetime = field(default_factory=datetime.utcnow)
+    valid_until: Optional[datetime] = None
+    model_version: str = ""
+
+    # Supporting data
+    politician_activity_count: int = 0  # Number of politicians trading this asset
+    total_transaction_volume: Optional[Decimal] = None
+    buy_sell_ratio: float = 0.0  # Ratio of buys to sells
+    avg_politician_return: Optional[float] = None  # Historical returns
+
+    # Feature data for the signal
+    features: Dict[str, Any] = field(default_factory=dict)
+
+    # Related disclosures
+    disclosure_ids: List[str] = field(default_factory=list)
+
+    # Status
+    is_active: bool = True
+    notes: str = ""
+
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
+class TradingOrder:
+    """Trading order execution record"""
+
+    id: Optional[str] = None
+    signal_id: Optional[str] = None  # Foreign key to TradingSignal
+
+    # Order details
+    ticker: str = ""
+    order_type: OrderType = OrderType.MARKET
+    side: str = "buy"  # buy or sell
+    quantity: int = 0
+    limit_price: Optional[Decimal] = None
+    stop_price: Optional[Decimal] = None
+    trailing_percent: Optional[float] = None
+
+    # Execution details
+    status: OrderStatus = OrderStatus.PENDING
+    filled_quantity: int = 0
+    filled_avg_price: Optional[Decimal] = None
+    commission: Optional[Decimal] = None
+
+    # Trading mode
+    trading_mode: TradingMode = TradingMode.PAPER
+
+    # Alpaca order info
+    alpaca_order_id: Optional[str] = None
+    alpaca_client_order_id: Optional[str] = None
+
+    # Timestamps
+    submitted_at: Optional[datetime] = None
+    filled_at: Optional[datetime] = None
+    canceled_at: Optional[datetime] = None
+    expired_at: Optional[datetime] = None
+
+    # Error information
+    error_message: Optional[str] = None
+    reject_reason: Optional[str] = None
+
+    # Additional metadata
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
+class Portfolio:
+    """Portfolio tracking for paper and live trading"""
+
+    id: Optional[str] = None
+    name: str = ""
+    trading_mode: TradingMode = TradingMode.PAPER
+
+    # Portfolio metrics
+    cash: Decimal = Decimal("0")
+    portfolio_value: Decimal = Decimal("0")
+    buying_power: Decimal = Decimal("0")
+
+    # Performance metrics
+    total_return: Optional[float] = None
+    total_return_pct: Optional[float] = None
+    day_return: Optional[float] = None
+    day_return_pct: Optional[float] = None
+
+    # Risk metrics
+    max_drawdown: Optional[float] = None
+    sharpe_ratio: Optional[float] = None
+    win_rate: Optional[float] = None
+
+    # Position counts
+    long_positions: int = 0
+    short_positions: int = 0
+
+    # Alpaca account info
+    alpaca_account_id: Optional[str] = None
+    alpaca_account_status: Optional[str] = None
+
+    # Configuration
+    max_position_size: Optional[Decimal] = None
+    max_portfolio_risk: Optional[float] = None
+    is_active: bool = True
+
+    # Metadata
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
+class Position:
+    """Individual position in a portfolio"""
+
+    id: Optional[str] = None
+    portfolio_id: str = ""
+
+    # Position details
+    ticker: str = ""
+    asset_name: str = ""
+    quantity: int = 0
+    side: str = "long"  # long or short
+
+    # Cost basis
+    avg_entry_price: Decimal = Decimal("0")
+    total_cost: Decimal = Decimal("0")
+
+    # Current value
+    current_price: Decimal = Decimal("0")
+    market_value: Decimal = Decimal("0")
+    unrealized_pl: Decimal = Decimal("0")
+    unrealized_pl_pct: float = 0.0
+
+    # Realized P&L (for closed positions)
+    realized_pl: Optional[Decimal] = None
+    realized_pl_pct: Optional[float] = None
+
+    # Entry/exit info
+    opened_at: datetime = field(default_factory=datetime.utcnow)
+    closed_at: Optional[datetime] = None
+
+    # Related signals and orders
+    signal_ids: List[str] = field(default_factory=list)
+    order_ids: List[str] = field(default_factory=list)
+
+    # Risk management
+    stop_loss: Optional[Decimal] = None
+    take_profit: Optional[Decimal] = None
+
+    # Status
+    is_open: bool = True
+
+    # Metadata
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
