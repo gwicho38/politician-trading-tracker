@@ -71,6 +71,11 @@ dependencies = [
   "watchdog>=3.0.0",
   "tqdm>=4.66.1",
   "humanize>=4.9.0",
+
+  # Streamlit UI
+  "streamlit>=1.31.0",
+  "plotly>=5.18.0",
+  "altair>=5.2.0",
 ]
 
 [project.urls]
