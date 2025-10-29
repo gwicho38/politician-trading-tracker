@@ -92,3 +92,7 @@ dmypy.json
 
 # Ruff
 .ruff_cache/
+
+# Streamlit
+.streamlit/secrets.toml
+.streamlit/cache/
