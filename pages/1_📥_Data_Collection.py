@@ -303,6 +303,73 @@ if st.session_state.collection_running:
 st.markdown("---")
 st.markdown("### Recent Disclosures")
 
+# Add ticker backfill button
+col1, col2 = st.columns([3, 1])
+with col2:
+    if st.button("🔄 Backfill Missing Tickers", help="Extract and populate missing ticker symbols from asset names"):
+        with st.spinner("Backfilling tickers..."):
+            try:
+                from politician_trading.database.database import SupabaseClient
+                from politician_trading.config import SupabaseConfig
+                from politician_trading.utils.ticker_utils import extract_ticker_from_asset_name
+
+                config = SupabaseConfig.from_env()
+                db = SupabaseClient(config)
+
+                # Get disclosures with missing tickers
+                response_null = db.client.table("trading_disclosures")\
+                    .select("id, asset_name, asset_ticker")\
+                    .is_("asset_ticker", "null")\
+                    .execute()
+
+                response_empty = db.client.table("trading_disclosures")\
+                    .select("id, asset_name, asset_ticker")\
+                    .eq("asset_ticker", "")\
+                    .execute()
+
+                all_missing = (response_null.data or []) + (response_empty.data or [])
+
+                if not all_missing:
+                    st.success("✅ All disclosures already have tickers!")
+                else:
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+
+                    updated = 0
+                    no_ticker = 0
+
+                    for i, disclosure in enumerate(all_missing):
+                        progress_bar.progress((i + 1) / len(all_missing))
+                        status_text.text(f"Processing {i+1}/{len(all_missing)}...")
+
+                        asset_name = disclosure.get('asset_name', '')
+                        if not asset_name:
+                            no_ticker += 1
+                            continue
+
+                        ticker = extract_ticker_from_asset_name(asset_name)
+                        if ticker:
+                            db.client.table("trading_disclosures")\
+                                .update({"asset_ticker": ticker})\
+                                .eq("id", disclosure['id'])\
+                                .execute()
+                            updated += 1
+                        else:
+                            no_ticker += 1
+
+                    progress_bar.progress(1.0)
+                    status_text.empty()
+
+                    st.success(f"""
+                    ✅ Backfill complete!
+                    - Updated: {updated}
+                    - No ticker found: {no_ticker}
+                    """)
+                    st.rerun()
+
+            except Exception as e:
+                st.error(f"Backfill failed: {str(e)}")
+
 try:
     from politician_trading.database.database import SupabaseClient
     from politician_trading.config import SupabaseConfig
@@ -325,8 +392,17 @@ try:
         if "transaction_date" in display_df.columns:
             display_df["transaction_date"] = pd.to_datetime(display_df["transaction_date"]).dt.strftime("%Y-%m-%d")
 
+        # Replace None/empty tickers with "N/A"
+        if "asset_ticker" in display_df.columns:
+            display_df["asset_ticker"] = display_df["asset_ticker"].fillna("N/A").replace("", "N/A")
+
         # Rename columns for display
         display_df.columns = ["Date", "Ticker", "Asset", "Type", "Min Amount", "Max Amount"]
+
+        # Show count of missing tickers
+        missing_tickers = len([t for t in df["asset_ticker"] if not t or t == ""])
+        if missing_tickers > 0:
+            st.warning(f"⚠️ {missing_tickers} disclosures are missing ticker symbols. Click 'Backfill Missing Tickers' to fix.")
 
         st.dataframe(display_df, use_container_width=True)
 

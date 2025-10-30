@@ -18,7 +18,8 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(cat:*)",
-      "WebFetch(domain:politician-trading-tracker.streamlit.app)"
+      "WebFetch(domain:politician-trading-tracker.streamlit.app)",
+      "Bash(chmod:*)"
     ],
     "deny": [],
     "ask": []
