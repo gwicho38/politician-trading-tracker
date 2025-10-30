@@ -8,10 +8,23 @@ import os
 import sys
 from pathlib import Path
 
-# Add src directory to Python path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Add directories to path
+app_dir = Path(__file__).parent
+if str(app_dir) not in sys.path:
+    sys.path.insert(0, str(app_dir))
+if str(app_dir / "src") not in sys.path:
+    sys.path.insert(0, str(app_dir / "src"))
 
-from streamlit_utils import load_all_secrets
+# Import utilities
+try:
+    from streamlit_utils import load_all_secrets
+except (ImportError, KeyError):
+    # Fallback for different import contexts
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("streamlit_utils", app_dir / "streamlit_utils.py")
+    streamlit_utils = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(streamlit_utils)
+    load_all_secrets = streamlit_utils.load_all_secrets
 
 # Page configuration
 st.set_page_config(
