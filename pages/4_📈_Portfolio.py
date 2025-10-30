@@ -58,18 +58,31 @@ try:
     # Use paper=True by default unless explicitly set to Live
     use_paper = (trading_mode == "Paper")
 
-    alpaca_client = AlpacaTradingClient(
-        api_key=alpaca_api_key,
-        secret_key=alpaca_secret_key,
-        paper=use_paper
-    )
+    # Show what we're trying to connect with
+    with st.expander("🔍 Connection Details", expanded=False):
+        st.code(f"""
+API Key: {alpaca_api_key[:4]}...{alpaca_api_key[-4:]}
+Key Type: {'Paper (PK)' if alpaca_api_key.startswith('PK') else 'Live (AK)'}
+Paper Mode: {use_paper}
+Expected Endpoint: {'https://paper-api.alpaca.markets' if use_paper else 'https://api.alpaca.markets'}
+        """)
 
-    risk_manager = RiskManager()
+    with st.spinner("Connecting to Alpaca..."):
+        alpaca_client = AlpacaTradingClient(
+            api_key=alpaca_api_key,
+            secret_key=alpaca_secret_key,
+            paper=use_paper
+        )
 
-    # Get data
-    account_info = alpaca_client.get_account()
-    portfolio = alpaca_client.get_portfolio()
-    positions = alpaca_client.get_positions()
+        risk_manager = RiskManager()
+
+        # Get data
+        st.write("Fetching account info...")
+        account_info = alpaca_client.get_account()
+        st.write("Fetching portfolio...")
+        portfolio = alpaca_client.get_portfolio()
+        st.write("Fetching positions...")
+        positions = alpaca_client.get_positions()
 
     # Portfolio overview
     st.markdown("### 💼 Portfolio Overview")
