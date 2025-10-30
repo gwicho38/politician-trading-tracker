@@ -69,13 +69,15 @@ class AlpacaTradingClient:
         else:
             self.base_url = "https://api.alpaca.markets"
 
-        # Initialize Alpaca clients with explicit URL
+        # Initialize Alpaca clients
+        # Note: The alpaca-py library automatically determines the endpoint based on the API key
+        # Paper keys (starting with PK) use paper-api.alpaca.markets
+        # Live keys (starting with AK) use api.alpaca.markets
         try:
             self.trading_client = TradingClient(
                 api_key=api_key,
                 secret_key=secret_key,
                 paper=paper,
-                url_override=self.base_url if paper else None,
             )
 
             self.data_client = StockHistoricalDataClient(
@@ -83,9 +85,11 @@ class AlpacaTradingClient:
                 secret_key=secret_key,
             )
 
-            logger.info(f"Initialized Alpaca client in {'paper' if paper else 'live'} mode (URL: {self.base_url})")
+            logger.info(f"Initialized Alpaca client in {'paper' if paper else 'live'} mode")
+            logger.info(f"API Key prefix: {api_key[:4]}... (PK=paper, AK=live)")
         except Exception as e:
             logger.error(f"Failed to initialize Alpaca client: {e}")
+            logger.error(f"Ensure your API keys match the trading mode (paper={paper})")
             raise
 
     def get_account(self) -> Dict[str, Any]:
