@@ -45,6 +45,7 @@ class AlpacaTradingClient:
         api_key: str,
         secret_key: str,
         paper: bool = True,
+        base_url: str = None,
     ):
         """
         Initialize Alpaca trading client.
@@ -53,25 +54,39 @@ class AlpacaTradingClient:
             api_key: Alpaca API key
             secret_key: Alpaca secret key
             paper: Whether to use paper trading (default: True)
+            base_url: Optional base URL override
         """
         self.api_key = api_key
         self.secret_key = secret_key
         self.paper = paper
         self.trading_mode = TradingMode.PAPER if paper else TradingMode.LIVE
 
-        # Initialize Alpaca clients
-        self.trading_client = TradingClient(
-            api_key=api_key,
-            secret_key=secret_key,
-            paper=paper,
-        )
+        # Determine base URL
+        if base_url:
+            self.base_url = base_url
+        elif paper:
+            self.base_url = "https://paper-api.alpaca.markets"
+        else:
+            self.base_url = "https://api.alpaca.markets"
 
-        self.data_client = StockHistoricalDataClient(
-            api_key=api_key,
-            secret_key=secret_key,
-        )
+        # Initialize Alpaca clients with explicit URL
+        try:
+            self.trading_client = TradingClient(
+                api_key=api_key,
+                secret_key=secret_key,
+                paper=paper,
+                url_override=self.base_url if paper else None,
+            )
 
-        logger.info(f"Initialized Alpaca client in {'paper' if paper else 'live'} mode")
+            self.data_client = StockHistoricalDataClient(
+                api_key=api_key,
+                secret_key=secret_key,
+            )
+
+            logger.info(f"Initialized Alpaca client in {'paper' if paper else 'live'} mode (URL: {self.base_url})")
+        except Exception as e:
+            logger.error(f"Failed to initialize Alpaca client: {e}")
+            raise
 
     def get_account(self) -> Dict[str, Any]:
         """
