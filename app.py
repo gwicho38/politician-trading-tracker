@@ -5,7 +5,13 @@ Main application entry point for the web interface
 
 import streamlit as st
 import os
+import sys
 from pathlib import Path
+
+# Add src directory to Python path
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+
+from streamlit_utils import load_all_secrets
 
 # Page configuration
 st.set_page_config(
@@ -14,6 +20,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Load secrets on startup
+load_all_secrets()
 
 # Custom CSS
 st.markdown("""

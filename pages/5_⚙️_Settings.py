@@ -4,9 +4,18 @@ Settings Page - Configuration and system settings
 
 import streamlit as st
 import os
+import sys
 from pathlib import Path
 
+# Add directories to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from streamlit_utils import load_all_secrets
+
 st.set_page_config(page_title="Settings", page_icon="⚙️", layout="wide")
+
+# Load secrets on page load
+load_all_secrets()
 
 st.title("⚙️ Settings & Configuration")
 st.markdown("Configure your trading system and manage settings")

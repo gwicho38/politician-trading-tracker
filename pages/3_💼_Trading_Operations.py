@@ -7,8 +7,18 @@ import pandas as pd
 from datetime import datetime
 from decimal import Decimal
 import os
+import sys
+from pathlib import Path
+
+# Add directories to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from streamlit_utils import load_all_secrets
 
 st.set_page_config(page_title="Trading Operations", page_icon="💼", layout="wide")
+
+# Load secrets on page load
+load_all_secrets()
 
 st.title("💼 Trading Operations")
 st.markdown("Execute trades based on AI signals with comprehensive risk management")

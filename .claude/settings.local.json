@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch:*)",
+      "Bash(git merge:*)",
+      "Bash(git push:*)",
+      "Read(//Users/lefv/repos/lsh/**)",
+      "Bash(npm version)",
+      "Bash(lsh list:*)",
+      "Bash(lsh --help:*)",
+      "Bash(lsh secrets --help:*)",
+      "Bash(lsh secrets list:*)",
+      "Bash(lsh secrets push:*)",
+      "Bash(lsh secrets show:*)",
+      "Bash(lsh secrets sync:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue create:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(cat:*)",
+      "WebFetch(domain:politician-trading-tracker.streamlit.app)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
