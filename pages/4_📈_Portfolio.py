@@ -8,8 +8,18 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
 import os
+import sys
+from pathlib import Path
+
+# Add directories to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from streamlit_utils import load_all_secrets
 
 st.set_page_config(page_title="Portfolio", page_icon="📈", layout="wide")
+
+# Load secrets on page load
+load_all_secrets()
 
 st.title("📈 Portfolio Management")
 st.markdown("Monitor your positions, performance, and risk metrics")

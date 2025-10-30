@@ -6,8 +6,17 @@ import streamlit as st
 import asyncio
 from datetime import datetime, timedelta
 import pandas as pd
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from streamlit_utils import load_all_secrets
 
 st.set_page_config(page_title="Data Collection", page_icon="📥", layout="wide")
+
+# Load secrets on page load
+load_all_secrets()
 
 st.title("📥 Data Collection")
 st.markdown("Collect politician trading disclosures from multiple sources")

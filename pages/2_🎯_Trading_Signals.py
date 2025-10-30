@@ -8,8 +8,18 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import plotly.graph_objects as go
 import plotly.express as px
+import sys
+from pathlib import Path
+
+# Add directories to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from streamlit_utils import load_all_secrets
 
 st.set_page_config(page_title="Trading Signals", page_icon="🎯", layout="wide")
+
+# Load secrets on page load
+load_all_secrets()
 
 st.title("🎯 AI-Powered Trading Signals")
 st.markdown("Generate buy/sell/hold recommendations based on politician trading activity")
