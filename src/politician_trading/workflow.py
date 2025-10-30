@@ -257,6 +257,14 @@ class PoliticianTradingWorkflow:
                         else:
                             job.records_failed += 1
                     else:
+                        # Extract ticker if missing
+                        if not disclosure.asset_ticker and disclosure.asset_name:
+                            from politician_trading.utils.ticker_utils import extract_ticker_from_asset_name
+                            extracted_ticker = extract_ticker_from_asset_name(disclosure.asset_name)
+                            if extracted_ticker:
+                                disclosure.asset_ticker = extracted_ticker
+                                logger.info(f"Extracted ticker '{extracted_ticker}' from '{disclosure.asset_name}'")
+
                         # Insert new record
                         disclosure_id = await self.db.insert_disclosure(disclosure)
                         if disclosure_id:
