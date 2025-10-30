@@ -92,13 +92,52 @@ with col2:
 
 # Run collection
 if st.session_state.collection_running:
+    st.markdown("---")
+    st.markdown("### 🚀 Collection Progress")
+
+    # Create detailed status containers
+    status_container = st.container()
+    progress_container = st.container()
+    log_container = st.container()
+    results_container = st.container()
+
+    with status_container:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            status_badge = st.empty()
+        with col2:
+            progress_text = st.empty()
+        with col3:
+            elapsed_time = st.empty()
+
+    with progress_container:
+        progress_bar = st.progress(0)
+
+    with log_container:
+        st.markdown("#### 📝 Collection Log")
+        log_output = st.empty()
+
     try:
+        import time
         from politician_trading.workflow import PoliticianTradingWorkflow
         from politician_trading.config import SupabaseConfig, WorkflowConfig
         from politician_trading.database.database import SupabaseClient
 
+        start_time = time.time()
+        logs = []
+
+        def add_log(message):
+            timestamp = time.strftime("%H:%M:%S")
+            logs.append(f"[{timestamp}] {message}")
+            log_output.code("\n".join(logs[-20:]))  # Show last 20 logs
+
+        add_log("🔧 Initializing workflow...")
+        status_badge.info("⏳ Initializing")
+
         # Create config
         supabase_config = SupabaseConfig.from_env()
+        add_log(f"✅ Connected to Supabase: {supabase_config.url[:30]}...")
+
         workflow_config = WorkflowConfig(
             supabase=supabase_config,
             enable_us_congress=us_congress,
@@ -108,74 +147,155 @@ if st.session_state.collection_running:
             enable_california=california,
         )
 
-        # Progress tracking
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+        # Log enabled sources
+        enabled_sources = []
+        if us_congress:
+            enabled_sources.append("US Congress")
+        if uk_parliament:
+            enabled_sources.append("UK Parliament")
+        if eu_parliament:
+            enabled_sources.append("EU Parliament")
+        if california:
+            enabled_sources.append("California")
+        if texas:
+            enabled_sources.append("Texas")
+        if new_york:
+            enabled_sources.append("New York")
 
-        # Run workflow
-        status_text.text("Initializing workflow...")
+        add_log(f"📊 Enabled sources: {', '.join(enabled_sources) if enabled_sources else 'None'}")
+
+        if not enabled_sources:
+            st.warning("⚠️ No sources selected! Please select at least one data source.")
+            st.session_state.collection_running = False
+            st.stop()
+
+        # Initialize workflow
         workflow = PoliticianTradingWorkflow(workflow_config)
-
-        # Create placeholder for results
-        results_placeholder = st.empty()
+        add_log("✅ Workflow initialized")
+        progress_bar.progress(10)
 
         try:
-            status_text.text("Running data collection...")
-            progress_bar.progress(25)
+            status_badge.warning("🔄 Running")
+            progress_text.text("Collecting data...")
+            add_log("🌐 Starting data collection from selected sources...")
+            progress_bar.progress(20)
 
-            # Run collection (this is async in the actual implementation)
-            results = asyncio.run(workflow.run())
+            # Run collection
+            results = asyncio.run(workflow.run_full_collection())
 
-            progress_bar.progress(100)
-            status_text.text("✅ Collection complete!")
+            progress_bar.progress(90)
+            add_log("✅ Data collection completed!")
+            add_log("📊 Processing results...")
 
             # Store results
             st.session_state.collection_results = results
             st.session_state.collection_running = False
 
-            # Display results
-            st.success(f"✅ Successfully collected data!")
+            progress_bar.progress(100)
+            status_badge.success("✅ Complete")
+            elapsed = time.time() - start_time
+            elapsed_time.text(f"⏱️ {elapsed:.1f}s")
+            progress_text.text("Complete!")
 
-            # Summary metrics
-            col1, col2, col3, col4 = st.columns(4)
+            # Display detailed results
+            with results_container:
+                st.markdown("---")
+                st.markdown("### 📊 Collection Results")
 
-            with col1:
-                st.metric("Total Disclosures", results.get("total_processed", 0))
-            with col2:
-                st.metric("New Records", results.get("total_new", 0))
-            with col3:
-                st.metric("Updated Records", results.get("total_updated", 0))
-            with col4:
-                st.metric("Failed", results.get("total_failed", 0))
+                # Summary metrics
+                summary = results.get("summary", {})
+                col1, col2, col3, col4 = st.columns(4)
 
-            # Detailed results by source
-            st.markdown("### Results by Source")
+                with col1:
+                    st.metric(
+                        "New Disclosures",
+                        summary.get("total_new_disclosures", 0),
+                        help="Newly discovered trading disclosures"
+                    )
+                with col2:
+                    st.metric(
+                        "Updated Records",
+                        summary.get("total_updated_disclosures", 0),
+                        help="Previously existing records that were updated"
+                    )
+                with col3:
+                    jobs = results.get("jobs", {})
+                    total_errors = sum(len(job.get("errors", [])) for job in jobs.values())
+                    st.metric(
+                        "Errors",
+                        total_errors,
+                        delta=f"-{total_errors}" if total_errors > 0 else None,
+                        delta_color="inverse"
+                    )
+                with col4:
+                    completed_jobs = sum(1 for job in jobs.values() if job.get("status") == "completed")
+                    st.metric(
+                        "Completed Jobs",
+                        f"{completed_jobs}/{len(jobs)}",
+                        help="Successfully completed collection jobs"
+                    )
 
-            if "source_results" in results:
-                source_df = pd.DataFrame([
-                    {
-                        "Source": source,
-                        "Processed": data.get("processed", 0),
-                        "New": data.get("new", 0),
-                        "Updated": data.get("updated", 0),
-                        "Failed": data.get("failed", 0),
-                        "Status": "✅ Success" if data.get("status") == "completed" else "❌ Failed"
-                    }
-                    for source, data in results["source_results"].items()
-                ])
-                st.dataframe(source_df, use_container_width=True)
+                # Detailed results by job
+                st.markdown("#### 📋 Details by Source")
+
+                jobs = results.get("jobs", {})
+                if jobs:
+                    for job_name, job_data in jobs.items():
+                        with st.expander(f"{'✅' if job_data.get('status') == 'completed' else '❌'} {job_name.replace('_', ' ').title()}", expanded=False):
+                            col1, col2, col3 = st.columns(3)
+
+                            with col1:
+                                st.metric("New", job_data.get("new_disclosures", 0))
+                            with col2:
+                                st.metric("Updated", job_data.get("updated_disclosures", 0))
+                            with col3:
+                                st.metric("Errors", len(job_data.get("errors", [])))
+
+                            if job_data.get("errors"):
+                                st.markdown("**Errors:**")
+                                for error in job_data.get("errors", [])[:5]:  # Show first 5 errors
+                                    st.code(error, language="text")
+                else:
+                    st.info("No job details available")
+
+                add_log(f"🎉 Collection completed successfully in {elapsed:.1f}s")
 
             st.rerun()
 
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+
             progress_bar.progress(100)
-            status_text.text("❌ Collection failed")
-            st.error(f"Error during collection: {str(e)}")
+            status_badge.error("❌ Failed")
+            add_log(f"❌ Collection failed: {str(e)}")
+
+            with results_container:
+                st.error(f"""
+                **Error during collection:**
+
+                {str(e)}
+                """)
+
+                with st.expander("📋 Full Error Details"):
+                    st.code(error_details, language="python")
+
             st.session_state.collection_running = False
             st.rerun()
 
     except Exception as e:
-        st.error(f"Failed to initialize collection: {str(e)}")
+        import traceback
+        error_details = traceback.format_exc()
+
+        st.error(f"""
+        **Failed to initialize collection:**
+
+        {str(e)}
+        """)
+
+        with st.expander("📋 Full Error Details"):
+            st.code(error_details, language="python")
+
         st.session_state.collection_running = False
         st.rerun()
 
