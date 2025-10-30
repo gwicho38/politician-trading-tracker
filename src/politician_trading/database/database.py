@@ -11,8 +11,12 @@ from uuid import uuid4
 from postgrest.exceptions import APIError
 from supabase import Client, create_client
 
-from .config import WorkflowConfig
-from .models import DataPullJob, DataSource, Politician, TradingDisclosure
+from politician_trading.config import WorkflowConfig, SupabaseConfig
+try:
+    from politician_trading.models import DataPullJob, DataSource, Politician, TradingDisclosure
+except ImportError:
+    # Fallback for when models aren't available
+    DataPullJob = DataSource = Politician = TradingDisclosure = None
 
 logger = logging.getLogger(__name__)
 
