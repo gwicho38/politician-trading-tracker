@@ -136,6 +136,11 @@ try:
     response = query.execute()
     signals = response.data
 
+    # Convert all UUIDs to strings immediately
+    for signal in signals:
+        if signal.get("id"):
+            signal["id"] = str(signal["id"])
+
     if signals:
         # Risk management settings
         st.markdown("#### Risk Management Settings")
@@ -201,13 +206,8 @@ try:
                     # Convert to TradingSignal objects
                     signal_objects = []
                     for data in tradeable_signals:
-                        from uuid import UUID
-                        signal_id = data["id"]
-                        if isinstance(signal_id, str):
-                            signal_id = UUID(signal_id)
-
                         signal = TradingSignal(
-                            id=signal_id,
+                            id=data["id"],  # Already converted to string above
                             ticker=data["ticker"],
                             asset_name=data.get("asset_name", ""),
                             signal_type=SignalType(data["signal_type"]),
@@ -270,13 +270,8 @@ try:
                                         signal_data = next((s for s in tradeable_signals if s["ticker"] == ticker), None)
                                         if signal_data:
                                             try:
-                                                from uuid import UUID
-                                                signal_id = signal_data["id"]
-                                                if isinstance(signal_id, str):
-                                                    signal_id = UUID(signal_id)
-
                                                 signal = TradingSignal(
-                                                    id=signal_id,
+                                                    id=signal_data["id"],  # Already converted to string above
                                                     ticker=signal_data["ticker"],
                                                     asset_name=signal_data.get("asset_name", ""),
                                                     signal_type=SignalType(signal_data["signal_type"]),

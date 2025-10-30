@@ -385,7 +385,7 @@ class XBRLFiling:
 class TradingSignal:
     """Predictive trading signal based on politician trading activity"""
 
-    id: Optional[str] = None
+    id: Optional[Any] = None  # Can be UUID or str
     ticker: str = ""
     asset_name: str = ""
 
