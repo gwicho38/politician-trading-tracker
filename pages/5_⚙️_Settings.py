@@ -25,35 +25,45 @@ st.markdown("### 🔧 Environment Configuration")
 
 with st.expander("Database Configuration", expanded=False):
     st.markdown("**Supabase**")
-    supabase_url = st.text_input("SUPABASE_URL", value=os.getenv("SUPABASE_URL", ""), type="password")
-    supabase_key = st.text_input("SUPABASE_ANON_KEY", value=os.getenv("SUPABASE_ANON_KEY", ""), type="password")
+
+    supabase_url = os.getenv("SUPABASE_URL", "")
+    supabase_key = os.getenv("SUPABASE_ANON_KEY", "")
 
     if supabase_url and supabase_key:
         st.success("✅ Supabase configured")
+        st.markdown(f"- **URL**: `{supabase_url[:30]}...`")
+        st.markdown(f"- **API Key**: `{'*' * 20}` (hidden)")
     else:
         st.warning("⚠️ Supabase not configured")
+        st.markdown("Configure in Streamlit secrets or environment variables")
 
 with st.expander("Trading API Configuration", expanded=False):
     st.markdown("**Alpaca Markets**")
     st.markdown("[Sign up for Alpaca](https://alpaca.markets/)")
 
-    alpaca_key = st.text_input("ALPACA_API_KEY", value=os.getenv("ALPACA_API_KEY", ""), type="password")
-    alpaca_secret = st.text_input("ALPACA_SECRET_KEY", value=os.getenv("ALPACA_SECRET_KEY", ""), type="password")
-    alpaca_paper = st.checkbox("Use Paper Trading", value=os.getenv("ALPACA_PAPER", "true") == "true")
+    alpaca_key = os.getenv("ALPACA_API_KEY", "")
+    alpaca_secret = os.getenv("ALPACA_SECRET_KEY", "")
+    alpaca_paper = os.getenv("ALPACA_PAPER", "true") == "true"
 
     if alpaca_key and alpaca_secret:
         st.success(f"✅ Alpaca configured ({'Paper' if alpaca_paper else 'Live'} mode)")
+        st.markdown(f"- **API Key**: `{'*' * 20}` (hidden)")
+        st.markdown(f"- **Secret Key**: `{'*' * 20}` (hidden)")
+        st.markdown(f"- **Mode**: {'📝 Paper Trading' if alpaca_paper else '💰 Live Trading'}")
     else:
         st.warning("⚠️ Alpaca not configured - trading features disabled")
+        st.markdown("Configure in Streamlit secrets or environment variables")
 
 with st.expander("Optional API Keys", expanded=False):
     st.markdown("**QuiverQuant** (for enhanced Congress trading data)")
-    quiver_key = st.text_input("QUIVER_API_KEY", value=os.getenv("QUIVER_API_KEY", ""), type="password")
+    quiver_key = os.getenv("QUIVER_API_KEY", "")
 
     if quiver_key:
         st.success("✅ QuiverQuant configured")
+        st.markdown(f"- **API Key**: `{'*' * 20}` (hidden)")
     else:
         st.info("ℹ️ QuiverQuant not configured (optional)")
+        st.markdown("Sign up at [QuiverQuant](https://www.quiverquant.com/)")
 
 # Trading configuration
 st.markdown("---")
