@@ -19,7 +19,9 @@
       "Bash(git commit:*)",
       "Bash(cat:*)",
       "WebFetch(domain:politician-trading-tracker.streamlit.app)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(python3:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []
