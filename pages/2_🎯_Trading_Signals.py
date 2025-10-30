@@ -164,6 +164,11 @@ try:
     response = query.execute()
     signals = response.data
 
+    # Convert all UUIDs to strings immediately
+    for signal in signals:
+        if signal.get("id"):
+            signal["id"] = str(signal["id"])
+
     if signals:
         # Display count and filters
         col1, col2, col3, col4 = st.columns(4)
