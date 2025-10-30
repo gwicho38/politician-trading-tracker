@@ -11,9 +11,11 @@ import plotly.express as px
 import sys
 from pathlib import Path
 
-# Add directories to path for imports
+# Add directories to path for imports BEFORE importing
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+# Now import utilities
 from streamlit_utils import load_all_secrets
 
 st.set_page_config(page_title="Trading Signals", page_icon="🎯", layout="wide")
@@ -74,7 +76,8 @@ if st.button("🎯 Generate Signals", use_container_width=True):
             db = SupabaseClient(config)
 
             # Fetch recent disclosures
-            cutoff_date = datetime.utcnow() - timedelta(days=lookback_days)
+            from datetime import timezone
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=lookback_days)
 
             query = db.client.table("trading_disclosures").select("*")
             query = query.gte("transaction_date", cutoff_date.isoformat())
