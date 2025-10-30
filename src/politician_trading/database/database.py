@@ -414,3 +414,22 @@ class PoliticianTradingDB:
             "config_snapshot": job.config_snapshot,
             "created_at": job.created_at.isoformat(),
         }
+
+
+class SupabaseClient:
+    """Simplified Supabase client for Streamlit pages"""
+
+    def __init__(self, config: SupabaseConfig):
+        """Initialize with SupabaseConfig"""
+        self.config = config
+        self.client: Optional[Client] = None
+        self._init_client()
+
+    def _init_client(self):
+        """Initialize Supabase client"""
+        try:
+            self.client = create_client(self.config.url, self.config.key)
+            logger.info("Supabase client initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Supabase client: {e}")
+            raise

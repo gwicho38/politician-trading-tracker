@@ -85,10 +85,13 @@ try:
     from politician_trading.trading.risk_manager import RiskManager
     from politician_trading.trading.strategy import TradingStrategy
 
+    # Use paper=True by default unless explicitly set to Live
+    use_paper = (trading_mode == "Paper Trading")
+
     alpaca_client = AlpacaTradingClient(
         api_key=alpaca_api_key,
         secret_key=alpaca_secret_key,
-        paper=not is_live
+        paper=use_paper
     )
 
     # Get account info
