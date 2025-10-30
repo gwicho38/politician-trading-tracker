@@ -355,6 +355,7 @@ with st.expander("Place Manual Order"):
             st.success(f"✅ Order placed successfully! Order ID: {order.alpaca_order_id}")
 
             # Save to database
+            from datetime import timezone
             order_data = {
                 "ticker": order.ticker,
                 "order_type": order.order_type.value,
@@ -364,7 +365,7 @@ with st.expander("Place Manual Order"):
                 "status": order.status.value,
                 "trading_mode": "live" if is_live else "paper",
                 "alpaca_order_id": order.alpaca_order_id,
-                "submitted_at": datetime.utcnow().isoformat(),
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
             }
 
             db.client.table("trading_orders").insert(order_data).execute()
