@@ -55,10 +55,13 @@ try:
     from politician_trading.trading.alpaca_client import AlpacaTradingClient
     from politician_trading.trading.risk_manager import RiskManager
 
+    # Use paper=True by default unless explicitly set to Live
+    use_paper = (trading_mode == "Paper")
+
     alpaca_client = AlpacaTradingClient(
         api_key=alpaca_api_key,
         secret_key=alpaca_secret_key,
-        paper=not is_live
+        paper=use_paper
     )
 
     risk_manager = RiskManager()
