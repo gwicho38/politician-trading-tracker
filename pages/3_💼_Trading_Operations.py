@@ -201,8 +201,13 @@ try:
                     # Convert to TradingSignal objects
                     signal_objects = []
                     for data in tradeable_signals:
+                        from uuid import UUID
+                        signal_id = data["id"]
+                        if isinstance(signal_id, str):
+                            signal_id = UUID(signal_id)
+
                         signal = TradingSignal(
-                            id=data["id"],
+                            id=signal_id,
                             ticker=data["ticker"],
                             asset_name=data.get("asset_name", ""),
                             signal_type=SignalType(data["signal_type"]),
@@ -265,8 +270,13 @@ try:
                                         signal_data = next((s for s in tradeable_signals if s["ticker"] == ticker), None)
                                         if signal_data:
                                             try:
+                                                from uuid import UUID
+                                                signal_id = signal_data["id"]
+                                                if isinstance(signal_id, str):
+                                                    signal_id = UUID(signal_id)
+
                                                 signal = TradingSignal(
-                                                    id=signal_data["id"],
+                                                    id=signal_id,
                                                     ticker=signal_data["ticker"],
                                                     asset_name=signal_data.get("asset_name", ""),
                                                     signal_type=SignalType(signal_data["signal_type"]),
@@ -283,7 +293,7 @@ try:
 
                                                     # Save to database
                                                     order_data = {
-                                                        "signal_id": signal_data["id"],
+                                                        "signal_id": str(signal_data["id"]) if signal_data.get("id") else None,
                                                         "ticker": order.ticker,
                                                         "order_type": order.order_type.value,
                                                         "side": order.side,
