@@ -102,7 +102,7 @@ class AlpacaTradingClient:
         try:
             account = self.trading_client.get_account()
             return {
-                "account_id": account.id,
+                "account_id": str(account.id),
                 "status": account.status,
                 "cash": Decimal(account.cash),
                 "portfolio_value": Decimal(account.portfolio_value),
@@ -483,8 +483,8 @@ class AlpacaTradingClient:
             filled_quantity=int(alpaca_order.filled_qty) if alpaca_order.filled_qty else 0,
             filled_avg_price=Decimal(alpaca_order.filled_avg_price) if alpaca_order.filled_avg_price else None,
             trading_mode=self.trading_mode,
-            alpaca_order_id=alpaca_order.id,
-            alpaca_client_order_id=alpaca_order.client_order_id,
+            alpaca_order_id=str(alpaca_order.id),
+            alpaca_client_order_id=str(alpaca_order.client_order_id) if alpaca_order.client_order_id else None,
             submitted_at=alpaca_order.submitted_at,
             filled_at=alpaca_order.filled_at,
             canceled_at=alpaca_order.canceled_at,
