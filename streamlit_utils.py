@@ -4,6 +4,13 @@ Streamlit utility functions for loading secrets and configuration
 
 import streamlit as st
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env file if it exists
+env_file = Path(__file__).parent / '.env'
+if env_file.exists():
+    load_dotenv(env_file)
 
 
 def load_secret(key, section=None, default=None):
