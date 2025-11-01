@@ -472,25 +472,75 @@ try:
     if response.data:
         df = pd.DataFrame(response.data)
 
-        # Format for display
-        display_cols = ["transaction_date", "asset_ticker", "asset_name", "transaction_type", "amount_range_min", "amount_range_max"]
+        # Format for display - include more useful columns
+        display_cols = [
+            "transaction_date",
+            "disclosure_date",
+            "asset_ticker",
+            "asset_name",
+            "asset_type",
+            "transaction_type",
+            "amount_range_min",
+            "amount_range_max",
+            "politician_id",
+            "status",
+            "source_url"
+        ]
         display_df = df[[col for col in display_cols if col in df.columns]].copy()
 
         # Format dates
         if "transaction_date" in display_df.columns:
             display_df["transaction_date"] = pd.to_datetime(display_df["transaction_date"]).dt.strftime("%Y-%m-%d")
 
+        if "disclosure_date" in display_df.columns:
+            display_df["disclosure_date"] = pd.to_datetime(display_df["disclosure_date"]).dt.strftime("%Y-%m-%d")
+
         # Replace None/empty tickers with "N/A"
         if "asset_ticker" in display_df.columns:
             display_df["asset_ticker"] = display_df["asset_ticker"].fillna("N/A").replace("", "N/A")
 
+        # Format asset type
+        if "asset_type" in display_df.columns:
+            display_df["asset_type"] = display_df["asset_type"].fillna("Unknown").replace("", "Unknown")
+
+        # Truncate politician_id for display
+        if "politician_id" in display_df.columns:
+            display_df["politician_id"] = display_df["politician_id"].apply(lambda x: str(x)[:8] + "..." if x else "N/A")
+
+        # Truncate source URL for display
+        if "source_url" in display_df.columns:
+            display_df["source_url"] = display_df["source_url"].apply(lambda x: (str(x)[:50] + "...") if x and len(str(x)) > 50 else (x if x else "N/A"))
+
         # Rename columns for display
-        display_df.columns = ["Date", "Ticker", "Asset", "Type", "Min Amount", "Max Amount"]
+        column_rename = {
+            "transaction_date": "Trans. Date",
+            "disclosure_date": "Disc. Date",
+            "asset_ticker": "Ticker",
+            "asset_name": "Asset",
+            "asset_type": "Asset Type",
+            "transaction_type": "Type",
+            "amount_range_min": "Min Amount",
+            "amount_range_max": "Max Amount",
+            "politician_id": "Politician ID",
+            "status": "Status",
+            "source_url": "Source"
+        }
+
+        display_df.columns = [column_rename.get(col, col) for col in display_df.columns]
+
+        logger.debug("Displaying disclosures table", metadata={
+            "row_count": len(display_df),
+            "columns": list(display_df.columns)
+        })
 
         # Show count of missing tickers
         missing_tickers = len([t for t in df["asset_ticker"] if not t or t == ""])
         if missing_tickers > 0:
             st.warning(f"⚠️ {missing_tickers} disclosures are missing ticker symbols. Click 'Backfill Missing Tickers' to fix.")
+            logger.info("Missing tickers detected", metadata={
+                "missing_count": missing_tickers,
+                "total_count": len(df)
+            })
 
         st.dataframe(display_df, use_container_width=True)
 
