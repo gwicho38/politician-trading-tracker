@@ -16,6 +16,10 @@ if str(parent_dir) not in sys.path:
 if str(parent_dir / "src") not in sys.path:
     sys.path.insert(0, str(parent_dir / "src"))
 
+# Import logger
+from politician_trading.utils.logger import create_logger
+logger = create_logger("data_collection_page")
+
 # Import utilities
 try:
     from streamlit_utils import load_all_secrets
@@ -31,6 +35,8 @@ st.set_page_config(page_title="Data Collection", page_icon="📥", layout="wide"
 
 # Load secrets on page load
 load_all_secrets()
+
+logger.info("Data Collection page loaded")
 
 st.title("📥 Data Collection")
 st.markdown("Collect politician trading disclosures from multiple sources")
@@ -97,6 +103,16 @@ col1, col2 = st.columns([1, 4])
 
 with col1:
     if st.button("🚀 Start Collection", disabled=st.session_state.collection_running, use_container_width=True):
+        logger.info("Start Collection button clicked", metadata={
+            "us_congress": us_congress,
+            "uk_parliament": uk_parliament,
+            "eu_parliament": eu_parliament,
+            "california": california,
+            "texas": texas,
+            "new_york": new_york,
+            "lookback_days": lookback_days,
+            "max_retries": max_retries
+        })
         st.session_state.collection_running = True
         st.rerun()
 
@@ -147,10 +163,14 @@ if st.session_state.collection_running:
 
         add_log("🔧 Initializing workflow...")
         status_badge.info("⏳ Initializing")
+        logger.info("Initializing data collection workflow")
 
         # Create config
         supabase_config = SupabaseConfig.from_env()
         add_log(f"✅ Connected to Supabase: {supabase_config.url[:30]}...")
+        logger.debug("Supabase connection configured", metadata={
+            "url": supabase_config.url
+        })
 
         workflow_config = WorkflowConfig(
             supabase=supabase_config,
@@ -177,8 +197,13 @@ if st.session_state.collection_running:
             enabled_sources.append("New York")
 
         add_log(f"📊 Enabled sources: {', '.join(enabled_sources) if enabled_sources else 'None'}")
+        logger.info("Data sources configured", metadata={
+            "enabled_sources": enabled_sources,
+            "source_count": len(enabled_sources)
+        })
 
         if not enabled_sources:
+            logger.warn("No data sources selected")
             st.warning("⚠️ No sources selected! Please select at least one data source.")
             st.session_state.collection_running = False
             st.stop()
@@ -186,6 +211,7 @@ if st.session_state.collection_running:
         # Initialize workflow
         workflow = PoliticianTradingWorkflow(workflow_config)
         add_log("✅ Workflow initialized")
+        logger.info("Workflow initialized successfully")
         progress_bar.progress(10)
 
         try:
@@ -195,7 +221,15 @@ if st.session_state.collection_running:
             progress_bar.progress(20)
 
             # Run collection
+            logger.info("Starting full data collection")
             results = asyncio.run(workflow.run_full_collection())
+
+            # Log comprehensive results
+            logger.info("Data collection completed", metadata={
+                "results": results,
+                "summary": results.get("summary", {}),
+                "job_count": len(results.get("jobs", {}))
+            })
 
             progress_bar.progress(90)
             add_log("✅ Data collection completed!")
@@ -218,6 +252,12 @@ if st.session_state.collection_running:
 
                 # Summary metrics
                 summary = results.get("summary", {})
+                logger.info("Collection summary", metadata={
+                    "new_disclosures": summary.get("total_new_disclosures", 0),
+                    "updated_disclosures": summary.get("total_updated_disclosures", 0),
+                    "duration_seconds": elapsed
+                })
+
                 col1, col2, col3, col4 = st.columns(4)
 
                 with col1:
@@ -254,7 +294,16 @@ if st.session_state.collection_running:
 
                 jobs = results.get("jobs", {})
                 if jobs:
+                    logger.debug(f"Processing {len(jobs)} job results")
                     for job_name, job_data in jobs.items():
+                        logger.info(f"Job result: {job_name}", metadata={
+                            "job_name": job_name,
+                            "status": job_data.get("status"),
+                            "new_disclosures": job_data.get("new_disclosures", 0),
+                            "updated_disclosures": job_data.get("updated_disclosures", 0),
+                            "error_count": len(job_data.get("errors", []))
+                        })
+
                         with st.expander(f"{'✅' if job_data.get('status') == 'completed' else '❌'} {job_name.replace('_', ' ').title()}", expanded=False):
                             col1, col2, col3 = st.columns(3)
 
@@ -279,6 +328,12 @@ if st.session_state.collection_running:
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
+
+            logger.error("Data collection failed", error=e, metadata={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "traceback": error_details
+            })
 
             progress_bar.progress(100)
             status_badge.error("❌ Failed")
@@ -321,6 +376,7 @@ st.markdown("### Recent Disclosures")
 col1, col2 = st.columns([3, 1])
 with col2:
     if st.button("🔄 Backfill Missing Tickers", help="Extract and populate missing ticker symbols from asset names"):
+        logger.info("Backfill Missing Tickers button clicked")
         with st.spinner("Backfilling tickers..."):
             try:
                 from politician_trading.database.database import SupabaseClient
@@ -329,6 +385,7 @@ with col2:
 
                 config = SupabaseConfig.from_env()
                 db = SupabaseClient(config)
+                logger.debug("Connected to database for ticker backfill")
 
                 # Get disclosures with missing tickers
                 response_null = db.client.table("trading_disclosures")\
@@ -343,7 +400,12 @@ with col2:
 
                 all_missing = (response_null.data or []) + (response_empty.data or [])
 
+                logger.info("Ticker backfill: found missing tickers", metadata={
+                    "missing_count": len(all_missing)
+                })
+
                 if not all_missing:
+                    logger.info("Ticker backfill: no missing tickers found")
                     st.success("✅ All disclosures already have tickers!")
                 else:
                     progress_bar = st.progress(0)
@@ -374,6 +436,12 @@ with col2:
                     progress_bar.progress(1.0)
                     status_text.empty()
 
+                    logger.info("Ticker backfill completed", metadata={
+                        "total_processed": len(all_missing),
+                        "updated": updated,
+                        "no_ticker_found": no_ticker
+                    })
+
                     st.success(f"""
                     ✅ Backfill complete!
                     - Updated: {updated}
@@ -382,18 +450,24 @@ with col2:
                     st.rerun()
 
             except Exception as e:
+                logger.error("Ticker backfill failed", error=e)
                 st.error(f"Backfill failed: {str(e)}")
 
 try:
     from politician_trading.database.database import SupabaseClient
     from politician_trading.config import SupabaseConfig
 
+    logger.debug("Loading recent disclosures")
     config = SupabaseConfig.from_env()
     db = SupabaseClient(config)
 
     # Fetch recent disclosures
     query = db.client.table("trading_disclosures").select("*").order("transaction_date", desc=True).limit(100)
     response = query.execute()
+
+    logger.info("Recent disclosures loaded", metadata={
+        "count": len(response.data) if response.data else 0
+    })
 
     if response.data:
         df = pd.DataFrame(response.data)
