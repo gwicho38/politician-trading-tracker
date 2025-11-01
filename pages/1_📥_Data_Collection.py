@@ -461,8 +461,11 @@ try:
     config = SupabaseConfig.from_env()
     db = SupabaseClient(config)
 
-    # Fetch recent disclosures
-    query = db.client.table("trading_disclosures").select("*").order("transaction_date", desc=True).limit(100)
+    # Fetch recent disclosures with politician information
+    # Using a join to get politician names
+    query = db.client.table("trading_disclosures").select(
+        "*, politicians(first_name, last_name, full_name, role, party, state_or_country)"
+    ).order("transaction_date", desc=True).limit(100)
     response = query.execute()
 
     logger.info("Recent disclosures loaded", metadata={
@@ -472,17 +475,44 @@ try:
     if response.data:
         df = pd.DataFrame(response.data)
 
+        # Extract politician information from nested object
+        if "politicians" in df.columns:
+            df["politician_name"] = df["politicians"].apply(
+                lambda x: x.get("full_name") if isinstance(x, dict) and x else "Unknown"
+            )
+            df["politician_party"] = df["politicians"].apply(
+                lambda x: x.get("party") if isinstance(x, dict) and x else "N/A"
+            )
+            df["politician_state"] = df["politicians"].apply(
+                lambda x: x.get("state_or_country") if isinstance(x, dict) and x else "N/A"
+            )
+
+            # Count how many have politician info
+            has_politician = df["politician_name"].apply(lambda x: x != "Unknown").sum()
+            logger.info("Extracted politician information", metadata={
+                "total_disclosures": len(df),
+                "with_politician": int(has_politician),
+                "without_politician": int(len(df) - has_politician)
+            })
+        else:
+            df["politician_name"] = "Unknown"
+            df["politician_party"] = "N/A"
+            df["politician_state"] = "N/A"
+            logger.warn("No politician information in query results")
+
         # Format for display - include more useful columns
         display_cols = [
             "transaction_date",
             "disclosure_date",
+            "politician_name",
+            "politician_party",
+            "politician_state",
             "asset_ticker",
             "asset_name",
             "asset_type",
             "transaction_type",
             "amount_range_min",
             "amount_range_max",
-            "politician_id",
             "status",
             "source_url"
         ]
@@ -503,10 +533,6 @@ try:
         if "asset_type" in display_df.columns:
             display_df["asset_type"] = display_df["asset_type"].fillna("Unknown").replace("", "Unknown")
 
-        # Truncate politician_id for display
-        if "politician_id" in display_df.columns:
-            display_df["politician_id"] = display_df["politician_id"].apply(lambda x: str(x)[:8] + "..." if x else "N/A")
-
         # Truncate source URL for display
         if "source_url" in display_df.columns:
             display_df["source_url"] = display_df["source_url"].apply(lambda x: (str(x)[:50] + "...") if x and len(str(x)) > 50 else (x if x else "N/A"))
@@ -515,13 +541,15 @@ try:
         column_rename = {
             "transaction_date": "Trans. Date",
             "disclosure_date": "Disc. Date",
+            "politician_name": "Politician",
+            "politician_party": "Party",
+            "politician_state": "State/Country",
             "asset_ticker": "Ticker",
             "asset_name": "Asset",
             "asset_type": "Asset Type",
             "transaction_type": "Type",
             "amount_range_min": "Min Amount",
             "amount_range_max": "Max Amount",
-            "politician_id": "Politician ID",
             "status": "Status",
             "source_url": "Source"
         }
