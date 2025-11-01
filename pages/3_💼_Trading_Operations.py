@@ -17,6 +17,10 @@ if str(parent_dir) not in sys.path:
 if str(parent_dir / "src") not in sys.path:
     sys.path.insert(0, str(parent_dir / "src"))
 
+# Import logger
+from politician_trading.utils.logger import create_logger
+logger = create_logger("trading_operations_page")
+
 # Import utilities
 try:
     from streamlit_utils import load_all_secrets
@@ -32,6 +36,8 @@ st.set_page_config(page_title="Trading Operations", page_icon="💼", layout="wi
 
 # Load secrets on page load
 load_all_secrets()
+
+logger.info("Trading Operations page loaded")
 
 st.title("💼 Trading Operations")
 st.markdown("Execute trades based on AI signals with comprehensive risk management")
@@ -359,11 +365,27 @@ with st.expander("Place Manual Order"):
     confirm_manual = st.checkbox("Confirm manual order placement")
 
     if st.button("Place Order", disabled=not confirm_manual):
+        logger.info("Manual order placement requested", metadata={
+            "ticker": manual_ticker,
+            "quantity": manual_quantity,
+            "side": manual_side,
+            "order_type": manual_order_type,
+            "trading_mode": "live" if is_live else "paper"
+        })
+
         try:
             if manual_order_type == "market":
                 order = alpaca_client.place_market_order(manual_ticker, manual_quantity, manual_side)
             else:
                 order = alpaca_client.place_limit_order(manual_ticker, manual_quantity, manual_side, Decimal(str(manual_limit_price)))
+
+            logger.info("Manual order placed successfully", metadata={
+                "order_id": order.alpaca_order_id,
+                "ticker": manual_ticker,
+                "quantity": manual_quantity,
+                "side": manual_side,
+                "status": order.status.value
+            })
 
             st.success(f"✅ Order placed successfully! Order ID: {order.alpaca_order_id}")
 
@@ -382,8 +404,14 @@ with st.expander("Place Manual Order"):
             }
 
             db.client.table("trading_orders").insert(order_data).execute()
+            logger.debug("Order saved to database", metadata={"order_id": order.alpaca_order_id})
 
         except Exception as e:
+            logger.error("Failed to place manual order", error=e, metadata={
+                "ticker": manual_ticker,
+                "quantity": manual_quantity,
+                "side": manual_side
+            })
             st.error(f"❌ Error placing order: {str(e)}")
 
 # Recent orders

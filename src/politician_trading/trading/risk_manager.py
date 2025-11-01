@@ -4,11 +4,11 @@ Risk management for trading operations
 
 from decimal import Decimal
 from typing import Optional, Dict, Any
-import logging
 
 from src.models import Portfolio, Position, TradingSignal
+from politician_trading.utils.logger import create_logger
 
-logger = logging.getLogger(__name__)
+logger = create_logger("risk_manager")
 
 
 class RiskManager:
@@ -42,10 +42,13 @@ class RiskManager:
         self.max_positions = max_positions
         self.min_confidence = min_confidence
 
-        logger.info(
-            f"Initialized RiskManager with max_position={max_position_size_pct}%, "
-            f"max_risk={max_portfolio_risk_pct}%, max_exposure={max_total_exposure_pct}%"
-        )
+        logger.info("Initialized RiskManager", metadata={
+            "max_position_size_pct": max_position_size_pct,
+            "max_portfolio_risk_pct": max_portfolio_risk_pct,
+            "max_total_exposure_pct": max_total_exposure_pct,
+            "max_positions": max_positions,
+            "min_confidence": min_confidence
+        })
 
     def validate_signal(self, signal: TradingSignal) -> tuple[bool, str]:
         """
@@ -57,14 +60,31 @@ class RiskManager:
         Returns:
             Tuple of (is_valid, reason)
         """
+        logger.debug("Validating signal", metadata={
+            "ticker": signal.ticker,
+            "confidence": signal.confidence_score,
+            "signal_type": signal.signal_type.value
+        })
+
         # Check confidence threshold
         if signal.confidence_score < self.min_confidence:
-            return False, f"Confidence {signal.confidence_score:.1%} below threshold {self.min_confidence:.1%}"
+            reason = f"Confidence {signal.confidence_score:.1%} below threshold {self.min_confidence:.1%}"
+            logger.info("Signal rejected - low confidence", metadata={
+                "ticker": signal.ticker,
+                "confidence": signal.confidence_score,
+                "min_required": self.min_confidence,
+                "reason": reason
+            })
+            return False, reason
 
         # Check if signal has price targets (needed for risk calculation)
         if signal.stop_loss is None and signal.signal_type.value in ["buy", "strong_buy"]:
-            logger.warning(f"Signal for {signal.ticker} has no stop loss")
+            logger.warning("Signal missing stop loss", metadata={
+                "ticker": signal.ticker,
+                "signal_type": signal.signal_type.value
+            })
 
+        logger.debug("Signal passed validation", metadata={"ticker": signal.ticker})
         return True, "Signal passed validation"
 
     def calculate_position_size(
