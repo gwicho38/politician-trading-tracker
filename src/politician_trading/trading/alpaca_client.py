@@ -5,7 +5,8 @@ Alpaca API client for trading operations
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-import logging
+
+from politician_trading.utils.logger import create_logger
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import (
@@ -30,7 +31,7 @@ from src.models import (
     Position,
 )
 
-logger = logging.getLogger(__name__)
+logger = create_logger("alpaca_client")
 
 
 class AlpacaTradingClient:
@@ -195,6 +196,14 @@ class AlpacaTradingClient:
         Returns:
             TradingOrder object
         """
+        logger.debug(f"Placing market order", metadata={
+            "ticker": ticker,
+            "quantity": quantity,
+            "side": side,
+            "time_in_force": time_in_force,
+            "trading_mode": self.trading_mode.value,
+        })
+
         try:
             order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
             tif = self._parse_time_in_force(time_in_force)
@@ -209,12 +218,23 @@ class AlpacaTradingClient:
             alpaca_order = self.trading_client.submit_order(request)
 
             order = self._convert_alpaca_order(alpaca_order)
-            logger.info(f"Placed market {side} order for {quantity} shares of {ticker}")
+            logger.info(f"Placed market {side} order for {quantity} shares of {ticker}", metadata={
+                "order_id": order.alpaca_order_id,
+                "ticker": ticker,
+                "quantity": quantity,
+                "side": side,
+                "status": order.status.value,
+                "trading_mode": self.trading_mode.value,
+            })
 
             return order
 
         except Exception as e:
-            logger.error(f"Error placing market order: {e}")
+            logger.error(f"Error placing market order for {ticker}", error=e, metadata={
+                "ticker": ticker,
+                "quantity": quantity,
+                "side": side,
+            })
             raise
 
     def place_limit_order(

@@ -3,7 +3,6 @@ Database client and schema management for politician trading data
 """
 
 import asyncio
-import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -12,13 +11,15 @@ from postgrest.exceptions import APIError
 from supabase import Client, create_client
 
 from politician_trading.config import WorkflowConfig, SupabaseConfig
+from politician_trading.utils.logger import create_logger
+
 try:
     from politician_trading.models import DataPullJob, DataSource, Politician, TradingDisclosure
 except ImportError:
     # Fallback for when models aren't available
     DataPullJob = DataSource = Politician = TradingDisclosure = None
 
-logger = logging.getLogger(__name__)
+logger = create_logger("database")
 
 
 class PoliticianTradingDB:
