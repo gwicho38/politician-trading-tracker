@@ -55,7 +55,7 @@ try:
         "running": scheduler.is_running()
     })
 except Exception as e:
-    logger.warning("Failed to initialize scheduler", error=e)
+    logger.error("Failed to initialize scheduler", error=e)
     # Don't fail the app if scheduler fails to start
 
 # Custom CSS
@@ -227,7 +227,7 @@ def main():
                 logger.debug("Politicians count retrieved", metadata={"count": count})
             except Exception as e:
                 st.metric("Total Politicians", "N/A")
-                logger.warn("Failed to get politicians count", error=e)
+                logger.error("Failed to get politicians count", error=e)
 
         with col2:
             try:
@@ -237,7 +237,7 @@ def main():
                 logger.debug("Disclosures count retrieved", metadata={"count": count})
             except Exception as e:
                 st.metric("Total Disclosures", "N/A")
-                logger.warn("Failed to get disclosures count", error=e)
+                logger.error("Failed to get disclosures count", error=e)
 
         with col3:
             try:
