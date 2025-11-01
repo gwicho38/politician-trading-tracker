@@ -1,10 +1,10 @@
 {
   "version": "1.0",
-  "generated_at": "2025-10-31T09:46:06.194801Z",
+  "generated_at": "2025-11-01T12:57:43.633209Z",
   "commands": {
     "politician_trading_tracker": {
       "name": "politician_trading_tracker",
-      "description": "Custom command",
+      "description": "Run the politician trading tracker workflow",
       "group": "workflow",
       "version": "1.0",
       "created_at": "2025-10-31T09:46:06.193910Z",
