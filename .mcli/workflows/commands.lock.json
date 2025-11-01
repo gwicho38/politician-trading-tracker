@@ -1,6 +1,14 @@
 {
   "version": "1.0",
-  "initialized_at": "2025-10-30T17:06:18.630890",
-  "scope": "local",
-  "commands": {}
+  "generated_at": "2025-10-31T09:46:06.194801Z",
+  "commands": {
+    "politician_trading_tracker": {
+      "name": "politician_trading_tracker",
+      "description": "Custom command",
+      "group": "workflow",
+      "version": "1.0",
+      "created_at": "2025-10-31T09:46:06.193910Z",
+      "updated_at": "2025-10-31T09:46:06.193928Z"
+    }
+  }
 }

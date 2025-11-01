@@ -21,7 +21,13 @@
       "WebFetch(domain:politician-trading-tracker.streamlit.app)",
       "Bash(chmod:*)",
       "Bash(python3:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(uv pip list:*)",
+      "Bash(/Users/lefv/.pyenv/shims/pytest tests/unit/test_alpaca_client.py -v)",
+      "Bash(/Users/lefv/.pyenv/shims/pytest tests/unit/test_alpaca_client.py -v --no-cov)",
+      "Bash(/Users/lefv/.pyenv/shims/pytest tests/unit/test_alpaca_client.py -v -o addopts=\"\")",
+      "Bash(/Users/lefv/.pyenv/shims/pytest tests/unit/test_alpaca_client.py::TestAlpacaClientUUIDSerialization::test_get_account_converts_uuid_to_string -v -o addopts=\"\")",
+      "Bash(LOG_LEVEL=DEBUG python3:*)"
     ],
     "deny": [],
     "ask": []

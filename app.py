@@ -15,6 +15,10 @@ if str(app_dir) not in sys.path:
 if str(app_dir / "src") not in sys.path:
     sys.path.insert(0, str(app_dir / "src"))
 
+# Import logger first
+from politician_trading.utils.logger import create_logger
+logger = create_logger("app")
+
 # Import utilities
 try:
     from streamlit_utils import load_all_secrets
@@ -25,6 +29,8 @@ except (ImportError, KeyError):
     streamlit_utils = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(streamlit_utils)
     load_all_secrets = streamlit_utils.load_all_secrets
+
+logger.info("Politician Trading Tracker starting")
 
 # Page configuration
 st.set_page_config(
@@ -86,6 +92,8 @@ st.markdown("""
 # Check environment configuration
 def check_environment():
     """Check if required environment variables are set"""
+    logger.debug("Checking environment configuration")
+
     required_vars = {
         "SUPABASE_URL": os.getenv("SUPABASE_URL"),
         "SUPABASE_ANON_KEY": os.getenv("SUPABASE_ANON_KEY"),
@@ -98,6 +106,18 @@ def check_environment():
 
     missing_required = [k for k, v in required_vars.items() if not v]
     missing_optional = [k for k, v in optional_vars.items() if not v]
+
+    if missing_required:
+        logger.error("Missing required environment variables", metadata={
+            "missing_vars": missing_required
+        })
+    else:
+        logger.info("All required environment variables present")
+
+    if missing_optional:
+        logger.warn("Missing optional environment variables", metadata={
+            "missing_vars": missing_optional
+        })
 
     return missing_required, missing_optional
 
@@ -172,12 +192,14 @@ def main():
     st.markdown("### 📊 Quick Stats")
 
     try:
+        logger.debug("Loading database stats")
         from politician_trading.database.database import SupabaseClient
         from politician_trading.config import SupabaseConfig
         from datetime import datetime, timedelta
 
         config = SupabaseConfig.from_env()
         db = SupabaseClient(config)
+        logger.info("Connected to database for stats")
 
         # Get counts
         col1, col2, col3, col4 = st.columns(4)
@@ -185,16 +207,22 @@ def main():
         with col1:
             try:
                 pols_response = db.client.table("politicians").select("id", count="exact").execute()
-                st.metric("Total Politicians", pols_response.count if pols_response.count else 0)
-            except:
+                count = pols_response.count if pols_response.count else 0
+                st.metric("Total Politicians", count)
+                logger.debug("Politicians count retrieved", metadata={"count": count})
+            except Exception as e:
                 st.metric("Total Politicians", "N/A")
+                logger.warn("Failed to get politicians count", error=e)
 
         with col2:
             try:
                 disc_response = db.client.table("trading_disclosures").select("id", count="exact").execute()
-                st.metric("Total Disclosures", disc_response.count if disc_response.count else 0)
-            except:
+                count = disc_response.count if disc_response.count else 0
+                st.metric("Total Disclosures", count)
+                logger.debug("Disclosures count retrieved", metadata={"count": count})
+            except Exception as e:
                 st.metric("Total Disclosures", "N/A")
+                logger.warn("Failed to get disclosures count", error=e)
 
         with col3:
             try:
