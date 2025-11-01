@@ -477,18 +477,38 @@ try:
 
         # Extract politician information from nested object
         if "politicians" in df.columns:
-            df["politician_name"] = df["politicians"].apply(
-                lambda x: x.get("full_name") if isinstance(x, dict) and x else "Unknown"
-            )
+            def extract_name(x):
+                if not isinstance(x, dict) or not x:
+                    return "Unknown"
+                # Try full_name first, then construct from first/last name
+                full_name = x.get("full_name")
+                if full_name:
+                    return full_name
+                first = x.get("first_name", "")
+                last = x.get("last_name", "")
+                if first or last:
+                    return f"{first} {last}".strip()
+                return "Unknown"
+
+            df["politician_name"] = df["politicians"].apply(extract_name)
             df["politician_party"] = df["politicians"].apply(
-                lambda x: x.get("party") if isinstance(x, dict) and x else "N/A"
+                lambda x: x.get("party", "N/A") if isinstance(x, dict) and x else "N/A"
             )
             df["politician_state"] = df["politicians"].apply(
-                lambda x: x.get("state_or_country") if isinstance(x, dict) and x else "N/A"
+                lambda x: x.get("state_or_country", "N/A") if isinstance(x, dict) and x else "N/A"
             )
 
             # Count how many have politician info
             has_politician = df["politician_name"].apply(lambda x: x != "Unknown").sum()
+
+            # Log sample of politician data for debugging
+            if len(df) > 0:
+                sample_politician = df["politicians"].iloc[0] if isinstance(df["politicians"].iloc[0], dict) else None
+                logger.debug("Sample politician data", metadata={
+                    "sample": sample_politician,
+                    "keys": list(sample_politician.keys()) if sample_politician else []
+                })
+
             logger.info("Extracted politician information", metadata={
                 "total_disclosures": len(df),
                 "with_politician": int(has_politician),

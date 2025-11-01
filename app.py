@@ -25,7 +25,11 @@ try:
 except (ImportError, KeyError):
     # Fallback for different import contexts
     import importlib.util
-    spec = importlib.util.spec_from_file_location("streamlit_utils", app_dir / "streamlit_utils.py")
+    spec = object
+    try:
+        spec = importlib.util.spec_from_file_location("streamlit_utils", app_dir / "streamlit_utils.py")
+    except:
+        logger.error("Failed to import spec from file")
     streamlit_utils = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(streamlit_utils)
     load_all_secrets = streamlit_utils.load_all_secrets
