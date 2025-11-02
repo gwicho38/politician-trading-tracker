@@ -4,14 +4,14 @@
 -- Job executions table
 CREATE TABLE IF NOT EXISTS job_executions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    job_id VARCHAR(100) NOT NULL,  -- The job identifier (e.g., "data_collection", "ticker_backfill")
+    job_id VARCHAR(100) NOT NULL,
     status VARCHAR(20) NOT NULL CHECK (status IN ('success', 'failed', 'cancelled')),
     started_at TIMESTAMPTZ NOT NULL,
     completed_at TIMESTAMPTZ NOT NULL,
     duration_seconds DECIMAL(10,3),
     error_message TEXT,
-    logs TEXT,  -- Full log output from the job execution
-    metadata JSONB,  -- Additional metadata about the execution
+    logs TEXT,
+    metadata JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -57,9 +57,9 @@ GRANT SELECT ON job_execution_summary TO anon;
 
 -- Comments for documentation
 COMMENT ON TABLE job_executions IS 'Stores execution history of scheduled jobs from APScheduler';
-COMMENT ON COLUMN job_executions.job_id IS 'Identifier for the job (matches APScheduler job ID)';
+COMMENT ON COLUMN job_executions.job_id IS 'Job identifier matching APScheduler job ID like data_collection or ticker_backfill';
 COMMENT ON COLUMN job_executions.logs IS 'Full log output captured during job execution';
-COMMENT ON COLUMN job_executions.metadata IS 'Additional context like job configuration, environment, etc.';
+COMMENT ON COLUMN job_executions.metadata IS 'Additional context like job configuration and environment details';
 COMMENT ON COLUMN job_executions.duration_seconds IS 'Total execution time in seconds';
 
 -- Optional: Add a function to clean up old job executions (keep last 1000 per job)
