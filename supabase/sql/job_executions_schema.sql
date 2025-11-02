@@ -27,13 +27,25 @@ CREATE INDEX IF NOT EXISTS idx_job_executions_job_id_started_at ON job_execution
 -- RLS (Row Level Security) policies
 ALTER TABLE job_executions ENABLE ROW LEVEL SECURITY;
 
--- Allow all operations for authenticated users
-CREATE POLICY "Allow all for authenticated users" ON job_executions
-    FOR ALL USING (auth.role() = 'authenticated');
+-- Policy 1: Service role has full access (bypasses RLS)
+CREATE POLICY "Service role bypass RLS" ON job_executions
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
 
--- Allow read access for service role (for the app itself)
-CREATE POLICY "Allow all for service role" ON job_executions
-    FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
+-- Policy 2: Authenticated users have full access
+CREATE POLICY "Authenticated users full access" ON job_executions
+    FOR ALL
+    TO authenticated
+    USING (true)
+    WITH CHECK (true);
+
+-- Policy 3: Anonymous users can read only
+CREATE POLICY "Anonymous users read only" ON job_executions
+    FOR SELECT
+    TO anon
+    USING (true);
 
 -- Create a view for recent job execution summary
 CREATE OR REPLACE VIEW job_execution_summary AS
@@ -52,8 +64,9 @@ WHERE started_at >= NOW() - INTERVAL '30 days'
 GROUP BY job_id
 ORDER BY last_execution DESC;
 
--- Grant permissions to anon role for read access to the view
+-- Grant permissions to anon and service_role for read access to the view
 GRANT SELECT ON job_execution_summary TO anon;
+GRANT SELECT ON job_execution_summary TO service_role;
 
 -- Comments for documentation
 COMMENT ON TABLE job_executions IS 'Stores execution history of scheduled jobs from APScheduler';
