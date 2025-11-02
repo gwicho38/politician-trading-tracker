@@ -184,22 +184,6 @@ CREATE TRIGGER update_scheduled_jobs_updated_at
 -- Insert default scheduled jobs
 INSERT INTO scheduled_jobs (job_id, job_name, job_function, schedule_type, schedule_value, next_scheduled_run, metadata)
 VALUES
-    (
-        'data_collection',
-        'Data Collection Job',
-        'politician_trading.scheduler.jobs.data_collection_job',
-        'interval',
-        '21600',  -- 6 hours in seconds
-        NOW(),
-        '{"description": "Collect politician trading data from all enabled sources"}'::jsonb
-    ),
-    (
-        'ticker_backfill',
-        'Ticker Backfill Job',
-        'politician_trading.scheduler.jobs.ticker_backfill_job',
-        'interval',
-        '86400',  -- 24 hours in seconds
-        NOW() + INTERVAL '1 hour',
-        '{"description": "Backfill missing ticker symbols for trading disclosures"}'::jsonb
-    )
+    ('data_collection', 'Data Collection Job', 'politician_trading.scheduler.jobs.data_collection_job', 'interval', '21600', NOW(), '{"description": "Collect politician trading data from all enabled sources"}'::jsonb),
+    ('ticker_backfill', 'Ticker Backfill Job', 'politician_trading.scheduler.jobs.ticker_backfill_job', 'interval', '86400', NOW() + INTERVAL '1 hour', '{"description": "Backfill missing ticker symbols for trading disclosures"}'::jsonb)
 ON CONFLICT (job_id) DO NOTHING;
