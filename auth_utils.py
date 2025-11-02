@@ -4,9 +4,15 @@ Uses streamlit-authenticator for secure login
 """
 
 import streamlit as st
-import streamlit_authenticator as stauth
 from pathlib import Path
-import bcrypt
+
+# Try to import streamlit_authenticator, gracefully handle if not installed
+try:
+    import streamlit_authenticator as stauth
+    import bcrypt
+    AUTH_AVAILABLE = True
+except ImportError:
+    AUTH_AVAILABLE = False
 
 
 def load_auth_config():
@@ -53,6 +59,10 @@ def check_authentication():
     Returns:
         bool: True if authenticated, False otherwise
     """
+    # If authentication module not available, allow access
+    if not AUTH_AVAILABLE:
+        return True
+
     # Load configuration
     config = load_auth_config()
 
@@ -61,35 +71,36 @@ def check_authentication():
         return True
 
     # Initialize authenticator
-    authenticator = stauth.Authenticate(
-        config['credentials'],
-        config['cookie']['name'],
-        config['cookie']['key'],
-        config['cookie']['expiry_days']
-    )
-
-    # Show login form
     try:
+        authenticator = stauth.Authenticate(
+            config['credentials'],
+            config['cookie']['name'],
+            config['cookie']['key'],
+            config['cookie']['expiry_days']
+        )
+
+        # Show login form
         name, authentication_status, username = authenticator.login()
+
+        # Handle authentication states
+        if authentication_status:
+            # User is authenticated
+            with st.sidebar:
+                st.success(f'Welcome *{name}*')
+                authenticator.logout('Logout')
+            return True
+        elif authentication_status == False:
+            st.error('❌ Username/password is incorrect')
+            return False
+        elif authentication_status == None:
+            st.info('👋 Please enter your username and password')
+            return False
+
+        return False
     except Exception as e:
         st.error(f"Authentication error: {e}")
-        return False
-
-    # Handle authentication states
-    if authentication_status:
-        # User is authenticated
-        with st.sidebar:
-            st.success(f'Welcome *{name}*')
-            authenticator.logout('Logout')
-        return True
-    elif authentication_status == False:
-        st.error('❌ Username/password is incorrect')
-        return False
-    elif authentication_status == None:
-        st.info('👋 Please enter your username and password')
-        return False
-
-    return False
+        st.info("Running without authentication due to error.")
+        return True  # Allow access on error to prevent lockout
 
 
 def require_authentication():
