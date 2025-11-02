@@ -13,8 +13,8 @@ from urllib.parse import urljoin, urlparse
 import aiohttp
 from bs4 import BeautifulSoup
 
-from .config import ScrapingConfig
-from .models import Politician, PoliticianRole, TradingDisclosure, TransactionType
+from ..config import ScrapingConfig
+from ..models import Politician, PoliticianRole, TradingDisclosure, TransactionType
 
 logger = logging.getLogger(__name__)
 
