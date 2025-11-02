@@ -28,7 +28,8 @@ class SupabaseConfig:
             "SUPABASE_ANON_KEY",
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVsanNxdndrb21kcmxub2ZtbGFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY4MDIyNDQsImV4cCI6MjA3MjM3ODI0NH0.QCpfcEpxGX_5Wn8ljf_J2KWjJLGdF8zRsV_7OatxmHI",
         )
-        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        # Check for service role key (supports both naming conventions)
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
 
         return cls(url=url, key=key, service_role_key=service_role_key)
 
