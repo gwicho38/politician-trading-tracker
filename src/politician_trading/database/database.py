@@ -134,10 +134,24 @@ class PoliticianTradingDB:
                 return politician_dict["id"]
 
         except Exception as e:
-            logger.error(f"Failed to upsert politician: {e}")
-            # For debugging: log the politician data that caused the error
-            logger.error(f"Politician data: {politician.first_name} {politician.last_name}")
-            return ""  # Return empty string instead of raising to prevent cascade failures
+            error_str = str(e)
+            # Handle duplicate key constraint - politician already exists
+            if "duplicate key" in error_str or "23505" in error_str:
+                logger.debug(f"Politician already exists: {politician.first_name} {politician.last_name}")
+                # Try to fetch the existing politician ID
+                try:
+                    existing = await self.find_politician_by_name(politician.first_name, politician.last_name)
+                    if existing and existing.id:
+                        return existing.id
+                except:
+                    pass
+                # If we can't find it, return empty string
+                return ""
+            else:
+                # For other errors, log and return empty
+                logger.error(f"Failed to upsert politician: {e}")
+                logger.error(f"Politician data: {politician.first_name} {politician.last_name}")
+                return ""  # Return empty string instead of raising to prevent cascade failures
 
     # Trading disclosure management
     async def get_disclosure(self, disclosure_id: str) -> Optional[TradingDisclosure]:
@@ -316,7 +330,7 @@ class PoliticianTradingDB:
 
     def _dict_to_politician(self, data: Dict[str, Any]) -> Politician:
         """Convert dictionary to Politician"""
-        from .models import PoliticianRole
+        from politician_trading.models import PoliticianRole
 
         return Politician(
             id=data.get("id"),
