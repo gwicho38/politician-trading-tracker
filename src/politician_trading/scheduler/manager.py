@@ -7,7 +7,10 @@ Uses singleton pattern to ensure only one scheduler runs across Streamlit reruns
 
 import asyncio
 import atexit
+import logging
+import time
 from datetime import datetime
+from io import StringIO
 from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional
@@ -22,26 +25,69 @@ from politician_trading.utils.logger import create_logger
 logger = create_logger("scheduler_manager")
 
 
-class JobHistory:
-    """Tracks job execution history"""
+class LogCaptureHandler(logging.Handler):
+    """Custom logging handler that captures logs for a job execution"""
 
-    def __init__(self, max_history: int = 100):
+    def __init__(self, max_lines: int = 1000):
+        super().__init__()
+        self.max_lines = max_lines
+        self.logs: List[str] = []
+        self._lock = Lock()
+
+    def emit(self, record: logging.LogRecord):
+        """Capture a log record"""
+        try:
+            msg = self.format(record)
+            with self._lock:
+                self.logs.append(msg)
+                # Keep only last N lines
+                if len(self.logs) > self.max_lines:
+                    self.logs = self.logs[-self.max_lines:]
+        except Exception:
+            self.handleError(record)
+
+    def get_logs(self) -> List[str]:
+        """Get captured logs"""
+        with self._lock:
+            return self.logs.copy()
+
+    def clear(self):
+        """Clear captured logs"""
+        with self._lock:
+            self.logs = []
+
+
+class JobHistory:
+    """Tracks job execution history with logs"""
+
+    def __init__(self, max_history: int = 100, max_log_lines: int = 1000):
         self.max_history = max_history
+        self.max_log_lines = max_log_lines
         self.executions: List[Dict[str, Any]] = []
         self._lock = Lock()
 
-    def add_execution(self, job_id: str, status: str, error: Optional[str] = None):
-        """Add a job execution record"""
+    def add_execution(self, job_id: str, status: str, error: Optional[str] = None, logs: Optional[List[str]] = None):
+        """Add a job execution record with logs"""
         with self._lock:
             execution = {
                 "job_id": job_id,
                 "timestamp": datetime.now(),
                 "status": status,
                 "error": error,
+                "logs": logs or [],
+                "duration_seconds": None,  # Will be updated if available
             }
             self.executions.insert(0, execution)  # Most recent first
             if len(self.executions) > self.max_history:
                 self.executions = self.executions[: self.max_history]
+
+    def update_execution(self, job_id: str, timestamp: datetime, **updates):
+        """Update an existing execution record (e.g., add duration, final logs)"""
+        with self._lock:
+            for execution in self.executions:
+                if execution["job_id"] == job_id and execution["timestamp"] == timestamp:
+                    execution.update(updates)
+                    break
 
     def get_history(self, job_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get execution history, optionally filtered by job_id"""
@@ -54,6 +100,14 @@ class JobHistory:
         """Get the last execution for a specific job"""
         history = self.get_history(job_id)
         return history[0] if history else None
+
+    def get_logs(self, job_id: str, timestamp: datetime) -> List[str]:
+        """Get logs for a specific job execution"""
+        with self._lock:
+            for execution in self.executions:
+                if execution["job_id"] == job_id and execution["timestamp"] == timestamp:
+                    return execution.get("logs", [])
+            return []
 
 
 class SchedulerManager:
@@ -92,6 +146,7 @@ class SchedulerManager:
 
         self.job_history = JobHistory()
         self._job_metadata: Dict[str, Dict[str, Any]] = {}
+        self._log_handlers: Dict[str, LogCaptureHandler] = {}  # Track log handlers per job
 
         # Register event listeners
         self.scheduler.add_listener(self._job_executed, EVENT_JOB_EXECUTED)
@@ -106,18 +161,98 @@ class SchedulerManager:
 
         self._initialized = True
 
+    def _create_job_wrapper(self, func: Callable, job_id: str):
+        """
+        Create a wrapper function that captures logs during execution.
+
+        Args:
+            func: Original job function
+            job_id: Job identifier
+
+        Returns:
+            Wrapped function that captures logs
+        """
+        def wrapper():
+            # Create log handler for this execution
+            log_handler = LogCaptureHandler(max_lines=1000)
+            log_handler.setLevel(logging.DEBUG)
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            log_handler.setFormatter(formatter)
+
+            # Store handler for this job
+            execution_key = f"{job_id}_{datetime.now().isoformat()}"
+            self._log_handlers[execution_key] = log_handler
+
+            # Add handler to root logger
+            root_logger = logging.getLogger()
+            root_logger.addHandler(log_handler)
+
+            start_time = time.time()
+            log_handler.logs.append(f"🚀 Starting job: {job_id}")
+
+            try:
+                # Execute the actual job function
+                logger.info(f"Executing job: {job_id}")
+                result = func()
+
+                duration = time.time() - start_time
+                log_handler.logs.append(f"✅ Job completed successfully in {duration:.2f}s")
+
+                # Get logs and clean up
+                logs = log_handler.get_logs()
+                root_logger.removeHandler(log_handler)
+
+                # Store execution with logs
+                self.job_history.add_execution(
+                    job_id=job_id,
+                    status="success",
+                    logs=logs,
+                )
+                self.job_history.update_execution(
+                    job_id=job_id,
+                    timestamp=self.job_history.get_last_execution(job_id)["timestamp"],
+                    duration_seconds=duration
+                )
+
+                return result
+
+            except Exception as e:
+                duration = time.time() - start_time
+                log_handler.logs.append(f"❌ Job failed after {duration:.2f}s: {str(e)}")
+
+                # Get logs and clean up
+                logs = log_handler.get_logs()
+                root_logger.removeHandler(log_handler)
+
+                # Store execution with logs
+                self.job_history.add_execution(
+                    job_id=job_id,
+                    status="error",
+                    error=str(e),
+                    logs=logs,
+                )
+                self.job_history.update_execution(
+                    job_id=job_id,
+                    timestamp=self.job_history.get_last_execution(job_id)["timestamp"],
+                    duration_seconds=duration
+                )
+
+                raise
+
+        return wrapper
+
     def _job_executed(self, event):
         """Handler for successful job execution"""
         job_id = event.job_id
         logger.info(f"Job executed successfully: {job_id}")
-        self.job_history.add_execution(job_id, "success")
+        # Execution already recorded in wrapper
 
     def _job_error(self, event):
         """Handler for job execution errors"""
         job_id = event.job_id
         exception = str(event.exception) if event.exception else "Unknown error"
         logger.error(f"Job failed: {job_id}", error=event.exception)
-        self.job_history.add_execution(job_id, "error", exception)
+        # Execution already recorded in wrapper
 
     def _shutdown(self):
         """Shutdown the scheduler gracefully"""
@@ -169,9 +304,12 @@ class SchedulerManager:
                     hour=hour, minute=minute, day_of_week=day_of_week, timezone="UTC"
                 )
 
+            # Wrap function to capture logs
+            wrapped_func = self._create_job_wrapper(func, job_id)
+
             # Add job
             self.scheduler.add_job(
-                func,
+                wrapped_func,
                 trigger=trigger,
                 id=job_id,
                 name=name,
@@ -253,10 +391,14 @@ class SchedulerManager:
             trigger = IntervalTrigger(hours=hours, minutes=minutes, seconds=seconds, timezone="UTC")
             logger.info(f"IntervalTrigger created successfully")
 
+            # Wrap function to capture logs
+            logger.info(f"Wrapping function to capture logs for {job_id}")
+            wrapped_func = self._create_job_wrapper(func, job_id)
+
             # Add job
             logger.info(f"Calling scheduler.add_job for {job_id}")
             self.scheduler.add_job(
-                func,
+                wrapped_func,
                 trigger=trigger,
                 id=job_id,
                 name=name,
