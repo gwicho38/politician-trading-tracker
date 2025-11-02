@@ -278,6 +278,7 @@ class SchedulerManager:
         self.job_history = JobHistory(db_client=db_client)
         self._job_metadata: Dict[str, Dict[str, Any]] = {}
         self._log_handlers: Dict[str, LogCaptureHandler] = {}  # Track log handlers per job
+        self.db_client = db_client  # Store for job recovery
 
         # Register event listeners
         self.scheduler.add_listener(self._job_executed, EVENT_JOB_EXECUTED)
@@ -286,6 +287,10 @@ class SchedulerManager:
         # Start the scheduler
         self.scheduler.start()
         logger.info("Scheduler started successfully")
+
+        # Run job recovery/catch-up for missed jobs
+        if self.db_client:
+            self._recover_missed_jobs()
 
         # Ensure scheduler shuts down gracefully
         atexit.register(self._shutdown)
@@ -457,6 +462,17 @@ class SchedulerManager:
                 "added_at": datetime.now(),
             }
 
+            # Register job in database for recovery
+            if self.db_client:
+                self._register_job_in_database(
+                    job_id=job_id,
+                    job_name=name,
+                    job_function=f"{func.__module__}.{func.__name__}",
+                    schedule_type="cron",
+                    schedule_value=cron_expression or f"{hour} {minute} * * {day_of_week or '*'}",
+                    metadata={"description": description}
+                )
+
             logger.info(f"Added cron job: {name}", metadata={"job_id": job_id, "schedule": cron_expression or f"{hour}:{minute:02d}"})
             return True
 
@@ -567,6 +583,18 @@ class SchedulerManager:
                 "return_value": True
             }
 
+            # Register job in database for recovery
+            if self.db_client:
+                total_seconds = hours * 3600 + minutes * 60 + seconds
+                self._register_job_in_database(
+                    job_id=job_id,
+                    job_name=name,
+                    job_function=f"{func.__module__}.{func.__name__}",
+                    schedule_type="interval",
+                    schedule_value=str(total_seconds),
+                    metadata={"description": description, "hours": hours, "minutes": minutes, "seconds": seconds}
+                )
+
             logger.info(f"Added interval job: {name}", metadata=metadata_for_log)
             return True
 
@@ -671,6 +699,209 @@ class SchedulerManager:
             "added_at": metadata.get("added_at"),
             "execution_history": history[:10],  # Last 10 executions
         }
+
+    def _recover_missed_jobs(self):
+        """
+        Recover and execute missed scheduled jobs on startup.
+
+        Queries the scheduled_jobs table for overdue jobs and executes them
+        if they haven't exceeded max_consecutive_failures.
+        """
+        logger.info("🔄 Checking for missed scheduled jobs...")
+
+        try:
+            # Query for overdue jobs that should be retried
+            overdue_jobs = self._get_overdue_jobs()
+
+            if not overdue_jobs:
+                logger.info("✅ No missed jobs to recover")
+                return
+
+            logger.info(f"Found {len(overdue_jobs)} overdue job(s) to recover")
+
+            for job_record in overdue_jobs:
+                job_id = job_record['job_id']
+                job_name = job_record['job_name']
+                consecutive_failures = job_record['consecutive_failures']
+                max_failures = job_record['max_consecutive_failures']
+                last_run = job_record.get('last_attempted_run')
+
+                logger.info(f"📋 Attempting to recover job: {job_name} ({job_id})")
+                logger.info(f"   Last run: {last_run or 'Never'}")
+                logger.info(f"   Consecutive failures: {consecutive_failures}/{max_failures}")
+
+                # Execute the missed job
+                success = self._execute_missed_job(job_record)
+
+                if success:
+                    logger.info(f"✅ Successfully recovered job: {job_id}")
+                else:
+                    logger.warning(f"⚠️  Failed to recover job: {job_id}")
+
+        except Exception as e:
+            logger.error(f"❌ Error during job recovery: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _get_overdue_jobs(self) -> List[Dict[str, Any]]:
+        """
+        Query database for jobs that are overdue and should be executed.
+
+        Returns jobs where:
+        - enabled = true
+        - auto_retry_on_startup = true
+        - next_scheduled_run <= NOW()
+        - consecutive_failures < max_consecutive_failures
+        """
+        try:
+            response = (
+                self.db_client.client.table("scheduled_jobs")
+                .select("*")
+                .eq("enabled", True)
+                .eq("auto_retry_on_startup", True)
+                .lte("next_scheduled_run", datetime.now().isoformat())
+                .execute()
+            )
+
+            if not response.data:
+                return []
+
+            # Filter out jobs that have exceeded max failures
+            overdue_jobs = [
+                job for job in response.data
+                if job['consecutive_failures'] < job['max_consecutive_failures']
+            ]
+
+            return overdue_jobs
+
+        except Exception as e:
+            logger.error(f"Error querying overdue jobs: {e}")
+            return []
+
+    def _execute_missed_job(self, job_record: Dict[str, Any]) -> bool:
+        """
+        Execute a missed job and update its status.
+
+        Args:
+            job_record: Database record for the scheduled job
+
+        Returns:
+            True if execution succeeded, False otherwise
+        """
+        job_id = job_record['job_id']
+        job_function = job_record['job_function']
+
+        try:
+            # Import and get the job function
+            logger.info(f"🔄 Loading job function: {job_function}")
+
+            module_path, function_name = job_function.rsplit('.', 1)
+
+            import importlib
+            module = importlib.import_module(module_path)
+            func = getattr(module, function_name)
+
+            # Create wrapper to capture logs and execution
+            wrapped_func = self._create_job_wrapper(func, job_id)
+
+            # Execute the job
+            logger.info(f"▶️  Executing missed job: {job_id}")
+            wrapped_func()
+
+            # Update job status in database - success
+            self._update_job_status(job_id, success=True)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Error executing missed job {job_id}: {e}")
+            import traceback
+            traceback.print_exc()
+
+            # Update job status in database - failure
+            self._update_job_status(job_id, success=False, error=str(e))
+
+            return False
+
+    def _update_job_status(self, job_id: str, success: bool, error: Optional[str] = None):
+        """
+        Update scheduled job status after execution.
+
+        Args:
+            job_id: Job identifier
+            success: Whether execution succeeded
+            error: Error message if failed
+        """
+        try:
+            # Call the database function to update job status
+            if success:
+                logger.info(f"✅ Updating job status: {job_id} - SUCCESS")
+                self.db_client.client.rpc(
+                    'update_job_after_execution',
+                    {'p_job_id': job_id, 'p_success': True}
+                ).execute()
+            else:
+                logger.warning(f"⚠️  Updating job status: {job_id} - FAILED")
+                logger.warning(f"   Error: {error}")
+                self.db_client.client.rpc(
+                    'update_job_after_execution',
+                    {'p_job_id': job_id, 'p_success': False}
+                ).execute()
+
+        except Exception as e:
+            logger.error(f"Error updating job status for {job_id}: {e}")
+
+    def _register_job_in_database(
+        self,
+        job_id: str,
+        job_name: str,
+        job_function: str,
+        schedule_type: str,
+        schedule_value: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        """
+        Register a scheduled job in the database for recovery tracking.
+
+        Args:
+            job_id: Unique job identifier
+            job_name: Human-readable job name
+            job_function: Full Python function path (e.g., 'module.submodule.function_name')
+            schedule_type: 'interval' or 'cron'
+            schedule_value: Schedule definition (seconds for interval, cron expression for cron)
+            metadata: Additional job metadata
+        """
+        try:
+            logger.info(f"📝 Registering job in database: {job_id}")
+
+            # Calculate next_scheduled_run
+            if schedule_type == 'interval':
+                next_run = datetime.now()
+            else:
+                next_run = datetime.now()
+
+            job_record = {
+                "job_id": job_id,
+                "job_name": job_name,
+                "job_function": job_function,
+                "schedule_type": schedule_type,
+                "schedule_value": schedule_value,
+                "enabled": True,
+                "next_scheduled_run": next_run.isoformat(),
+                "metadata": metadata or {},
+            }
+
+            # Upsert job record (insert or update if exists)
+            self.db_client.client.table("scheduled_jobs").upsert(
+                job_record,
+                on_conflict="job_id"
+            ).execute()
+
+            logger.info(f"✅ Job registered in database: {job_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to register job {job_id} in database: {e}")
+            # Don't fail the job scheduling if database registration fails
 
     def is_running(self) -> bool:
         """Check if scheduler is running"""
