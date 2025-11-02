@@ -73,7 +73,7 @@ dependencies = [
   "humanize>=4.9.0",
 
   # Scheduling
-  "APScheduler>=3.10.0",
+  "APScheduler==3.10.4",
 
   # Streamlit UI
   "streamlit>=1.31.0",
