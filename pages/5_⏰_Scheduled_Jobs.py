@@ -98,12 +98,22 @@ with tab1:
                         last_run = job['last_execution']['timestamp']
                         status = job['last_execution']['status']
                         status_emoji = "✅" if status == "success" else "❌"
+                        duration = job['last_execution'].get('duration_seconds')
 
                         last_run_str = last_run.strftime("%Y-%m-%d %H:%M:%S")
-                        st.markdown(f"**Last Run:** {last_run_str} {status_emoji}")
+                        duration_str = f" ({duration:.2f}s)" if duration else ""
+                        st.markdown(f"**Last Run:** {last_run_str} {status_emoji}{duration_str}")
 
                         if status == "error" and job['last_execution'].get('error'):
                             st.error(f"Error: {job['last_execution']['error']}")
+
+                        # Show last few log lines
+                        logs = job['last_execution'].get('logs', [])
+                        if logs:
+                            with st.expander("📋 View Last Execution Logs", expanded=False):
+                                # Show last 20 lines
+                                recent_logs = logs[-20:] if len(logs) > 20 else logs
+                                st.code("\n".join(recent_logs), language="log")
                     else:
                         st.markdown("**Last Run:** Never")
 
@@ -355,11 +365,12 @@ with tab3:
         if filter_job != "All":
             history = [h for h in history if h["job_id"] == filter_job]
 
-        # Display history
+        # Display history with logs
         for execution in history[:50]:  # Show last 50
             timestamp = execution["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
             status = execution["status"]
             status_emoji = "✅" if status == "success" else "❌"
+            duration = execution.get("duration_seconds")
 
             job_name = execution["job_id"]
             # Try to get friendly name
@@ -368,16 +379,44 @@ with tab3:
                     job_name = job["name"]
                     break
 
-            col1, col2, col3 = st.columns([2, 1, 3])
-            with col1:
-                st.text(timestamp)
-            with col2:
-                st.text(f"{status_emoji} {status.upper()}")
-            with col3:
-                if execution.get("error"):
-                    st.error(f"{job_name}: {execution['error']}")
+            # Format title with duration
+            title = f"{status_emoji} {job_name} - {timestamp}"
+            if duration is not None:
+                title += f" ({duration:.2f}s)"
+
+            with st.expander(title, expanded=False):
+                col1, col2 = st.columns([1, 3])
+
+                with col1:
+                    st.markdown(f"**Status:** {status.upper()}")
+                    st.markdown(f"**Job ID:** `{execution['job_id']}`")
+                    if duration:
+                        st.markdown(f"**Duration:** {duration:.2f}s")
+
+                with col2:
+                    if execution.get("error"):
+                        st.error(f"**Error:** {execution['error']}")
+
+                # Show logs if available
+                logs = execution.get("logs", [])
+                if logs:
+                    st.markdown("---")
+                    st.markdown("### 📋 Execution Logs")
+
+                    # Add log viewer with syntax highlighting
+                    log_text = "\n".join(logs)
+                    st.code(log_text, language="log", line_numbers=True)
+
+                    # Option to download logs
+                    st.download_button(
+                        label="📥 Download Logs",
+                        data=log_text,
+                        file_name=f"{execution['job_id']}_{timestamp.replace(' ', '_').replace(':', '-')}.log",
+                        mime="text/plain",
+                        key=f"download_{execution['job_id']}_{timestamp}"
+                    )
                 else:
-                    st.text(job_name)
+                    st.info("No logs captured for this execution (this job may have run before log tracking was enabled)")
 
 # Tab 4: Settings
 with tab4:
