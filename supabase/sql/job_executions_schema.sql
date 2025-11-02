@@ -1,0 +1,83 @@
+-- Job Executions Schema for APScheduler Job History
+-- This table stores the execution history of scheduled jobs for persistence across app restarts
+
+-- Job executions table
+CREATE TABLE IF NOT EXISTS job_executions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    job_id VARCHAR(100) NOT NULL,  -- The job identifier (e.g., "data_collection", "ticker_backfill")
+    status VARCHAR(20) NOT NULL CHECK (status IN ('success', 'failed', 'cancelled')),
+    started_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ NOT NULL,
+    duration_seconds DECIMAL(10,3),
+    error_message TEXT,
+    logs TEXT,  -- Full log output from the job execution
+    metadata JSONB,  -- Additional metadata about the execution
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_job_executions_job_id ON job_executions(job_id);
+CREATE INDEX IF NOT EXISTS idx_job_executions_status ON job_executions(status);
+CREATE INDEX IF NOT EXISTS idx_job_executions_started_at ON job_executions(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_job_executions_created_at ON job_executions(created_at DESC);
+
+-- Composite index for efficient queries by job_id and time
+CREATE INDEX IF NOT EXISTS idx_job_executions_job_id_started_at ON job_executions(job_id, started_at DESC);
+
+-- RLS (Row Level Security) policies
+ALTER TABLE job_executions ENABLE ROW LEVEL SECURITY;
+
+-- Allow all operations for authenticated users
+CREATE POLICY "Allow all for authenticated users" ON job_executions
+    FOR ALL USING (auth.role() = 'authenticated');
+
+-- Allow read access for service role (for the app itself)
+CREATE POLICY "Allow all for service role" ON job_executions
+    FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
+
+-- Create a view for recent job execution summary
+CREATE OR REPLACE VIEW job_execution_summary AS
+SELECT
+    job_id,
+    COUNT(*) as total_executions,
+    COUNT(CASE WHEN status = 'success' THEN 1 END) as successful_executions,
+    COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed_executions,
+    COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled_executions,
+    MAX(started_at) as last_execution,
+    AVG(duration_seconds) as avg_duration_seconds,
+    MIN(duration_seconds) as min_duration_seconds,
+    MAX(duration_seconds) as max_duration_seconds
+FROM job_executions
+WHERE started_at >= NOW() - INTERVAL '30 days'
+GROUP BY job_id
+ORDER BY last_execution DESC;
+
+-- Grant permissions to anon role for read access to the view
+GRANT SELECT ON job_execution_summary TO anon;
+
+-- Comments for documentation
+COMMENT ON TABLE job_executions IS 'Stores execution history of scheduled jobs from APScheduler';
+COMMENT ON COLUMN job_executions.job_id IS 'Identifier for the job (matches APScheduler job ID)';
+COMMENT ON COLUMN job_executions.logs IS 'Full log output captured during job execution';
+COMMENT ON COLUMN job_executions.metadata IS 'Additional context like job configuration, environment, etc.';
+COMMENT ON COLUMN job_executions.duration_seconds IS 'Total execution time in seconds';
+
+-- Optional: Add a function to clean up old job executions (keep last 1000 per job)
+CREATE OR REPLACE FUNCTION cleanup_old_job_executions()
+RETURNS void AS $$
+BEGIN
+    DELETE FROM job_executions
+    WHERE id IN (
+        SELECT id
+        FROM (
+            SELECT id,
+                   ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY started_at DESC) as rn
+            FROM job_executions
+        ) ranked
+        WHERE rn > 1000
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- Optional: Schedule cleanup to run periodically (if using pg_cron extension)
+-- SELECT cron.schedule('cleanup-old-job-executions', '0 2 * * *', 'SELECT cleanup_old_job_executions()');

@@ -20,6 +20,8 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 
+from politician_trading.config import SupabaseConfig
+from politician_trading.database.database import SupabaseClient
 from politician_trading.utils.logger import create_logger
 
 logger = create_logger("scheduler_manager")
@@ -58,16 +60,117 @@ class LogCaptureHandler(logging.Handler):
 
 
 class JobHistory:
-    """Tracks job execution history with logs"""
+    """Tracks job execution history with logs and persists to database"""
 
-    def __init__(self, max_history: int = 100, max_log_lines: int = 1000):
+    def __init__(self, max_history: int = 100, max_log_lines: int = 1000, db_client: Optional[SupabaseClient] = None):
         self.max_history = max_history
         self.max_log_lines = max_log_lines
         self.executions: List[Dict[str, Any]] = []
         self._lock = Lock()
+        self.db_client = db_client
+
+        # Load history from database if available
+        if self.db_client:
+            self._load_from_database()
+
+    def _load_from_database(self):
+        """Load recent job execution history from database"""
+        try:
+            logger.info("Loading job execution history from database")
+
+            # Query recent executions (last 100)
+            response = (
+                self.db_client.client.table("job_executions")
+                .select("*")
+                .order("started_at", desc=True)
+                .limit(self.max_history)
+                .execute()
+            )
+
+            if response.data:
+                logger.info(f"Loaded {len(response.data)} job executions from database")
+
+                # Convert database records to execution format
+                for record in reversed(response.data):  # Reverse to maintain chronological order
+                    execution = {
+                        "job_id": record["job_id"],
+                        "timestamp": datetime.fromisoformat(record["started_at"].replace('Z', '+00:00')),
+                        "status": record["status"],
+                        "error": record.get("error_message"),
+                        "logs": record.get("logs", "").split("\n") if record.get("logs") else [],
+                        "duration_seconds": float(record["duration_seconds"]) if record.get("duration_seconds") else None,
+                        "db_id": record["id"],  # Store database ID for reference
+                    }
+                    self.executions.insert(0, execution)
+            else:
+                logger.info("No job executions found in database")
+
+        except Exception as e:
+            logger.error(f"Failed to load job history from database: {e}")
+            # Continue without database history - app should still work
+
+    def _persist_to_database(self, execution: Dict[str, Any]) -> Optional[str]:
+        """Persist a job execution to the database"""
+        if not self.db_client:
+            return None
+
+        try:
+            # Prepare data for database
+            db_record = {
+                "job_id": execution["job_id"],
+                "status": execution["status"],
+                "started_at": execution["timestamp"].isoformat(),
+                "completed_at": (execution["timestamp"]).isoformat(),  # Will be same initially
+                "duration_seconds": execution.get("duration_seconds"),
+                "error_message": execution.get("error"),
+                "logs": "\n".join(execution.get("logs", [])),
+                "metadata": {},
+            }
+
+            # Insert to database
+            response = (
+                self.db_client.client.table("job_executions")
+                .insert(db_record)
+                .execute()
+            )
+
+            if response.data:
+                db_id = response.data[0]["id"]
+                logger.debug(f"Persisted job execution to database: {db_id}")
+                return db_id
+
+        except Exception as e:
+            logger.error(f"Failed to persist job execution to database: {e}")
+            # Continue without persistence - app should still work
+
+        return None
+
+    def _update_in_database(self, db_id: str, **updates):
+        """Update an existing execution record in the database"""
+        if not self.db_client or not db_id:
+            return
+
+        try:
+            # Prepare update data
+            db_updates = {}
+
+            if "duration_seconds" in updates:
+                db_updates["duration_seconds"] = updates["duration_seconds"]
+                # Also update completed_at time
+                db_updates["completed_at"] = datetime.now().isoformat()
+
+            if "logs" in updates:
+                db_updates["logs"] = "\n".join(updates["logs"])
+
+            if db_updates:
+                self.db_client.client.table("job_executions").update(db_updates).eq("id", db_id).execute()
+                logger.debug(f"Updated job execution in database: {db_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to update job execution in database: {e}")
 
     def add_execution(self, job_id: str, status: str, error: Optional[str] = None, logs: Optional[List[str]] = None):
-        """Add a job execution record with logs"""
+        """Add a job execution record with logs and persist to database"""
         with self._lock:
             execution = {
                 "job_id": job_id,
@@ -77,24 +180,42 @@ class JobHistory:
                 "logs": logs or [],
                 "duration_seconds": None,  # Will be updated if available
             }
+
+            # Persist to database and get ID
+            db_id = self._persist_to_database(execution)
+            if db_id:
+                execution["db_id"] = db_id
+
             self.executions.insert(0, execution)  # Most recent first
             if len(self.executions) > self.max_history:
                 self.executions = self.executions[: self.max_history]
 
     def update_execution(self, job_id: str, timestamp: datetime, **updates):
-        """Update an existing execution record (e.g., add duration, final logs)"""
+        """Update an existing execution record (e.g., add duration, final logs) and database"""
         with self._lock:
             for execution in self.executions:
                 if execution["job_id"] == job_id and execution["timestamp"] == timestamp:
                     execution.update(updates)
+
+                    # Update in database if we have a db_id
+                    db_id = execution.get("db_id")
+                    if db_id:
+                        self._update_in_database(db_id, **updates)
+
                     break
 
-    def get_history(self, job_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Get execution history, optionally filtered by job_id"""
+    def get_history(self, job_id: Optional[str] = None, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Get execution history, optionally filtered by job_id and limited"""
         with self._lock:
             if job_id:
-                return [e for e in self.executions if e["job_id"] == job_id]
-            return self.executions.copy()
+                history = [e for e in self.executions if e["job_id"] == job_id]
+            else:
+                history = self.executions.copy()
+
+            if limit:
+                history = history[:limit]
+
+            return history
 
     def get_last_execution(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Get the last execution for a specific job"""
@@ -144,7 +265,17 @@ class SchedulerManager:
             },
         )
 
-        self.job_history = JobHistory()
+        # Initialize database client for job history persistence
+        db_client = None
+        try:
+            config = SupabaseConfig.from_env()
+            db_client = SupabaseClient(config)
+            logger.info("Database client initialized for job history persistence")
+        except Exception as e:
+            logger.warning(f"Failed to initialize database client for job history: {e}")
+            logger.warning("Job history will not be persisted to database")
+
+        self.job_history = JobHistory(db_client=db_client)
         self._job_metadata: Dict[str, Dict[str, Any]] = {}
         self._log_handlers: Dict[str, LogCaptureHandler] = {}  # Track log handlers per job
 
