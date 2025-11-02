@@ -425,12 +425,18 @@ class SchedulerManager:
 
             self._job_metadata[job_id] = metadata_to_store
 
-            logger.info(f"Added interval job: {name}", metadata={
+            # Convert datetime to string for JSON serialization
+            metadata_for_log = {
                 "job_id": job_id,
                 "interval": " ".join(interval_str),
-                "metadata_stored": metadata_to_store,
+                "metadata_stored": {
+                    **metadata_to_store,
+                    "added_at": metadata_to_store["added_at"].isoformat()
+                },
                 "return_value": True
-            })
+            }
+
+            logger.info(f"Added interval job: {name}", metadata=metadata_for_log)
             return True
 
         except Exception as e:

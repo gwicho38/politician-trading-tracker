@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from politician_trading.utils.logger import create_logger
-from politician_trading.config import SupabaseConfig, WorkflowConfig
+from politician_trading.config import SupabaseConfig, ScrapingConfig, WorkflowConfig
 from politician_trading.workflow import PoliticianTradingWorkflow
 from politician_trading.database.database import SupabaseClient
 from politician_trading.utils.ticker_utils import extract_ticker_from_asset_name
@@ -82,13 +82,18 @@ def data_collection_job():
         # Create configuration
         supabase_config = SupabaseConfig.from_env()
 
+        # Create scraping config with enabled sources
+        scraping_config = ScrapingConfig(
+            enable_us_federal=enable_us_congress,  # US Congress is part of federal
+            enable_us_states=enable_us_states or enable_california,  # California is a state
+            enable_eu_parliament=enable_eu_parliament,
+            enable_eu_national=enable_uk_parliament,  # UK is EU national
+            enable_third_party=True,  # Keep third-party sources enabled
+        )
+
         workflow_config = WorkflowConfig(
             supabase=supabase_config,
-            enable_us_congress=enable_us_congress,
-            enable_uk_parliament=enable_uk_parliament,
-            enable_eu_parliament=enable_eu_parliament,
-            enable_us_states=enable_us_states,
-            enable_california=enable_california,
+            scraping=scraping_config,
         )
 
         # Initialize workflow
