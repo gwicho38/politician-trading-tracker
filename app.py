@@ -48,16 +48,15 @@ st.set_page_config(
 load_all_secrets()
 
 # Initialize scheduler (singleton pattern ensures it only starts once)
-# Temporarily disabled until deployment issues are resolved
-# try:
-#     from politician_trading.scheduler import get_scheduler
-#     scheduler = get_scheduler()
-#     logger.info("Scheduler initialized", metadata={
-#         "running": scheduler.is_running()
-#     })
-# except Exception as e:
-#     logger.error("Failed to initialize scheduler", error=e)
-#     # Don't fail the app if scheduler fails to start
+try:
+    from politician_trading.scheduler import get_scheduler
+    scheduler = get_scheduler()
+    logger.info("Scheduler initialized", metadata={
+        "running": scheduler.is_running()
+    })
+except Exception as e:
+    logger.error("Failed to initialize scheduler", error=e)
+    # Don't fail the app if scheduler fails to start
 
 # Custom CSS
 st.markdown("""
