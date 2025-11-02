@@ -10,12 +10,27 @@ This script tests that:
 5. JobHistory class loads from database correctly
 """
 
+import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
+
+# Load secrets from .streamlit/secrets.toml if it exists
+try:
+    import toml
+    secrets_path = Path(__file__).parent / ".streamlit" / "secrets.toml"
+    if secrets_path.exists():
+        secrets = toml.load(secrets_path)
+        # Load database secrets
+        if "database" in secrets:
+            for key, value in secrets["database"].items():
+                os.environ[key] = value
+            print("✅ Loaded secrets from .streamlit/secrets.toml")
+except Exception as e:
+    print(f"⚠️  Could not load secrets.toml: {e}")
 
 from politician_trading.config import SupabaseConfig
 from politician_trading.database.database import SupabaseClient

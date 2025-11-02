@@ -443,8 +443,14 @@ class SupabaseClient:
     def _init_client(self):
         """Initialize Supabase client"""
         try:
-            self.client = create_client(self.config.url, self.config.key)
+            # Prefer service_role_key for full database access, fall back to regular key
+            key_to_use = self.config.service_role_key if self.config.service_role_key else self.config.key
+            self.client = create_client(self.config.url, key_to_use)
             logger.info("Supabase client initialized successfully")
+            if self.config.service_role_key:
+                logger.debug("Using service role key for database access")
+            else:
+                logger.warning("Using anon key - some operations may be restricted")
         except Exception as e:
             logger.error(f"Failed to initialize Supabase client: {e}")
             raise
