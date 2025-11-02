@@ -327,7 +327,7 @@ Expected Endpoint: {'https://paper-api.alpaca.markets' if use_paper else 'https:
         actions = strategy.monitor_positions()
 
         if actions:
-            st.warning(f"⚠️ Found {len(actions)} positions requiring action:")
+            st.warning(f"⚠️ Found {len(actions)} positions requiring immediate action:")
 
             actions_df = pd.DataFrame(actions)
             st.dataframe(actions_df, use_container_width=True)
@@ -335,7 +335,17 @@ Expected Endpoint: {'https://paper-api.alpaca.markets' if use_paper else 'https:
             if any(not a.get("executed") for a in actions):
                 st.info("💡 Enable auto-execution to automatically manage risk")
         else:
-            st.success("✅ All positions within risk parameters")
+            # Check if there are violations in the risk report
+            has_violations = (
+                risk_metrics['exposure_pct'] > risk_manager.max_total_exposure_pct or
+                risk_metrics['largest_position_pct'] > risk_manager.max_position_size_pct or
+                risk_metrics['open_positions'] >= risk_manager.max_positions
+            )
+
+            if has_violations:
+                st.info("ℹ️ No positions need immediate closure, but risk violations exist (see Risk Report above)")
+            else:
+                st.success("✅ All positions within risk parameters")
 
 except Exception as e:
     st.error(f"Error loading portfolio: {str(e)}")
