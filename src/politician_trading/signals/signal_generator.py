@@ -2,7 +2,7 @@
 Signal generation engine for politician trading tracker
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, List, Any, Optional
 import logging
@@ -147,6 +147,7 @@ class SignalGenerator:
         )
 
         # Create signal object
+        now_utc = datetime.now(timezone.utc)
         signal = TradingSignal(
             ticker=ticker,
             asset_name=disclosures[0].get("asset_name", ticker),
@@ -156,8 +157,8 @@ class SignalGenerator:
             target_price=target_price,
             stop_loss=stop_loss,
             take_profit=take_profit,
-            generated_at=datetime.utcnow(),
-            valid_until=datetime.utcnow() + timedelta(days=7),  # Valid for 1 week
+            generated_at=now_utc,
+            valid_until=now_utc + timedelta(days=7),  # Valid for 1 week
             model_version=self.model_version,
             politician_activity_count=features.get("unique_politicians", 0),
             total_transaction_volume=Decimal(str(features.get("net_volume", 0))),

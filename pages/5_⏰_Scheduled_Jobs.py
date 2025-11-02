@@ -168,28 +168,30 @@ with tab2:
         if job_type == "Data Collection":
             job_id = "data_collection"
             job_name = "Automated Data Collection"
-            job_description = "Collect politician trading disclosures from configured sources"
+            job_description = "Collect politician trading disclosures from all enabled sources"
             job_func = data_collection_job
 
             # Data source configuration
             st.markdown("#### Data Sources")
+            st.info("💡 **Note:** This creates ONE job that collects from ALL enabled sources below. Enable the sources you want, then click 'Add' once.")
+
             col1, col2 = st.columns(2)
             with col1:
-                us_congress = st.checkbox("US Congress", value=True, key="new_us_congress")
-                uk_parliament = st.checkbox("UK Parliament", value=False, key="new_uk_parliament")
+                us_congress = st.checkbox("US Congress (House & Senate)", value=True, key="new_us_congress",
+                                         help="Financial disclosures from US House and Senate members")
             with col2:
-                eu_parliament = st.checkbox("EU Parliament", value=False, key="new_eu_parliament")
-                california = st.checkbox("California", value=False, key="new_california")
+                eu_parliament = st.checkbox("EU Parliament", value=True, key="new_eu_parliament",
+                                           help="Financial disclosures from EU Parliament members")
 
-            # Store in session state for job to access
+            # Store in session state for job to access (only implemented sources)
             if "scheduled_us_congress" not in st.session_state:
                 st.session_state.scheduled_us_congress = True
             if "scheduled_eu_parliament" not in st.session_state:
-                st.session_state.scheduled_eu_parliament = False
-            if "scheduled_uk_parliament" not in st.session_state:
-                st.session_state.scheduled_uk_parliament = False
-            if "scheduled_california" not in st.session_state:
-                st.session_state.scheduled_california = False
+                st.session_state.scheduled_eu_parliament = True
+
+            # Set unimplemented sources to False
+            st.session_state.scheduled_uk_parliament = False
+            st.session_state.scheduled_california = False
 
         else:  # Ticker Backfill
             job_id = "ticker_backfill"
@@ -224,13 +226,14 @@ with tab2:
                     if job_type == "Data Collection":
                         st.session_state.scheduled_us_congress = us_congress
                         st.session_state.scheduled_eu_parliament = eu_parliament
-                        st.session_state.scheduled_uk_parliament = uk_parliament
-                        st.session_state.scheduled_california = california
+                        # Unimplemented sources always set to False
+                        st.session_state.scheduled_uk_parliament = False
+                        st.session_state.scheduled_california = False
                         logger.info("Updated data collection sources in session state", metadata={
                             "us_congress": us_congress,
                             "eu_parliament": eu_parliament,
-                            "uk_parliament": uk_parliament,
-                            "california": california
+                            "uk_parliament": False,
+                            "california": False
                         })
 
                     try:
@@ -321,8 +324,9 @@ with tab2:
                 if job_type == "Data Collection":
                     st.session_state.scheduled_us_congress = us_congress
                     st.session_state.scheduled_eu_parliament = eu_parliament
-                    st.session_state.scheduled_uk_parliament = uk_parliament
-                    st.session_state.scheduled_california = california
+                    # Unimplemented sources always set to False
+                    st.session_state.scheduled_uk_parliament = False
+                    st.session_state.scheduled_california = False
 
                 success = scheduler.add_cron_job(
                     func=job_func,
