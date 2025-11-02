@@ -201,34 +201,79 @@ with tab2:
                 st.warning("⚠️ Please specify a non-zero interval")
             else:
                 if st.button("➕ Add Interval Job", type="primary"):
+                    logger.info(f"Button clicked: Add Interval Job", metadata={
+                        "job_type": job_type,
+                        "job_id": job_id,
+                        "job_name": job_name,
+                        "hours": hours,
+                        "minutes": minutes,
+                        "seconds": seconds
+                    })
+
                     # Update session state if data collection
                     if job_type == "Data Collection":
                         st.session_state.scheduled_us_congress = us_congress
                         st.session_state.scheduled_eu_parliament = eu_parliament
                         st.session_state.scheduled_uk_parliament = uk_parliament
                         st.session_state.scheduled_california = california
-
-                    success = scheduler.add_interval_job(
-                        func=job_func,
-                        job_id=job_id,
-                        name=job_name,
-                        hours=hours,
-                        minutes=minutes,
-                        seconds=seconds,
-                        description=job_description,
-                        replace_existing=True,
-                    )
-                    if success:
-                        st.success(f"✅ Added job: {job_name}")
-                        logger.info(f"Added interval job via UI: {job_name}", metadata={
-                            "job_id": job_id,
-                            "hours": hours,
-                            "minutes": minutes,
-                            "seconds": seconds
+                        logger.info("Updated data collection sources in session state", metadata={
+                            "us_congress": us_congress,
+                            "eu_parliament": eu_parliament,
+                            "uk_parliament": uk_parliament,
+                            "california": california
                         })
-                        st.rerun()
-                    else:
-                        st.error("Failed to add job. Check logs for details.")
+
+                    try:
+                        logger.info(f"Calling scheduler.add_interval_job...", metadata={
+                            "func": str(job_func),
+                            "job_id": job_id,
+                            "name": job_name
+                        })
+
+                        success = scheduler.add_interval_job(
+                            func=job_func,
+                            job_id=job_id,
+                            name=job_name,
+                            hours=hours,
+                            minutes=minutes,
+                            seconds=seconds,
+                            description=job_description,
+                            replace_existing=True,
+                        )
+
+                        logger.info(f"scheduler.add_interval_job returned", metadata={
+                            "success": success,
+                            "job_id": job_id,
+                            "job_name": job_name
+                        })
+
+                        if success:
+                            st.success(f"✅ Successfully added job: {job_name}")
+                            st.info(f"📅 Scheduled to run every {hours}h {minutes}m {seconds}s")
+                            logger.info(f"Added interval job via UI: {job_name}", metadata={
+                                "job_id": job_id,
+                                "hours": hours,
+                                "minutes": minutes,
+                                "seconds": seconds,
+                                "result": "success"
+                            })
+                            st.balloons()
+                            st.rerun()
+                        else:
+                            error_msg = "Failed to add job. Scheduler returned False."
+                            st.error(f"❌ {error_msg}")
+                            logger.error(error_msg, metadata={
+                                "job_id": job_id,
+                                "job_name": job_name
+                            })
+                    except Exception as e:
+                        error_msg = f"Exception while adding job: {str(e)}"
+                        st.error(f"❌ {error_msg}")
+                        logger.error(f"Failed to add interval job", error=e, metadata={
+                            "job_id": job_id,
+                            "job_name": job_name,
+                            "exception_type": type(e).__name__
+                        })
 
         else:  # Cron
             st.markdown("#### Cron Settings")

@@ -222,17 +222,39 @@ class SchedulerManager:
         Returns:
             True if job was added successfully
         """
+        logger.info(f"add_interval_job called", metadata={
+            "job_id": job_id,
+            "name": name,
+            "hours": hours,
+            "minutes": minutes,
+            "seconds": seconds,
+            "replace_existing": replace_existing,
+            "func_name": func.__name__ if hasattr(func, '__name__') else str(func)
+        })
+
         try:
             # Check if job already exists
             existing_job = self.scheduler.get_job(job_id)
-            if existing_job and not replace_existing:
-                logger.warning(f"Job {job_id} already exists and replace_existing=False")
-                return False
+            if existing_job:
+                logger.info(f"Found existing job with id {job_id}", metadata={
+                    "existing_job_name": existing_job.name,
+                    "replace_existing": replace_existing
+                })
+                if not replace_existing:
+                    logger.warning(f"Job {job_id} already exists and replace_existing=False")
+                    return False
 
             # Create trigger
+            logger.info(f"Creating IntervalTrigger", metadata={
+                "hours": hours,
+                "minutes": minutes,
+                "seconds": seconds
+            })
             trigger = IntervalTrigger(hours=hours, minutes=minutes, seconds=seconds, timezone="UTC")
+            logger.info(f"IntervalTrigger created successfully")
 
             # Add job
+            logger.info(f"Calling scheduler.add_job for {job_id}")
             self.scheduler.add_job(
                 func,
                 trigger=trigger,
@@ -240,6 +262,7 @@ class SchedulerManager:
                 name=name,
                 replace_existing=replace_existing,
             )
+            logger.info(f"scheduler.add_job completed successfully for {job_id}")
 
             # Store metadata
             interval_str = []
@@ -250,7 +273,7 @@ class SchedulerManager:
             if seconds:
                 interval_str.append(f"{seconds}s")
 
-            self._job_metadata[job_id] = {
+            metadata_to_store = {
                 "name": name,
                 "description": description,
                 "type": "interval",
@@ -258,11 +281,22 @@ class SchedulerManager:
                 "added_at": datetime.now(),
             }
 
-            logger.info(f"Added interval job: {name}", metadata={"job_id": job_id, "interval": " ".join(interval_str)})
+            self._job_metadata[job_id] = metadata_to_store
+
+            logger.info(f"Added interval job: {name}", metadata={
+                "job_id": job_id,
+                "interval": " ".join(interval_str),
+                "metadata_stored": metadata_to_store,
+                "return_value": True
+            })
             return True
 
         except Exception as e:
-            logger.error(f"Failed to add interval job: {name}", error=e)
+            logger.error(f"Failed to add interval job: {name}", error=e, metadata={
+                "job_id": job_id,
+                "exception_type": type(e).__name__,
+                "return_value": False
+            })
             return False
 
     def remove_job(self, job_id: str) -> bool:
