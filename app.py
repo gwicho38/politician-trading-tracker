@@ -134,7 +134,7 @@ def check_environment():
         logger.info("All required environment variables present")
 
     if missing_optional:
-        logger.warn("Missing optional environment variables", metadata={
+        logger.warning("Missing optional environment variables", metadata={
             "missing_vars": missing_optional
         })
 
@@ -237,8 +237,24 @@ def main():
             try:
                 disc_response = db.client.table("trading_disclosures").select("id", count="exact").execute()
                 count = disc_response.count if disc_response.count else 0
-                st.metric("Total Disclosures", count)
-                logger.debug("Disclosures count retrieved", metadata={"count": count})
+
+                # Get count with tickers
+                ticker_response = db.client.table("trading_disclosures").select("id", count="exact").not_.is_("asset_ticker", "null").neq("asset_ticker", "").execute()
+                ticker_count = ticker_response.count if ticker_response.count else 0
+
+                ticker_pct = (ticker_count / count * 100) if count > 0 else 0
+
+                st.metric(
+                    "Total Disclosures",
+                    count,
+                    delta=f"{ticker_count} actionable ({ticker_pct:.0f}%)",
+                    help=f"{ticker_count} with tickers (actionable stocks)"
+                )
+                logger.debug("Disclosures count retrieved", metadata={
+                    "total": count,
+                    "with_tickers": ticker_count,
+                    "ticker_percentage": ticker_pct
+                })
             except Exception as e:
                 st.metric("Total Disclosures", "N/A")
                 logger.error("Failed to get disclosures count", error=e)

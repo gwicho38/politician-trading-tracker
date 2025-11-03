@@ -207,7 +207,7 @@ if st.session_state.collection_running:
         })
 
         if not enabled_sources:
-            logger.warn("No data sources selected")
+            logger.warning("No data sources selected")
             st.warning("⚠️ No sources selected! Please select at least one data source.")
             st.session_state.collection_running = False
             st.stop()
@@ -522,7 +522,7 @@ try:
             df["politician_name"] = "Unknown"
             df["politician_party"] = "N/A"
             df["politician_state"] = "N/A"
-            logger.warn("No politician information in query results")
+            logger.warning("No politician information in query results")
 
         # Format for display - include more useful columns
         display_cols = [
@@ -585,14 +585,99 @@ try:
             "columns": list(display_df.columns)
         })
 
-        # Show count of missing tickers
+        # Calculate ticker statistics
         missing_tickers = len([t for t in df["asset_ticker"] if not t or t == ""])
-        if missing_tickers > 0:
-            st.warning(f"⚠️ {missing_tickers} disclosures are missing ticker symbols. Click 'Backfill Missing Tickers' to fix.")
-            logger.info("Missing tickers detected", metadata={
-                "missing_count": missing_tickers,
-                "total_count": len(df)
+        with_tickers = len(df) - missing_tickers
+        ticker_percentage = (with_tickers / len(df) * 100) if len(df) > 0 else 0
+
+        # Show ticker metrics
+        st.markdown("#### 📊 Ticker Statistics")
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric(
+                "With Tickers (Actionable)",
+                with_tickers,
+                delta=f"{ticker_percentage:.1f}%",
+                help="Individual stocks with ticker symbols - ready for trading signals"
+            )
+
+        with col2:
+            st.metric(
+                "Without Tickers",
+                missing_tickers,
+                delta=f"{(100-ticker_percentage):.1f}%",
+                delta_color="inverse",
+                help="Mutual funds, ETFs, bonds, and other assets without tickers"
+            )
+
+        with col3:
+            st.metric(
+                "Total Disclosures",
+                len(df),
+                help="All trading disclosures in the database"
+            )
+
+        # Filter options
+        col1, col2 = st.columns([3, 1])
+
+        with col1:
+            show_ticker_only = st.checkbox(
+                "🎯 Show only actionable stocks (with tickers)",
+                value=False,
+                help="Focus on the individual stocks that have ticker symbols - these generate trading signals"
+            )
+
+        with col2:
+            if missing_tickers > 0:
+                st.info(f"ℹ️ {missing_tickers} without tickers")
+
+        # Apply filter if enabled
+        if show_ticker_only:
+            # Filter to only show rows with tickers (before renaming columns)
+            ticker_mask = df["asset_ticker"].notna() & (df["asset_ticker"] != "") & (df["asset_ticker"] != "N/A")
+            filtered_df = df[ticker_mask].copy()
+
+            # Reapply display formatting to filtered data
+            filtered_display_df = filtered_df[[col for col in display_cols if col in filtered_df.columns]].copy()
+
+            # Format dates
+            if "transaction_date" in filtered_display_df.columns:
+                filtered_display_df["transaction_date"] = pd.to_datetime(filtered_display_df["transaction_date"]).dt.strftime("%Y-%m-%d")
+
+            if "disclosure_date" in filtered_display_df.columns:
+                filtered_display_df["disclosure_date"] = pd.to_datetime(filtered_display_df["disclosure_date"]).dt.strftime("%Y-%m-%d")
+
+            # Format asset type
+            if "asset_type" in filtered_display_df.columns:
+                filtered_display_df["asset_type"] = filtered_display_df["asset_type"].fillna("Unknown").replace("", "Unknown")
+
+            # Truncate source URL
+            if "source_url" in filtered_display_df.columns:
+                filtered_display_df["source_url"] = filtered_display_df["source_url"].apply(lambda x: (str(x)[:50] + "...") if x and len(str(x)) > 50 else (x if x else "N/A"))
+
+            # Rename columns
+            filtered_display_df.columns = [column_rename.get(col, col) for col in filtered_display_df.columns]
+
+            display_df = filtered_display_df
+
+            st.success(f"✅ Showing {len(display_df)} actionable stocks with tickers")
+            logger.info("Filtered to ticker-only view", metadata={
+                "filtered_count": len(display_df),
+                "original_count": len(df)
             })
+        else:
+            # Show warning about missing tickers
+            if missing_tickers > 0:
+                st.info(f"""
+                ℹ️ **{missing_tickers} disclosures don't have tickers** (mostly mutual funds, ETFs, bonds)
+
+                💡 **Tip**: Toggle "Show only actionable stocks" above to focus on the {with_tickers} individual stocks that can generate trading signals.
+                """)
+                logger.info("Missing tickers detected", metadata={
+                    "missing_count": missing_tickers,
+                    "total_count": len(df)
+                })
 
         st.dataframe(display_df, width="stretch")
 
