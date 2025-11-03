@@ -27,7 +27,19 @@
       "Bash(/Users/lefv/.pyenv/shims/pytest tests/unit/test_alpaca_client.py -v --no-cov)",
       "Bash(/Users/lefv/.pyenv/shims/pytest tests/unit/test_alpaca_client.py -v -o addopts=\"\")",
       "Bash(/Users/lefv/.pyenv/shims/pytest tests/unit/test_alpaca_client.py::TestAlpacaClientUUIDSerialization::test_get_account_converts_uuid_to_string -v -o addopts=\"\")",
-      "Bash(LOG_LEVEL=DEBUG python3:*)"
+      "Bash(LOG_LEVEL=DEBUG python3:*)",
+      "Bash(uv pip install:*)",
+      "Bash(=3.10.0)",
+      "Bash(./scripts/copy_secrets_to_clipboard.sh)",
+      "Bash(pbcopy)",
+      "Bash(git rm:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)",
+      "Bash(pages/5_⏰_Scheduled_Jobs.py)",
+      "Bash(pip search:*)",
+      "Bash(/Users/lefv/.pyenv/shims/python3 -m pip install:*)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []

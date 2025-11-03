@@ -37,6 +37,10 @@ st.set_page_config(page_title="Trading Operations", page_icon="💼", layout="wi
 # Load secrets on page load
 load_all_secrets()
 
+# Require authentication
+from auth_utils import require_authentication
+require_authentication()
+
 logger.info("Trading Operations page loaded")
 
 st.title("💼 Trading Operations")
