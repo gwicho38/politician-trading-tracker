@@ -384,7 +384,7 @@ if tab == 'Data Sources':
 
 elif tab == 'View Data' or tab == 'Statistics':
     # Display recent disclosures
-        sac.divider(label='Recent Trading Disclosures', align='center', color='green')
+    sac.divider(label='Recent Trading Disclosures', align='center', color='green')
 
     # Add ticker backfill button
     col1, col2 = st.columns([3, 1])
