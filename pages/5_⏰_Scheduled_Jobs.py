@@ -20,6 +20,16 @@ from politician_trading.utils.logger import create_logger
 from politician_trading.scheduler import get_scheduler
 from politician_trading.scheduler.jobs import data_collection_job, ticker_backfill_job
 
+# Import utilities
+try:
+    from streamlit_utils import load_all_secrets
+except (ImportError, KeyError):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("streamlit_utils", app_dir / "streamlit_utils.py")
+    streamlit_utils = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(streamlit_utils)
+    load_all_secrets = streamlit_utils.load_all_secrets
+
 logger = create_logger("scheduled_jobs_page")
 
 st.set_page_config(
@@ -27,6 +37,13 @@ st.set_page_config(
     page_icon="⏰",
     layout="wide",
 )
+
+# Load secrets
+load_all_secrets()
+
+# Require authentication
+from auth_utils import require_authentication
+require_authentication()
 
 # Page header
 st.title("⏰ Scheduled Jobs Management")

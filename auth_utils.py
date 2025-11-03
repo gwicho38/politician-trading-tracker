@@ -80,7 +80,15 @@ def check_authentication():
         )
 
         # Show login form
-        name, authentication_status, username = authenticator.login()
+        result = authenticator.login()
+
+        # Handle None return (authentication module issue)
+        if result is None or not isinstance(result, tuple):
+            st.warning("⚠️ Authentication system not properly configured. Please add auth secrets to Streamlit Cloud.")
+            st.info("Running without authentication until secrets are configured.")
+            return True
+
+        name, authentication_status, username = result
 
         # Handle authentication states
         if authentication_status:

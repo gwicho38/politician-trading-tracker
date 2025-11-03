@@ -136,39 +136,50 @@ def ticker_backfill_job():
 
     try:
         # Initialize database
+        logger.info("Initializing database connection for ticker backfill")
         config = SupabaseConfig.from_env()
         db = SupabaseClient(config)
+        logger.info("Database connection established")
 
         logger.info("Querying disclosures with missing tickers")
 
         # Get all disclosures where ticker is null or empty
+        logger.debug("Query 1: Fetching disclosures with null ticker")
         response = db.client.table("trading_disclosures").select(
             "id, asset_name, asset_ticker"
         ).is_("asset_ticker", "null").execute()
 
         disclosures_no_ticker = response.data or []
+        logger.debug(f"Found {len(disclosures_no_ticker)} disclosures with null ticker")
 
         # Also get disclosures where ticker is empty string
+        logger.debug("Query 2: Fetching disclosures with empty ticker")
         response2 = db.client.table("trading_disclosures").select(
             "id, asset_name, asset_ticker"
         ).eq("asset_ticker", "").execute()
 
         disclosures_empty_ticker = response2.data or []
+        logger.debug(f"Found {len(disclosures_empty_ticker)} disclosures with empty ticker")
 
         # Combine both lists
         all_disclosures = disclosures_no_ticker + disclosures_empty_ticker
 
         logger.info("Found disclosures with missing tickers", metadata={
-            "count": len(all_disclosures)
+            "total_count": len(all_disclosures),
+            "null_tickers": len(disclosures_no_ticker),
+            "empty_tickers": len(disclosures_empty_ticker)
         })
 
         if not all_disclosures:
-            logger.info("No disclosures need ticker backfill")
+            logger.info("✅ No disclosures need ticker backfill - database is up to date!")
             return
+
+        logger.info(f"🔄 Starting ticker extraction for {len(all_disclosures)} disclosures...")
 
         updated = 0
         failed = 0
         no_ticker_found = 0
+        examples_updated = []  # Keep some examples for logging
 
         for i, disclosure in enumerate(all_disclosures, 1):
             disclosure_id = disclosure["id"]
@@ -176,6 +187,7 @@ def ticker_backfill_job():
 
             if not asset_name:
                 no_ticker_found += 1
+                logger.debug("Disclosure has no asset_name", metadata={"disclosure_id": disclosure_id})
                 continue
 
             # Extract ticker
@@ -189,49 +201,69 @@ def ticker_backfill_job():
                     ).eq("id", disclosure_id).execute()
 
                     updated += 1
-                    logger.debug("Updated disclosure with ticker", metadata={
+
+                    # Keep first 5 examples for summary
+                    if len(examples_updated) < 5:
+                        examples_updated.append(f"{asset_name} → {ticker}")
+
+                    logger.debug("✅ Updated disclosure with ticker", metadata={
                         "disclosure_id": disclosure_id,
                         "asset_name": asset_name,
                         "ticker": ticker
                     })
                 except Exception as e:
                     failed += 1
-                    logger.error("Failed to update disclosure", error=e, metadata={
+                    logger.error("❌ Failed to update disclosure", error=e, metadata={
                         "disclosure_id": disclosure_id,
                         "asset_name": asset_name,
                         "ticker": ticker
                     })
             else:
                 no_ticker_found += 1
-                logger.debug("No ticker found", metadata={
+                logger.debug("⚠️ No ticker found for asset", metadata={
                     "disclosure_id": disclosure_id,
                     "asset_name": asset_name
                 })
 
             # Log progress every 100 items
             if i % 100 == 0:
-                logger.info("Backfill progress", metadata={
+                percent_complete = (i / len(all_disclosures)) * 100
+                logger.info(f"📊 Backfill progress: {percent_complete:.1f}% complete", metadata={
                     "processed": i,
+                    "total": len(all_disclosures),
                     "updated": updated,
                     "no_ticker_found": no_ticker_found,
-                    "failed": failed
+                    "failed": failed,
+                    "success_rate": f"{(updated / i * 100):.1f}%" if i > 0 else "0%"
                 })
 
         duration = (datetime.now() - start_time).total_seconds()
 
-        logger.info("Ticker backfill completed", metadata={
+        # Calculate statistics
+        success_rate = (updated / len(all_disclosures) * 100) if len(all_disclosures) > 0 else 0
+        failure_rate = (failed / len(all_disclosures) * 100) if len(all_disclosures) > 0 else 0
+
+        logger.info("✅ Ticker backfill completed successfully!", metadata={
             "total_processed": len(all_disclosures),
             "total_updated": updated,
+            "examples": examples_updated,
             "total_no_ticker_found": no_ticker_found,
             "total_failed": failed,
-            "duration_seconds": duration
+            "success_rate": f"{success_rate:.1f}%",
+            "failure_rate": f"{failure_rate:.1f}%",
+            "duration_seconds": duration,
+            "disclosures_per_second": f"{len(all_disclosures) / duration:.1f}" if duration > 0 else "N/A"
         })
 
         if failed > 0:
+            logger.warning(f"⚠️ Ticker backfill completed with {failed} failures")
             raise Exception(f"Ticker backfill completed with {failed} failures")
 
+        logger.info("Scheduled ticker backfill job completed successfully")
+
     except Exception as e:
-        logger.error("Scheduled ticker backfill job failed", error=e, metadata={
-            "duration_seconds": (datetime.now() - start_time).total_seconds()
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.error("❌ Scheduled ticker backfill job failed", error=e, metadata={
+            "duration_seconds": duration
         })
         raise  # Re-raise so APScheduler marks it as failed
