@@ -3,6 +3,7 @@ Data Collection Page - Collect politician trading disclosures
 """
 
 import streamlit as st
+import streamlit_antd_components as sac
 import asyncio
 from datetime import datetime, timedelta
 import pandas as pd
@@ -52,10 +53,18 @@ if "collection_running" not in st.session_state:
 if "collection_results" not in st.session_state:
     st.session_state.collection_results = None
 
-# Source selection
-st.markdown("### Select Data Sources")
+# Tabs for different views
+tab = sac.tabs([
+    sac.TabsItem(label='Data Sources', icon='database-add'),
+    sac.TabsItem(label='View Data', icon='table'),
+    sac.TabsItem(label='Statistics', icon='bar-chart-line'),
+], align='center', return_index=False, size='large')
 
-col1, col2, col3 = st.columns(3)
+if tab == 'Data Sources':
+    # Source selection
+    sac.divider(label='Select Data Sources', align='center', color='blue')
+
+    col1, col2, col3 = st.columns(3)
 
 with col1:
     st.markdown("**🇺🇸 United States**")
@@ -373,9 +382,9 @@ if st.session_state.collection_running:
         st.session_state.collection_running = False
         st.rerun()
 
-# Display recent disclosures
-st.markdown("---")
-st.markdown("### Recent Disclosures")
+elif tab == 'View Data' or tab == 'Statistics':
+    # Display recent disclosures
+    sac.divider(label='Recent Trading Disclosures', align='center', color='green')
 
 # Add ticker backfill button
 col1, col2 = st.columns([3, 1])
