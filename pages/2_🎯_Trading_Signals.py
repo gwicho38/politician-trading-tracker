@@ -105,6 +105,45 @@ if st.button("🎯 Generate Signals", width="stretch"):
                 st.warning("No disclosures found in the specified period")
                 st.stop()
 
+            # Show disclosure statistics
+            total_disclosures = len(disclosures)
+            with_ticker = len([d for d in disclosures if d.get("asset_ticker")])
+            without_ticker = total_disclosures - with_ticker
+
+            st.markdown("#### 📊 Disclosure Analysis")
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.metric(
+                    "Total Disclosures",
+                    total_disclosures,
+                    help=f"Found in last {lookback_days} days"
+                )
+
+            with col2:
+                st.metric(
+                    "Actionable (With Tickers)",
+                    with_ticker,
+                    delta=f"{(with_ticker/total_disclosures*100):.1f}%",
+                    help="Individual stocks that will be analyzed for signals"
+                )
+
+            with col3:
+                st.metric(
+                    "Filtered Out",
+                    without_ticker,
+                    delta=f"{(without_ticker/total_disclosures*100):.1f}%",
+                    delta_color="inverse",
+                    help="Mutual funds, ETFs, bonds - cannot generate trading signals"
+                )
+
+            if without_ticker > 0:
+                st.info(f"""
+                ℹ️ **Focusing on actionable stocks**: {without_ticker} disclosures without tickers
+                (mutual funds, ETFs, bonds) are automatically filtered out. Only individual stocks
+                with ticker symbols will be analyzed.
+                """)
+
             # Group by ticker
             disclosures_by_ticker = {}
             for d in disclosures:
@@ -114,7 +153,11 @@ if st.button("🎯 Generate Signals", width="stretch"):
                         disclosures_by_ticker[ticker] = []
                     disclosures_by_ticker[ticker].append(d)
 
-            st.info(f"Analyzing {len(disclosures_by_ticker)} unique tickers...")
+            if not disclosures_by_ticker:
+                st.warning("No actionable disclosures with tickers found. All disclosures are mutual funds, ETFs, or other assets without ticker symbols.")
+                st.stop()
+
+            st.success(f"🎯 Analyzing {len(disclosures_by_ticker)} unique actionable tickers...")
 
             # Generate signals
             generator = SignalGenerator(
