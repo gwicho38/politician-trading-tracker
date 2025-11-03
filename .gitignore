@@ -100,3 +100,5 @@ dmypy.json
 
 #Ignore vscode AI rules
 .github/instructions/codacy.instructions.md
+.streamlit/secrets.toml
+.streamlit/secrets.toml.cloud
