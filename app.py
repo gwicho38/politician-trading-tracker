@@ -4,6 +4,7 @@ Main application entry point for the web interface
 """
 
 import streamlit as st
+import streamlit_antd_components as sac
 import os
 import sys
 from pathlib import Path
@@ -151,24 +152,50 @@ def main():
     missing_required, missing_optional = check_environment()
 
     if missing_required:
-        st.markdown(f"""
-        <div class="danger-box">
-            <strong>⚠️ Configuration Error</strong><br>
-            Missing required environment variables: {', '.join(missing_required)}<br>
-            Please configure these in your .env file or Streamlit secrets.
-        </div>
-        """, unsafe_allow_html=True)
+        sac.alert(
+            label='Configuration Error',
+            description=f"Missing required environment variables: {', '.join(missing_required)}. Please configure these in your .env file or Streamlit secrets.",
+            banner=True,
+            icon=True,
+            closable=False,
+            type='error'
+        )
         st.stop()
 
     if missing_optional:
-        st.markdown(f"""
-        <div class="warning-box">
-            <strong>ℹ️ Optional Configuration</strong><br>
-            Trading features disabled. To enable, set: {', '.join(missing_optional)}
-        </div>
-        """, unsafe_allow_html=True)
+        sac.alert(
+            label='Optional Configuration',
+            description=f"Trading features disabled. To enable, set: {', '.join(missing_optional)}",
+            banner=True,
+            icon=True,
+            closable=True,
+            type='warning'
+        )
 
-    # Welcome section
+    # Welcome section with Ant Design tabs
+    sac.divider(label='Quick Actions', align='center', color='gray', key='quick_actions_divider')
+
+    # Navigation buttons
+    action = sac.buttons([
+        sac.ButtonsItem(label='Data Collection', icon='cloud-download', color='#1890ff'),
+        sac.ButtonsItem(label='Trading Signals', icon='lightning-charge', color='#52c41a'),
+        sac.ButtonsItem(label='Trading Operations', icon='graph-up-arrow', color='#722ed1'),
+        sac.ButtonsItem(label='Portfolio', icon='pie-chart', color='#fa8c16'),
+    ], label='Navigate to:', format_func='title', align='center', size='large', gap='small',
+    direction='horizontal', radius='lg', key='nav_buttons')
+
+    if action == 'Data Collection':
+        st.switch_page("pages/1_📥_Data_Collection.py")
+    elif action == 'Trading Signals':
+        st.switch_page("pages/2_🎯_Trading_Signals.py")
+    elif action == 'Trading Operations':
+        st.switch_page("pages/3_💼_Trading_Operations.py")
+    elif action == 'Portfolio':
+        st.switch_page("pages/4_📈_Portfolio.py")
+
+    st.markdown("")  # Spacer
+
+    # Feature cards
     col1, col2, col3 = st.columns(3)
 
     with col1:
@@ -180,8 +207,6 @@ def main():
         - UK Parliament
         - US State legislatures
         """)
-        if st.button("📥 Collect Data", key="collect", width="stretch"):
-            st.switch_page("pages/1_📥_Data_Collection.py")
 
     with col2:
         st.markdown("""
@@ -192,8 +217,6 @@ def main():
         - Politician trading patterns
         - Market data integration
         """)
-        if st.button("🎯 Generate Signals", key="signals", width="stretch"):
-            st.switch_page("pages/2_🎯_Trading_Signals.py")
 
     with col3:
         st.markdown("""
@@ -204,11 +227,51 @@ def main():
         - Portfolio tracking
         - Performance analytics
         """)
-        if st.button("💼 Trade Now", key="trade", width="stretch"):
-            st.switch_page("pages/3_💼_Trading_Operations.py")
 
     # Quick stats
-    st.markdown("---")
+    sac.divider(label='System Status', align='center', color='gray', key='stats_divider')
+
+    # Status tags
+    col_status1, col_status2, col_status3, col_status4 = st.columns([1, 1, 1, 1])
+    with col_status1:
+        sac.tags([
+            sac.Tag(label='v1.0.0', color='blue', bordered=False)
+        ], align='center', size='large')
+    with col_status2:
+        sac.tags([
+            sac.Tag(label='Google OAuth', icon='shield-check', color='green', bordered=False)
+        ], align='center', size='large')
+    with col_status3:
+        try:
+            from politician_trading.scheduler import get_scheduler
+            scheduler = get_scheduler()
+            if scheduler.is_running():
+                sac.tags([
+                    sac.Tag(label='Scheduler Active', icon='clock', color='cyan', bordered=False)
+                ], align='center', size='large')
+            else:
+                sac.tags([
+                    sac.Tag(label='Scheduler Idle', icon='clock', color='gray', bordered=False)
+                ], align='center', size='large')
+        except:
+            sac.tags([
+                sac.Tag(label='Scheduler N/A', icon='clock', color='gray', bordered=False)
+            ], align='center', size='large')
+    with col_status4:
+        try:
+            from politician_trading.database.database import SupabaseClient
+            from politician_trading.config import SupabaseConfig
+            config = SupabaseConfig.from_env()
+            db_test = SupabaseClient(config)
+            sac.tags([
+                sac.Tag(label='Database Connected', icon='database', color='green', bordered=False)
+            ], align='center', size='large')
+        except:
+            sac.tags([
+                sac.Tag(label='Database Error', icon='database', color='red', bordered=False)
+            ], align='center', size='large')
+
+    st.markdown("")  # Spacer
     st.markdown("### 📊 Quick Stats")
 
     try:
