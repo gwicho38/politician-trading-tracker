@@ -14,7 +14,7 @@ from sklearn.preprocessing import StandardScaler
 import yfinance as yf
 
 from politician_trading.signals.features import FeatureEngineer
-from src.models import (
+from models import (
     TradingSignal,
     SignalType,
     SignalStrength,

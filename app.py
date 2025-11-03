@@ -48,8 +48,9 @@ st.set_page_config(
 load_all_secrets()
 
 # Check authentication
-from auth_utils import require_authentication
+from auth_utils import require_authentication, show_user_info
 require_authentication()
+show_user_info()
 
 # Initialize scheduler (singleton pattern ensures it only starts once)
 try:

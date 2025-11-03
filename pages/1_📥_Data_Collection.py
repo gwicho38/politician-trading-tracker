@@ -37,8 +37,9 @@ st.set_page_config(page_title="Data Collection", page_icon="📥", layout="wide"
 load_all_secrets()
 
 # Require authentication
-from auth_utils import require_authentication
+from auth_utils import require_authentication, show_user_info
 require_authentication()
+show_user_info()
 
 logger.info("Data Collection page loaded")
 

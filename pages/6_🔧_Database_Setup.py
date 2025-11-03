@@ -31,8 +31,9 @@ st.set_page_config(page_title="Database Setup", page_icon="🔧", layout="wide")
 load_all_secrets()
 
 # Require authentication
-from auth_utils import require_authentication
+from auth_utils import require_authentication, show_user_info
 require_authentication()
+show_user_info()
 
 st.title("🔧 Database Setup & Migration")
 st.markdown("Set up your database schema and run migrations")
