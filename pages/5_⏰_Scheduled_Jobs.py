@@ -42,8 +42,9 @@ st.set_page_config(
 load_all_secrets()
 
 # Require authentication
-from auth_utils import require_authentication
+from auth_utils import require_authentication, show_user_info
 require_authentication()
+show_user_info()
 
 # Page header
 st.title("⏰ Scheduled Jobs Management")

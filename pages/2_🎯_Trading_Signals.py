@@ -35,8 +35,9 @@ st.set_page_config(page_title="Trading Signals", page_icon="🎯", layout="wide"
 load_all_secrets()
 
 # Require authentication
-from auth_utils import require_authentication
+from auth_utils import require_authentication, show_user_info
 require_authentication()
+show_user_info()
 
 st.title("🎯 AI-Powered Trading Signals")
 st.markdown("Generate buy/sell/hold recommendations based on politician trading activity")
