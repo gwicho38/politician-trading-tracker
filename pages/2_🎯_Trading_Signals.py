@@ -79,7 +79,7 @@ with col3:
     )
 
 # Generate signals
-if st.button("🎯 Generate Signals", use_container_width=True):
+if st.button("🎯 Generate Signals", width="stretch"):
     with st.spinner("Generating AI-powered signals... This may take a minute."):
         try:
             from politician_trading.signals.signal_generator import SignalGenerator
@@ -258,7 +258,7 @@ try:
                 else:
                     return ["background-color: #fff3cd"] * len(row)
 
-            st.dataframe(display_df, use_container_width=True)
+            st.dataframe(display_df, width="stretch")
 
             # Signal distribution chart
             st.markdown("### Signal Distribution")
@@ -274,7 +274,7 @@ try:
                     title="Signal Types",
                     color_discrete_sequence=px.colors.qualitative.Set2
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
 
             with col2:
                 # Confidence distribution
@@ -285,7 +285,7 @@ try:
                     title="Confidence Distribution",
                     labels={"confidence_score": "Confidence Score"}
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
 
             # Top signals
             st.markdown("### 🏆 Top 10 Signals by Confidence")

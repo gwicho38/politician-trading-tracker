@@ -106,7 +106,7 @@ st.markdown("---")
 col1, col2 = st.columns([1, 4])
 
 with col1:
-    if st.button("🚀 Start Collection", disabled=st.session_state.collection_running, use_container_width=True):
+    if st.button("🚀 Start Collection", disabled=st.session_state.collection_running, width="stretch"):
         logger.info("Start Collection button clicked", metadata={
             "us_congress": us_congress,
             "uk_parliament": uk_parliament,
@@ -594,7 +594,7 @@ try:
                 "total_count": len(df)
             })
 
-        st.dataframe(display_df, use_container_width=True)
+        st.dataframe(display_df, width="stretch")
 
         # Export option
         csv = display_df.to_csv(index=False)

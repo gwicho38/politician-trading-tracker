@@ -179,7 +179,7 @@ def main():
         - UK Parliament
         - US State legislatures
         """)
-        if st.button("📥 Collect Data", key="collect", use_container_width=True):
+        if st.button("📥 Collect Data", key="collect", width="stretch"):
             st.switch_page("pages/1_📥_Data_Collection.py")
 
     with col2:
@@ -191,7 +191,7 @@ def main():
         - Politician trading patterns
         - Market data integration
         """)
-        if st.button("🎯 Generate Signals", key="signals", use_container_width=True):
+        if st.button("🎯 Generate Signals", key="signals", width="stretch"):
             st.switch_page("pages/2_🎯_Trading_Signals.py")
 
     with col3:
@@ -203,7 +203,7 @@ def main():
         - Portfolio tracking
         - Performance analytics
         """)
-        if st.button("💼 Trade Now", key="trade", use_container_width=True):
+        if st.button("💼 Trade Now", key="trade", width="stretch"):
             st.switch_page("pages/3_💼_Trading_Operations.py")
 
     # Quick stats
