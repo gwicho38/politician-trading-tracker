@@ -230,7 +230,7 @@ Expected Endpoint: {'https://paper-api.alpaca.markets' if use_paper else 'https:
             return ''
 
         styled_df = df.style.applymap(color_pl, subset=["P&L", "P&L %"])
-        st.dataframe(styled_df, use_container_width=True)
+        st.dataframe(styled_df, width="stretch")
 
         # Position distribution pie chart
         st.markdown("### Position Distribution")
@@ -244,7 +244,7 @@ Expected Endpoint: {'https://paper-api.alpaca.markets' if use_paper else 'https:
 
             fig = go.Figure(data=[go.Pie(labels=labels, values=values)])
             fig.update_layout(title="By Market Value")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         with col2:
             # P&L distribution
@@ -257,7 +257,7 @@ Expected Endpoint: {'https://paper-api.alpaca.markets' if use_paper else 'https:
                 marker_color=colors
             )])
             fig.update_layout(title="P&L by Position", xaxis_title="Ticker", yaxis_title="P&L ($)")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         # Position details
         st.markdown("### Position Details")
@@ -319,7 +319,7 @@ Expected Endpoint: {'https://paper-api.alpaca.markets' if use_paper else 'https:
     st.markdown("---")
     st.markdown("### 🔍 Position Monitoring")
 
-    if st.button("🔍 Check Risk Management", use_container_width=True):
+    if st.button("🔍 Check Risk Management", width="stretch"):
         from politician_trading.trading.strategy import TradingStrategy
 
         strategy = TradingStrategy(
@@ -334,7 +334,7 @@ Expected Endpoint: {'https://paper-api.alpaca.markets' if use_paper else 'https:
             st.warning(f"⚠️ Found {len(actions)} positions requiring immediate action:")
 
             actions_df = pd.DataFrame(actions)
-            st.dataframe(actions_df, use_container_width=True)
+            st.dataframe(actions_df, width="stretch")
 
             if any(not a.get("executed") for a in actions):
                 st.info("💡 Enable auto-execution to automatically manage risk")

@@ -197,7 +197,7 @@ with col2:
 # Save settings (placeholder - in real implementation would save to .env or database)
 st.markdown("---")
 
-if st.button("💾 Save Settings", use_container_width=True):
+if st.button("💾 Save Settings", width="stretch"):
     st.info("""
     💡 **Settings saved to session**
 

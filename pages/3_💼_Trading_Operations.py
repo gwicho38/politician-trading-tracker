@@ -222,7 +222,7 @@ try:
             st.success(f"Found {len(tradeable_signals)} signals meeting confidence threshold")
 
             # Evaluate signals
-            if st.button("🔍 Evaluate Signals", use_container_width=True):
+            if st.button("🔍 Evaluate Signals", width="stretch"):
                 with st.spinner("Evaluating signals..."):
                     from src.models import TradingSignal, SignalType, SignalStrength
 
@@ -265,7 +265,7 @@ try:
 
                         display_df.columns = ["Ticker", "Signal", "Confidence", "Shares", "Cost", "Can Trade", "Reason"]
 
-                        st.dataframe(display_df, use_container_width=True)
+                        st.dataframe(display_df, width="stretch")
 
                         # Execute trades
                         st.markdown("---")
@@ -287,7 +287,7 @@ try:
 
                                 confirm = st.checkbox("I confirm I want to execute these trades")
 
-                                if st.button("🚀 Execute Trades", disabled=not confirm, use_container_width=True):
+                                if st.button("🚀 Execute Trades", disabled=not confirm, width="stretch"):
                                     for ticker in selected_tickers:
                                         # Find the signal
                                         signal_data = next((s for s in tradeable_signals if s["ticker"] == ticker), None)
@@ -444,7 +444,7 @@ try:
 
         display_df.columns = ["Ticker", "Side", "Qty", "Type", "Status", "Filled", "Time"]
 
-        st.dataframe(display_df, use_container_width=True)
+        st.dataframe(display_df, width="stretch")
     else:
         st.info("No orders found for this trading mode")
 
