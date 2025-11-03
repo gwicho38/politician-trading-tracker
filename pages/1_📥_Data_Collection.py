@@ -479,6 +479,13 @@ try:
     if response.data:
         df = pd.DataFrame(response.data)
 
+        # Debug: Log raw column names and first row
+        logger.debug("DataFrame created from response", metadata={
+            "columns": list(df.columns),
+            "row_count": len(df),
+            "first_row_keys": list(response.data[0].keys()) if response.data else []
+        })
+
         # Extract politician information from nested object
         if "politicians" in df.columns:
             def extract_name(x):
@@ -523,6 +530,16 @@ try:
             df["politician_party"] = "N/A"
             df["politician_state"] = "N/A"
             logger.warning("No politician information in query results")
+
+        # Debug: Log sample of raw data
+        if len(df) > 0:
+            sample = df.iloc[0]
+            logger.debug("Sample disclosure data", metadata={
+                "asset_ticker": sample.get("asset_ticker"),
+                "asset_name": sample.get("asset_name"),
+                "asset_type": sample.get("asset_type"),
+                "columns": list(df.columns)
+            })
 
         # Format for display - include more useful columns
         display_cols = [
