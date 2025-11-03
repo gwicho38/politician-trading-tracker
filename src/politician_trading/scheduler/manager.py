@@ -309,6 +309,10 @@ class SchedulerManager:
         self.scheduler.start()
         logger.info("Scheduler started successfully")
 
+        # Load jobs from database into scheduler
+        if self.db_client:
+            self._load_jobs_from_database()
+
         # Run job recovery/catch-up for missed jobs
         if self.db_client:
             self._recover_missed_jobs()
@@ -946,6 +950,146 @@ class SchedulerManager:
         except Exception as e:
             logger.error(f"Failed to register job {job_id} in database: {e}")
             # Don't fail the job scheduling if database registration fails
+
+    def _load_jobs_from_database(self):
+        """
+        Load all enabled jobs from the database and add them to the scheduler.
+        This ensures database-defined jobs are scheduled even if the app restarts.
+        """
+        logger.info("📂 Loading jobs from database into scheduler...")
+
+        try:
+            # Get all enabled jobs from database
+            response = self.db_client.client.table("scheduled_jobs")\
+                .select("*")\
+                .eq("enabled", True)\
+                .execute()
+
+            if not response.data:
+                logger.info("No enabled jobs found in database")
+                return
+
+            db_jobs = response.data
+            logger.info(f"Found {len(db_jobs)} enabled jobs in database")
+
+            # Get currently scheduled job IDs
+            current_job_ids = {job.id for job in self.scheduler.get_jobs()}
+            logger.info(f"Currently {len(current_job_ids)} jobs in scheduler")
+
+            # Add jobs that aren't already scheduled
+            loaded_count = 0
+            skipped_count = 0
+
+            for db_job in db_jobs:
+                job_id = db_job["job_id"]
+                job_name = db_job["job_name"]
+                job_function_path = db_job["job_function"]
+                schedule_type = db_job["schedule_type"]
+                schedule_value = db_job["schedule_value"]
+                metadata = db_job.get("metadata", {})
+
+                # Skip if already in scheduler
+                if job_id in current_job_ids:
+                    logger.debug(f"Job '{job_name}' already in scheduler - skipping")
+                    skipped_count += 1
+                    continue
+
+                try:
+                    # Dynamically import the job function
+                    module_path, function_name = job_function_path.rsplit('.', 1)
+                    import importlib
+                    module = importlib.import_module(module_path)
+                    func = getattr(module, function_name)
+
+                    # Add job based on schedule type
+                    if schedule_type == "cron":
+                        # Parse cron expression (minute hour day month day_of_week)
+                        parts = schedule_value.split()
+                        if len(parts) >= 5:
+                            minute, hour, day, month, day_of_week = parts[:5]
+
+                            # Convert cron wildcards to None for CronTrigger
+                            minute = None if minute == '*' else minute
+                            hour = None if hour == '*' else hour
+                            day = None if day == '*' else day
+                            month = None if month == '*' else month
+                            day_of_week = None if day_of_week == '*' else day_of_week
+
+                            trigger = CronTrigger(
+                                minute=minute,
+                                hour=hour,
+                                day=day,
+                                month=month,
+                                day_of_week=day_of_week,
+                                timezone="UTC"
+                            )
+
+                            wrapped_func = self._create_job_wrapper(func, job_id)
+                            self.scheduler.add_job(
+                                wrapped_func,
+                                trigger=trigger,
+                                id=job_id,
+                                name=job_name,
+                                replace_existing=False
+                            )
+
+                            # Store metadata
+                            self._job_metadata[job_id] = {
+                                "name": job_name,
+                                "description": metadata.get("description", ""),
+                                "type": "cron",
+                                "schedule": schedule_value,
+                                "added_at": datetime.now(),
+                                "loaded_from_database": True
+                            }
+
+                            logger.info(f"✅ Loaded cron job from database: {job_name} (schedule: {schedule_value})")
+                            loaded_count += 1
+
+                        else:
+                            logger.error(f"Invalid cron expression for job {job_name}: {schedule_value}")
+
+                    elif schedule_type == "interval":
+                        # Interval in seconds
+                        seconds = int(schedule_value)
+                        trigger = IntervalTrigger(seconds=seconds, timezone="UTC")
+
+                        wrapped_func = self._create_job_wrapper(func, job_id)
+                        self.scheduler.add_job(
+                            wrapped_func,
+                            trigger=trigger,
+                            id=job_id,
+                            name=job_name,
+                            replace_existing=False
+                        )
+
+                        # Store metadata
+                        self._job_metadata[job_id] = {
+                            "name": job_name,
+                            "description": metadata.get("description", ""),
+                            "type": "interval",
+                            "schedule": f"every {seconds}s",
+                            "added_at": datetime.now(),
+                            "loaded_from_database": True
+                        }
+
+                        logger.info(f"✅ Loaded interval job from database: {job_name} (every {seconds}s)")
+                        loaded_count += 1
+
+                    else:
+                        logger.error(f"Unknown schedule type for job {job_name}: {schedule_type}")
+
+                except Exception as e:
+                    logger.error(f"Failed to load job {job_name} from database", error=e, metadata={
+                        "job_id": job_id,
+                        "job_function": job_function_path
+                    })
+
+            logger.info(f"✅ Database job loading complete: {loaded_count} loaded, {skipped_count} skipped")
+
+        except Exception as e:
+            logger.error("Failed to load jobs from database", error=e)
+            # Don't crash the scheduler if database loading fails
 
     def is_running(self) -> bool:
         """Check if scheduler is running"""
