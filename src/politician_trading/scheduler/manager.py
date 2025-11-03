@@ -15,10 +15,20 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional
 
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
-from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+# Try to import APScheduler, gracefully handle if not installed
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from apscheduler.triggers.cron import CronTrigger
+    from apscheduler.triggers.interval import IntervalTrigger
+    from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+    APSCHEDULER_AVAILABLE = True
+except ImportError:
+    APSCHEDULER_AVAILABLE = False
+    BackgroundScheduler = None
+    CronTrigger = None
+    IntervalTrigger = None
+    EVENT_JOB_EXECUTED = None
+    EVENT_JOB_ERROR = None
 
 from politician_trading.config import SupabaseConfig
 from politician_trading.database.database import SupabaseClient
@@ -256,6 +266,17 @@ class SchedulerManager:
 
         logger.info("Initializing SchedulerManager")
 
+        # Check if APScheduler is available
+        if not APSCHEDULER_AVAILABLE:
+            logger.warning("APScheduler not available - scheduler features disabled")
+            self.scheduler = None
+            self.job_history = JobHistory(db_client=None)
+            self._job_metadata = {}
+            self._log_handlers = {}
+            self.db_client = None
+            self._initialized = True
+            return
+
         self.scheduler = BackgroundScheduler(
             timezone="UTC",
             job_defaults={
@@ -425,6 +446,10 @@ class SchedulerManager:
         Returns:
             True if job was added successfully
         """
+        if not self.scheduler:
+            logger.warning("Cannot add cron job - scheduler not available")
+            return False
+
         try:
             # Check if job already exists
             existing_job = self.scheduler.get_job(job_id)
@@ -507,6 +532,10 @@ class SchedulerManager:
         Returns:
             True if job was added successfully
         """
+        if not self.scheduler:
+            logger.warning("Cannot add interval job - scheduler not available")
+            return False
+
         logger.info(f"add_interval_job called", metadata={
             "job_id": job_id,
             "name": name,
@@ -608,6 +637,9 @@ class SchedulerManager:
 
     def remove_job(self, job_id: str) -> bool:
         """Remove a scheduled job"""
+        if not self.scheduler:
+            logger.warning("Cannot remove job - scheduler not available")
+            return False
         try:
             self.scheduler.remove_job(job_id)
             if job_id in self._job_metadata:
@@ -620,6 +652,9 @@ class SchedulerManager:
 
     def pause_job(self, job_id: str) -> bool:
         """Pause a scheduled job"""
+        if not self.scheduler:
+            logger.warning("Cannot pause job - scheduler not available")
+            return False
         try:
             self.scheduler.pause_job(job_id)
             logger.info(f"Paused job: {job_id}")
@@ -630,6 +665,9 @@ class SchedulerManager:
 
     def resume_job(self, job_id: str) -> bool:
         """Resume a paused job"""
+        if not self.scheduler:
+            logger.warning("Cannot resume job - scheduler not available")
+            return False
         try:
             self.scheduler.resume_job(job_id)
             logger.info(f"Resumed job: {job_id}")
@@ -644,6 +682,9 @@ class SchedulerManager:
 
         Note: This runs the job in the scheduler's thread pool.
         """
+        if not self.scheduler:
+            logger.warning("Cannot run job - scheduler not available")
+            return False
         try:
             job = self.scheduler.get_job(job_id)
             if not job:
@@ -660,6 +701,9 @@ class SchedulerManager:
 
     def get_jobs(self) -> List[Dict[str, Any]]:
         """Get all scheduled jobs with metadata"""
+        if not self.scheduler:
+            return []
+
         jobs = []
         for job in self.scheduler.get_jobs():
             metadata = self._job_metadata.get(job.id, {})
@@ -905,6 +949,8 @@ class SchedulerManager:
 
     def is_running(self) -> bool:
         """Check if scheduler is running"""
+        if not self.scheduler:
+            return False
         return self.scheduler.running
 
 
