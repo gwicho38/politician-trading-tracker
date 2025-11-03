@@ -503,6 +503,7 @@ class QuiverQuantScraper(BaseScraper):
                         # Look for date-like patterns (YYYY-MM-DD, MM/DD/YYYY, etc.)
                         transaction_date = ""
                         ticker = ""
+                        asset_name = ""
                         transaction_type = ""
                         amount = ""
 
@@ -515,6 +516,9 @@ class QuiverQuantScraper(BaseScraper):
                             # Check if this looks like a ticker (all caps, short)
                             elif text.isupper() and len(text) <= 5 and text.isalpha():
                                 ticker = text
+                            # Check if this looks like a company name (has mixed case, contains "Inc", "Corp", "Ltd", etc.)
+                            elif any(word in text for word in ["Inc", "Corp", "Ltd", "LLC", "Corporation", "Company"]):
+                                asset_name = text
                             # Check if this contains transaction type keywords
                             elif any(
                                 word in text.lower() for word in ["purchase", "sale", "buy", "sell"]
@@ -530,6 +534,9 @@ class QuiverQuantScraper(BaseScraper):
                             # Check if this looks like an amount (contains $ or numbers with ,)
                             elif "$" in text or ("," in text and any(c.isdigit() for c in text)):
                                 amount = text
+                            # If not identified as anything else and has mixed case, might be asset name
+                            elif text and not text.isupper() and not text.islower() and len(text) > 6:
+                                asset_name = text
 
                         # Only create trade data if we have essential fields
                         if politician_name and (transaction_date or ticker):
@@ -537,6 +544,7 @@ class QuiverQuantScraper(BaseScraper):
                                 "politician_name": politician_name,
                                 "transaction_date": transaction_date,
                                 "ticker": ticker,
+                                "asset_name": asset_name,
                                 "transaction_type": transaction_type,
                                 "amount": amount,
                                 "source": "quiverquant",
@@ -614,13 +622,21 @@ class QuiverQuantScraper(BaseScraper):
                 trade_data.get("amount", "")
             )
 
+            # Get asset name and ticker - use separate fields if available
+            asset_name = trade_data.get("asset_name", "")
+            asset_ticker = trade_data.get("ticker", "")
+
+            # If asset_name is empty, try to use ticker as fallback
+            if not asset_name and asset_ticker:
+                asset_name = asset_ticker
+
             disclosure = TradingDisclosure(
                 politician_id="",  # Will be filled after politician matching
                 transaction_date=transaction_date,
                 disclosure_date=datetime.now(),  # QuiverQuant aggregation date
                 transaction_type=transaction_type,
-                asset_name=trade_data.get("ticker", ""),
-                asset_ticker=trade_data.get("ticker", ""),
+                asset_name=asset_name,
+                asset_ticker=asset_ticker,
                 asset_type="stock",
                 amount_range_min=amount_min,
                 amount_range_max=amount_max,
