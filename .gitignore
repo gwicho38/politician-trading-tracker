@@ -96,6 +96,7 @@ dmypy.json
 # Streamlit
 .streamlit/secrets.toml
 .streamlit/cache/
+analytics.json
 
 
 #Ignore vscode AI rules
