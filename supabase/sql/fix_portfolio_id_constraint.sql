@@ -1,6 +1,7 @@
--- Fix portfolio_id constraint in trading_signals table
--- This allows signals to exist independently of portfolios
--- Signals are recommendations that may or may not be acted upon
+-- Fix trading_signals table schema issues
+-- This migration handles multiple schema inconsistencies:
+-- 1. portfolio_id should be nullable (signals exist independently of portfolios)
+-- 2. symbol column should be nullable or use ticker column instead
 
 -- =============================================================================
 -- Remove NOT NULL constraint from portfolio_id if it exists
@@ -45,7 +46,42 @@ EXCEPTION
 END $$;
 
 -- =============================================================================
--- Create index for portfolio_id if it doesn't exist
+-- Handle symbol column issue
+-- =============================================================================
+
+DO $$
+BEGIN
+    -- Check if symbol column exists
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name='trading_signals' AND column_name='symbol') THEN
+
+        -- Drop the NOT NULL constraint from symbol if it exists
+        ALTER TABLE trading_signals ALTER COLUMN symbol DROP NOT NULL;
+
+        RAISE NOTICE 'Removed NOT NULL constraint from symbol column';
+        RAISE NOTICE 'Note: The application uses ticker field, symbol column may be deprecated';
+
+    ELSE
+        RAISE NOTICE 'symbol column does not exist - no action needed';
+    END IF;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Error handling symbol column: %', SQLERRM;
+END $$;
+
+-- =============================================================================
+-- Create indexes if they don't exist
 -- =============================================================================
 
 CREATE INDEX IF NOT EXISTS idx_trading_signals_portfolio_id ON trading_signals(portfolio_id);
+
+-- If symbol column exists and is used, ensure it has an index
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name='trading_signals' AND column_name='symbol') THEN
+        CREATE INDEX IF NOT EXISTS idx_trading_signals_symbol ON trading_signals(symbol);
+        RAISE NOTICE 'Created index on symbol column';
+    END IF;
+END $$;
