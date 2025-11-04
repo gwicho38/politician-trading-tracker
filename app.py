@@ -56,6 +56,11 @@ pages = [
         icon="📈"
     ),
     st.Page(
+        "4.5_📋_Orders.py",
+        title="Orders",
+        icon="📋"
+    ),
+    st.Page(
         "5_⏰_Scheduled_Jobs.py",
         title="Scheduled Jobs",
         icon="⏰"

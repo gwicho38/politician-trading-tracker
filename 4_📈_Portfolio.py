@@ -173,7 +173,38 @@ Expected Endpoint: {alpaca_client.base_url}
         st.info("💡 **Troubleshooting:**\n- Check if Alpaca service is operational\n- Verify your API keys are valid\n- Try refreshing the page")
         st.stop()
 
+    # Check for pending orders
+    st.markdown("---")
+    st.markdown("### ⏳ Pending Orders")
+
+    try:
+        pending_orders = alpaca_client.get_orders(status="open", limit=50)
+
+        if pending_orders:
+            st.warning(f"You have {len(pending_orders)} pending order(s)")
+
+            pending_data = []
+            for order in pending_orders[:10]:  # Show first 10
+                pending_data.append({
+                    "Ticker": order.ticker,
+                    "Side": order.side.upper(),
+                    "Quantity": order.quantity,
+                    "Type": order.order_type.value,
+                    "Status": order.status.value,
+                    "Submitted": order.submitted_at.strftime("%Y-%m-%d %H:%M") if order.submitted_at else "N/A",
+                })
+
+            pending_df = pd.DataFrame(pending_data)
+            st.dataframe(pending_df, use_container_width=True)
+
+            st.info("💡 These orders will execute when market conditions are met. View details on the **[Orders](/Orders)** page.")
+        else:
+            st.success("✅ No pending orders")
+    except Exception as e:
+        st.error(f"Could not fetch pending orders: {str(e)}")
+
     # Portfolio overview
+    st.markdown("---")
     st.markdown("### 💼 Portfolio Overview")
 
     col1, col2, col3, col4, col5 = st.columns(5)
