@@ -16,19 +16,23 @@ linkColor = "#3d3a2a"                       # Dark brown links
 borderColor = "#d3d2ca"                     # Light gray borders
 codeBackgroundColor = "#ecebe4"              # Pale gray code background
 
-# Typography - Using Nerd Fonts from Google Fonts CDN
-# JetBrains Mono Nerd Font for code - monospaced with ligatures and icons
-codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap, monospace"
-# Inter for main text - clean, highly readable
-font = "Inter:https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap, sans-serif"
+# Typography - Using popular fonts from Google Fonts CDN
+# Fira Code for code - monospaced with programming ligatures
+codeFont = "'Fira Code':https://fonts.googleapis.com/css2?family=Fira+Code:wght@300..700&display=swap, monospace"
+# Nunito for main text - friendly, highly readable rounded sans-serif
+font = "Nunito:https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&display=swap, sans-serif"
+# Montserrat for headings - geometric, professional
+headingFont = "Montserrat:https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap, sans-serif"
 codeFontSize = "0.875rem"                    # Code font size (14px)
 # headingFontWeights = [600,500,500,500,500,500]  # Heading weights (h1-h6)
 # headingFontSizes = ["3rem", "2rem"]        # Heading sizes (h1, h2)
 
 # Widget Styling
 showWidgetBorder = true                      # Show borders around widgets
-baseRadius = "0.75rem"                       # Base corner radius
-buttonRadius = "full"                        # Button corner radius (circular)
+baseRadius = "1rem"                          # Base corner radius (16px)
+buttonRadius = "2rem"                        # Button corner radius (32px - very rounded)
+# Button sizing and spacing
+buttonBasePadding = "0.75rem 1.5rem"        # Bigger buttons with more padding
 
 # Sidebar
 showSidebarBorder = true                     # Show sidebar border
