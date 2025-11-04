@@ -15,6 +15,7 @@ from .base import (
     PipelineStatus,
     RawDisclosure
 )
+from ..storage import StorageManager
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +31,11 @@ class IngestionStage(PipelineStage[RawDisclosure]):
     4. Returns RawDisclosure objects
     """
 
-    def __init__(self, lookback_days: int = 30, max_retries: int = 3):
+    def __init__(self, lookback_days: int = 30, max_retries: int = 3, enable_storage: bool = True):
         super().__init__("ingestion")
         self.lookback_days = lookback_days
         self.max_retries = max_retries
+        self.enable_storage = enable_storage
 
     async def process(
         self,
@@ -69,6 +71,15 @@ class IngestionStage(PipelineStage[RawDisclosure]):
 
             # Configure source
             source.configure(context.config)
+
+            # Attach storage manager if enabled and db_client available
+            if self.enable_storage and hasattr(context, 'db_client') and context.db_client:
+                storage_manager = StorageManager(context.db_client)
+                if hasattr(source, 'storage_manager'):
+                    source.storage_manager = storage_manager
+                    self.logger.info("Storage manager attached to source for raw data archival")
+            else:
+                self.logger.debug("Storage disabled or db_client not available")
 
             # Fetch data from source
             self.logger.info(f"Fetching data with {self.lookback_days} day lookback")

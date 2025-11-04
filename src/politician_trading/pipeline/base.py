@@ -56,6 +56,7 @@ class PipelineContext:
     config: Dict[str, Any] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
     started_at: datetime = field(default_factory=datetime.utcnow)
+    db_client: Optional[Any] = None  # Supabase client for storage operations
 
 
 @dataclass
