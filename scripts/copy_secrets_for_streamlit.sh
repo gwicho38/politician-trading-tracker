@@ -1,35 +1,38 @@
 #!/bin/bash
-# Sync local .streamlit/secrets.toml to Streamlit Cloud
+# Copy .streamlit/secrets.toml contents to clipboard for Streamlit Cloud
 #
-# NOTE: The Streamlit CLI no longer has direct secrets management commands.
-# This script copies secrets to clipboard for easy pasting into the web interface.
+# This script copies your local secrets to clipboard so you can easily
+# paste them into Streamlit Cloud's web interface.
 #
 # Usage:
-#   ./scripts/sync_secrets_to_streamlit.sh
+#   ./scripts/copy_secrets_for_streamlit.sh
+#
+# Then:
+#   1. Go to: https://share.streamlit.io/
+#   2. Open your app settings
+#   3. Navigate to "Secrets" section
+#   4. Paste (Cmd+V) into the secrets editor
+#   5. Save
 
-set -e  # Exit on error
+set -e
 
-# Colors for output
-RED='\033[0;31m'
+# Colors
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+YELLOW='\033[1;33m'
+NC='\033[0m'
 
 echo "======================================================================"
-echo "Sync Local Secrets to Streamlit Cloud"
+echo "Copy Secrets for Streamlit Cloud"
 echo "======================================================================"
 echo ""
 
 # Check if secrets.toml exists
 if [ ! -f ".streamlit/secrets.toml" ]; then
     echo -e "${RED}❌ Error: .streamlit/secrets.toml not found${NC}"
-    echo "   Make sure you're running this from the project root directory"
     exit 1
 fi
 
-echo -e "${BLUE}📂 Found local secrets file: .streamlit/secrets.toml${NC}"
-echo ""
 echo -e "${BLUE}📋 Copying secrets to clipboard...${NC}"
 echo ""
 
