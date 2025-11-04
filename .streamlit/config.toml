@@ -16,10 +16,12 @@ linkColor = "#3d3a2a"                       # Dark brown links
 borderColor = "#d3d2ca"                     # Light gray borders
 codeBackgroundColor = "#ecebe4"              # Pale gray code background
 
-# Typography
-font = "sans serif"                          # Main font (SpaceGrotesk with custom fonts)
-codeFont = "monospace"                       # Code font (SpaceMono with custom fonts)
-# codeFontSize = ".75rem"                    # Code font size
+# Typography - Using Nerd Fonts from Google Fonts CDN
+# JetBrains Mono Nerd Font for code - monospaced with ligatures and icons
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap, monospace"
+# Inter for main text - clean, highly readable
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap, sans-serif"
+codeFontSize = "0.875rem"                    # Code font size (14px)
 # headingFontWeights = [600,500,500,500,500,500]  # Heading weights (h1-h6)
 # headingFontSizes = ["3rem", "2rem"]        # Heading sizes (h1, h2)
 
@@ -145,6 +147,20 @@ level = "info"                               # Log level: "error", "warning", "i
 # # baseFontSize = "1rem"                    # Base font size
 # # baseFontWeight = 400                     # Base font weight
 # # codeFontWeight = 400                     # Code font weight
+# #
+# # Using Google Fonts (with fallback):
+# # font = "Roboto:https://fonts.googleapis.com/css2?family=Roboto, sans-serif"
+# # codeFont = "'Fira Code':https://fonts.googleapis.com/css2?family=Fira+Code, monospace"
+# #
+# # Popular Nerd Fonts from Google Fonts:
+# # - JetBrains Mono: Clean monospace with ligatures
+# # - Fira Code: Monospace with programming ligatures
+# # - Source Code Pro: Adobe's monospace font
+# # - IBM Plex Mono: IBM's monospace font
+# # - Inconsolata: Narrow monospace font
+# # - Inter: Modern sans-serif (highly readable)
+# # - Roboto: Google's sans-serif
+# # - Open Sans: Clean, neutral sans-serif
 
 # # Border & Shape Options
 # # dataframeBorderColor = "#d0d0d0"         # DataFrame borders
