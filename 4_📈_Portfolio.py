@@ -42,6 +42,23 @@ show_user_info()
 st.title("📈 Portfolio Management")
 st.markdown("Monitor your positions, performance, and risk metrics")
 
+# Add auto-refresh controls
+from autorefresh_config import add_refresh_controls, setup_autorefresh, show_refresh_indicator
+
+# Add refresh controls in sidebar
+enabled, interval, _ = add_refresh_controls("portfolio", default_enabled=False)  # Default off for portfolio
+
+# Setup auto-refresh if enabled
+refresh_count = 0
+if enabled:
+    refresh_count = setup_autorefresh(
+        interval=interval,
+        key="portfolio_refresh",
+        debounce=True
+    )
+    if refresh_count > 0:
+        show_refresh_indicator(refresh_count, "portfolio")
+
 # Check Alpaca configuration
 alpaca_api_key = os.getenv("ALPACA_API_KEY")
 alpaca_secret_key = os.getenv("ALPACA_SECRET_KEY")

@@ -90,6 +90,14 @@ class CommandPalette:
         )
 
         self.add_command(
+            "Admin",
+            lambda: st.switch_page("11_🔐_Admin.py"),
+            category="Navigation",
+            keywords=["admin", "analytics", "supabase", "system", "diagnostics"],
+            icon="🔐"
+        )
+
+        self.add_command(
             "Auth Test",
             lambda: st.switch_page("99_🧪_Auth_Test.py"),
             category="Navigation",

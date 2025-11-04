@@ -66,3 +66,9 @@ streamlit-hotkeys @ git+https://github.com/viktor-shcherb/streamlit-hotkeys.git
 # Subscription/Payment
 st-paywall>=1.0.1
 stripe>=11.0.0
+
+# Auto-refresh for live dashboards
+streamlit-autorefresh>=1.0.1
+
+# Analytics and monitoring
+streamlit-analytics>=0.5.0
