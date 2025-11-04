@@ -118,8 +118,26 @@ async def main():
         # Overall metrics
         print("Overall:")
         print("-" * 70)
-        total_imported = stages.get('publish', {}).get('metrics', {}).get('records_output', 0)
-        print(f"✓ Successfully imported {total_imported} trading disclosures")
+
+        # Get detailed stats from top-level summary (set by orchestrator)
+        summary = result.get('summary', {})
+        if summary:
+            new_count = summary.get('disclosures_inserted', 0)
+            updated_count = summary.get('disclosures_updated', 0)
+            skipped_count = summary.get('disclosures_skipped', 0)
+            total_imported = new_count + updated_count
+
+            print(f"✓ Successfully processed {total_imported} trading disclosures")
+            if new_count > 0:
+                print(f"  - {new_count} new disclosures")
+            if updated_count > 0:
+                print(f"  - {updated_count} updated disclosures")
+            if skipped_count > 0:
+                print(f"  - {skipped_count} skipped (duplicates)")
+        else:
+            # Fallback to metrics if summary not available
+            total_imported = stages.get('publishing', {}).get('metrics', {}).get('records_output', 0)
+            print(f"✓ Successfully processed {total_imported} trading disclosures")
         print()
 
         # Check for warnings
