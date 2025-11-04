@@ -75,6 +75,11 @@ pages = [
         icon="💳"
     ),
     st.Page(
+        "11_🔐_Admin.py",
+        title="Admin",
+        icon="🔐"
+    ),
+    st.Page(
         "99_🧪_Auth_Test.py",
         title="Auth Test",
         icon="🧪"

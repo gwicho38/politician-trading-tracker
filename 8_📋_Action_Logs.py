@@ -47,6 +47,23 @@ logger.info("Action Logs page loaded")
 st.title("📋 Action Logs")
 st.markdown("Monitor and analyze all system actions and their results")
 
+# Add auto-refresh controls
+from autorefresh_config import add_refresh_controls, setup_autorefresh, show_refresh_indicator
+
+# Add refresh controls in sidebar
+enabled, interval, _ = add_refresh_controls("action_logs", default_enabled=True)
+
+# Setup auto-refresh if enabled
+refresh_count = 0
+if enabled:
+    refresh_count = setup_autorefresh(
+        interval=interval,
+        key="action_logs_refresh",
+        debounce=True
+    )
+    if refresh_count > 0:
+        show_refresh_indicator(refresh_count, "action_logs")
+
 # Get action logger instance
 action_logger = get_action_logger()
 

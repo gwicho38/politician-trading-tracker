@@ -51,6 +51,23 @@ show_user_info()
 st.title("⏰ Scheduled Jobs Management")
 st.markdown("Manage automated data collection and maintenance jobs that run in the background.")
 
+# Add auto-refresh controls
+from autorefresh_config import add_refresh_controls, setup_autorefresh, show_refresh_indicator
+
+# Add refresh controls in sidebar
+enabled, interval, _ = add_refresh_controls("scheduled_jobs", default_enabled=True)
+
+# Setup auto-refresh if enabled
+refresh_count = 0
+if enabled:
+    refresh_count = setup_autorefresh(
+        interval=interval,
+        key="scheduled_jobs_refresh",
+        debounce=True
+    )
+    if refresh_count > 0:
+        show_refresh_indicator(refresh_count, "scheduled_jobs")
+
 # Get scheduler instance
 try:
     scheduler = get_scheduler()
