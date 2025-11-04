@@ -33,6 +33,7 @@ except ImportError:
 from politician_trading.config import SupabaseConfig
 from politician_trading.database.database import SupabaseClient
 from politician_trading.utils.logger import create_logger
+from politician_trading.utils.action_logger import start_action, complete_action, fail_action
 
 logger = create_logger("scheduler_manager")
 
@@ -351,9 +352,18 @@ class SchedulerManager:
             start_time = time.time()
             log_handler.logs.append(f"🚀 Starting job: {job_id}")
 
+            # Start action logging
+            action_id = start_action(
+                action_type="job_execution",
+                action_name=f"Scheduled Job: {job_id}",
+                source="scheduled_job",
+                job_id=job_id,
+                action_details={"scheduled": True}
+            )
+
             try:
                 # Execute the actual job function
-                logger.info(f"Executing job: {job_id}")
+                logger.info(f"Executing job: {job_id}", metadata={"action_id": action_id})
                 result = func()
 
                 duration = time.time() - start_time
@@ -364,7 +374,7 @@ class SchedulerManager:
                 root_logger.removeHandler(log_handler)
 
                 # Store execution with logs
-                self.job_history.add_execution(
+                execution = self.job_history.add_execution(
                     job_id=job_id,
                     status="success",
                     logs=logs,
@@ -374,6 +384,18 @@ class SchedulerManager:
                     timestamp=self.job_history.get_last_execution(job_id)["timestamp"],
                     duration_seconds=duration
                 )
+
+                # Complete action logging
+                if action_id:
+                    complete_action(
+                        action_id=action_id,
+                        result_message=f"Job completed successfully in {duration:.2f}s",
+                        action_details={
+                            "scheduled": True,
+                            "duration_seconds": duration,
+                            "db_execution_id": execution.get("db_id") if execution else None
+                        }
+                    )
 
                 return result
 
@@ -386,7 +408,7 @@ class SchedulerManager:
                 root_logger.removeHandler(log_handler)
 
                 # Store execution with logs
-                self.job_history.add_execution(
+                execution = self.job_history.add_execution(
                     job_id=job_id,
                     status="error",
                     error=str(e),
@@ -397,6 +419,18 @@ class SchedulerManager:
                     timestamp=self.job_history.get_last_execution(job_id)["timestamp"],
                     duration_seconds=duration
                 )
+
+                # Fail action logging
+                if action_id:
+                    fail_action(
+                        action_id=action_id,
+                        error_message=str(e),
+                        action_details={
+                            "scheduled": True,
+                            "duration_seconds": duration,
+                            "db_execution_id": execution.get("db_id") if execution else None
+                        }
+                    )
 
                 raise
 

@@ -17,8 +17,9 @@ if str(parent_dir) not in sys.path:
 if str(parent_dir / "src") not in sys.path:
     sys.path.insert(0, str(parent_dir / "src"))
 
-# Import logger
+# Import logger and action logger
 from politician_trading.utils.logger import create_logger
+from politician_trading.utils.action_logger import start_action, complete_action, fail_action
 logger = create_logger("data_collection_page")
 
 # Import utilities
@@ -117,7 +118,28 @@ if tab == 'Data Sources':
 
     with col1:
         if st.button("🚀 Start Collection", disabled=st.session_state.collection_running, width="stretch"):
+            # Log action start
+            user_id = st.session_state.get("user_email", "unknown")
+            action_id = start_action(
+                action_type="data_collection_start",
+                action_name="Manual Data Collection",
+                source="ui_button",
+                user_id=user_id,
+                action_details={
+                    "us_congress": us_congress,
+                    "uk_parliament": uk_parliament,
+                    "eu_parliament": eu_parliament,
+                    "california": california,
+                    "texas": texas,
+                    "new_york": new_york,
+                    "lookback_days": lookback_days,
+                    "max_retries": max_retries
+                }
+            )
+            st.session_state.action_id = action_id
+
             logger.info("Start Collection button clicked", metadata={
+                "action_id": action_id,
                 "us_congress": us_congress,
                 "uk_parliament": uk_parliament,
                 "eu_parliament": eu_parliament,
@@ -245,6 +267,21 @@ if tab == 'Data Sources':
                     "job_count": len(results.get("jobs", {}))
                 })
 
+                # Complete action logging
+                action_id = st.session_state.get("action_id")
+                if action_id:
+                    summary = results.get("summary", {})
+                    complete_action(
+                        action_id=action_id,
+                        result_message=f"Collected {summary.get('total_new_disclosures', 0)} new disclosures and updated {summary.get('total_updated_disclosures', 0)} records",
+                        action_details={
+                            "new_disclosures": summary.get("total_new_disclosures", 0),
+                            "updated_disclosures": summary.get("total_updated_disclosures", 0),
+                            "jobs_completed": len([j for j in results.get("jobs", {}).values() if j.get("status") == "completed"]),
+                            "total_jobs": len(results.get("jobs", {}))
+                        }
+                    )
+
                 progress_bar.progress(90)
                 add_log("✅ Data collection completed!")
                 add_log("📊 Processing results...")
@@ -349,6 +386,18 @@ if tab == 'Data Sources':
                     "traceback": error_details
                 })
 
+                # Fail action logging
+                action_id = st.session_state.get("action_id")
+                if action_id:
+                    fail_action(
+                        action_id=action_id,
+                        error_message=str(e),
+                        action_details={
+                            "error_type": type(e).__name__,
+                            "traceback_preview": error_details[:500]
+                        }
+                    )
+
                 progress_bar.progress(100)
                 status_badge.error("❌ Failed")
                 add_log(f"❌ Collection failed: {str(e)}")
@@ -390,7 +439,16 @@ elif tab == 'View Data' or tab == 'Statistics':
     col1, col2 = st.columns([3, 1])
     with col2:
         if st.button("🔄 Backfill Missing Tickers", help="Extract and populate missing ticker symbols from asset names"):
-            logger.info("Backfill Missing Tickers button clicked")
+            # Start action logging
+            user_id = st.session_state.get("user_email", "unknown")
+            backfill_action_id = start_action(
+                action_type="ticker_backfill",
+                action_name="Backfill Missing Tickers",
+                source="ui_button",
+                user_id=user_id
+            )
+
+            logger.info("Backfill Missing Tickers button clicked", metadata={"action_id": backfill_action_id})
             with st.spinner("Backfilling tickers..."):
                 try:
                     from politician_trading.database.database import SupabaseClient
@@ -456,6 +514,18 @@ elif tab == 'View Data' or tab == 'Statistics':
                             "no_ticker_found": no_ticker
                         })
 
+                        # Complete action logging
+                        if backfill_action_id:
+                            complete_action(
+                                action_id=backfill_action_id,
+                                result_message=f"Backfilled {updated} tickers, {no_ticker} not found",
+                                action_details={
+                                    "total_processed": len(all_missing),
+                                    "updated": updated,
+                                    "no_ticker_found": no_ticker
+                                }
+                            )
+
                         st.success(f"""
                         ✅ Backfill complete!
                         - Updated: {updated}
@@ -465,6 +535,14 @@ elif tab == 'View Data' or tab == 'Statistics':
 
                 except Exception as e:
                     logger.error("Ticker backfill failed", error=e)
+
+                    # Fail action logging
+                    if backfill_action_id:
+                        fail_action(
+                            action_id=backfill_action_id,
+                            error_message=str(e)
+                        )
+
                     st.error(f"Backfill failed: {str(e)}")
 
     try:

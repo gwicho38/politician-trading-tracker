@@ -58,7 +58,9 @@
       "WebFetch(domain:nicedouble-streamlitantdcomponentsdemo-app-middmy.streamlit.app)",
       "WebSearch",
       "WebFetch(domain:github.com)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(PYTHONPATH=/Users/lefv/repos/politician-trading-tracker/src:$PYTHONPATH python -m pytest:*)",
+      "Bash(/Users/lefv/.pyenv/shims/python:*)"
     ],
     "deny": [],
     "ask": []

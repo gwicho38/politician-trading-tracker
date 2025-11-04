@@ -1,4 +1,11 @@
+
+# Comprehensive Streamlit configuration file with many commonly-used
+# options. Values below are examples and safe defaults; uncomment or
+# change values as needed for your deployment.
+
 [theme]
+# Visual theme options. `base` can be "light" or "dark".
+base = "light"
 primaryColor = "#1f77b4"
 backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#f0f2f6"
@@ -6,14 +13,73 @@ textColor = "#262730"
 font = "sans serif"
 
 [server]
+# Server and networking options
 headless = true
 port = 8501
+serverAddress = "0.0.0.0"
 enableCORS = false
-enableXsrfProtection = true
+enableXsrfProtection = false
+enableWebsocketCompression = true
+enableStaticServing = true
+# Maximum upload size in megabytes
+maxUploadSize = 200
+# File watcher type: "auto", "poll", or "none"
+fileWatcherType = "auto"
 
 [browser]
+# Browser-related options
 gatherUsageStats = false
+# Optional: override server address/port Streamlit tells the browser to use
+serverAddress = "localhost"
+serverPort = 8501
 
 [runner]
+# Script execution / hot-reload settings
 magicEnabled = true
 fastReruns = true
+installTracer = false
+
+[mapbox]
+# Mapbox token (if using st.map with Mapbox tiles)
+token = ""
+
+[logger]
+# Logging options
+level = "info"
+# Optional path to log file. If empty, logs go to stdout.
+file = ""
+
+[client]
+# Client-side settings
+# Maximum websocket message size in bytes (adjust for large objects)
+maxMessageSize = 2097152
+
+[global]
+# Global development-time options
+developmentMode = false
+
+[telemetry]
+# Telemetry/usage reporting
+enabled = false
+
+# ===== Additional optional sections (commented examples) =====
+# These are provided as examples; uncomment and modify as needed.
+#
+## Cloud / sharing related options
+#[cloud]
+## runOnSave = false
+## allowUnauthenticated = false
+#
+## Advanced server tuning
+#[server]
+## websocketCompressionLevel = 6
+## baseUrlPath = ""
+#
+## Editor preferences (if used by custom tooling)
+#[editor]
+## theme = "light"
+#
+## Experimental / advanced
+#[experimental]
+## allowRunOnSave = false
+#
