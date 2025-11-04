@@ -42,9 +42,8 @@ from auth_utils import require_authentication, show_user_info
 require_authentication()
 show_user_info()
 
-# Initialize shopping cart
-from shopping_cart import render_shopping_cart, ShoppingCart
-render_shopping_cart()
+# Import shopping cart for cart operations (rendering happens in app.py)
+from shopping_cart import ShoppingCart
 
 logger.info("Trading Operations page loaded")
 
