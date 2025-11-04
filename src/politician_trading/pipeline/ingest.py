@@ -83,7 +83,8 @@ class IngestionStage(PipelineStage[RawDisclosure]):
 
             # Fetch data from source
             self.logger.info(f"Fetching data with {self.lookback_days} day lookback")
-            raw_data = await source.fetch(lookback_days=self.lookback_days)
+            # Pass config as kwargs to source (e.g., api_key for QuiverQuant)
+            raw_data = await source.fetch(lookback_days=self.lookback_days, **context.config)
 
             self.logger.info(f"Fetched {len(raw_data)} raw records from {context.source_name}")
             metrics.records_input = len(raw_data)

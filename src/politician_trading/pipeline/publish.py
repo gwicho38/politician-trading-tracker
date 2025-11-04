@@ -266,7 +266,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
                 "role": disclosure.politician_role,
                 "party": disclosure.politician_party,
                 "state_or_country": disclosure.politician_state,
-                "source": disclosure.source
+                # Note: 'source' field removed - not in politicians table schema
             }
 
             response = db_client.table("politicians").insert(politician_data).execute()
@@ -323,7 +323,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
                 "amount_range_min": disclosure.amount_range_min,
                 "amount_range_max": disclosure.amount_range_max,
                 "amount_exact": disclosure.amount_exact,
-                "source": disclosure.source,
+                # Note: 'source' field removed - not in trading_disclosures table schema
                 "source_url": disclosure.source_url,
                 "source_document_id": disclosure.source_document_id,
                 "raw_data": disclosure.raw_data,
