@@ -142,10 +142,13 @@ class AuthenticationManager:
             if session_id in st.session_state.auth_sessions:
                 st.session_state.auth_sessions[session_id]['last_activity'] = datetime.now()
 
-    def require_authentication(self):
+    def require_authentication(self) -> Optional[str]:
         """
         Require authentication to access the page.
         Enhanced version with session management and logging.
+
+        Returns:
+            Optional[str]: User email if authenticated, None if stopped
         """
         # Clean up expired sessions
         self._cleanup_expired_sessions()
@@ -205,6 +208,9 @@ class AuthenticationManager:
 
         # Update activity timestamp
         self._update_session_activity()
+
+        # Return user email for convenience
+        return user_email
 
     def show_user_info(self):
         """
@@ -312,13 +318,16 @@ def get_auth_manager(
 
 
 # Convenience functions compatible with existing code
-def require_authentication():
+def require_authentication() -> Optional[str]:
     """
     Require authentication to access the page.
     Drop-in replacement for the basic version.
+
+    Returns:
+        Optional[str]: User email if authenticated
     """
     auth_manager = get_auth_manager()
-    auth_manager.require_authentication()
+    return auth_manager.require_authentication()
 
 
 def show_user_info():
