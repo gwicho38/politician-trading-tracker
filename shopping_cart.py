@@ -148,44 +148,69 @@ class ShoppingCart:
         st.session_state[cls.SESSION_KEY]["collapsed"] = not st.session_state[cls.SESSION_KEY]["collapsed"]
 
 
-def render_shopping_cart():
+def render_shopping_cart_sidebar():
     """
-    Render the shopping cart in the sidebar.
-
-    This should be called from the main app or individual pages.
+    Render a compact shopping cart indicator in the regular sidebar.
+    The full cart can be accessed via a popover or separate page.
     """
     ShoppingCart.initialize()
 
-    # Cart header with toggle
-    col1, col2, col3 = st.sidebar.columns([1, 2, 1])
+    item_count = ShoppingCart.get_item_count()
 
-    with col1:
-        item_count = ShoppingCart.get_item_count()
-        if item_count > 0:
-            st.markdown(f"**🛒 ({item_count})**")
-        else:
-            st.markdown("**🛒**")
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🛒 Trading Cart")
 
-    with col2:
-        st.markdown("**Trading Cart**")
+    if item_count > 0:
+        st.sidebar.success(f"**{item_count} items** in cart")
 
-    with col3:
-        if st.button("⬍" if not ShoppingCart.is_collapsed() else "⬎", key="toggle_cart"):
-            ShoppingCart.toggle_collapsed()
-
-    # Show cart contents if not collapsed
-    if not ShoppingCart.is_collapsed():
+        # Show quick summary
         items = ShoppingCart.get_items()
+        for item in items[:3]:  # Show first 3 items
+            st.sidebar.caption(f"• {item['ticker']} ({item['quantity']})")
 
-        if not items:
-            st.sidebar.info("Cart is empty. Add signals to get started!")
-            return
+        if item_count > 3:
+            st.sidebar.caption(f"... and {item_count - 3} more")
 
-        # Display each item
-        for item in items:
-            with st.sidebar.container():
+        # Quick action buttons
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            if st.button("🚀 Execute", key="sidebar_execute", use_container_width=True):
+                st.switch_page("3_💼_Trading_Operations.py")
+        with col2:
+            if st.button("🗑️ Clear", key="sidebar_clear", use_container_width=True):
+                ShoppingCart.clear()
+                st.rerun()
+    else:
+        st.sidebar.info("Cart is empty")
+
+
+def render_shopping_cart():
+    """
+    Render the full shopping cart experience.
+    This can be called on specific pages or in a dedicated cart view.
+    """
+    ShoppingCart.initialize()
+
+    st.markdown("## 🛒 Shopping Cart")
+
+    items = ShoppingCart.get_items()
+
+    if not items:
+        st.info("Your cart is empty. Add signals from the Trading Signals page to get started!")
+        return
+
+    st.success(f"You have **{len(items)}** items in your cart")
+
+    # Display each item
+    for item in items:
+        with st.container():
+            col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+
+            with col1:
                 st.markdown(f"### {item['ticker']}")
+                st.caption(item['asset_name'])
 
+            with col2:
                 # Signal type badge
                 signal_type = item["signal_type"]
                 signal_color = {
@@ -197,10 +222,10 @@ def render_shopping_cart():
                 }.get(signal_type, "⚪")
 
                 st.markdown(f"{signal_color} **{signal_type.upper().replace('_', ' ')}**")
-
                 if item.get("confidence_score"):
-                    st.markdown(f"*Confidence: {item['confidence_score']:.1%}*")
+                    st.caption(f"Confidence: {item['confidence_score']:.1%}")
 
+            with col3:
                 # Quantity input
                 new_quantity = st.number_input(
                     "Quantity",
@@ -213,32 +238,38 @@ def render_shopping_cart():
                     ShoppingCart.update_quantity(item["ticker"], new_quantity)
                     st.rerun()
 
-                # Price targets if available
-                if item.get("target_price"):
-                    st.markdown(f"🎯 Target: ${item['target_price']:.2f}")
-                if item.get("stop_loss"):
-                    st.markdown(f"🛑 Stop Loss: ${item['stop_loss']:.2f}")
-
+            with col4:
                 # Remove button
-                if st.button("🗑️ Remove", key=f"remove_{item['ticker']}"):
+                if st.button("🗑️", key=f"remove_{item['ticker']}", help="Remove from cart"):
                     ShoppingCart.remove_item(item["ticker"])
                     st.rerun()
 
-                st.markdown("---")
+            # Price targets if available
+            if item.get("target_price") or item.get("stop_loss") or item.get("take_profit"):
+                with st.expander("📊 Price Targets"):
+                    col1, col2, col3 = st.columns(3)
+                    if item.get("target_price"):
+                        col1.metric("Target", f"${item['target_price']:.2f}")
+                    if item.get("stop_loss"):
+                        col2.metric("Stop Loss", f"${item['stop_loss']:.2f}")
+                    if item.get("take_profit"):
+                        col3.metric("Take Profit", f"${item['take_profit']:.2f}")
 
-        # Execute all button
-        st.sidebar.markdown("### Execute Trades")
+            st.divider()
 
-        col1, col2 = st.sidebar.columns(2)
+    # Action buttons
+    st.markdown("### Actions")
+    col1, col2 = st.columns(2)
 
-        with col1:
-            if st.button("✅ Execute All", key="execute_all", use_container_width=True):
-                st.session_state["execute_cart"] = True
+    with col1:
+        if st.button("✅ Execute All Trades", key="execute_all", use_container_width=True, type="primary"):
+            st.session_state["execute_cart"] = True
+            st.switch_page("3_💼_Trading_Operations.py")
 
-        with col2:
-            if st.button("🗑️ Clear", key="clear_cart", use_container_width=True):
-                ShoppingCart.clear()
-                st.rerun()
+    with col2:
+        if st.button("🗑️ Clear Cart", key="clear_cart", use_container_width=True):
+            ShoppingCart.clear()
+            st.rerun()
 
 
 def add_to_cart_button(

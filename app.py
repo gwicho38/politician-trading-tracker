@@ -11,7 +11,7 @@ from sidebar_config import apply_sidebar_styling
 from analytics_wrapper import safe_track, ANALYTICS_AVAILABLE
 
 # Initialize shopping cart
-from shopping_cart import render_shopping_cart
+from shopping_cart import render_shopping_cart_sidebar
 
 # Page configuration
 st.set_page_config(
@@ -66,6 +66,11 @@ pages = [
         icon="⚙️"
     ),
     st.Page(
+        "9_🛒_Cart.py",
+        title="Shopping Cart",
+        icon="🛒"
+    ),
+    st.Page(
         "7_🔧_Database_Setup.py",
         title="Database Setup",
         icon="🔧"
@@ -92,8 +97,8 @@ pages = [
     ),
 ]
 
-# Render shopping cart in sidebar
-render_shopping_cart()
+# Render shopping cart indicator in sidebar
+render_shopping_cart_sidebar()
 
 # Create navigation and run
 page = st.navigation(pages)
