@@ -8,6 +8,7 @@ for PDF disclosures and marks them with a special status.
 
 import sys
 import os
+import argparse
 from pathlib import Path
 
 # Add src to path
@@ -19,6 +20,11 @@ from politician_trading.config import SupabaseConfig
 
 def main():
     """Mark PDF records for reprocessing"""
+
+    parser = argparse.ArgumentParser(description='Mark PDF-only records for reprocessing')
+    parser.add_argument('--yes', '-y', action='store_true', help='Skip confirmation prompt')
+    parser.add_argument('--limit', type=int, help='Limit number of records to process')
+    args = parser.parse_args()
 
     print("=" * 60)
     print("Marking PDF-only Records for Reprocessing")
@@ -58,12 +64,21 @@ def main():
         print(f"  Asset: {record.get('asset_name', '')[:50]}...")
         print()
 
-    # Ask for confirmation
-    response = input(f"\nMark these {len(pdf_records)} records as 'needs_pdf_parsing'? (y/n): ")
+    # Apply limit if specified
+    if args.limit and args.limit < len(pdf_records):
+        print(f"\nLimiting to {args.limit} records (--limit flag)")
+        pdf_records = pdf_records[:args.limit]
 
-    if response.lower() != 'y':
-        print("Cancelled")
-        return 0
+    # Ask for confirmation unless --yes flag is set
+    if not args.yes:
+        try:
+            response = input(f"\nMark these {len(pdf_records)} records as 'needs_pdf_parsing'? (y/n): ")
+            if response.lower() != 'y':
+                print("Cancelled")
+                return 0
+        except EOFError:
+            print("\n\nNon-interactive mode detected. Use --yes flag to proceed automatically.")
+            return 1
 
     # Update records
     print("\nUpdating records...")
