@@ -125,19 +125,23 @@ class CommandPalette:
             "icon": icon
         })
 
+    @st.dialog("⌨️ Keyboard Shortcuts")
     def _show_shortcuts(self):
-        """Display keyboard shortcuts info"""
-        st.info("""
-        **Keyboard Shortcuts:**
-        - **CMD/CTRL + K**: Open command palette
-        - **D**: Data Collection
-        - **T**: Trading Signals
-        - **O**: Trading Operations
-        - **P**: Portfolio
-        - **J**: Scheduled Jobs
-        - **S**: Settings
-        - **L**: Action Logs
-        - **A**: Auth Test
+        """Display keyboard shortcuts info in a modal"""
+        st.markdown("""
+        ### Navigation
+        - **CMD/CTRL + K** — Open command palette
+        - **?** (Shift + /) — Show this help
+
+        ### Pages
+        - **D** — Data Collection
+        - **T** — Trading Signals
+        - **O** — Trading Operations
+        - **P** — Portfolio
+        - **J** — Scheduled Jobs
+        - **S** — Settings
+        - **L** — Action Logs
+        - **A** — Auth Test
         """)
 
     def search(self, query: str) -> List[Dict]:
@@ -181,19 +185,19 @@ class CommandPalette:
         <style>
         /* Grid container for icons */
         div[data-testid="column"] {
-            padding: 0.25rem !important;
+            padding: 0.2rem !important;
         }
 
         /* Make buttons look like app icons */
         .stButton > button {
-            height: 70px !important;
-            padding: 0.4rem !important;
+            height: 60px !important;
+            padding: 0.35rem !important;
             display: flex !important;
             flex-direction: column !important;
             align-items: center !important;
             justify-content: center !important;
-            gap: 0.2rem !important;
-            border-radius: 0.875rem !important;
+            gap: 0.15rem !important;
+            border-radius: 0.75rem !important;
             background: var(--secondary-background-color) !important;
             border: none !important;
             transition: all 0.2s ease !important;
@@ -207,18 +211,18 @@ class CommandPalette:
 
         /* Icon styling */
         .stButton > button p {
-            font-size: 1.5rem !important;
+            font-size: 1.25rem !important;
             margin: 0 !important;
             line-height: 1 !important;
         }
 
         /* Label styling */
         .stButton > button div {
-            font-size: 0.65rem !important;
+            font-size: 0.6rem !important;
             font-weight: 500 !important;
             text-align: center !important;
-            line-height: 1.1 !important;
-            margin-top: 0.1rem !important;
+            line-height: 1.05 !important;
+            margin-top: 0.05rem !important;
         }
 
         /* Search input styling */
@@ -237,19 +241,24 @@ class CommandPalette:
 
         /* Category headers */
         .category-header {
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.05em;
             color: var(--text-color);
             opacity: 0.6;
-            margin: 1.5rem 0 0.75rem 0.5rem;
+            margin: 1rem 0 0.5rem 0.5rem;
         }
 
-        /* Scrollable content */
+        /* Hide scrollbars */
         div[data-testid="stVerticalBlock"] > div {
-            max-height: 60vh;
-            overflow-y: auto;
+            max-height: 65vh;
+            overflow: hidden !important;
+        }
+
+        /* Ensure modal content doesn't overflow */
+        [data-testid="stDialog"] {
+            max-height: 90vh !important;
         }
         </style>
         """, unsafe_allow_html=True)
