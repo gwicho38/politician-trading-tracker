@@ -1,6 +1,6 @@
 """
 Command Palette for Politician Trading Tracker
-Provides CMD+K / CTRL+K searchable interface for all app features
+Provides CMD+K / CTRL+K searchable modal interface for all app features
 """
 import streamlit as st
 from typing import List, Dict, Callable, Optional
@@ -179,97 +179,214 @@ class CommandPalette:
         return [r["command"] for r in results]
 
     def render(self):
-        """Render the command palette UI"""
+        """Render the command palette as a modal overlay"""
 
         # Initialize session state for palette
         if "palette_open" not in st.session_state:
             st.session_state.palette_open = False
         if "palette_query" not in st.session_state:
             st.session_state.palette_query = ""
-        if "palette_selected" not in st.session_state:
-            st.session_state.palette_selected = None
 
         # Only show if palette is open
         if st.session_state.palette_open:
-            # Create modal-like container
-            with st.container():
-                st.markdown("""
-                <style>
-                .command-palette {
-                    position: fixed;
-                    top: 20%;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    z-index: 9999;
-                    background: var(--background-color);
-                    border: 2px solid var(--primary-color);
-                    border-radius: 0.75rem;
-                    padding: 1rem;
-                    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-                    width: 600px;
-                    max-width: 90vw;
+            # Inject CSS for modal overlay
+            st.markdown("""
+            <style>
+            /* Full-screen backdrop overlay */
+            .command-palette-backdrop {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.6);
+                backdrop-filter: blur(4px);
+                z-index: 999999;
+                animation: fadeIn 0.2s ease-in-out;
+            }
+
+            /* Modal container */
+            .command-palette-modal {
+                position: fixed;
+                top: 15vh;
+                left: 50%;
+                transform: translateX(-50%);
+                z-index: 1000000;
+                background: var(--background-color);
+                border: 2px solid var(--primary-color);
+                border-radius: 1rem;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+                width: 640px;
+                max-width: 90vw;
+                max-height: 70vh;
+                overflow: hidden;
+                animation: slideDown 0.2s ease-out;
+            }
+
+            /* Modal header */
+            .command-palette-header {
+                padding: 1.25rem 1.5rem 1rem 1.5rem;
+                border-bottom: 1px solid var(--border-color);
+                background: var(--secondary-background-color);
+            }
+
+            /* Modal content */
+            .command-palette-content {
+                padding: 1rem 1.5rem;
+                max-height: 50vh;
+                overflow-y: auto;
+            }
+
+            /* Modal footer */
+            .command-palette-footer {
+                padding: 1rem 1.5rem;
+                border-top: 1px solid var(--border-color);
+                background: var(--secondary-background-color);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            /* Animations */
+            @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+
+            @keyframes slideDown {
+                from {
+                    opacity: 0;
+                    transform: translateX(-50%) translateY(-20px);
                 }
-                </style>
-                """, unsafe_allow_html=True)
+                to {
+                    opacity: 1;
+                    transform: translateX(-50%) translateY(0);
+                }
+            }
 
-                st.markdown("### 🔍 Command Palette")
-                st.caption("Search for pages and actions")
+            /* Command items */
+            .command-item {
+                padding: 0.75rem;
+                margin: 0.5rem 0;
+                border-radius: 0.5rem;
+                cursor: pointer;
+                transition: background 0.15s ease;
+            }
 
-                # Search input
-                query = st.text_input(
-                    "Search",
-                    value=st.session_state.palette_query,
-                    placeholder="Type to search...",
-                    key="palette_search_input",
-                    label_visibility="collapsed"
-                )
-                st.session_state.palette_query = query
+            .command-item:hover {
+                background: var(--secondary-background-color);
+            }
 
-                # Search results
-                results = self.search(query)
+            /* Category headers */
+            .command-category {
+                font-weight: 600;
+                font-size: 0.875rem;
+                color: var(--text-color);
+                opacity: 0.7;
+                margin-top: 1rem;
+                margin-bottom: 0.5rem;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
 
-                if results:
-                    st.markdown("---")
+            /* Scrollbar styling */
+            .command-palette-content::-webkit-scrollbar {
+                width: 8px;
+            }
 
-                    # Group by category
-                    categories = {}
-                    for cmd in results[:10]:  # Limit to top 10 results
-                        cat = cmd["category"]
-                        if cat not in categories:
-                            categories[cat] = []
-                        categories[cat].append(cmd)
+            .command-palette-content::-webkit-scrollbar-track {
+                background: var(--background-color);
+            }
 
-                    # Display results by category
-                    for category, commands in categories.items():
-                        st.markdown(f"**{category}**")
+            .command-palette-content::-webkit-scrollbar-thumb {
+                background: var(--border-color);
+                border-radius: 4px;
+            }
 
-                        for cmd in commands:
-                            col1, col2 = st.columns([0.9, 0.1])
+            .command-palette-content::-webkit-scrollbar-thumb:hover {
+                background: var(--primary-color);
+            }
+            </style>
+            """, unsafe_allow_html=True)
 
-                            with col1:
-                                if st.button(
-                                    f"{cmd['icon']} {cmd['name']}",
-                                    key=f"cmd_{cmd['name']}",
-                                    use_container_width=True
-                                ):
-                                    # Execute command
-                                    st.session_state.palette_open = False
-                                    st.session_state.palette_query = ""
-                                    try:
-                                        cmd["action"]()
-                                    except Exception as e:
-                                        st.error(f"Error executing command: {e}")
-                                    st.rerun()
+            # Create backdrop
+            st.markdown('<div class="command-palette-backdrop"></div>', unsafe_allow_html=True)
 
-                        st.markdown("")
-                else:
-                    st.info("No matching commands found")
+            # Create modal using container
+            st.markdown('<div class="command-palette-modal">', unsafe_allow_html=True)
 
-                # Close button
-                if st.button("✕ Close", use_container_width=True):
+            # Modal header
+            st.markdown('<div class="command-palette-header">', unsafe_allow_html=True)
+            st.markdown("### 🔍 Command Palette")
+            st.caption("Search for pages, actions, and features")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            # Modal content
+            st.markdown('<div class="command-palette-content">', unsafe_allow_html=True)
+
+            # Search input
+            query = st.text_input(
+                "Search",
+                value=st.session_state.palette_query,
+                placeholder="Type to search commands...",
+                key="palette_search_input",
+                label_visibility="collapsed"
+            )
+            st.session_state.palette_query = query
+
+            # Search results
+            results = self.search(query)
+
+            if results:
+                # Group by category
+                categories = {}
+                for cmd in results[:10]:  # Limit to top 10 results
+                    cat = cmd["category"]
+                    if cat not in categories:
+                        categories[cat] = []
+                    categories[cat].append(cmd)
+
+                # Display results by category
+                for category, commands in categories.items():
+                    st.markdown(f'<div class="command-category">{category}</div>', unsafe_allow_html=True)
+
+                    for cmd in commands:
+                        # Create button for each command
+                        if st.button(
+                            f"{cmd['icon']}  {cmd['name']}",
+                            key=f"cmd_{cmd['name']}",
+                            use_container_width=True,
+                            type="secondary"
+                        ):
+                            # Execute command
+                            st.session_state.palette_open = False
+                            st.session_state.palette_query = ""
+                            try:
+                                cmd["action"]()
+                            except Exception as e:
+                                st.error(f"Error executing command: {e}")
+                            st.rerun()
+            else:
+                st.info("No matching commands found. Try different keywords.")
+
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            # Modal footer
+            st.markdown('<div class="command-palette-footer">', unsafe_allow_html=True)
+
+            col1, col2 = st.columns([0.7, 0.3])
+
+            with col1:
+                st.caption("💡 Tip: Press **CMD/CTRL + K** to toggle")
+
+            with col2:
+                if st.button("✕ Close", use_container_width=True, type="primary"):
                     st.session_state.palette_open = False
                     st.session_state.palette_query = ""
                     st.rerun()
+
+            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
 
 # Global command palette instance
