@@ -1,85 +1,174 @@
+# =============================================================================
+# Streamlit Configuration File
+# Complete reference: https://docs.streamlit.io/develop/api-reference/configuration/config.toml
+# =============================================================================
 
-# Comprehensive Streamlit configuration file with many commonly-used
-# options. Values below are examples and safe defaults; uncomment or
-# change values as needed for your deployment.
-
+# =============================================================================
+# THEME - Anthropic Light Inspired Theme
+# =============================================================================
 [theme]
-# Visual theme options. `base` can be "light" or "dark".
-base = "light"
-primaryColor = "#1f77b4"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f0f2f6"
-textColor = "#262730"
-font = "sans serif"
+# Core Colors
+primaryColor = "#cb785c"                    # Terracotta accent color
+backgroundColor = "#fdfdf8"                  # Off-white main background
+secondaryBackgroundColor = "#ecebe3"         # Light gray secondary background
+textColor = "#3d3a2a"                       # Dark brown text
+linkColor = "#3d3a2a"                       # Dark brown links
+borderColor = "#d3d2ca"                     # Light gray borders
+codeBackgroundColor = "#ecebe4"              # Pale gray code background
 
-[server]
-# Server and networking options
-headless = true
-port = 8501
-serverAddress = "0.0.0.0"
-enableCORS = false
-enableXsrfProtection = false
-enableWebsocketCompression = true
-enableStaticServing = true
-# Maximum upload size in megabytes
-maxUploadSize = 200
-# File watcher type: "auto", "poll", or "none"
-fileWatcherType = "auto"
+# Typography
+font = "sans serif"                          # Main font (SpaceGrotesk with custom fonts)
+codeFont = "monospace"                       # Code font (SpaceMono with custom fonts)
+# codeFontSize = ".75rem"                    # Code font size
+# headingFontWeights = [600,500,500,500,500,500]  # Heading weights (h1-h6)
+# headingFontSizes = ["3rem", "2rem"]        # Heading sizes (h1, h2)
 
-[browser]
-# Browser-related options
-gatherUsageStats = false
-# Optional: override server address/port Streamlit tells the browser to use
-serverAddress = "localhost"
-serverPort = 8501
+# Widget Styling
+showWidgetBorder = true                      # Show borders around widgets
+baseRadius = "0.75rem"                       # Base corner radius
+buttonRadius = "full"                        # Button corner radius (circular)
 
-[runner]
-# Script execution / hot-reload settings
-magicEnabled = true
-fastReruns = true
-installTracer = false
+# Sidebar
+showSidebarBorder = true                     # Show sidebar border
+chartCategoricalColors = ["#0ea5e9", "#059669", "#fbbf24"]  # Chart colors (sky blue, emerald, amber)
 
-[mapbox]
-# Mapbox token (if using st.map with Mapbox tiles)
-token = ""
+# Sidebar Overrides
+[theme.sidebar]
+backgroundColor = "#f0f0ec"                  # Sidebar background
+secondaryBackgroundColor = "#ecebe3"         # Sidebar secondary background
+# headingFontSizes = ["1.6rem", "1.4rem", "1.2rem"]  # Sidebar heading sizes
+# dataframeHeaderBackgroundColor = "#e4e4e0" # DataFrame header in sidebar
 
-[logger]
-# Logging options
-level = "info"
-# Optional path to log file. If empty, logs go to stdout.
-file = ""
+# =============================================================================
+# COMMENTED OUT OPTIONS - Uncomment and modify as needed
+# =============================================================================
 
-[client]
-# Client-side settings
-# Maximum websocket message size in bytes (adjust for large objects)
-maxMessageSize = 2097152
-
+# -----------------------------------------------------------------------------
+# GLOBAL SETTINGS
+# -----------------------------------------------------------------------------
 [global]
-# Global development-time options
 developmentMode = false
 
-[telemetry]
-# Telemetry/usage reporting
-enabled = false
+# # Disable widget state duplication warning
+# disableWidgetStateDuplicationWarning = false
+#
+# # Show warning when running script directly with python
+# showWarningOnDirectExecution = true
 
-# ===== Additional optional sections (commented examples) =====
-# These are provided as examples; uncomment and modify as needed.
-#
-## Cloud / sharing related options
-#[cloud]
-## runOnSave = false
-## allowUnauthenticated = false
-#
-## Advanced server tuning
-#[server]
-## websocketCompressionLevel = 6
-## baseUrlPath = ""
-#
-## Editor preferences (if used by custom tooling)
-#[editor]
-## theme = "light"
-#
-## Experimental / advanced
-#[experimental]
-## allowRunOnSave = false
-#
+# -----------------------------------------------------------------------------
+# SERVER CONFIGURATION
+# -----------------------------------------------------------------------------
+[server]
+headless = true                              # Don't open browser automatically
+port = 8501                                  # Server port
+enableCORS = false                           # Cross-Origin Resource Sharing
+enableXsrfProtection = false                 # XSRF protection
+enableWebsocketCompression = true            # WebSocket compression
+enableStaticServing = false                  # Serve static files from /static
+maxUploadSize = 200                          # Max upload size in MB
+fileWatcherType = "auto"                     # File watcher: "auto", "poll", "none"
+
+# # Additional server options (uncomment as needed):
+# # folderWatchList = []                     # Additional folders to watch
+# # folderWatchBlacklist = []                # Folders to exclude from watching
+# # cookieSecret = "your-secret-key"         # Secret for signed cookies
+# # showEmailPrompt = true                   # Prompt for email on first run
+# # runOnSave = false                        # Auto-rerun on file changes
+# # address = "localhost"                    # Server binding address
+# # baseUrlPath = ""                         # Base URL path for serving
+# # corsAllowedOrigins = []                  # Allowed CORS origins
+# # maxMessageSize = 200                     # Max WebSocket message size (MB)
+# # websocketPingInterval = 30               # WebSocket ping interval (seconds)
+# # disconnectedSessionTTL = 120             # Session cleanup duration (seconds)
+# # sslCertFile = "/path/to/cert.pem"       # HTTPS certificate path
+# # sslKeyFile = "/path/to/key.pem"         # HTTPS key path
+
+# -----------------------------------------------------------------------------
+# BROWSER SETTINGS
+# -----------------------------------------------------------------------------
+[browser]
+gatherUsageStats = false                     # Don't send usage stats
+serverAddress = "localhost"                  # Server address shown to browser
+serverPort = 8501                            # Server port shown to browser
+
+# -----------------------------------------------------------------------------
+# RUNNER SETTINGS
+# -----------------------------------------------------------------------------
+[runner]
+magicEnabled = true                          # Allow magic commands (variable display)
+fastReruns = true                            # Fast reruns for better UX
+
+# # Additional runner options:
+# # enforceSerializableSessionState = false  # Require serializable session state
+# # enumCoercion = "nameOnly"                # Enum handling: "off", "nameOnly", "nameAndValue"
+
+# -----------------------------------------------------------------------------
+# LOGGER SETTINGS
+# -----------------------------------------------------------------------------
+[logger]
+level = "info"                               # Log level: "error", "warning", "info", "debug"
+# messageFormat = "%(asctime)s %(message)s"  # Log message format
+
+# -----------------------------------------------------------------------------
+# CLIENT SETTINGS
+# -----------------------------------------------------------------------------
+[client]
+# # Error display control:
+# # showErrorDetails = "full"                # "full", "stacktrace", "type", or "none"
+# #
+# # Toolbar visibility:
+# # toolbarMode = "auto"                     # "auto", "developer", "viewer", or "minimal"
+# #
+# # Sidebar navigation in multipage apps:
+# # showSidebarNavigation = true             # Show default navigation UI
+
+# -----------------------------------------------------------------------------
+# THEME CUSTOMIZATION (ADVANCED)
+# -----------------------------------------------------------------------------
+# Uncomment to override additional theme properties:
+
+# # Base Theme Inheritance
+# # [theme]
+# # base = "light"                           # "light", "dark", or path to .toml file
+
+# # Additional Color Options
+# # redColor = "#ff4b4b"                     # Semantic red
+# # orangeColor = "#ffa421"                  # Semantic orange
+# # yellowColor = "#ffe312"                  # Semantic yellow
+# # greenColor = "#21c354"                   # Semantic green
+# # blueColor = "#0068c9"                    # Semantic blue
+# # violetColor = "#803df5"                  # Semantic violet
+# # grayColor = "#808495"                    # Semantic gray
+
+# # Font Customization
+# # headingFont = "sans serif"               # Heading font family
+# # baseFontSize = "1rem"                    # Base font size
+# # baseFontWeight = 400                     # Base font weight
+# # codeFontWeight = 400                     # Code font weight
+
+# # Border & Shape Options
+# # dataframeBorderColor = "#d0d0d0"         # DataFrame borders
+# # linkUnderline = true                     # Underline links
+
+# # Custom Font Faces (requires enableStaticServing = true)
+# # [[theme.fontFaces]]
+# # family = "SpaceGrotesk"
+# # url = "app/static/SpaceGrotesk-VariableFont_wght.ttf"
+# #
+# # [[theme.fontFaces]]
+# # family = "SpaceMono"
+# # url = "app/static/SpaceMono-Regular.ttf"
+# # style = "normal"
+# # weight = 400
+
+# -----------------------------------------------------------------------------
+# MAPBOX (DEPRECATED)
+# -----------------------------------------------------------------------------
+# # [mapbox]
+# # token = "your-mapbox-token"              # Deprecated: Use st.map(use_container_width=True)
+
+# -----------------------------------------------------------------------------
+# SECRETS MANAGEMENT
+# -----------------------------------------------------------------------------
+# # [secrets]
+# # files = [".streamlit/secrets.toml"]      # Path(s) to secrets files

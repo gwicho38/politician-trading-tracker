@@ -59,3 +59,6 @@ streamlit-shadcn-ui>=0.1.19
 stqdm>=0.0.5
 st-supabase-connection>=2.1.3
 streamlit-extras>=0.6.0
+
+# Optional: hotkeys support (install from GitHub)
+streamlit-hotkeys @ git+https://github.com/viktor-shcherb/streamlit-hotkeys.git

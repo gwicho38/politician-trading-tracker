@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-app_dir = Path(__file__).parent.parent
+app_dir = Path(__file__).parent
 if str(app_dir) not in sys.path:
     sys.path.insert(0, str(app_dir))
 if str(app_dir / "src") not in sys.path:
