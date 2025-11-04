@@ -79,7 +79,8 @@
       "Bash(PYTHONPATH=src uv run python:*)",
       "Bash(LOG_LEVEL=INFO uv run python:*)",
       "Bash(LOG_LEVEL=DEBUG uv run python:*)",
-      "Bash(lsh secrets get:*)"
+      "Bash(lsh secrets get:*)",
+      "Bash(lsh secrets set:*)"
     ],
     "deny": [],
     "ask": []
