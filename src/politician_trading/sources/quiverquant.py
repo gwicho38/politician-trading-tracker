@@ -109,14 +109,19 @@ class QuiverQuantSource(BaseSource):
                 headers=headers
             )
 
-            if isinstance(response, dict):
-                self.logger.info(f"Received QuiverQuant API response")
+            # QuiverQuant API returns a list directly
+            if isinstance(response, (dict, list)):
+                record_count = len(response) if isinstance(response, list) else len(response.get('trades', response.get('data', [])))
+                self.logger.info(f"Received QuiverQuant API response with {record_count} trades")
 
                 # Save raw API response to storage if storage manager available
                 if self.storage_manager:
                     try:
+                        # Wrap list in dict for consistent storage format
+                        response_to_store = {'trades': response} if isinstance(response, list) else response
+
                         storage_path, file_id = await self.storage_manager.save_api_response(
-                            response_data=response,
+                            response_data=response_to_store,
                             source='quiverquant',
                             endpoint='/congresstrading',
                             metadata={'url': api_url, 'lookback_days': lookback_days}
@@ -128,8 +133,8 @@ class QuiverQuantSource(BaseSource):
 
                 return response
             else:
-                self.logger.warning("Unexpected API response format")
-                return {}
+                self.logger.warning(f"Unexpected API response format: {type(response)}")
+                return []
 
         except Exception as e:
             self.logger.error(f"Error fetching QuiverQuant API data: {e}", exc_info=True)
@@ -140,38 +145,55 @@ class QuiverQuantSource(BaseSource):
         Parse QuiverQuant response.
 
         Args:
-            response_data: HTML string or JSON dict
+            response_data: HTML string, JSON dict, or JSON list
 
         Returns:
             List of disclosure dictionaries
         """
-        if isinstance(response_data, dict):
+        if isinstance(response_data, list):
+            # API returns list directly
+            return self._parse_api_response(response_data)
+        elif isinstance(response_data, dict):
+            # API returns dict (possibly with 'trades' key)
             return self._parse_api_response(response_data)
         elif isinstance(response_data, str):
+            # Web scraping returns HTML
             return self._parse_web_response(response_data)
         else:
-            self.logger.warning("Unknown response format")
+            self.logger.warning(f"Unknown response format: {type(response_data)}")
             return []
 
-    def _parse_api_response(self, data: Dict) -> List[Dict[str, Any]]:
-        """Parse JSON API response"""
+    def _parse_api_response(self, data) -> List[Dict[str, Any]]:
+        """Parse JSON API response (list or dict)"""
         disclosures = []
 
         try:
-            trades = data.get('trades', [])
+            # Handle both list and dict responses
+            if isinstance(data, list):
+                trades = data
+            elif isinstance(data, dict):
+                trades = data.get('trades', data.get('data', []))
+            else:
+                self.logger.warning(f"Unexpected data type: {type(data)}")
+                return []
 
             for trade in trades:
+                # Map QuiverQuant API fields to our schema
                 disclosure = {
                     'politician_name': trade.get('Representative', ''),
                     'transaction_date': trade.get('TransactionDate', ''),
                     'disclosure_date': trade.get('ReportDate', ''),
-                    'asset_name': trade.get('AssetDescription', ''),
+                    'asset_name': trade.get('Description') or trade.get('AssetDescription', ''),
                     'asset_ticker': trade.get('Ticker', ''),
                     'transaction_type': self._normalize_transaction_type(trade.get('Transaction', '')),
-                    'amount': trade.get('Amount', ''),
+                    'amount': trade.get('Range') or trade.get('Amount', ''),
                     'source_url': 'https://www.quiverquant.com/congresstrading/',
                     'document_id': trade.get('FilingID'),
-                    'extraction_method': 'quiverquant_api'
+                    'extraction_method': 'quiverquant_api',
+                    # Additional fields from QuiverQuant
+                    'chamber': trade.get('House', ''),  # Senate or House
+                    'party': trade.get('Party', ''),
+                    'bio_guide_id': trade.get('BioGuideID', ''),
                 }
 
                 if disclosure['politician_name']:
