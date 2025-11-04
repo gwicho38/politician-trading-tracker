@@ -46,11 +46,10 @@ class UserAPIKeysManager:
 
     def get_user_keys(self, user_email: str) -> Optional[Dict[str, Any]]:
         """
-        Get API keys for a user from database
+        Get ALL API keys and credentials for a user from database
 
         Returns:
-            Dictionary with keys: paper_api_key, paper_secret_key, live_api_key, live_secret_key,
-            subscription_tier, subscription_status, or None if not found
+            Dictionary with all user credentials (decrypted), or None if not found
         """
         try:
             from politician_trading.database.database import SupabaseClient
@@ -65,17 +64,30 @@ class UserAPIKeysManager:
             if response.data and len(response.data) > 0:
                 user_data = response.data[0]
 
-                # Decrypt API keys
+                # Decrypt ALL API keys and credentials
                 return {
+                    # Alpaca Trading
                     "paper_api_key": self._decrypt(user_data.get("paper_api_key", "")),
                     "paper_secret_key": self._decrypt(user_data.get("paper_secret_key", "")),
                     "live_api_key": self._decrypt(user_data.get("live_api_key", "")),
                     "live_secret_key": self._decrypt(user_data.get("live_secret_key", "")),
+                    "paper_validated_at": user_data.get("paper_validated_at"),
+                    "live_validated_at": user_data.get("live_validated_at"),
+
+                    # Supabase Database
+                    "supabase_url": self._decrypt(user_data.get("supabase_url", "")),
+                    "supabase_anon_key": self._decrypt(user_data.get("supabase_anon_key", "")),
+                    "supabase_service_role_key": self._decrypt(user_data.get("supabase_service_role_key", "")),
+                    "supabase_validated_at": user_data.get("supabase_validated_at"),
+
+                    # QuiverQuant
+                    "quiverquant_api_key": self._decrypt(user_data.get("quiverquant_api_key", "")),
+                    "quiverquant_validated_at": user_data.get("quiverquant_validated_at"),
+
+                    # Subscription
                     "subscription_tier": user_data.get("subscription_tier", "free"),
                     "subscription_status": user_data.get("subscription_status", "active"),
                     "stripe_customer_id": user_data.get("stripe_customer_id", ""),
-                    "paper_validated_at": user_data.get("paper_validated_at"),
-                    "live_validated_at": user_data.get("live_validated_at"),
                 }
 
             return None
@@ -88,23 +100,35 @@ class UserAPIKeysManager:
         self,
         user_email: str,
         user_name: str,
+        # Alpaca Trading
         paper_api_key: Optional[str] = None,
         paper_secret_key: Optional[str] = None,
         live_api_key: Optional[str] = None,
         live_secret_key: Optional[str] = None,
+        # Supabase Database
+        supabase_url: Optional[str] = None,
+        supabase_anon_key: Optional[str] = None,
+        supabase_service_role_key: Optional[str] = None,
+        # QuiverQuant
+        quiverquant_api_key: Optional[str] = None,
+        # Subscription
         subscription_tier: Optional[str] = None,
         subscription_status: Optional[str] = None,
     ) -> bool:
         """
-        Save or update API keys for a user
+        Save or update ALL API keys and credentials for a user
 
         Args:
             user_email: User's email
             user_name: User's name
-            paper_api_key: Paper trading API key (will be encrypted)
-            paper_secret_key: Paper trading secret key (will be encrypted)
-            live_api_key: Live trading API key (will be encrypted)
-            live_secret_key: Live trading secret key (will be encrypted)
+            paper_api_key: Alpaca paper trading API key (will be encrypted)
+            paper_secret_key: Alpaca paper trading secret key (will be encrypted)
+            live_api_key: Alpaca live trading API key (will be encrypted)
+            live_secret_key: Alpaca live trading secret key (will be encrypted)
+            supabase_url: User's Supabase instance URL (will be encrypted)
+            supabase_anon_key: User's Supabase anon key (will be encrypted)
+            supabase_service_role_key: User's Supabase service role key (will be encrypted)
+            quiverquant_api_key: QuiverQuant API key (will be encrypted)
             subscription_tier: free, basic, or pro
             subscription_status: active, canceled, or past_due
 
@@ -126,7 +150,8 @@ class UserAPIKeysManager:
                 "last_used_at": datetime.now().isoformat(),
             }
 
-            # Encrypt and add API keys if provided
+            # Encrypt and add ALL API keys if provided
+            # Alpaca Trading
             if paper_api_key is not None:
                 update_data["paper_api_key"] = self._encrypt(paper_api_key)
             if paper_secret_key is not None:
@@ -136,6 +161,19 @@ class UserAPIKeysManager:
             if live_secret_key is not None:
                 update_data["live_secret_key"] = self._encrypt(live_secret_key)
 
+            # Supabase Database
+            if supabase_url is not None:
+                update_data["supabase_url"] = self._encrypt(supabase_url)
+            if supabase_anon_key is not None:
+                update_data["supabase_anon_key"] = self._encrypt(supabase_anon_key)
+            if supabase_service_role_key is not None:
+                update_data["supabase_service_role_key"] = self._encrypt(supabase_service_role_key)
+
+            # QuiverQuant
+            if quiverquant_api_key is not None:
+                update_data["quiverquant_api_key"] = self._encrypt(quiverquant_api_key)
+
+            # Subscription
             if subscription_tier is not None:
                 update_data["subscription_tier"] = subscription_tier
             if subscription_status is not None:

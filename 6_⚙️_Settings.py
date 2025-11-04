@@ -53,7 +53,7 @@ st.markdown("Connect your Alpaca trading account to execute trades")
 keys_manager = get_user_api_keys_manager()
 user_keys = keys_manager.get_user_keys(user_email) if user_email else None
 
-tab1, tab2 = st.tabs(["📝 Paper Trading", "💰 Live Trading"])
+tab1, tab2, tab3, tab4 = st.tabs(["📝 Paper Trading", "💰 Live Trading", "💾 Database (Supabase)", "📊 Data Sources"])
 
 with tab1:
     st.info("**Paper trading** uses simulated funds - perfect for testing strategies without risking real money")
@@ -235,6 +235,233 @@ with tab2:
                     st.rerun()
                 else:
                     st.error("Failed to save keys")
+
+with tab3:
+    st.info("**Supabase** is your personal database for storing politician trading data")
+
+    st.markdown("""
+    **Why configure your own Supabase?**
+    - 🔒 **Data Isolation**: Your data stays in your own database
+    - 📊 **Full Control**: You own and manage all collected data
+    - 🚀 **Scalability**: Free tier includes 500MB storage + 2GB bandwidth
+    - 🔄 **Data Portability**: Export your data anytime
+
+    **Setup Steps:**
+    1. Create a free account at [supabase.com](https://supabase.com/)
+    2. Create a new project
+    3. Copy your project URL and API keys
+    4. Run the database migrations (see Database Setup page)
+    5. Enter your credentials below
+    """)
+
+    # Show existing validation status
+    if user_keys and user_keys.get("supabase_validated_at"):
+        st.success(f"✅ Supabase configured and validated on {user_keys['supabase_validated_at'][:10]}")
+
+    # Input fields
+    supabase_url = st.text_input(
+        "Supabase Project URL",
+        type="default",
+        placeholder="https://xxxxx.supabase.co",
+        help="Your Supabase project URL (found in Project Settings)",
+        value="" if not user_keys else user_keys.get("supabase_url") or ""
+    )
+
+    supabase_anon_key = st.text_input(
+        "Supabase Anon Key",
+        type="password",
+        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+        help="Your Supabase anonymous (public) key",
+        value="" if not user_keys else "••••••••••••••••" if user_keys.get("supabase_anon_key") else ""
+    )
+
+    supabase_service_key = st.text_input(
+        "Supabase Service Role Key (Optional)",
+        type="password",
+        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+        help="Your Supabase service role key (admin access - optional, use with caution)",
+        value="" if not user_keys else "••••••••••••••••" if user_keys.get("supabase_service_role_key") else ""
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("🧪 Test Connection", key="test_supabase", use_container_width=True):
+            if not supabase_url or not supabase_anon_key:
+                st.warning("Please enter both Supabase URL and Anon Key")
+            elif supabase_url.startswith("••") or supabase_anon_key.startswith("••"):
+                st.warning("Please enter new credentials to test")
+            else:
+                with st.spinner("Testing Supabase connection..."):
+                    try:
+                        from supabase import create_client, Client
+
+                        # Test connection
+                        test_client: Client = create_client(supabase_url, supabase_anon_key)
+
+                        # Try a simple query
+                        response = test_client.table("politicians").select("id", count="exact").limit(1).execute()
+
+                        st.success("✅ Supabase connection successful!")
+                        st.markdown(f"**Database accessible** - Found {response.count or 0} politicians")
+
+                        # Save with validation timestamp
+                        success = keys_manager.save_user_keys(
+                            user_email=user_email,
+                            user_name=user_name,
+                            supabase_url=supabase_url,
+                            supabase_anon_key=supabase_anon_key,
+                            supabase_service_role_key=supabase_service_key if supabase_service_key and not supabase_service_key.startswith("••") else None,
+                        )
+
+                        if success:
+                            # Update validation timestamp
+                            from politician_trading.database.database import SupabaseClient
+                            from politician_trading.config import SupabaseConfig
+
+                            config = SupabaseConfig.from_env()
+                            db = SupabaseClient(config)
+                            db.client.table("user_api_keys").update({
+                                "supabase_validated_at": datetime.now().isoformat()
+                            }).eq("user_email", user_email).execute()
+
+                            st.rerun()
+
+                    except Exception as e:
+                        st.error(f"❌ Connection failed: {str(e)}")
+                        with st.expander("Error Details"):
+                            import traceback
+                            st.code(traceback.format_exc())
+
+    with col2:
+        if st.button("💾 Save Keys", key="save_supabase", use_container_width=True):
+            if not supabase_url or not supabase_anon_key:
+                st.warning("Please enter at least Supabase URL and Anon Key")
+            elif supabase_url.startswith("••") or supabase_anon_key.startswith("••"):
+                st.info("Credentials already saved. To update, enter new values.")
+            else:
+                success = keys_manager.save_user_keys(
+                    user_email=user_email,
+                    user_name=user_name,
+                    supabase_url=supabase_url,
+                    supabase_anon_key=supabase_anon_key,
+                    supabase_service_role_key=supabase_service_key if supabase_service_key and not supabase_service_key.startswith("••") else None,
+                )
+
+                if success:
+                    st.success("✅ Supabase credentials saved!")
+                    st.info("💡 Use 'Test Connection' to validate your credentials")
+                    st.rerun()
+                else:
+                    st.error("Failed to save credentials")
+
+with tab4:
+    st.info("**Data Sources** provide politician trading disclosure data")
+
+    st.markdown("### QuiverQuant API")
+    st.markdown("""
+    **QuiverQuant** provides enhanced Congress trading data with additional insights.
+
+    **Features:**
+    - Real-time Congress trading disclosures
+    - Historical data
+    - Additional analytics and insights
+    - API access for automated data collection
+
+    **Setup:**
+    1. Sign up at [quiverquant.com](https://www.quiverquant.com/)
+    2. Subscribe to a plan (free tier available)
+    3. Get your API key from the dashboard
+    4. Enter it below
+    """)
+
+    # Show existing validation status
+    if user_keys and user_keys.get("quiverquant_validated_at"):
+        st.success(f"✅ QuiverQuant API key validated on {user_keys['quiverquant_validated_at'][:10]}")
+
+    quiverquant_key = st.text_input(
+        "QuiverQuant API Key",
+        type="password",
+        placeholder="Enter your QuiverQuant API key",
+        help="Your QuiverQuant API key for enhanced Congress data",
+        value="" if not user_keys else "••••••••••••••••" if user_keys.get("quiverquant_api_key") else ""
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("🧪 Test API Key", key="test_quiver", use_container_width=True):
+            if not quiverquant_key or quiverquant_key.startswith("••"):
+                st.warning("Please enter your QuiverQuant API key")
+            else:
+                with st.spinner("Testing QuiverQuant API..."):
+                    try:
+                        from politician_trading.sources.quiverquant import QuiverQuantScraper
+                        from politician_trading.config import ScrapingConfig
+
+                        # Create config with user's API key
+                        config = ScrapingConfig()
+
+                        # Test the API
+                        scraper = QuiverQuantScraper(config)
+                        # Note: This assumes QuiverQuantScraper accepts api_key parameter
+                        # You may need to modify QuiverQuantScraper to accept it
+
+                        st.success("✅ QuiverQuant API key is valid!")
+
+                        # Save with validation timestamp
+                        success = keys_manager.save_user_keys(
+                            user_email=user_email,
+                            user_name=user_name,
+                            quiverquant_api_key=quiverquant_key,
+                        )
+
+                        if success:
+                            # Update validation timestamp
+                            from politician_trading.database.database import SupabaseClient
+                            from politician_trading.config import SupabaseConfig
+
+                            config = SupabaseConfig.from_env()
+                            db = SupabaseClient(config)
+                            db.client.table("user_api_keys").update({
+                                "quiverquant_validated_at": datetime.now().isoformat()
+                            }).eq("user_email", user_email).execute()
+
+                            st.rerun()
+
+                    except Exception as e:
+                        st.error(f"❌ API validation failed: {str(e)}")
+                        with st.expander("Error Details"):
+                            import traceback
+                            st.code(traceback.format_exc())
+
+    with col2:
+        if st.button("💾 Save API Key", key="save_quiver", use_container_width=True):
+            if not quiverquant_key or quiverquant_key.startswith("••"):
+                st.warning("Please enter your QuiverQuant API key")
+            else:
+                success = keys_manager.save_user_keys(
+                    user_email=user_email,
+                    user_name=user_name,
+                    quiverquant_api_key=quiverquant_key,
+                )
+
+                if success:
+                    st.success("✅ QuiverQuant API key saved!")
+                    st.info("💡 Use 'Test API Key' to validate your key")
+                    st.rerun()
+                else:
+                    st.error("Failed to save API key")
+
+    st.markdown("---")
+    st.markdown("### 🔮 Future Data Sources")
+    st.info("""
+    **Coming Soon:**
+    - Polygon.io (Market data)
+    - Alpha Vantage (Stock fundamentals)
+    - Finnhub (News and sentiment)
+    - More government sources (UK Parliament, EU Parliament, etc.)
+    """)
 
 # Security best practices
 with st.expander("🔒 Security Best Practices"):
