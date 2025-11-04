@@ -39,10 +39,6 @@ from auth_utils import require_authentication, show_user_info
 require_authentication()
 show_user_info()
 
-# Initialize shopping cart
-from shopping_cart import render_shopping_cart
-render_shopping_cart()
-
 st.title("🎯 AI-Powered Trading Signals")
 st.markdown("Generate buy/sell/hold recommendations based on politician trading activity")
 
