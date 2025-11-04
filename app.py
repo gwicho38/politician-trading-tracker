@@ -7,6 +7,13 @@ import streamlit as st
 from streamlit_hotkeys_integration import register_hotkeys
 from sidebar_config import apply_sidebar_styling
 
+# Enable analytics tracking
+try:
+    import streamlit_analytics
+    ANALYTICS_AVAILABLE = True
+except ImportError:
+    ANALYTICS_AVAILABLE = False
+
 # Page configuration
 st.set_page_config(
     page_title="Politician Trading Tracker",
@@ -110,5 +117,12 @@ if st.session_state.get("_hotkeys_target_page"):
                 st.switch_page(p)
                 break
 
-# Run the selected page
-page.run()
+# Run the selected page with analytics tracking
+if ANALYTICS_AVAILABLE:
+    with streamlit_analytics.track(
+        save_to_json="analytics.json",
+        load_from_json="analytics.json"
+    ):
+        page.run()
+else:
+    page.run()

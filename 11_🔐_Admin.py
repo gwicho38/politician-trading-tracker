@@ -152,9 +152,11 @@ with tab2:
 
     try:
         # Use st-supabase-connection for connection management
+        from st_supabase_connection import SupabaseConnection
+
         conn = st.connection(
-            "supabase",
-            type="supabase",
+            name="supabase",
+            type=SupabaseConnection,
             url=os.getenv("SUPABASE_URL"),
             key=os.getenv("SUPABASE_KEY")
         )
@@ -275,11 +277,13 @@ Connection Type: st-supabase-connection
 
         3. Test connection manually:
         ```python
-        conn = st.connection("supabase", type="supabase")
+        from st_supabase_connection import SupabaseConnection
+        conn = st.connection("supabase", type=SupabaseConnection)
         df = conn.query("SELECT 1")
         ```
 
         4. Documentation: https://st-supabase-connection.streamlit.app/
+        5. GitHub: https://github.com/SiddhantSadangi/st_supabase_connection
         """)
 
 # Tab 3: System Info
