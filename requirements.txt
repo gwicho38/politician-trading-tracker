@@ -60,8 +60,8 @@ stqdm>=0.0.5
 st-supabase-connection>=2.1.0
 streamlit-extras>=0.6.0
 
-# Optional: hotkeys support (install from GitHub)
-streamlit-hotkeys @ git+https://github.com/viktor-shcherb/streamlit-hotkeys.git
+# Keyboard shortcuts support (from GitHub)
+git+https://github.com/viktor-shcherb/streamlit-hotkeys.git
 
 # Subscription/Payment
 st-paywall>=1.0.1
