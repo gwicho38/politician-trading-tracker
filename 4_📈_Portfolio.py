@@ -64,7 +64,33 @@ alpaca_api_key = os.getenv("ALPACA_API_KEY")
 alpaca_secret_key = os.getenv("ALPACA_SECRET_KEY")
 
 if not alpaca_api_key or not alpaca_secret_key:
-    st.warning("Alpaca API not configured. Please set up your API keys to view portfolio.")
+    st.error("🔑 Alpaca API not configured")
+    st.markdown("""
+    ### Setup Instructions
+
+    To use the Portfolio page, you need to configure your Alpaca API credentials:
+
+    1. **Get API Keys** from [Alpaca Markets](https://alpaca.markets/)
+       - Sign up for a free paper trading account
+       - Generate API keys in your dashboard
+
+    2. **Add to Streamlit Cloud Secrets**:
+       - Go to your Streamlit Cloud app settings
+       - Navigate to the "Secrets" tab
+       - Add the following to your secrets:
+
+       ```toml
+       [alpaca]
+       ALPACA_API_KEY = "your-api-key-here"
+       ALPACA_SECRET_KEY = "your-secret-key-here"
+       ALPACA_PAPER = "true"
+       ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
+       ```
+
+    3. **Restart your app** to apply changes
+
+    **Note**: Use paper trading keys (starting with 'PK') for testing!
+    """)
     st.stop()
 
 # Trading mode selection
@@ -93,21 +119,40 @@ try:
     # Use paper=True by default unless explicitly set to Live
     use_paper = (trading_mode == "Paper")
 
-    # Show what we're trying to connect with
-    with st.expander("🔍 Connection Details", expanded=False):
-        st.code(f"""
-API Key: {alpaca_api_key[:4]}...{alpaca_api_key[-4:]}
-Key Type: {'Paper (PK)' if alpaca_api_key.startswith('PK') else 'Live (AK)'}
-Paper Mode: {use_paper}
-Expected Endpoint: {'https://paper-api.alpaca.markets' if use_paper else 'https://api.alpaca.markets'}
-        """)
-
     with st.spinner("Connecting to Alpaca..."):
         alpaca_client = AlpacaTradingClient(
             api_key=alpaca_api_key,
             secret_key=alpaca_secret_key,
             paper=use_paper
         )
+
+        # Test connection first
+        connection_test = alpaca_client.test_connection()
+
+        if not connection_test["success"]:
+            st.error(f"❌ {connection_test['message']}")
+
+            if "error" in connection_test:
+                st.markdown(f"**Error Details**: {connection_test['error']}")
+
+            if "troubleshooting" in connection_test:
+                st.markdown("### 🔧 Troubleshooting Steps:")
+                for step in connection_test["troubleshooting"]:
+                    st.markdown(f"- {step}")
+
+            # Show what we tried to connect with
+            with st.expander("🔍 Debug Information"):
+                st.code(f"""
+API Key: {alpaca_api_key[:4]}...{alpaca_api_key[-4:]}
+Key Type: {'Paper (PK)' if alpaca_api_key.startswith('PK') else 'Live (AK)' if alpaca_api_key.startswith('AK') else 'Unknown'}
+Paper Mode: {use_paper}
+Expected Endpoint: {alpaca_client.base_url}
+                """)
+
+            st.stop()
+
+        # Connection successful
+        st.success(f"✅ {connection_test['message']}")
 
         risk_manager = RiskManager()
 
