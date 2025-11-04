@@ -4,35 +4,35 @@ Collection of utility scripts for the Politician Trading Tracker project.
 
 ## Secrets Management
 
-### Push Secrets to Streamlit Cloud
+### Copy Secrets to Streamlit Cloud (Recommended)
 
-Instead of manually copy-pasting secrets, use these scripts to automatically sync your local `.streamlit/secrets.toml` to Streamlit Cloud:
-
-#### Method 1: Using Shell Script (Recommended)
+Instead of manually typing secrets, use this script to copy your local `.streamlit/secrets.toml` to clipboard:
 
 ```bash
 ./scripts/sync_secrets_to_streamlit.sh
+```
+
+Or:
+
+```bash
+./scripts/copy_secrets_for_streamlit.sh
 ```
 
 This script will:
-1. Check if you're logged in to Streamlit Cloud
-2. Show you what will be pushed
-3. Ask for confirmation
-4. Push secrets using the official Streamlit CLI
+1. Copy your `.streamlit/secrets.toml` to clipboard
+2. Show you the next steps to paste into Streamlit Cloud
 
-**First-time setup:**
-```bash
-# Install Streamlit CLI (if not already installed)
-pip install streamlit
+**Then manually paste in Streamlit Cloud:**
+1. Go to: https://share.streamlit.io/
+2. Open your app settings → Secrets tab
+3. Paste (Cmd+V) the clipboard contents
+4. Save and restart your app
 
-# Login to Streamlit Cloud
-streamlit login
+**Why not automatic?** The Streamlit CLI no longer has `streamlit login` or `streamlit secrets push` commands. The web interface is now the official way to manage secrets.
 
-# Push secrets
-./scripts/sync_secrets_to_streamlit.sh
-```
+### Alternative: Python API Script
 
-#### Method 2: Using Python Script
+If you have a Streamlit Management API token:
 
 ```bash
 python scripts/push_secrets_to_streamlit.py
@@ -47,15 +47,7 @@ export STREAMLIT_API_TOKEN="your-token-here"
 lsh secrets set STREAMLIT_API_TOKEN "your-token-here"
 ```
 
-#### Method 3: One-liner with Streamlit CLI
-
-If you're already logged in:
-
-```bash
-streamlit secrets push politician-trading-tracker .streamlit/secrets.toml
-```
-
-Replace `politician-trading-tracker` with your actual app name.
+**Note:** This uses an unofficial API and may break in future Streamlit updates.
 
 ---
 
