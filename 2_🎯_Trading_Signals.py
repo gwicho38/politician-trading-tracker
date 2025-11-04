@@ -39,6 +39,10 @@ from auth_utils import require_authentication, show_user_info
 require_authentication()
 show_user_info()
 
+# Initialize shopping cart
+from shopping_cart import render_shopping_cart
+render_shopping_cart()
+
 st.title("🎯 AI-Powered Trading Signals")
 st.markdown("Generate buy/sell/hold recommendations based on politician trading activity")
 
@@ -340,6 +344,8 @@ try:
 
             top_signals = df.nlargest(10, "confidence_score")
 
+            from shopping_cart import add_to_cart_button
+
             for idx, signal in top_signals.iterrows():
                 with st.expander(f"**{signal['ticker']}** - {signal['signal_type'].upper()} ({signal['confidence_score']:.1%} confidence)"):
                     col1, col2, col3, col4 = st.columns(4)
@@ -363,6 +369,31 @@ try:
                         with col3:
                             if signal.get('take_profit'):
                                 st.metric("Take Profit", f"${signal['take_profit']:.2f}")
+
+                    # Add to cart button
+                    st.markdown("---")
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        quantity = st.number_input(
+                            "Quantity",
+                            min_value=1,
+                            value=10,
+                            key=f"qty_input_{signal['ticker']}_{idx}"
+                        )
+                    with col2:
+                        if add_to_cart_button(
+                            ticker=signal['ticker'],
+                            asset_name=signal.get('asset_name', signal['ticker']),
+                            signal_type=signal['signal_type'],
+                            default_quantity=quantity,
+                            signal_id=signal.get('id'),
+                            confidence_score=signal['confidence_score'],
+                            target_price=signal.get('target_price'),
+                            stop_loss=signal.get('stop_loss'),
+                            take_profit=signal.get('take_profit'),
+                            key=f"add_cart_{signal['ticker']}_{idx}"
+                        ):
+                            st.rerun()
 
             # Export
             st.markdown("---")
