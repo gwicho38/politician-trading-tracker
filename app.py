@@ -5,6 +5,7 @@ Uses st.Page navigation for cleaner sidebar experience
 
 import streamlit as st
 from streamlit_hotkeys_integration import register_hotkeys
+from sidebar_config import apply_sidebar_styling
 
 # Page configuration
 st.set_page_config(
@@ -18,6 +19,9 @@ st.set_page_config(
         "About": "Politician Trading Tracker\n\nA Streamlit app to track politician trading activity.",
     },
 )
+
+# Apply wider sidebar styling
+apply_sidebar_styling()
 
 # Register optional hotkeys
 register_hotkeys()
