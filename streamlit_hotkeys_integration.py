@@ -3,6 +3,7 @@ Integration helper for optional `streamlit-hotkeys` support.
 This module registers global hotkeys for easy navigation.
 
 Hotkeys implemented:
+- CMD+K / CTRL+K : Open command palette
 - d : go to Data Collection page
 - t : go to Trading Signals page
 - o : go to Trading Operations page
@@ -17,6 +18,7 @@ This file purposely keeps the API usage tolerant because the
 we show an install message in the sidebar.
 """
 import streamlit as st
+from command_palette import get_command_palette, toggle_command_palette
 
 HOTKEYS_SESSION_KEY = "_hotkeys_target_page"
 
@@ -42,6 +44,10 @@ def register_hotkeys() -> None:
     try:
         # Register hotkeys using hk() dicts
         activate(
+            # Command palette
+            hk("palette", "k", meta=True, help="Open command palette (Mac)"),
+            hk("palette", "k", ctrl=True, help="Open command palette (Win/Linux)"),
+            # Page navigation
             hk("data", "d", help="Go to Data Collection"),
             hk("signals", "t", help="Go to Trading Signals"),
             hk("operations", "o", help="Go to Trading Operations"),
@@ -53,8 +59,12 @@ def register_hotkeys() -> None:
             key="global"
         )
 
-        # Check for pressed keys and navigate
-        if pressed("data"):
+        # Check for pressed keys and navigate/act
+        if pressed("palette"):
+            # Toggle command palette
+            toggle_command_palette()
+            st.rerun()
+        elif pressed("data"):
             st.switch_page("1_📥_Data_Collection.py")
         elif pressed("signals"):
             st.switch_page("2_🎯_Trading_Signals.py")
@@ -71,10 +81,15 @@ def register_hotkeys() -> None:
         elif pressed("auth"):
             st.switch_page("99_🧪_Auth_Test.py")
 
+        # Render command palette if open
+        palette = get_command_palette()
+        palette.render()
+
         # Show hotkeys legend in sidebar
         with st.sidebar:
             with st.expander("⌨️ Keyboard Shortcuts", expanded=False):
                 st.markdown("""
+                - **CMD/CTRL + K** - Command Palette
                 - **D** - Data Collection
                 - **T** - Trading Signals
                 - **O** - Trading Operations
