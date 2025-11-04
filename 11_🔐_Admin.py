@@ -350,47 +350,58 @@ with tab4:
     st.subheader("👥 User Management")
 
     try:
-        from politician_trading.database.supabase_client import get_supabase_client
+        # Use st-supabase-connection
+        from st_supabase_connection import SupabaseConnection
+        import pandas as pd
 
-        client = get_supabase_client()
+        conn = st.connection(
+            name="supabase",
+            type=SupabaseConnection,
+            url=os.getenv("SUPABASE_URL"),
+            key=os.getenv("SUPABASE_KEY")
+        )
 
         # Check if user_sessions table exists
         try:
-            sessions = client.table("user_sessions") \
-                .select("*") \
-                .order("last_activity", desc=True) \
-                .execute()
+            sessions_df = conn.query(
+                """
+                SELECT * FROM user_sessions
+                ORDER BY last_activity DESC
+                """,
+                ttl=10  # Cache for 10 seconds
+            )
 
-            if sessions.data:
-                import pandas as pd
-                df = pd.DataFrame(sessions.data)
-
+            if not sessions_df.empty:
                 st.markdown("### Active Sessions")
-                st.dataframe(df, use_container_width=True)
+                st.dataframe(sessions_df, use_container_width=True)
 
                 # Summary stats
                 col1, col2, col3 = st.columns(3)
 
                 with col1:
-                    unique_users = df['user_email'].nunique() if 'user_email' in df.columns else 0
+                    unique_users = sessions_df['user_email'].nunique() if 'user_email' in sessions_df.columns else 0
                     st.metric("Unique Users", unique_users)
 
                 with col2:
-                    total_sessions = len(df)
+                    total_sessions = len(sessions_df)
                     st.metric("Total Sessions", total_sessions)
 
                 with col3:
                     # Count active sessions (last activity < 1 hour ago)
-                    if 'last_activity' in df.columns:
-                        df['last_activity'] = pd.to_datetime(df['last_activity'])
-                        active = df[df['last_activity'] > datetime.now() - pd.Timedelta(hours=1)]
+                    if 'last_activity' in sessions_df.columns:
+                        sessions_df['last_activity'] = pd.to_datetime(sessions_df['last_activity'])
+                        active = sessions_df[sessions_df['last_activity'] > datetime.now() - pd.Timedelta(hours=1)]
                         st.metric("Active (1h)", len(active))
             else:
                 st.info("No user sessions found")
 
         except Exception as e:
             st.warning(f"user_sessions table not accessible: {e}")
+            st.info("The user_sessions table may not exist yet. It will be created when users start logging in with enhanced authentication.")
 
+    except ImportError:
+        st.error("❌ st-supabase-connection not installed")
+        st.info("Install with: `uv pip install st-supabase-connection`")
     except Exception as e:
         st.error(f"Error accessing user data: {e}")
 
