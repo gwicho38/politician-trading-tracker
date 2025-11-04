@@ -50,8 +50,12 @@ st.markdown("### 🔑 Alpaca API Configuration")
 st.markdown("Connect your Alpaca trading account to execute trades")
 
 # Get user's existing keys
-keys_manager = get_user_api_keys_manager()
-user_keys = keys_manager.get_user_keys(user_email) if user_email else None
+try:
+    keys_manager = get_user_api_keys_manager()
+    user_keys = keys_manager.get_user_keys(user_email) if user_email else None
+except Exception as e:
+    st.warning(f"Could not load user credentials: {str(e)}")
+    user_keys = None
 
 tab1, tab2, tab3, tab4 = st.tabs(["📝 Paper Trading", "💰 Live Trading", "💾 Database (Supabase)", "📊 Data Sources"])
 
@@ -256,6 +260,7 @@ with tab2:
                     st.error("Failed to save keys")
 
 with tab3:
+    st.markdown("### 💾 Supabase Database Configuration")
     st.info("**Supabase** is your personal database for storing politician trading data")
 
     st.markdown("""
@@ -379,9 +384,10 @@ with tab3:
                     st.error("Failed to save credentials")
 
 with tab4:
+    st.markdown("### 📊 Data Source Configuration")
     st.info("**Data Sources** provide politician trading disclosure data")
 
-    st.markdown("### QuiverQuant API")
+    st.markdown("#### QuiverQuant API")
     st.markdown("""
     **QuiverQuant** provides enhanced Congress trading data with additional insights.
 
