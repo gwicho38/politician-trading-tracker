@@ -331,6 +331,56 @@ pipeline:
 
 ---
 
+## 11. PDF Parsing for Senate Disclosures
+
+### A. The Problem
+**Current State**: 47,000+ database records are PDF placeholders
+
+```sql
+SELECT COUNT(*) FROM trading_disclosures
+WHERE asset_type = 'PDF Disclosed Filing'
+AND asset_ticker = 'N/A';
+-- Result: ~47,000 records from 2012-2014
+```
+
+Each record contains:
+- `asset_name`: "This filing was disclosed via scanned PDF..."
+- `ptr_link`: URL to Senate EFD search page
+- **No actual transaction data**
+
+### B. Solution Created
+**Files Added**:
+- `src/politician_trading/transformers/pdf_parser.py` - PDF parser with HTML page handling
+- `scripts/mark_pdf_records.py` - Batch marking script
+- `docs/PDF_PARSING.md` - Complete documentation
+- `test_pdf_parser.py` - Test script
+
+**Features**:
+- Async PDF downloading (aiohttp)
+- HTML page parsing to find PDF links (BeautifulSoup)
+- PDF text extraction (pdfplumber)
+- Regex pattern matching for transactions
+- Fallback handling for unparseable PDFs
+
+### C. Status & Recommendation
+
+**Testing Results**:
+- ✅ Parser infrastructure complete
+- ⚠️  Old Senate URLs (2012-2014) may not work
+- ⚠️  Bulk processing would take 65-130 hours
+- ⚠️  Many PDFs are scanned images (need OCR)
+
+**Recommended Strategy**:
+1. **For Historical Data**: Use QuiverQuant API (already parsed these PDFs)
+2. **For New Data**: Use pipeline with QuiverQuant source
+3. **PDF Parser**: Keep for spot-checking and validation only
+
+**Priority**: LOW (better alternatives exist)
+
+**Effort**: Infrastructure complete, bulk processing not recommended
+
+---
+
 ## Critical Path to Production
 
 ### Phase 1: Core Integration (CRITICAL - 6-8 hours)
@@ -368,18 +418,20 @@ pipeline:
 ## Immediate Next Steps (Today)
 
 1. ✅ **DONE**: Fix Admin dashboard bug (function definition order)
-2. **TODO**: Fix database client in `publish.py`
-3. **TODO**: Fix database client in `politician_matcher.py`
-4. **TODO**: Test pipeline end-to-end with US Senate source
-5. **TODO**: Update `workflow.py` integration
-6. **TODO**: Commit fixes
+2. ✅ **DONE**: Fix database client in `publish.py`
+3. ✅ **DONE**: Fix database client in `politician_matcher.py`
+4. ✅ **DONE**: Fix BaseSource config initialization
+5. ✅ **DONE**: Create PDF parsing infrastructure (see PDF_PARSING.md)
+6. **TODO**: Test pipeline with QuiverQuant source (US Senate returns 0 records)
+7. **TODO**: Update `workflow.py` integration
+8. **TODO**: Commit fixes
 
 ## Summary
 
-**Blocking Issues**: 3
-- Database client integration (publish.py)
-- Database client integration (politician_matcher.py)
-- workflow.py integration
+**Blocking Issues**: ~~3~~ → **1** (Resolved 2/3)
+- ~~Database client integration (publish.py)~~ ✅ FIXED
+- ~~Database client integration (politician_matcher.py)~~ ✅ FIXED
+- workflow.py integration (still pending)
 
 **High Priority**: 2
 - Streamlit UI integration
