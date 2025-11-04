@@ -17,6 +17,7 @@ if str(app_dir / "src") not in sys.path:
     sys.path.insert(0, str(app_dir / "src"))
 
 from politician_trading.utils.logger import create_logger
+from politician_trading.utils.action_logger import log_action
 from politician_trading.scheduler import get_scheduler
 from politician_trading.scheduler.jobs import data_collection_job, ticker_backfill_job
 
@@ -137,33 +138,135 @@ with tab1:
 
                 with col3:
                     # Control buttons
+                    user_id = st.session_state.get("user_email", "unknown")
+
                     if job['is_paused']:
                         if st.button("▶️ Resume", key=f"resume_{job['id']}"):
+                            log_action(
+                                action_type="job_resume",
+                                action_name=f"Resume Job: {job['name']}",
+                                status="initiated",
+                                source="ui_button",
+                                user_id=user_id,
+                                job_id=job['id'],
+                                action_details={"job_name": job['name']}
+                            )
                             if scheduler.resume_job(job['id']):
+                                log_action(
+                                    action_type="job_resume",
+                                    status="completed",
+                                    source="ui_button",
+                                    user_id=user_id,
+                                    job_id=job['id'],
+                                    result_message=f"Resumed job: {job['name']}"
+                                )
                                 st.success(f"Resumed job: {job['name']}")
                                 st.rerun()
                             else:
+                                log_action(
+                                    action_type="job_resume",
+                                    status="failed",
+                                    source="ui_button",
+                                    user_id=user_id,
+                                    job_id=job['id'],
+                                    error_message="Failed to resume job"
+                                )
                                 st.error("Failed to resume job")
                     else:
                         if st.button("⏸️ Pause", key=f"pause_{job['id']}"):
+                            log_action(
+                                action_type="job_pause",
+                                action_name=f"Pause Job: {job['name']}",
+                                status="initiated",
+                                source="ui_button",
+                                user_id=user_id,
+                                job_id=job['id'],
+                                action_details={"job_name": job['name']}
+                            )
                             if scheduler.pause_job(job['id']):
+                                log_action(
+                                    action_type="job_pause",
+                                    status="completed",
+                                    source="ui_button",
+                                    user_id=user_id,
+                                    job_id=job['id'],
+                                    result_message=f"Paused job: {job['name']}"
+                                )
                                 st.success(f"Paused job: {job['name']}")
                                 st.rerun()
                             else:
+                                log_action(
+                                    action_type="job_pause",
+                                    status="failed",
+                                    source="ui_button",
+                                    user_id=user_id,
+                                    job_id=job['id'],
+                                    error_message="Failed to pause job"
+                                )
                                 st.error("Failed to pause job")
 
                     if st.button("▶️ Run Now", key=f"run_{job['id']}"):
+                        log_action(
+                            action_type="job_manual_run",
+                            action_name=f"Manual Run: {job['name']}",
+                            status="initiated",
+                            source="ui_button",
+                            user_id=user_id,
+                            job_id=job['id'],
+                            action_details={"job_name": job['name'], "manual_trigger": True}
+                        )
                         if scheduler.run_job_now(job['id']):
+                            log_action(
+                                action_type="job_manual_run",
+                                status="completed",
+                                source="ui_button",
+                                user_id=user_id,
+                                job_id=job['id'],
+                                result_message=f"Triggered job: {job['name']}"
+                            )
                             st.success(f"Triggered job: {job['name']}")
                             st.info("Job has been queued to run immediately. Check logs for execution status.")
                         else:
+                            log_action(
+                                action_type="job_manual_run",
+                                status="failed",
+                                source="ui_button",
+                                user_id=user_id,
+                                job_id=job['id'],
+                                error_message="Failed to trigger job"
+                            )
                             st.error("Failed to trigger job")
 
                     if st.button("🗑️ Remove", key=f"remove_{job['id']}"):
+                        log_action(
+                            action_type="job_remove",
+                            action_name=f"Remove Job: {job['name']}",
+                            status="initiated",
+                            source="ui_button",
+                            user_id=user_id,
+                            job_id=job['id'],
+                            action_details={"job_name": job['name']}
+                        )
                         if scheduler.remove_job(job['id']):
+                            log_action(
+                                action_type="job_remove",
+                                status="completed",
+                                source="ui_button",
+                                user_id=user_id,
+                                job_id=job['id'],
+                                result_message=f"Removed job: {job['name']}"
+                            )
                             st.success(f"Removed job: {job['name']}")
                             st.rerun()
                         else:
+                            log_action(
+                                action_type="job_remove",
+                                status="failed",
+                                source="ui_button",
+                                user_id=user_id,
+                                job_id=job['id'],
+                                error_message="Failed to remove job"
+                            )
                             st.error("Failed to remove job")
 
 # Tab 2: Add New Job
