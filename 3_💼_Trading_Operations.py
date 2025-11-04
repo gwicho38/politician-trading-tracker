@@ -248,11 +248,29 @@ if cart_items:
                 else:
                     st.info(f"⏭️ {result['ticker']}: {result['message']}")
 
+            # Show order tracking info
+            if success_count > 0:
+                st.markdown("---")
+                st.info(f"""
+                📋 **Order Status:** {success_count} order(s) submitted successfully!
+
+                ⏳ Orders are now pending execution. They will fill when market conditions are met.
+
+                **Next Steps:**
+                - View order status on the **[Orders](/Orders)** page
+                - Check filled positions on the **[Portfolio](/Portfolio)** page
+                - Orders outside market hours (9:30 AM - 4:00 PM ET) will execute when market opens
+                """)
+
+                dashboard_url = "https://app.alpaca.markets/paper/dashboard/overview" if use_paper else "https://app.alpaca.markets/live/dashboard/overview"
+                st.markdown(f"🔗 **[View in Alpaca Dashboard]({dashboard_url})**")
+
             # Clear cart after successful execution
             if success_count > 0:
-                ShoppingCart.clear()
-                st.success(f"🎉 Cart cleared! {success_count} trades executed successfully.")
-                st.rerun()
+                if st.button("✅ Clear Cart & Continue", type="primary"):
+                    ShoppingCart.clear()
+                    st.success(f"🎉 Cart cleared!")
+                    st.rerun()
 
 else:
     st.info("🛒 Your cart is empty. Add signals from the Trading Signals page to get started!")
