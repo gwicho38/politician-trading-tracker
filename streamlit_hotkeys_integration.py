@@ -4,6 +4,7 @@ This module registers global hotkeys for easy navigation.
 
 Hotkeys implemented:
 - CMD+K / CTRL+K : Open command palette
+- ? (Shift + /) : Show keyboard shortcuts help
 - d : go to Data Collection page
 - t : go to Trading Signals page
 - o : go to Trading Operations page
@@ -47,6 +48,8 @@ def register_hotkeys() -> None:
             # Command palette - prevent default to avoid conflicts with inputs
             hk("palette", "k", meta=True, prevent_default=True, help="Open command palette (Mac)"),
             hk("palette", "k", ctrl=True, prevent_default=True, help="Open command palette (Win/Linux)"),
+            # Help shortcut
+            hk("help", "?", shift=True, help="Show keyboard shortcuts"),
             # Page navigation
             hk("data", "d", help="Go to Data Collection"),
             hk("signals", "t", help="Go to Trading Signals"),
@@ -69,6 +72,10 @@ def register_hotkeys() -> None:
                 st.rerun()
             else:
                 st.session_state._palette_just_toggled = False
+        elif pressed("help"):
+            # Show keyboard shortcuts
+            palette = get_command_palette()
+            palette._show_shortcuts()
         elif pressed("data"):
             st.switch_page("1_📥_Data_Collection.py")
         elif pressed("signals"):
@@ -96,6 +103,7 @@ def register_hotkeys() -> None:
             with st.expander("⌨️ Keyboard Shortcuts", expanded=False):
                 st.markdown("""
                 - **CMD/CTRL + K** - Command Palette
+                - **?** (Shift + /) - Show Shortcuts Help
                 - **D** - Data Collection
                 - **T** - Trading Signals
                 - **O** - Trading Operations
