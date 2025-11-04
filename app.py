@@ -8,11 +8,7 @@ from streamlit_hotkeys_integration import register_hotkeys
 from sidebar_config import apply_sidebar_styling
 
 # Enable analytics tracking
-try:
-    import streamlit_analytics
-    ANALYTICS_AVAILABLE = True
-except ImportError:
-    ANALYTICS_AVAILABLE = False
+from analytics_wrapper import safe_track, ANALYTICS_AVAILABLE
 
 # Page configuration
 st.set_page_config(
@@ -119,7 +115,7 @@ if st.session_state.get("_hotkeys_target_page"):
 
 # Run the selected page with analytics tracking
 if ANALYTICS_AVAILABLE:
-    with streamlit_analytics.track(
+    with safe_track(
         save_to_json="analytics.json",
         load_from_json="analytics.json"
     ):

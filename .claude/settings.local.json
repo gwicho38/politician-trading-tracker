@@ -69,7 +69,11 @@
       "Bash(unzip:*)",
       "WebFetch(domain:docs.streamlit.io)",
       "Bash(uv pip show:*)",
-      "WebFetch(domain:st-paywall.readthedocs.io)"
+      "WebFetch(domain:st-paywall.readthedocs.io)",
+      "Bash(cp:*)",
+      "WebFetch(domain:st-supabase-connection.streamlit.app)",
+      "WebFetch(domain:pypi.org)",
+      "Bash(/Users/lefv/repos/politician-trading-tracker/.gitignore)"
     ],
     "deny": [],
     "ask": []
