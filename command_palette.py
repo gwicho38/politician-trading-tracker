@@ -192,14 +192,14 @@ class CommandPalette:
 
         /* Make buttons look like app icons */
         .stButton > button {
-            height: 100px !important;
+            height: 80px !important;
             padding: 0.5rem !important;
             display: flex !important;
             flex-direction: column !important;
             align-items: center !important;
             justify-content: center !important;
-            gap: 0.5rem !important;
-            border-radius: 1.25rem !important;
+            gap: 0.25rem !important;
+            border-radius: 1rem !important;
             background: var(--secondary-background-color) !important;
             border: none !important;
             transition: all 0.2s ease !important;
@@ -213,18 +213,18 @@ class CommandPalette:
 
         /* Icon styling */
         .stButton > button p {
-            font-size: 2.5rem !important;
+            font-size: 1.75rem !important;
             margin: 0 !important;
             line-height: 1 !important;
         }
 
         /* Label styling */
         .stButton > button div {
-            font-size: 0.75rem !important;
+            font-size: 0.7rem !important;
             font-weight: 500 !important;
             text-align: center !important;
-            line-height: 1.2 !important;
-            margin-top: 0.25rem !important;
+            line-height: 1.1 !important;
+            margin-top: 0.15rem !important;
         }
 
         /* Search input styling */
