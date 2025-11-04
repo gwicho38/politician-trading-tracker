@@ -59,37 +59,34 @@ if enabled:
     if refresh_count > 0:
         show_refresh_indicator(refresh_count, "portfolio")
 
-# Check Alpaca configuration
-alpaca_api_key = os.getenv("ALPACA_API_KEY")
-alpaca_secret_key = os.getenv("ALPACA_SECRET_KEY")
+# Get user-specific API keys
+from user_api_keys import get_user_api_keys_manager
 
-if not alpaca_api_key or not alpaca_secret_key:
+keys_manager = get_user_api_keys_manager()
+user_email = st.user.email if st.user.is_logged_in else None
+
+if not user_email:
+    st.error("🔑 Authentication required")
+    st.stop()
+
+user_keys = keys_manager.get_user_keys(user_email)
+
+if not user_keys or not user_keys.get("paper_api_key"):
     st.error("🔑 Alpaca API not configured")
     st.markdown("""
     ### Setup Instructions
 
     To use the Portfolio page, you need to configure your Alpaca API credentials:
 
-    1. **Get API Keys** from [Alpaca Markets](https://alpaca.markets/)
-       - Sign up for a free paper trading account
-       - Generate API keys in your dashboard
+    1. **Go to [Settings](/Settings)** page
+    2. Navigate to the **Alpaca API Configuration** section
+    3. Enter your paper trading API keys
+    4. Test the connection to validate
 
-    2. **Add to Streamlit Cloud Secrets**:
-       - Go to your Streamlit Cloud app settings
-       - Navigate to the "Secrets" tab
-       - Add the following to your secrets:
-
-       ```toml
-       [alpaca]
-       ALPACA_API_KEY = "your-api-key-here"
-       ALPACA_SECRET_KEY = "your-secret-key-here"
-       ALPACA_PAPER = "true"
-       ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
-       ```
-
-    3. **Restart your app** to apply changes
-
-    **Note**: Use paper trading keys (starting with 'PK') for testing!
+    **Don't have an Alpaca account yet?**
+    - Sign up for free at [alpaca.markets](https://alpaca.markets/)
+    - Generate paper trading API keys in your dashboard
+    - Return here and configure them in Settings
     """)
     st.stop()
 
@@ -97,17 +94,34 @@ if not alpaca_api_key or not alpaca_secret_key:
 col1, col2 = st.columns([1, 4])
 
 with col1:
-    trading_mode = st.radio(
-        "Mode",
-        options=["Paper", "Live"],
-        index=0
-    )
+    # Check if user has live trading access
+    has_live_access = keys_manager.has_live_access(user_email)
+
+    # Only show live option if user has both keys configured AND subscription
+    if has_live_access and user_keys.get("live_api_key"):
+        trading_mode = st.radio(
+            "Mode",
+            options=["Paper", "Live"],
+            index=0
+        )
+    else:
+        trading_mode = "Paper"
+        st.radio(
+            "Mode",
+            options=["Paper"],
+            index=0,
+            disabled=True
+        )
 
 with col2:
     if trading_mode == "Live":
         st.info("📍 Viewing LIVE trading account")
     else:
         st.info("📍 Viewing paper trading account")
+        if not has_live_access:
+            st.caption("🔒 Upgrade to Basic/Pro for live trading")
+        elif not user_keys.get("live_api_key"):
+            st.caption("💡 Configure live API keys in Settings")
 
 is_live = (trading_mode == "Live")
 
@@ -118,6 +132,19 @@ try:
 
     # Use paper=True by default unless explicitly set to Live
     use_paper = (trading_mode == "Paper")
+
+    # Get appropriate API keys for the selected mode
+    if use_paper:
+        alpaca_api_key = user_keys.get("paper_api_key")
+        alpaca_secret_key = user_keys.get("paper_secret_key")
+    else:
+        alpaca_api_key = user_keys.get("live_api_key")
+        alpaca_secret_key = user_keys.get("live_secret_key")
+
+    if not alpaca_api_key or not alpaca_secret_key:
+        st.error(f"❌ {'Live' if not use_paper else 'Paper'} trading API keys not configured")
+        st.info("Please configure your API keys in the [Settings](/Settings) page")
+        st.stop()
 
     # Initialize Alpaca client
     alpaca_client = AlpacaTradingClient(

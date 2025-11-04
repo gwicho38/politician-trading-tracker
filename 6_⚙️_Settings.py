@@ -38,6 +38,228 @@ show_user_info()
 st.title("⚙️ Settings & Configuration")
 st.markdown("Configure your trading system and manage settings")
 
+# Import user API keys manager
+from user_api_keys import get_user_api_keys_manager
+
+# Get current user info
+user_email = st.user.email if st.user.is_logged_in else None
+user_name = st.user.name if st.user.is_logged_in else None
+
+# API Key Configuration Section (Most Important - Put First)
+st.markdown("### 🔑 Alpaca API Configuration")
+st.markdown("Connect your Alpaca trading account to execute trades")
+
+# Get user's existing keys
+keys_manager = get_user_api_keys_manager()
+user_keys = keys_manager.get_user_keys(user_email) if user_email else None
+
+tab1, tab2 = st.tabs(["📝 Paper Trading", "💰 Live Trading"])
+
+with tab1:
+    st.info("**Paper trading** uses simulated funds - perfect for testing strategies without risking real money")
+
+    st.markdown("""
+    **Getting Started:**
+    1. Sign up for a free Alpaca account at [alpaca.markets](https://alpaca.markets/)
+    2. Navigate to **Paper Trading** section in your dashboard
+    3. Generate your Paper API keys
+    4. Enter them below
+    """)
+
+    # Show existing validation status
+    if user_keys and user_keys.get("paper_validated_at"):
+        st.success(f"✅ Paper trading keys validated on {user_keys['paper_validated_at'][:10]}")
+
+    # Input fields
+    paper_api_key = st.text_input(
+        "Paper API Key",
+        type="password",
+        placeholder="PK...",
+        help="Your Alpaca paper trading API key (starts with 'PK')",
+        value="" if not user_keys else "••••••••••••••••" if user_keys.get("paper_api_key") else ""
+    )
+
+    paper_secret_key = st.text_input(
+        "Paper Secret Key",
+        type="password",
+        placeholder="Enter your paper secret key",
+        help="Your Alpaca paper trading secret key",
+        value="" if not user_keys else "••••••••••••••••" if user_keys.get("paper_secret_key") else ""
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("🧪 Test Connection", key="test_paper", use_container_width=True):
+            if not paper_api_key or paper_api_key.startswith("••"):
+                st.warning("Please enter your API keys first")
+            else:
+                with st.spinner("Testing connection..."):
+                    result = keys_manager.validate_and_save_keys(
+                        user_email=user_email,
+                        user_name=user_name,
+                        api_key=paper_api_key,
+                        secret_key=paper_secret_key,
+                        is_paper=True
+                    )
+
+                    if result["valid"]:
+                        st.success(result["message"])
+                        account = result.get("account_info", {})
+                        st.markdown(f"""
+                        **Account Status:** {account.get('status', 'N/A')}
+                        **Buying Power:** ${float(account.get('buying_power', 0)):,.2f}
+                        **Portfolio Value:** ${float(account.get('portfolio_value', 0)):,.2f}
+                        """)
+                        st.rerun()
+                    else:
+                        st.error(result["message"])
+                        if "error" in result:
+                            with st.expander("Error Details"):
+                                st.code(result["error"])
+
+    with col2:
+        if st.button("💾 Save Keys", key="save_paper", use_container_width=True):
+            if not paper_api_key or not paper_secret_key or paper_api_key.startswith("••"):
+                st.warning("Please enter both API key and secret key")
+            else:
+                success = keys_manager.save_user_keys(
+                    user_email=user_email,
+                    user_name=user_name,
+                    paper_api_key=paper_api_key,
+                    paper_secret_key=paper_secret_key,
+                )
+
+                if success:
+                    st.success("✅ Paper trading keys saved!")
+                    st.info("💡 Use 'Test Connection' to validate your keys")
+                    st.rerun()
+                else:
+                    st.error("Failed to save keys")
+
+with tab2:
+    st.warning("⚠️ **Live Trading** - Real money will be used!")
+
+    # Check subscription status
+    has_access = keys_manager.has_live_access(user_email) if user_email else False
+
+    if not has_access:
+        st.error("🔒 Live trading requires a paid subscription (Basic or Pro tier)")
+        st.markdown("""
+        **To enable live trading:**
+        1. Go to the **[Subscription](/Subscription)** page
+        2. Upgrade to Basic ($9.99/month) or Pro ($29.99/month)
+        3. Return here to configure your live API keys
+        """)
+        st.stop()
+
+    st.markdown("""
+    **Before you start:**
+    1. Create an Alpaca account at [alpaca.markets](https://alpaca.markets/)
+    2. **Complete identity verification** (required for live trading)
+    3. **Fund your account** (minimum $500 for margin, or $0 for cash account)
+    4. Generate **live** API keys (not paper keys!)
+    5. Enter them below
+
+    ⚠️ **Important:** Your money stays in your Alpaca account. This app only executes trades on your behalf.
+    """)
+
+    # Show existing validation status
+    if user_keys and user_keys.get("live_validated_at"):
+        st.success(f"✅ Live trading keys validated on {user_keys['live_validated_at'][:10]}")
+
+    # Input fields
+    live_api_key = st.text_input(
+        "Live API Key",
+        type="password",
+        placeholder="AK...",
+        help="Your Alpaca live trading API key (starts with 'AK')",
+        value="" if not user_keys else "••••••••••••••••" if user_keys.get("live_api_key") else ""
+    )
+
+    live_secret_key = st.text_input(
+        "Live Secret Key",
+        type="password",
+        placeholder="Enter your live secret key",
+        help="Your Alpaca live trading secret key",
+        value="" if not user_keys else "••••••••••••••••" if user_keys.get("live_secret_key") else ""
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("🧪 Test Connection", key="test_live", use_container_width=True):
+            if not live_api_key or live_api_key.startswith("••"):
+                st.warning("Please enter your API keys first")
+            else:
+                with st.spinner("Testing connection to LIVE account..."):
+                    result = keys_manager.validate_and_save_keys(
+                        user_email=user_email,
+                        user_name=user_name,
+                        api_key=live_api_key,
+                        secret_key=live_secret_key,
+                        is_paper=False
+                    )
+
+                    if result["valid"]:
+                        st.success(result["message"])
+                        account = result.get("account_info", {})
+                        st.markdown(f"""
+                        **Account Status:** {account.get('status', 'N/A')}
+                        **Buying Power:** ${float(account.get('buying_power', 0)):,.2f}
+                        **Portfolio Value:** ${float(account.get('portfolio_value', 0)):,.2f}
+                        """)
+                        st.balloons()
+                        st.rerun()
+                    else:
+                        st.error(result["message"])
+                        if "error" in result:
+                            with st.expander("Error Details"):
+                                st.code(result["error"])
+
+    with col2:
+        if st.button("💾 Save Keys", key="save_live", use_container_width=True):
+            if not live_api_key or not live_secret_key or live_api_key.startswith("••"):
+                st.warning("Please enter both API key and secret key")
+            else:
+                success = keys_manager.save_user_keys(
+                    user_email=user_email,
+                    user_name=user_name,
+                    live_api_key=live_api_key,
+                    live_secret_key=live_secret_key,
+                )
+
+                if success:
+                    st.success("✅ Live trading keys saved!")
+                    st.info("💡 Use 'Test Connection' to validate your keys")
+                    st.rerun()
+                else:
+                    st.error("Failed to save keys")
+
+# Security best practices
+with st.expander("🔒 Security Best Practices"):
+    st.markdown("""
+    **Protecting Your API Keys:**
+    - ✅ Your keys are encrypted before being stored in the database
+    - ✅ Keys are tied to your email address (only you can access them)
+    - ✅ We never see or log your API keys
+    - ✅ Rotate your keys regularly (generate new ones in Alpaca dashboard)
+
+    **Recommended Security:**
+    1. Enable 2FA on your Alpaca account
+    2. Use read-only keys if you only want to monitor (not trade)
+    3. Revoke old keys when generating new ones
+    4. Never share your secret keys with anyone
+
+    **If Your Keys are Compromised:**
+    1. Go to [Alpaca Dashboard](https://app.alpaca.markets/)
+    2. Revoke the compromised keys immediately
+    3. Generate new API keys
+    4. Update them here
+    """)
+
+st.markdown("---")
+
 # Environment configuration
 st.markdown("### 🔧 Environment Configuration")
 
