@@ -82,6 +82,14 @@ class CommandPalette:
         )
 
         self.add_command(
+            "Subscription",
+            lambda: st.switch_page("10_💳_Subscription.py"),
+            category="Navigation",
+            keywords=["subscription", "billing", "plan", "upgrade", "pricing"],
+            icon="💳"
+        )
+
+        self.add_command(
             "Auth Test",
             lambda: st.switch_page("99_🧪_Auth_Test.py"),
             category="Navigation",

@@ -60,7 +60,16 @@
       "WebFetch(domain:github.com)",
       "Bash(pkill:*)",
       "Bash(PYTHONPATH=/Users/lefv/repos/politician-trading-tracker/src:$PYTHONPATH python -m pytest:*)",
-      "Bash(/Users/lefv/.pyenv/shims/python:*)"
+      "Bash(/Users/lefv/.pyenv/shims/python:*)",
+      "Bash(for file in pages/*.py)",
+      "Bash(do:*)",
+      "Bash(done)",
+      "Bash(for file in 1_📥_Data_Collection.py 2_🎯_Trading_Signals.py 3_💼_Trading_Operations.py 4_📈_Portfolio.py 6_⚙️_Settings.py 7_🔧_Database_Setup.py 8_📋_Action_Logs.py)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(unzip:*)",
+      "WebFetch(domain:docs.streamlit.io)",
+      "Bash(uv pip show:*)",
+      "WebFetch(domain:st-paywall.readthedocs.io)"
     ],
     "deny": [],
     "ask": []
