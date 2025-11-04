@@ -55,6 +55,15 @@ class AuthenticationManager:
         if 'auth_current_session_id' not in st.session_state:
             st.session_state.auth_current_session_id = None
 
+    def _ensure_session_state_initialized(self):
+        """Ensure session state variables are initialized"""
+        if 'auth_sessions' not in st.session_state:
+            st.session_state.auth_sessions = {}
+        if 'auth_login_attempts' not in st.session_state:
+            st.session_state.auth_login_attempts = {}
+        if 'auth_current_session_id' not in st.session_state:
+            st.session_state.auth_current_session_id = None
+
     def _generate_session_id(self, email: str) -> str:
         """Generate unique session ID for a user"""
         timestamp = datetime.now().isoformat()
@@ -88,6 +97,7 @@ class AuthenticationManager:
 
     def _cleanup_expired_sessions(self):
         """Remove expired sessions"""
+        self._ensure_session_state_initialized()
         current_time = datetime.now()
         sessions = st.session_state.auth_sessions
 
@@ -109,6 +119,7 @@ class AuthenticationManager:
 
     def _manage_concurrent_sessions(self, user_email: str):
         """Enforce concurrent session limits"""
+        self._ensure_session_state_initialized()
         sessions = st.session_state.auth_sessions
         user_sessions = [
             (sid, data) for sid, data in sessions.items()
@@ -137,6 +148,7 @@ class AuthenticationManager:
 
     def _update_session_activity(self):
         """Update last activity timestamp for current session"""
+        self._ensure_session_state_initialized()
         if st.session_state.auth_current_session_id:
             session_id = st.session_state.auth_current_session_id
             if session_id in st.session_state.auth_sessions:
@@ -150,6 +162,9 @@ class AuthenticationManager:
         Returns:
             Optional[str]: User email if authenticated, None if stopped
         """
+        # Ensure session state is initialized
+        self._ensure_session_state_initialized()
+
         # Clean up expired sessions
         self._cleanup_expired_sessions()
 
@@ -216,6 +231,7 @@ class AuthenticationManager:
         """
         Show logged-in user information in the sidebar with session details.
         """
+        self._ensure_session_state_initialized()
         if st.user.is_logged_in:
             with st.sidebar:
                 st.success(f"Welcome, {st.user.name}!")
@@ -268,6 +284,7 @@ class AuthenticationManager:
 
     def get_session_stats(self) -> Dict[str, Any]:
         """Get statistics about current sessions"""
+        self._ensure_session_state_initialized()
         sessions = st.session_state.auth_sessions
 
         # Count active sessions per user
