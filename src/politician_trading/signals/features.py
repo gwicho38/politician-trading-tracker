@@ -95,7 +95,8 @@ class FeatureEngineer:
 
     def _extract_temporal_features(self, disclosures: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Extract time-based features."""
-        now = datetime.utcnow()
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
         features = {}
 
         # Get transaction dates
