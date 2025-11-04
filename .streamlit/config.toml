@@ -112,21 +112,21 @@ fastReruns = true                            # Fast reruns for better UX
 # LOGGER SETTINGS
 # -----------------------------------------------------------------------------
 [logger]
-level = "info"                               # Log level: "error", "warning", "info", "debug"
-# messageFormat = "%(asctime)s %(message)s"  # Log message format
+level = "debug"                               # Log level: "error", "warning", "info", "debug"
+messageFormat = "%(asctime)s %(message)s"  # Log message format
 
 # -----------------------------------------------------------------------------
 # CLIENT SETTINGS
 # -----------------------------------------------------------------------------
 [client]
-# # Error display control:
-# # showErrorDetails = "full"                # "full", "stacktrace", "type", or "none"
+# Error display control:
+showErrorDetails = "full"                # "full", "stacktrace", "type", or "none"
 # #
 # # Toolbar visibility:
-# # toolbarMode = "auto"                     # "auto", "developer", "viewer", or "minimal"
+toolbarMode = "auto"                     # "auto", "developer", "viewer", or "minimal"
 # #
 # # Sidebar navigation in multipage apps:
-# # showSidebarNavigation = true             # Show default navigation UI
+showSidebarNavigation = true             # Show default navigation UI
 
 # -----------------------------------------------------------------------------
 # THEME CUSTOMIZATION (ADVANCED)
@@ -138,23 +138,23 @@ level = "info"                               # Log level: "error", "warning", "i
 # # base = "light"                           # "light", "dark", or path to .toml file
 
 # # Additional Color Options
-# # redColor = "#ff4b4b"                     # Semantic red
-# # orangeColor = "#ffa421"                  # Semantic orange
-# # yellowColor = "#ffe312"                  # Semantic yellow
-# # greenColor = "#21c354"                   # Semantic green
-# # blueColor = "#0068c9"                    # Semantic blue
-# # violetColor = "#803df5"                  # Semantic violet
-# # grayColor = "#808495"                    # Semantic gray
+redColor = "#ff4b4b"                     # Semantic red
+orangeColor = "#ffa421"                  # Semantic orange
+yellowColor = "#ffe312"                  # Semantic yellow
+greenColor = "#21c354"                   # Semantic green
+blueColor = "#0068c9"                    # Semantic blue
+violetColor = "#803df5"                  # Semantic violet
+grayColor = "#808495"                    # Semantic gray
 
 # # Font Customization
-# # headingFont = "sans serif"               # Heading font family
-# # baseFontSize = "1rem"                    # Base font size
-# # baseFontWeight = 400                     # Base font weight
-# # codeFontWeight = 400                     # Code font weight
+headingFont = "sans serif"               # Heading font family
+baseFontSize = "1rem"                    # Base font size
+baseFontWeight = 400                     # Base font weight
+codeFontWeight = 400                     # Code font weight
 # #
 # # Using Google Fonts (with fallback):
-# # font = "Roboto:https://fonts.googleapis.com/css2?family=Roboto, sans-serif"
-# # codeFont = "'Fira Code':https://fonts.googleapis.com/css2?family=Fira+Code, monospace"
+font = "Roboto:https://fonts.googleapis.com/css2?family=Roboto, sans-serif"
+codeFont = "'Fira Code':https://fonts.googleapis.com/css2?family=Fira+Code, monospace"
 # #
 # # Popular Nerd Fonts from Google Fonts:
 # # - JetBrains Mono: Clean monospace with ligatures
@@ -167,7 +167,7 @@ level = "info"                               # Log level: "error", "warning", "i
 # # - Open Sans: Clean, neutral sans-serif
 
 # # Border & Shape Options
-# # dataframeBorderColor = "#d0d0d0"         # DataFrame borders
+dataframeBorderColor = "#d0d0d0"         # DataFrame borders
 # # linkUnderline = true                     # Underline links
 
 # # Custom Font Faces (requires enableStaticServing = true)
@@ -190,5 +190,5 @@ level = "info"                               # Log level: "error", "warning", "i
 # -----------------------------------------------------------------------------
 # SECRETS MANAGEMENT
 # -----------------------------------------------------------------------------
-# # [secrets]
-# # files = [".streamlit/secrets.toml"]      # Path(s) to secrets files
+[secrets]
+files = [".streamlit/secrets.toml"]      # Path(s) to secrets files

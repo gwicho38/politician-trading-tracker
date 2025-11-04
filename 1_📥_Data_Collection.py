@@ -56,8 +56,8 @@ if "collection_results" not in st.session_state:
 
 # Tabs for different views
 tab = sac.tabs([
-    sac.TabsItem(label='Data Sources', icon='database-add'),
     sac.TabsItem(label='View Data', icon='table'),
+    sac.TabsItem(label='Data Sources', icon='database-add'),
     sac.TabsItem(label='Statistics', icon='bar-chart-line'),
 ], align='center', return_index=False, size='large')
 
