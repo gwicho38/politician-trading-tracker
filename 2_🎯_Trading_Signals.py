@@ -174,6 +174,7 @@ if st.button("🎯 Generate Signals", width="stretch"):
                 try:
                     data = {
                         "ticker": signal.ticker,
+                        "symbol": signal.ticker,  # Some schemas use symbol instead of ticker
                         "asset_name": signal.asset_name,
                         "signal_type": signal.signal_type.value,
                         "signal_strength": signal.signal_strength.value,
