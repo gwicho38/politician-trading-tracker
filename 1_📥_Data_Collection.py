@@ -798,7 +798,27 @@ elif tab == 'View Data' or tab == 'Statistics':
             st.info("No disclosures found. Run collection to populate data.")
 
     except Exception as e:
-        st.warning("Connect to database to view recent disclosures")
+        st.error(f"❌ Database connection error: {str(e)}")
+        logger.error("Failed to load recent disclosures", error=str(e), exc_info=True)
+
+        # Show connection help
+        with st.expander("🔍 Troubleshooting"):
+            st.markdown("""
+            **Common issues:**
+            1. **Missing Supabase credentials** - Check `.streamlit/secrets.toml` has:
+               ```toml
+               [connections.supabase]
+               url = "your-supabase-url"
+               key = "your-supabase-key"
+               ```
+
+            2. **Database not initialized** - Run database setup first:
+               ```bash
+               python 7_🔧_Database_Setup.py
+               ```
+
+            3. **No data imported yet** - Import some data using the "Data Sources" tab above
+            """)
 
     # Scheduled collection
     st.markdown("---")
