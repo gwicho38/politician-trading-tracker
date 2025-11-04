@@ -62,6 +62,9 @@ class AlpacaTradingClient:
         self.paper = paper
         self.trading_mode = TradingMode.PAPER if paper else TradingMode.LIVE
 
+        # Validate API key format
+        self._validate_api_key(api_key, paper)
+
         # Determine base URL
         if base_url:
             self.base_url = base_url
@@ -92,6 +95,99 @@ class AlpacaTradingClient:
             logger.error(f"Failed to initialize Alpaca client: {e}")
             logger.error(f"Ensure your API keys match the trading mode (paper={paper})")
             raise
+
+    def _validate_api_key(self, api_key: str, paper: bool):
+        """
+        Validate API key format matches trading mode.
+
+        Args:
+            api_key: Alpaca API key
+            paper: Whether paper trading mode is enabled
+
+        Raises:
+            ValueError: If key format doesn't match mode
+        """
+        if not api_key:
+            raise ValueError("API key is required")
+
+        # Check key prefix matches mode
+        if paper and not api_key.startswith('PK'):
+            logger.warning(
+                f"Paper mode enabled but API key starts with '{api_key[:2]}' instead of 'PK'. "
+                f"This may cause authentication errors."
+            )
+        elif not paper and not api_key.startswith('AK'):
+            logger.warning(
+                f"Live mode enabled but API key starts with '{api_key[:2]}' instead of 'AK'. "
+                f"This may cause authentication errors."
+            )
+
+    def test_connection(self) -> Dict[str, Any]:
+        """
+        Test the connection to Alpaca and validate credentials.
+
+        Returns:
+            Dictionary with connection test results:
+                - success: bool
+                - message: str
+                - account_status: str (if successful)
+                - error: str (if failed)
+        """
+        try:
+            account = self.trading_client.get_account()
+            return {
+                "success": True,
+                "message": f"Successfully connected to Alpaca {'paper' if self.paper else 'live'} trading",
+                "account_status": account.status,
+                "account_id": str(account.id)[:8] + "...",
+            }
+        except Exception as e:
+            error_str = str(e)
+
+            # Parse common error types
+            if "401" in error_str or "unauthorized" in error_str.lower():
+                return {
+                    "success": False,
+                    "message": "Invalid credentials",
+                    "error": "API key or secret key is incorrect",
+                    "troubleshooting": [
+                        "Verify your API keys in Streamlit Cloud secrets",
+                        "Ensure you're using the correct keys for your trading mode",
+                        "Paper trading requires keys starting with 'PK'",
+                        "Live trading requires keys starting with 'AK'",
+                        "Get new keys from: https://alpaca.markets/",
+                    ]
+                }
+            elif "403" in error_str or "forbidden" in error_str.lower():
+                return {
+                    "success": False,
+                    "message": "Access denied",
+                    "error": "Your account doesn't have permission for this operation",
+                    "troubleshooting": [
+                        "Check if your Alpaca account is approved for trading",
+                        "Verify your account status at: https://alpaca.markets/",
+                    ]
+                }
+            elif "404" in error_str:
+                return {
+                    "success": False,
+                    "message": "Endpoint not found",
+                    "error": "The API endpoint doesn't exist",
+                    "troubleshooting": [
+                        "Check if you're using the correct base URL",
+                        f"Current base URL: {self.base_url}",
+                    ]
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Connection failed",
+                    "error": error_str,
+                    "troubleshooting": [
+                        "Check your internet connection",
+                        "Verify Alpaca service status at: https://alpaca.markets/status",
+                    ]
+                }
 
     def get_account(self) -> Dict[str, Any]:
         """
