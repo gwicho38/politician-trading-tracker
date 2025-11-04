@@ -64,12 +64,14 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
         self.logger.info(f"Starting publishing of {len(data)} normalized disclosures")
 
         # Get database client
-        from ..database.database import SupabaseClient
+        from supabase import create_client
         from ..config import SupabaseConfig
 
         try:
             db_config = SupabaseConfig.from_env()
-            db = SupabaseClient(db_config)
+            # Create Supabase client directly
+            db_client = create_client(db_config.url, db_config.key)
+            self.logger.info("Database client initialized successfully")
 
             # Track statistics
             stats = {
@@ -97,7 +99,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
                     try:
                         # Handle politician - create or match existing
                         politician_id = await self._ensure_politician(
-                            db, disclosure, stats
+                            db_client, disclosure, stats
                         )
 
                         if not politician_id:
@@ -112,7 +114,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
 
                         # Check for existing disclosure
                         existing = await self._find_existing_disclosure(
-                            db, disclosure, politician_id
+                            db_client, disclosure, politician_id
                         )
 
                         if existing:
@@ -127,7 +129,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
                             if self.update_existing:
                                 # Update existing record
                                 updated = await self._update_disclosure(
-                                    db, existing['id'], disclosure
+                                    db_client, existing['id'], disclosure
                                 )
                                 if updated:
                                     self.logger.info(
@@ -148,7 +150,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
                         else:
                             # Insert new disclosure
                             disclosure_id = await self._insert_disclosure(
-                                db, disclosure, politician_id
+                                db_client, disclosure, politician_id
                             )
 
                             if disclosure_id:
@@ -227,7 +229,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
 
     async def _ensure_politician(
         self,
-        db,
+        db_client,
         disclosure: NormalizedDisclosure,
         stats: Dict[str, int]
     ) -> Optional[str]:
@@ -241,35 +243,37 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
             stats['politicians_matched'] += 1
             return disclosure.politician_id
 
-        # Try to find existing politician
-        from models import Politician
+        # Try to find existing politician by name
+        try:
+            response = db_client.table("politicians").select("*").match({
+                "first_name": disclosure.politician_first_name,
+                "last_name": disclosure.politician_last_name
+            }).execute()
 
-        existing = db.find_politician_by_name(
-            first_name=disclosure.politician_first_name,
-            last_name=disclosure.politician_last_name,
-            role=disclosure.politician_role
-        )
+            if response.data and len(response.data) > 0:
+                stats['politicians_matched'] += 1
+                return response.data[0]['id']
 
-        if existing:
-            stats['politicians_matched'] += 1
-            return existing.id
+        except Exception as e:
+            self.logger.debug(f"Error finding politician: {e}")
 
         # Create new politician
         try:
-            new_politician = Politician(
-                first_name=disclosure.politician_first_name,
-                last_name=disclosure.politician_last_name,
-                full_name=disclosure.politician_full_name,
-                role=disclosure.politician_role,
-                party=disclosure.politician_party,
-                state_or_country=disclosure.politician_state,
-                source=disclosure.source
-            )
+            politician_data = {
+                "first_name": disclosure.politician_first_name,
+                "last_name": disclosure.politician_last_name,
+                "full_name": disclosure.politician_full_name,
+                "role": disclosure.politician_role,
+                "party": disclosure.politician_party,
+                "state_or_country": disclosure.politician_state,
+                "source": disclosure.source
+            }
 
-            created = db.upsert_politician(new_politician)
-            if created:
+            response = db_client.table("politicians").insert(politician_data).execute()
+
+            if response.data and len(response.data) > 0:
                 stats['politicians_created'] += 1
-                return created.id
+                return response.data[0]['id']
 
         except Exception as e:
             self.logger.error(f"Error creating politician: {e}", exc_info=True)
@@ -278,14 +282,14 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
 
     async def _find_existing_disclosure(
         self,
-        db,
+        db_client,
         disclosure: NormalizedDisclosure,
         politician_id: str
     ) -> Optional[Dict[str, Any]]:
         """Find existing disclosure by unique key"""
         try:
             # Look for exact match on key fields
-            response = db.client.table("trading_disclosures").select("*").match({
+            response = db_client.table("trading_disclosures").select("*").match({
                 "politician_id": politician_id,
                 "transaction_date": disclosure.transaction_date.isoformat(),
                 "asset_name": disclosure.asset_name,
@@ -302,7 +306,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
 
     async def _insert_disclosure(
         self,
-        db,
+        db_client,
         disclosure: NormalizedDisclosure,
         politician_id: str
     ) -> Optional[str]:
@@ -326,7 +330,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
                 "status": "active"
             }
 
-            response = db.client.table("trading_disclosures").insert(data).execute()
+            response = db_client.table("trading_disclosures").insert(data).execute()
 
             if response.data and len(response.data) > 0:
                 return response.data[0]['id']
@@ -338,7 +342,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
 
     async def _update_disclosure(
         self,
-        db,
+        db_client,
         disclosure_id: str,
         disclosure: NormalizedDisclosure
     ) -> bool:
@@ -355,7 +359,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
                 "updated_at": datetime.utcnow().isoformat()
             }
 
-            response = db.client.table("trading_disclosures")\
+            response = db_client.table("trading_disclosures")\
                 .update(data)\
                 .eq("id", disclosure_id)\
                 .execute()
