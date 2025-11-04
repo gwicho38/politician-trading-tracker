@@ -137,24 +137,24 @@ showSidebarNavigation = true             # Show default navigation UI
 # # [theme]
 # # base = "light"                           # "light", "dark", or path to .toml file
 
-# # Additional Color Options
-redColor = "#ff4b4b"                     # Semantic red
-orangeColor = "#ffa421"                  # Semantic orange
-yellowColor = "#ffe312"                  # Semantic yellow
-greenColor = "#21c354"                   # Semantic green
-blueColor = "#0068c9"                    # Semantic blue
-violetColor = "#803df5"                  # Semantic violet
-grayColor = "#808495"                    # Semantic gray
+# # Additional Color Options (DEPRECATED - these have been removed from Streamlit)
+# redColor = "#ff4b4b"                     # Semantic red
+# orangeColor = "#ffa421"                  # Semantic orange
+# yellowColor = "#ffe312"                  # Semantic yellow
+# greenColor = "#21c354"                   # Semantic green
+# blueColor = "#0068c9"                    # Semantic blue
+# violetColor = "#803df5"                  # Semantic violet
+# grayColor = "#808495"                    # Semantic gray
 
-# # Font Customization
-headingFont = "sans serif"               # Heading font family
-baseFontSize = "1rem"                    # Base font size
-baseFontWeight = 400                     # Base font weight
-codeFontWeight = 400                     # Code font weight
+# # Font Customization (DEPRECATED - use theme section above instead)
+# headingFont = "sans serif"               # Heading font family
+# baseFontSize = "1rem"                    # Base font size
+# baseFontWeight = 400                     # Base font weight
+# codeFontWeight = 400                     # Code font weight
 # #
 # # Using Google Fonts (with fallback):
-font = "Roboto:https://fonts.googleapis.com/css2?family=Roboto, sans-serif"
-codeFont = "'Fira Code':https://fonts.googleapis.com/css2?family=Fira+Code, monospace"
+# font = "Roboto:https://fonts.googleapis.com/css2?family=Roboto, sans-serif"
+# codeFont = "'Fira Code':https://fonts.googleapis.com/css2?family=Fira+Code, monospace"
 # #
 # # Popular Nerd Fonts from Google Fonts:
 # # - JetBrains Mono: Clean monospace with ligatures

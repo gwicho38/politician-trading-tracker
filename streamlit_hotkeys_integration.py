@@ -32,13 +32,14 @@ def register_hotkeys() -> None:
     """
     try:
         from streamlit_hotkeys import activate, hk, pressed
-    except Exception:
+    except Exception as e:
         # Friendly instruction for users/deployers to install the package
         st.sidebar.info(
             "⌨️ Keyboard shortcuts are installing...\n\n"
             "Package is in requirements.txt.\n"
             "On Streamlit Cloud: Settings → Reboot app"
         )
+        # Don't try to use hotkeys if import failed
         return
 
     # If the package is present, register hotkeys
