@@ -151,12 +151,15 @@ with tab2:
     st.subheader("🗄️ Supabase Connection Status")
 
     try:
-        from politician_trading.database.supabase_client import get_supabase_client
+        # Use st-supabase-connection for connection management
+        conn = st.connection(
+            "supabase",
+            type="supabase",
+            url=os.getenv("SUPABASE_URL"),
+            key=os.getenv("SUPABASE_KEY")
+        )
 
-        with st.spinner("Connecting to Supabase..."):
-            client = get_supabase_client()
-
-        st.success("✅ Successfully connected to Supabase")
+        st.success("✅ Successfully connected to Supabase via st.connection")
 
         # Supabase configuration
         supabase_url = os.getenv("SUPABASE_URL")
@@ -169,11 +172,13 @@ with tab2:
             st.code(f"""
 URL: {supabase_url}
 Key: {supabase_key[:10]}...{supabase_key[-4:] if supabase_key else 'Not set'}
+Connection Type: st-supabase-connection
             """)
 
         with col2:
             st.markdown("### Connection Details")
-            st.info("Connected via Supabase Python client")
+            st.info("Connected via Streamlit's st.connection API with st-supabase-connection")
+            st.caption("Provides built-in caching and connection pooling")
 
         # Test database access
         st.markdown("### Database Tables")
@@ -189,8 +194,12 @@ Key: {supabase_key[:10]}...{supabase_key[-4:] if supabase_key else 'Not set'}
 
             for table in tables_to_test:
                 try:
-                    result = client.table(table).select("*", count="exact").limit(1).execute()
-                    count = result.count if hasattr(result, 'count') else 'Unknown'
+                    # Query using st-supabase-connection
+                    df = conn.query(
+                        f"SELECT COUNT(*) as count FROM {table}",
+                        ttl=60  # Cache for 60 seconds
+                    )
+                    count = df['count'].iloc[0] if not df.empty else 0
                     st.success(f"✅ `{table}`: Accessible ({count} total rows)")
                 except Exception as e:
                     st.error(f"❌ `{table}`: {str(e)[:100]}")
@@ -199,20 +208,53 @@ Key: {supabase_key[:10]}...{supabase_key[-4:] if supabase_key else 'Not set'}
         st.markdown("### Recent Database Activity")
 
         try:
-            recent_logs = client.table("action_logs") \
-                .select("*") \
-                .order("created_at", desc=True) \
-                .limit(5) \
-                .execute()
+            # Query recent logs using st-supabase-connection
+            recent_logs_df = conn.query(
+                """
+                SELECT * FROM action_logs
+                ORDER BY created_at DESC
+                LIMIT 5
+                """,
+                ttl=10  # Cache for 10 seconds (admin view should be fresh)
+            )
 
-            if recent_logs.data:
-                import pandas as pd
-                df = pd.DataFrame(recent_logs.data)
-                st.dataframe(df, use_container_width=True)
+            if not recent_logs_df.empty:
+                st.dataframe(recent_logs_df, use_container_width=True)
             else:
                 st.info("No recent action logs")
         except Exception as e:
             st.error(f"Error fetching recent logs: {e}")
+
+        # Connection statistics
+        st.markdown("### Connection Statistics")
+
+        with st.expander("📊 Query Performance", expanded=False):
+            st.markdown("""
+            **st-supabase-connection Benefits:**
+            - ✅ Automatic connection pooling
+            - ✅ Built-in query caching with TTL
+            - ✅ Streamlit's native st.connection API
+            - ✅ Better error handling and retries
+            - ✅ Automatic cleanup on session end
+
+            **Cache Configuration:**
+            - Table counts: 60 second TTL
+            - Recent logs: 10 second TTL
+            - Custom queries: Configurable per query
+            """)
+
+    except ImportError:
+        st.error("❌ st-supabase-connection not installed")
+        st.markdown("""
+        ### Installation Required
+
+        Install st-supabase-connection:
+        ```bash
+        uv pip install st-supabase-connection
+        ```
+
+        Already in requirements.txt: `st-supabase-connection>=2.1.3`
+        """)
 
     except Exception as e:
         st.error(f"❌ Failed to connect to Supabase: {e}")
@@ -224,13 +266,20 @@ Key: {supabase_key[:10]}...{supabase_key[-4:] if supabase_key else 'Not set'}
            - `SUPABASE_URL`
            - `SUPABASE_KEY`
 
-        2. Verify .streamlit/secrets.toml configuration
+        2. Verify .streamlit/secrets.toml configuration:
+        ```toml
+        [connections.supabase]
+        url = "your-supabase-url"
+        key = "your-supabase-key"
+        ```
 
         3. Test connection manually:
         ```python
-        from supabase import create_client
-        client = create_client(url, key)
+        conn = st.connection("supabase", type="supabase")
+        df = conn.query("SELECT 1")
         ```
+
+        4. Documentation: https://st-supabase-connection.streamlit.app/
         """)
 
 # Tab 3: System Info
