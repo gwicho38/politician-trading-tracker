@@ -62,6 +62,55 @@ st.caption(f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 st.divider()
 
+# Helper function for default insert templates (must be before tabs)
+def get_default_insert_template(table_name):
+    """Get default JSON template for inserting records"""
+    templates = {
+        "trading_disclosures": """{
+  "politician_id": "uuid-of-politician",
+  "transaction_date": "2025-11-04T00:00:00Z",
+  "disclosure_date": "2025-11-04T00:00:00Z",
+  "asset_name": "Apple Inc. - Common Stock",
+  "asset_ticker": "AAPL",
+  "asset_type": "stock",
+  "transaction_type": "purchase",
+  "amount_range_min": 15001,
+  "amount_range_max": 50000,
+  "status": "active",
+  "source": "us_senate",
+  "source_url": "https://efdsearch.senate.gov/..."
+}""",
+        "politicians": """{
+  "first_name": "John",
+  "last_name": "Doe",
+  "full_name": "John Doe",
+  "role": "Senator",
+  "party": "Democratic",
+  "state_or_country": "California",
+  "source": "us_senate"
+}""",
+        "action_logs": """{
+  "action_type": "test_action",
+  "status": "completed",
+  "user_id": "test_user",
+  "source": "manual_entry",
+  "result_message": "Test action completed successfully"
+}""",
+        "scheduled_jobs": """{
+  "job_name": "test_job",
+  "job_type": "data_collection",
+  "schedule": "0 0 * * *",
+  "is_active": true,
+  "description": "Test scheduled job"
+}""",
+        "user_sessions": """{
+  "session_id": "test_session_123",
+  "user_email": "test@example.com",
+  "is_active": true
+}"""
+    }
+    return templates.get(table_name, "{}")
+
 # Tabs for different admin sections
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📊 Analytics",
@@ -739,55 +788,6 @@ with tab3:
         st.info("Install with: `uv pip install st-supabase-connection`")
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
-
-# Helper function for default insert templates
-def get_default_insert_template(table_name):
-    """Get default JSON template for inserting records"""
-    templates = {
-        "trading_disclosures": """{
-  "politician_id": "uuid-of-politician",
-  "transaction_date": "2025-11-04T00:00:00Z",
-  "disclosure_date": "2025-11-04T00:00:00Z",
-  "asset_name": "Apple Inc. - Common Stock",
-  "asset_ticker": "AAPL",
-  "asset_type": "stock",
-  "transaction_type": "purchase",
-  "amount_range_min": 15001,
-  "amount_range_max": 50000,
-  "status": "active",
-  "source": "us_senate",
-  "source_url": "https://efdsearch.senate.gov/..."
-}""",
-        "politicians": """{
-  "first_name": "John",
-  "last_name": "Doe",
-  "full_name": "John Doe",
-  "role": "Senator",
-  "party": "Democratic",
-  "state_or_country": "California",
-  "source": "us_senate"
-}""",
-        "action_logs": """{
-  "action_type": "test_action",
-  "status": "completed",
-  "user_id": "test_user",
-  "source": "manual_entry",
-  "result_message": "Test action completed successfully"
-}""",
-        "scheduled_jobs": """{
-  "job_name": "test_job",
-  "job_type": "data_collection",
-  "schedule": "0 0 * * *",
-  "is_active": true,
-  "description": "Test scheduled job"
-}""",
-        "user_sessions": """{
-  "session_id": "test_session_123",
-  "user_email": "test@example.com",
-  "is_active": true
-}"""
-    }
-    return templates.get(table_name, "{}")
 
 # Tab 4: System Info
 with tab4:

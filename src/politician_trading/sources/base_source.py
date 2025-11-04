@@ -37,7 +37,7 @@ class BaseSource(ABC):
     """
 
     def __init__(self, config: Optional[SourceConfig] = None):
-        self.config = config
+        self.config = config if config is not None else self._create_default_config()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.session: Optional[aiohttp.ClientSession] = None
 

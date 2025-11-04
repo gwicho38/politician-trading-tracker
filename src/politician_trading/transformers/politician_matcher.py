@@ -26,14 +26,15 @@ class PoliticianMatcher:
             return
 
         try:
-            from ..database.database import SupabaseClient
+            from supabase import create_client
             from ..config import SupabaseConfig
 
             config = SupabaseConfig.from_env()
-            db = SupabaseClient(config)
+            # Create Supabase client directly
+            db_client = create_client(config.url, config.key)
 
             # Query politicians from database
-            response = db.client.table("politicians").select("*").execute()
+            response = db_client.table("politicians").select("*").execute()
 
             if response.data:
                 for politician in response.data:

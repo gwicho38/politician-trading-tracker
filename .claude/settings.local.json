@@ -73,7 +73,12 @@
       "Bash(cp:*)",
       "WebFetch(domain:st-supabase-connection.streamlit.app)",
       "WebFetch(domain:pypi.org)",
-      "Bash(/Users/lefv/repos/politician-trading-tracker/.gitignore)"
+      "Bash(/Users/lefv/repos/politician-trading-tracker/.gitignore)",
+      "Bash(PYTHONPATH=src python:*)",
+      "Bash(PYTHONPATH=src python3:*)",
+      "Bash(PYTHONPATH=src uv run python:*)",
+      "Bash(LOG_LEVEL=INFO uv run python:*)",
+      "Bash(LOG_LEVEL=DEBUG uv run python:*)"
     ],
     "deny": [],
     "ask": []
