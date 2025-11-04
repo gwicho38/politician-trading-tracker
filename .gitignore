@@ -103,3 +103,4 @@ analytics.json
 .github/instructions/codacy.instructions.md
 .streamlit/secrets.toml
 .streamlit/secrets.toml.cloud
+.credentials/

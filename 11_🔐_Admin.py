@@ -63,9 +63,10 @@ st.caption(f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 st.divider()
 
 # Tabs for different admin sections
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📊 Analytics",
     "🗄️ Supabase",
+    "🗂️ Database CRUD",
     "⚙️ System Info",
     "👥 Users",
     "📝 Logs"
@@ -105,21 +106,60 @@ with tab1:
                 # Summary statistics
                 if isinstance(analytics_data, dict):
                     st.markdown("### Summary")
-                    col1, col2, col3 = st.columns(3)
+                    col1, col2, col3, col4 = st.columns(4)
 
                     with col1:
-                        total_views = analytics_data.get("pageviews", {}).get("total", 0)
+                        total_views = analytics_data.get("total_pageviews", 0)
                         st.metric("Total Pageviews", total_views)
 
                     with col2:
-                        total_interactions = sum(analytics_data.get("widgets", {}).values()) if "widgets" in analytics_data else 0
-                        st.metric("Total Interactions", total_interactions)
+                        total_runs = analytics_data.get("total_script_runs", 0)
+                        st.metric("Total Script Runs", total_runs)
 
                     with col3:
+                        # Calculate total interactions from widgets (handle nested dicts)
+                        total_interactions = 0
+                        widgets = analytics_data.get("widgets", {})
+                        for widget_name, widget_value in widgets.items():
+                            if isinstance(widget_value, int):
+                                total_interactions += widget_value
+                            elif isinstance(widget_value, dict):
+                                # Sum nested dictionary values
+                                total_interactions += sum(v for v in widget_value.values() if isinstance(v, int))
+                        st.metric("Total Interactions", total_interactions)
+
+                    with col4:
                         unique_widgets = len(analytics_data.get("widgets", {}))
-                        st.metric("Unique Widgets Used", unique_widgets)
+                        st.metric("Unique Widgets", unique_widgets)
+            except json.JSONDecodeError as e:
+                st.error(f"❌ Analytics file is corrupted or invalid JSON")
+                st.code(f"Error: {e}")
+                with st.expander("🔧 Fix corrupted analytics file"):
+                    st.markdown("""
+                    **Option 1: Reset analytics data**
+                    ```bash
+                    rm analytics.json
+                    # Restart the app - new file will be created
+                    ```
+
+                    **Option 2: Fix JSON manually**
+                    Open `analytics.json` and fix any JSON syntax errors.
+                    """)
             except Exception as e:
-                st.error(f"Error reading analytics file: {e}")
+                st.error(f"❌ Error reading analytics file")
+                st.code(f"Error type: {type(e).__name__}\nError: {e}")
+                with st.expander("🐛 Debug Information"):
+                    st.markdown("""
+                    This error occurred while parsing the analytics data.
+
+                    **Common causes:**
+                    - Corrupted analytics.json file
+                    - Unexpected data structure
+                    - Permission issues
+
+                    **Solution:**
+                    Check the analytics.json file or delete it to start fresh.
+                    """)
         else:
             st.info("No analytics data stored yet. Use `streamlit_analytics.track(save_to_json='analytics.json')` in app.py")
 
@@ -154,18 +194,17 @@ with tab2:
         # Use st-supabase-connection for connection management
         from st_supabase_connection import SupabaseConnection
 
+        # Connection will use [connections.supabase] from secrets.toml automatically
         conn = st.connection(
             name="supabase",
-            type=SupabaseConnection,
-            url=os.getenv("SUPABASE_URL"),
-            key=os.getenv("SUPABASE_KEY")
+            type=SupabaseConnection
         )
 
         st.success("✅ Successfully connected to Supabase via st.connection")
 
         # Supabase configuration
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_KEY")
+        supabase_url = st.secrets.get("connections", {}).get("supabase", {}).get("url", os.getenv("SUPABASE_URL"))
+        supabase_key = st.secrets.get("connections", {}).get("supabase", {}).get("key", os.getenv("SUPABASE_KEY"))
 
         col1, col2 = st.columns(2)
 
@@ -185,6 +224,26 @@ Connection Type: st-supabase-connection
         # Test database access
         st.markdown("### Database Tables")
 
+        # Show setup instructions if tables are missing
+        with st.expander("📋 Setup Instructions", expanded=False):
+            st.markdown("""
+            **If you see "Table not found" errors below:**
+
+            1. Go to your [Supabase SQL Editor](https://app.supabase.com/project/uljsqvwkomdrlnofmlad/sql)
+            2. Open the file: `supabase/sql/create_missing_tables.sql`
+            3. Copy the SQL and paste it into the SQL Editor
+            4. Click **Run** to create the missing tables
+            5. Refresh this page to verify
+
+            **Required Tables:**
+            - `politician_trades` - Main trading data
+            - `user_sessions` - Authentication sessions
+            - `action_logs` - Application logs
+            - `scheduled_jobs` - Job scheduling
+
+            See `supabase/README.md` for detailed setup instructions.
+            """)
+
         with st.expander("🔍 Test Table Access", expanded=True):
             # Try to query different tables
             tables_to_test = [
@@ -196,32 +255,30 @@ Connection Type: st-supabase-connection
 
             for table in tables_to_test:
                 try:
-                    # Query using st-supabase-connection
-                    df = conn.query(
-                        f"SELECT COUNT(*) as count FROM {table}",
-                        ttl=60  # Cache for 60 seconds
-                    )
-                    count = df['count'].iloc[0] if not df.empty else 0
+                    # Query using Supabase client API
+                    # conn.table() returns a query builder
+                    response = conn.table(table).select("*", count="exact").limit(0).execute()
+                    count = response.count if hasattr(response, 'count') else 0
                     st.success(f"✅ `{table}`: Accessible ({count} total rows)")
                 except Exception as e:
-                    st.error(f"❌ `{table}`: {str(e)[:100]}")
+                    error_msg = str(e)
+                    if "Could not find the table" in error_msg or "PGRST" in error_msg:
+                        st.warning(f"⚠️ `{table}`: Table not found - needs to be created")
+                    else:
+                        st.error(f"❌ `{table}`: {error_msg[:100]}")
 
         # Recent activity
         st.markdown("### Recent Database Activity")
 
         try:
-            # Query recent logs using st-supabase-connection
-            recent_logs_df = conn.query(
-                """
-                SELECT * FROM action_logs
-                ORDER BY created_at DESC
-                LIMIT 5
-                """,
-                ttl=10  # Cache for 10 seconds (admin view should be fresh)
-            )
+            # Query recent logs using Supabase client API
+            import pandas as pd
 
-            if not recent_logs_df.empty:
-                st.dataframe(recent_logs_df, use_container_width=True)
+            response = conn.table("action_logs").select("*").order("created_at", desc=True).limit(5).execute()
+
+            if response.data:
+                recent_logs_df = pd.DataFrame(response.data)
+                st.dataframe(recent_logs_df, width="stretch")
             else:
                 st.info("No recent action logs")
         except Exception as e:
@@ -232,17 +289,19 @@ Connection Type: st-supabase-connection
 
         with st.expander("📊 Query Performance", expanded=False):
             st.markdown("""
-            **st-supabase-connection Benefits:**
-            - ✅ Automatic connection pooling
-            - ✅ Built-in query caching with TTL
+            **st-supabase-connection Features:**
+            - ✅ Uses official Supabase Python client
             - ✅ Streamlit's native st.connection API
-            - ✅ Better error handling and retries
+            - ✅ Automatic connection management
+            - ✅ Better error handling
             - ✅ Automatic cleanup on session end
 
-            **Cache Configuration:**
-            - Table counts: 60 second TTL
-            - Recent logs: 10 second TTL
-            - Custom queries: Configurable per query
+            **API Methods:**
+            - `conn.table(name).select(columns).execute()` - Query data
+            - `conn.table(name).insert(data).execute()` - Insert data
+            - `conn.table(name).update(data).eq(col, val).execute()` - Update
+            - `conn.table(name).delete().eq(col, val).execute()` - Delete
+            - Full postgrest-py API available
             """)
 
     except ImportError:
@@ -286,8 +345,452 @@ Connection Type: st-supabase-connection
         5. GitHub: https://github.com/SiddhantSadangi/st_supabase_connection
         """)
 
-# Tab 3: System Info
+# Tab 3: Database CRUD
 with tab3:
+    st.subheader("🗂️ Database CRUD Operations")
+    st.caption("Create, Read, Update, and Delete records from Supabase tables")
+
+    try:
+        from st_supabase_connection import SupabaseConnection
+        import pandas as pd
+
+        # Get connection
+        conn = st.connection("supabase", type=SupabaseConnection)
+
+        # List of known tables (from Supabase tab testing)
+        KNOWN_TABLES = [
+            "trading_disclosures",
+            "politicians",
+            "action_logs",
+            "scheduled_jobs",
+            "user_sessions"
+        ]
+
+        # Test which tables actually exist
+        st.markdown("### Select Table")
+
+        with st.expander("🔍 Table Status", expanded=False):
+            st.caption("Checking which tables are accessible...")
+            available_tables = []
+
+            for table in KNOWN_TABLES:
+                try:
+                    # Quick test query
+                    response = conn.table(table).select("*", count="exact").limit(0).execute()
+                    count = response.count if hasattr(response, 'count') else 0
+                    st.success(f"✅ `{table}`: {count} rows")
+                    available_tables.append(table)
+                except Exception as e:
+                    error_msg = str(e)
+                    if "Could not find the table" in error_msg or "PGRST" in error_msg:
+                        st.warning(f"⚠️ `{table}`: Not found")
+                    else:
+                        st.error(f"❌ `{table}`: {str(e)[:50]}")
+
+            if not available_tables:
+                st.error("❌ No tables are accessible. Please create tables first.")
+                st.info("See `SETUP_DATABASE.md` for instructions.")
+                st.stop()
+
+        # Table selection
+        col1, col2 = st.columns([3, 1])
+
+        with col1:
+            selected_table = st.selectbox(
+                "Choose a table to manage:",
+                options=available_tables,
+                format_func=lambda x: x.replace("_", " ").title(),
+                key="crud_table_select"
+            )
+
+        with col2:
+            use_custom = st.checkbox("Custom table", key="use_custom_table")
+
+        if use_custom:
+            custom_table = st.text_input(
+                "Enter table name:",
+                placeholder="e.g., my_custom_table",
+                key="custom_table_name"
+            )
+            if custom_table:
+                selected_table = custom_table
+                st.info(f"Using custom table: `{custom_table}`")
+
+        # Show selected table info
+        st.info(f"📋 Current Table: **`{selected_table}`**")
+
+        st.divider()
+
+        # Create tabs for different operations
+        crud_tab1, crud_tab2, crud_tab3, crud_tab4 = st.tabs([
+            "📖 Read/View",
+            "➕ Create/Insert",
+            "✏️ Update/Edit",
+            "🗑️ Delete"
+        ])
+
+        # READ/VIEW Tab
+        with crud_tab1:
+            st.markdown(f"### View Records from `{selected_table}`")
+
+            try:
+                # Query options
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    limit = st.number_input("Number of records to display:", min_value=1, max_value=1000, value=50, key="read_limit")
+                with col2:
+                    order_desc = st.checkbox("Latest first", value=True, key="read_order")
+
+                # Fetch data
+                if st.button("🔄 Refresh Data", key="refresh_read"):
+                    st.rerun()
+
+                with st.spinner(f"Loading records from {selected_table}..."):
+                    query = conn.table(selected_table).select("*")
+
+                    # Add ordering if table has created_at or updated_at
+                    if order_desc:
+                        # Try common timestamp columns
+                        for time_col in ["created_at", "updated_at", "timestamp", "date"]:
+                            try:
+                                query = query.order(time_col, desc=True)
+                                break
+                            except:
+                                continue
+
+                    query = query.limit(limit)
+                    response = query.execute()
+
+                if response.data:
+                    df = pd.DataFrame(response.data)
+
+                    # Show summary
+                    st.info(f"📊 Showing {len(df)} of {response.count if hasattr(response, 'count') else 'unknown'} total records")
+
+                    # Display as dataframe with selection
+                    st.markdown("#### Records")
+                    st.dataframe(
+                        df,
+                        width="stretch",
+                        hide_index=False
+                    )
+
+                    # Export option
+                    csv = df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Download as CSV",
+                        data=csv,
+                        file_name=f"{selected_table}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv",
+                        key="download_csv"
+                    )
+                else:
+                    st.info(f"No records found in `{selected_table}`")
+
+            except Exception as e:
+                st.error(f"❌ Error loading data from `{selected_table}`")
+                with st.expander("🐛 Error Details"):
+                    import traceback
+                    st.code(f"Error Type: {type(e).__name__}\nError: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
+
+        # CREATE/INSERT Tab
+        with crud_tab2:
+            st.markdown(f"### Insert New Record into `{selected_table}`")
+
+            try:
+                # Get table schema by querying one row
+                sample_response = conn.table(selected_table).select("*").limit(1).execute()
+
+                if sample_response.data and len(sample_response.data) > 0:
+                    sample_record = sample_response.data[0]
+                    columns = list(sample_record.keys())
+
+                    st.info(f"📋 Table has {len(columns)} columns")
+
+                    with st.expander("📝 View Column Names"):
+                        st.code(", ".join(columns))
+                else:
+                    # If no records, show common columns based on table name
+                    st.warning(f"Table `{selected_table}` is empty. Showing estimated columns.")
+                    columns = []
+
+                st.markdown("#### Enter New Record Data")
+                st.caption("Enter data as JSON. UUID fields will be auto-generated if omitted.")
+
+                # Get default template based on table
+                default_json = get_default_insert_template(selected_table)
+
+                new_record_json = st.text_area(
+                    "Record Data (JSON):",
+                    value=default_json,
+                    height=300,
+                    key="insert_json"
+                )
+
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    if st.button("➕ Insert Record", type="primary", key="insert_btn"):
+                        try:
+                            record_data = json.loads(new_record_json)
+
+                            with st.spinner("Inserting record..."):
+                                response = conn.table(selected_table).insert(record_data).execute()
+
+                            if response.data:
+                                st.success(f"✅ Successfully inserted record!")
+                                st.json(response.data[0])
+                                st.balloons()
+                            else:
+                                st.error("❌ Insert failed - no data returned")
+
+                        except json.JSONDecodeError as e:
+                            st.error(f"❌ Invalid JSON: {e}")
+                        except Exception as e:
+                            st.error(f"❌ Insert failed: {str(e)}")
+                            with st.expander("🐛 Error Details"):
+                                st.code(str(e))
+
+                with col2:
+                    with st.expander("💡 JSON Tips"):
+                        st.markdown("""
+                        - Use double quotes for strings: `"value"`
+                        - Dates: `"2025-11-04T12:00:00Z"`
+                        - UUID fields are usually auto-generated
+                        - Check existing records for format examples
+                        """)
+
+            except Exception as e:
+                st.error(f"❌ Error in Create/Insert for `{selected_table}`")
+                with st.expander("🐛 Error Details"):
+                    import traceback
+                    st.code(f"Error Type: {type(e).__name__}\nError: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
+
+        # UPDATE/EDIT Tab
+        with crud_tab3:
+            st.markdown(f"### Update Records in `{selected_table}`")
+
+            try:
+                # Step 1: Load and select record
+                st.markdown("#### Step 1: Select Record to Update")
+
+                with st.spinner("Loading records..."):
+                    response = conn.table(selected_table).select("*").limit(100).execute()
+
+                if response.data and len(response.data) > 0:
+                    df = pd.DataFrame(response.data)
+
+                    # Try to find ID column
+                    id_column = None
+                    for col in ['id', 'session_id', 'job_id']:
+                        if col in df.columns:
+                            id_column = col
+                            break
+
+                    if not id_column:
+                        st.error("❌ Cannot find ID column in table")
+                    else:
+                        st.info(f"📊 Found {len(df)} records. Using `{id_column}` as identifier.")
+
+                        # Show records
+                        st.dataframe(df, width="stretch", height=300)
+
+                        # Select record
+                        record_id = st.selectbox(
+                            f"Select record by {id_column}:",
+                            options=df[id_column].tolist(),
+                            format_func=lambda x: str(x)[:50],
+                            key="update_record_select"
+                        )
+
+                        if record_id:
+                            # Get the full record
+                            selected_record = df[df[id_column] == record_id].iloc[0].to_dict()
+
+                            st.markdown("#### Step 2: Edit Record Data")
+
+                            # Show current data
+                            with st.expander("📄 Current Record Data"):
+                                st.json(selected_record)
+
+                            # Edit form
+                            st.caption("Edit the JSON below. Only changed fields will be updated.")
+
+                            updated_json = st.text_area(
+                                "Updated Record Data (JSON):",
+                                value=json.dumps(selected_record, indent=2, default=str),
+                                height=400,
+                                key="update_json"
+                            )
+
+                            col1, col2 = st.columns([1, 3])
+                            with col1:
+                                if st.button("💾 Update Record", type="primary", key="update_btn"):
+                                    try:
+                                        updated_data = json.loads(updated_json)
+
+                                        # Remove ID from update data
+                                        update_payload = {k: v for k, v in updated_data.items() if k != id_column}
+
+                                        with st.spinner("Updating record..."):
+                                            response = conn.table(selected_table).update(update_payload).eq(id_column, record_id).execute()
+
+                                        if response.data:
+                                            st.success(f"✅ Successfully updated record!")
+                                            st.json(response.data[0])
+                                        else:
+                                            st.warning("⚠️ Update completed but no data returned")
+
+                                    except json.JSONDecodeError as e:
+                                        st.error(f"❌ Invalid JSON: {e}")
+                                    except Exception as e:
+                                        st.error(f"❌ Update failed: {str(e)}")
+                                        with st.expander("🐛 Error Details"):
+                                            st.code(str(e))
+                else:
+                    st.info(f"No records found in `{selected_table}` to update")
+
+            except Exception as e:
+                st.error(f"❌ Error in Update/Edit for `{selected_table}`")
+                with st.expander("🐛 Error Details"):
+                    import traceback
+                    st.code(f"Error Type: {type(e).__name__}\nError: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
+
+        # DELETE Tab
+        with crud_tab4:
+            st.markdown(f"### Delete Records from `{selected_table}`")
+            st.warning("⚠️ **Warning:** Deletion is permanent and cannot be undone!")
+
+            try:
+                # Load records
+                st.markdown("#### Select Record to Delete")
+
+                with st.spinner("Loading records..."):
+                    response = conn.table(selected_table).select("*").limit(100).execute()
+
+                if response.data and len(response.data) > 0:
+                    df = pd.DataFrame(response.data)
+
+                    # Find ID column
+                    id_column = None
+                    for col in ['id', 'session_id', 'job_id']:
+                        if col in df.columns:
+                            id_column = col
+                            break
+
+                    if not id_column:
+                        st.error("❌ Cannot find ID column in table")
+                    else:
+                        st.info(f"📊 Found {len(df)} records")
+
+                        # Show records
+                        st.dataframe(df, width="stretch", height=300)
+
+                        # Select record to delete
+                        record_id = st.selectbox(
+                            f"Select record to delete by {id_column}:",
+                            options=df[id_column].tolist(),
+                            format_func=lambda x: str(x)[:50],
+                            key="delete_record_select"
+                        )
+
+                        if record_id:
+                            # Show record details
+                            selected_record = df[df[id_column] == record_id].iloc[0].to_dict()
+
+                            with st.expander("📄 Record to Delete"):
+                                st.json(selected_record)
+
+                            # Confirmation
+                            st.markdown("#### ⚠️ Confirm Deletion")
+                            confirm_text = st.text_input(
+                                f"Type DELETE to confirm deletion of record {id_column}='{record_id}':",
+                                key="delete_confirm"
+                            )
+
+                            col1, col2 = st.columns([1, 3])
+                            with col1:
+                                if st.button("🗑️ Delete Record", type="secondary", key="delete_btn", disabled=(confirm_text != "DELETE")):
+                                    try:
+                                        with st.spinner("Deleting record..."):
+                                            response = conn.table(selected_table).delete().eq(id_column, record_id).execute()
+
+                                        st.success(f"✅ Successfully deleted record {id_column}='{record_id}'")
+                                        st.rerun()
+
+                                    except Exception as e:
+                                        st.error(f"❌ Delete failed: {str(e)}")
+                                        with st.expander("🐛 Error Details"):
+                                            st.code(str(e))
+
+                            with col2:
+                                if confirm_text != "DELETE":
+                                    st.caption("⚠️ Type DELETE in the box above to enable the delete button")
+                else:
+                    st.info(f"No records found in `{selected_table}` to delete")
+
+            except Exception as e:
+                st.error(f"❌ Error in Delete operation for `{selected_table}`")
+                with st.expander("🐛 Error Details"):
+                    import traceback
+                    st.code(f"Error Type: {type(e).__name__}\nError: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
+
+    except ImportError:
+        st.error("❌ st-supabase-connection not installed")
+        st.info("Install with: `uv pip install st-supabase-connection`")
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
+
+# Helper function for default insert templates
+def get_default_insert_template(table_name):
+    """Get default JSON template for inserting records"""
+    templates = {
+        "trading_disclosures": """{
+  "politician_id": "uuid-of-politician",
+  "transaction_date": "2025-11-04T00:00:00Z",
+  "disclosure_date": "2025-11-04T00:00:00Z",
+  "asset_name": "Apple Inc. - Common Stock",
+  "asset_ticker": "AAPL",
+  "asset_type": "stock",
+  "transaction_type": "purchase",
+  "amount_range_min": 15001,
+  "amount_range_max": 50000,
+  "status": "active",
+  "source": "us_senate",
+  "source_url": "https://efdsearch.senate.gov/..."
+}""",
+        "politicians": """{
+  "first_name": "John",
+  "last_name": "Doe",
+  "full_name": "John Doe",
+  "role": "Senator",
+  "party": "Democratic",
+  "state_or_country": "California",
+  "source": "us_senate"
+}""",
+        "action_logs": """{
+  "action_type": "test_action",
+  "status": "completed",
+  "user_id": "test_user",
+  "source": "manual_entry",
+  "result_message": "Test action completed successfully"
+}""",
+        "scheduled_jobs": """{
+  "job_name": "test_job",
+  "job_type": "data_collection",
+  "schedule": "0 0 * * *",
+  "is_active": true,
+  "description": "Test scheduled job"
+}""",
+        "user_sessions": """{
+  "session_id": "test_session_123",
+  "user_email": "test@example.com",
+  "is_active": true
+}"""
+    }
+    return templates.get(table_name, "{}")
+
+# Tab 4: System Info
+with tab4:
     st.subheader("⚙️ System Information")
 
     col1, col2 = st.columns(2)
@@ -311,16 +814,16 @@ Streamlit Version: {st.__version__}
     with col2:
         st.markdown("### Environment Variables")
 
-        env_vars = [
-            "SUPABASE_URL",
-            "SUPABASE_KEY",
-            "ALPACA_API_KEY",
-            "ALPACA_SECRET_KEY",
-            "GOOGLE_CLIENT_ID"
-        ]
+        # Check both environment variables and secrets
+        config_checks = {
+            "SUPABASE_URL": os.getenv("SUPABASE_URL") or st.secrets.get("connections", {}).get("supabase", {}).get("url"),
+            "SUPABASE_KEY": os.getenv("SUPABASE_KEY") or st.secrets.get("connections", {}).get("supabase", {}).get("key"),
+            "ALPACA_API_KEY": os.getenv("ALPACA_API_KEY") or st.secrets.get("alpaca", {}).get("ALPACA_API_KEY"),
+            "ALPACA_SECRET_KEY": os.getenv("ALPACA_SECRET_KEY") or st.secrets.get("alpaca", {}).get("ALPACA_SECRET_KEY"),
+            "GOOGLE_CLIENT_ID": os.getenv("GOOGLE_CLIENT_ID") or st.secrets.get("auth", {}).get("client_id"),
+        }
 
-        for var in env_vars:
-            value = os.getenv(var)
+        for var, value in config_checks.items():
             if value:
                 # Mask sensitive values
                 masked = f"{value[:8]}...{value[-4:]}" if len(value) > 12 else "***"
@@ -345,8 +848,8 @@ Streamlit Version: {st.__version__}
     except Exception as e:
         st.error(f"Error reading disk usage: {e}")
 
-# Tab 4: Users
-with tab4:
+# Tab 5: Users
+with tab5:
     st.subheader("👥 User Management")
 
     try:
@@ -354,26 +857,21 @@ with tab4:
         from st_supabase_connection import SupabaseConnection
         import pandas as pd
 
+        # Connection will use [connections.supabase] from secrets.toml automatically
         conn = st.connection(
             name="supabase",
-            type=SupabaseConnection,
-            url=os.getenv("SUPABASE_URL"),
-            key=os.getenv("SUPABASE_KEY")
+            type=SupabaseConnection
         )
 
         # Check if user_sessions table exists
         try:
-            sessions_df = conn.query(
-                """
-                SELECT * FROM user_sessions
-                ORDER BY last_activity DESC
-                """,
-                ttl=10  # Cache for 10 seconds
-            )
+            # Query using Supabase client API
+            response = conn.table("user_sessions").select("*").order("last_activity", desc=True).execute()
 
-            if not sessions_df.empty:
+            if response.data:
+                sessions_df = pd.DataFrame(response.data)
                 st.markdown("### Active Sessions")
-                st.dataframe(sessions_df, use_container_width=True)
+                st.dataframe(sessions_df, width="stretch")
 
                 # Summary stats
                 col1, col2, col3 = st.columns(3)
@@ -405,8 +903,8 @@ with tab4:
     except Exception as e:
         st.error(f"Error accessing user data: {e}")
 
-# Tab 5: Logs
-with tab5:
+# Tab 6: Logs
+with tab6:
     st.subheader("📝 Application Logs")
 
     # Check for log files

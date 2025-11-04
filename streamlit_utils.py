@@ -44,7 +44,7 @@ def load_all_secrets():
     if hasattr(st, 'secrets'):
         try:
             # Database secrets
-            for key in ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_KEY']:
+            for key in ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_KEY', 'SUPABASE_KEY']:
                 value = load_secret(key, 'database')
                 if value:
                     os.environ[key] = value
@@ -92,6 +92,16 @@ def load_all_secrets():
                 value = load_secret(key, 'monitoring')
                 if value:
                     os.environ[key] = value
+
+            # Google OAuth config
+            for key in ['client_id', 'client_secret']:
+                value = load_secret(key, 'auth')
+                if value:
+                    # Map to standard environment variable names
+                    if key == 'client_id':
+                        os.environ['GOOGLE_CLIENT_ID'] = value
+                    elif key == 'client_secret':
+                        os.environ['GOOGLE_CLIENT_SECRET'] = value
         except Exception as e:
             # Silently fail if secrets not available
             pass
