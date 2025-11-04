@@ -647,12 +647,18 @@ elif tab == 'View Data' or tab == 'Statistics':
             ]
             display_df = df[[col for col in display_cols if col in df.columns]].copy()
 
-            # Format dates
+            # Format dates - use ISO8601 format for parsing Supabase timestamps
             if "transaction_date" in display_df.columns:
-                display_df["transaction_date"] = pd.to_datetime(display_df["transaction_date"]).dt.strftime("%Y-%m-%d")
+                display_df["transaction_date"] = pd.to_datetime(
+                    display_df["transaction_date"],
+                    format='ISO8601'
+                ).dt.strftime("%Y-%m-%d")
 
             if "disclosure_date" in display_df.columns:
-                display_df["disclosure_date"] = pd.to_datetime(display_df["disclosure_date"]).dt.strftime("%Y-%m-%d")
+                display_df["disclosure_date"] = pd.to_datetime(
+                    display_df["disclosure_date"],
+                    format='ISO8601'
+                ).dt.strftime("%Y-%m-%d")
 
             # Replace None/empty tickers with "N/A"
             if "asset_ticker" in display_df.columns:
@@ -746,12 +752,18 @@ elif tab == 'View Data' or tab == 'Statistics':
                 # Reapply display formatting to filtered data
                 filtered_display_df = filtered_df[[col for col in display_cols if col in filtered_df.columns]].copy()
 
-                # Format dates
+                # Format dates - use ISO8601 format for parsing Supabase timestamps
                 if "transaction_date" in filtered_display_df.columns:
-                    filtered_display_df["transaction_date"] = pd.to_datetime(filtered_display_df["transaction_date"]).dt.strftime("%Y-%m-%d")
+                    filtered_display_df["transaction_date"] = pd.to_datetime(
+                        filtered_display_df["transaction_date"],
+                        format='ISO8601'
+                    ).dt.strftime("%Y-%m-%d")
 
                 if "disclosure_date" in filtered_display_df.columns:
-                    filtered_display_df["disclosure_date"] = pd.to_datetime(filtered_display_df["disclosure_date"]).dt.strftime("%Y-%m-%d")
+                    filtered_display_df["disclosure_date"] = pd.to_datetime(
+                        filtered_display_df["disclosure_date"],
+                        format='ISO8601'
+                    ).dt.strftime("%Y-%m-%d")
 
                 # Format asset type
                 if "asset_type" in filtered_display_df.columns:
@@ -799,7 +811,7 @@ elif tab == 'View Data' or tab == 'Statistics':
 
     except Exception as e:
         st.error(f"❌ Database connection error: {str(e)}")
-        logger.error("Failed to load recent disclosures", error=str(e), exc_info=True)
+        logger.error(f"Failed to load recent disclosures: {str(e)}", exc_info=True)
 
         # Show connection help
         with st.expander("🔍 Troubleshooting"):
