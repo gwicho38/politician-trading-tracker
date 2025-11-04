@@ -119,50 +119,59 @@ try:
     # Use paper=True by default unless explicitly set to Live
     use_paper = (trading_mode == "Paper")
 
-    with st.spinner("Connecting to Alpaca..."):
-        alpaca_client = AlpacaTradingClient(
-            api_key=alpaca_api_key,
-            secret_key=alpaca_secret_key,
-            paper=use_paper
-        )
+    # Initialize Alpaca client
+    alpaca_client = AlpacaTradingClient(
+        api_key=alpaca_api_key,
+        secret_key=alpaca_secret_key,
+        paper=use_paper
+    )
 
-        # Test connection first
+    # Test connection first
+    with st.spinner("Testing connection to Alpaca..."):
         connection_test = alpaca_client.test_connection()
 
-        if not connection_test["success"]:
-            st.error(f"❌ {connection_test['message']}")
+    if not connection_test["success"]:
+        st.error(f"❌ {connection_test['message']}")
 
-            if "error" in connection_test:
-                st.markdown(f"**Error Details**: {connection_test['error']}")
+        if "error" in connection_test:
+            st.markdown(f"**Error Details**: {connection_test['error']}")
 
-            if "troubleshooting" in connection_test:
-                st.markdown("### 🔧 Troubleshooting Steps:")
-                for step in connection_test["troubleshooting"]:
-                    st.markdown(f"- {step}")
+        if "troubleshooting" in connection_test:
+            st.markdown("### 🔧 Troubleshooting Steps:")
+            for step in connection_test["troubleshooting"]:
+                st.markdown(f"- {step}")
 
-            # Show what we tried to connect with
-            with st.expander("🔍 Debug Information"):
-                st.code(f"""
+        # Show what we tried to connect with
+        with st.expander("🔍 Debug Information"):
+            st.code(f"""
 API Key: {alpaca_api_key[:4]}...{alpaca_api_key[-4:]}
 Key Type: {'Paper (PK)' if alpaca_api_key.startswith('PK') else 'Live (AK)' if alpaca_api_key.startswith('AK') else 'Unknown'}
 Paper Mode: {use_paper}
 Expected Endpoint: {alpaca_client.base_url}
-                """)
+            """)
 
-            st.stop()
+        st.stop()
 
-        # Connection successful
-        st.success(f"✅ {connection_test['message']}")
+    # Connection successful
+    st.success(f"✅ {connection_test['message']}")
 
-        risk_manager = RiskManager()
+    risk_manager = RiskManager()
 
-        # Get data
-        st.write("Fetching account info...")
-        account_info = alpaca_client.get_account()
-        st.write("Fetching portfolio...")
-        portfolio = alpaca_client.get_portfolio()
-        st.write("Fetching positions...")
-        positions = alpaca_client.get_positions()
+    # Fetch portfolio data
+    try:
+        with st.spinner("Loading portfolio data..."):
+            account_info = alpaca_client.get_account()
+            portfolio = alpaca_client.get_portfolio()
+            positions = alpaca_client.get_positions()
+    except Exception as e:
+        st.error(f"❌ Failed to fetch portfolio data: {str(e)}")
+
+        with st.expander("📋 Error Details"):
+            import traceback
+            st.code(traceback.format_exc())
+
+        st.info("💡 **Troubleshooting:**\n- Check if Alpaca service is operational\n- Verify your API keys are valid\n- Try refreshing the page")
+        st.stop()
 
     # Portfolio overview
     st.markdown("### 💼 Portfolio Overview")
