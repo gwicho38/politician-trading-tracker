@@ -82,8 +82,9 @@ def register_hotkeys() -> None:
             st.switch_page("99_🧪_Auth_Test.py")
 
         # Render command palette if open
-        palette = get_command_palette()
-        palette.render()
+        if st.session_state.get("palette_open", False):
+            palette = get_command_palette()
+            palette.render()
 
         # Show hotkeys legend in sidebar
         with st.sidebar:
