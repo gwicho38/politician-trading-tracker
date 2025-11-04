@@ -191,6 +191,7 @@ if st.button("🎯 Generate Signals", width="stretch"):
                         "disclosure_ids": signal.disclosure_ids,
                         "is_active": signal.is_active,
                         "notes": signal.notes,
+                        "portfolio_id": None,  # Signals exist independently of portfolios
                     }
 
                     db.client.table("trading_signals").insert(data).execute()
