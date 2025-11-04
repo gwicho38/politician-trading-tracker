@@ -63,15 +63,10 @@ def register_hotkeys() -> None:
         )
 
         # Check for pressed keys and navigate/act
-        # Only act on keypresses, not on every rerun
         if pressed("palette"):
-            # Toggle command palette only if not already in desired state
-            if not st.session_state.get("_palette_just_toggled", False):
-                st.session_state._palette_just_toggled = True
-                toggle_command_palette()
-                st.rerun()
-            else:
-                st.session_state._palette_just_toggled = False
+            # Toggle command palette
+            toggle_command_palette()
+            st.rerun()
         elif pressed("help"):
             # Show keyboard shortcuts
             palette = get_command_palette()
@@ -97,22 +92,6 @@ def register_hotkeys() -> None:
         if st.session_state.get("palette_open", False):
             palette = get_command_palette()
             palette.render()
-
-        # Show hotkeys legend in sidebar
-        with st.sidebar:
-            with st.expander("⌨️ Keyboard Shortcuts", expanded=False):
-                st.markdown("""
-                - **CMD/CTRL + K** - Command Palette
-                - **?** (Shift + /) - Show Shortcuts Help
-                - **D** - Data Collection
-                - **T** - Trading Signals
-                - **O** - Trading Operations
-                - **P** - Portfolio
-                - **J** - Scheduled Jobs
-                - **S** - Settings
-                - **L** - Action Logs
-                - **A** - Auth Test
-                """)
 
     except Exception as e:
         st.sidebar.error(f"Failed to initialize hotkeys: {e}")
