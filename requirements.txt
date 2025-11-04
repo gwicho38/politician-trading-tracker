@@ -61,7 +61,7 @@ st-supabase-connection>=2.1.0
 streamlit-extras>=0.6.0
 
 # Keyboard shortcuts support (from GitHub)
-git+https://github.com/viktor-shcherb/streamlit-hotkeys.git
+git+https://github.com/viktor-shcherb/streamlit-hotkeys.git@main#egg=streamlit-hotkeys
 
 # Subscription/Payment
 st-paywall>=1.0.1
@@ -71,4 +71,4 @@ stripe>=11.0.0
 streamlit-autorefresh>=1.0.1
 
 # Analytics and monitoring
-streamlit-analytics>=0.5.0
+streamlit-analytics>=0.4.1
