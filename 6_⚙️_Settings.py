@@ -71,35 +71,45 @@ with tab1:
         st.success(f"✅ Paper trading keys validated on {user_keys['paper_validated_at'][:10]}")
 
     # Input fields
+    # Show placeholder text if keys exist, but allow editing
+    has_paper_keys = user_keys and user_keys.get("paper_api_key")
+
+    if has_paper_keys:
+        st.caption("✅ Paper trading keys are configured. Enter new values to update.")
+
     paper_api_key = st.text_input(
         "Paper API Key",
         type="password",
-        placeholder="PK...",
+        placeholder="PK... (enter new key to update)" if has_paper_keys else "PK...",
         help="Your Alpaca paper trading API key (starts with 'PK')",
-        value="" if not user_keys else "••••••••••••••••" if user_keys.get("paper_api_key") else ""
+        key="paper_api_key_input"
     )
 
     paper_secret_key = st.text_input(
         "Paper Secret Key",
         type="password",
-        placeholder="Enter your paper secret key",
+        placeholder="Enter new secret key to update" if has_paper_keys else "Enter your paper secret key",
         help="Your Alpaca paper trading secret key",
-        value="" if not user_keys else "••••••••••••••••" if user_keys.get("paper_secret_key") else ""
+        key="paper_secret_key_input"
     )
 
     col1, col2 = st.columns(2)
 
     with col1:
         if st.button("🧪 Test Connection", key="test_paper", use_container_width=True):
-            if not paper_api_key or paper_api_key.startswith("••"):
+            # Use saved keys if no new keys entered
+            test_api_key = paper_api_key if paper_api_key else (user_keys.get("paper_api_key") if user_keys else None)
+            test_secret_key = paper_secret_key if paper_secret_key else (user_keys.get("paper_secret_key") if user_keys else None)
+
+            if not test_api_key or not test_secret_key:
                 st.warning("Please enter your API keys first")
             else:
                 with st.spinner("Testing connection..."):
                     result = keys_manager.validate_and_save_keys(
                         user_email=user_email,
                         user_name=user_name,
-                        api_key=paper_api_key,
-                        secret_key=paper_secret_key,
+                        api_key=test_api_key,
+                        secret_key=test_secret_key,
                         is_paper=True
                     )
 
@@ -120,8 +130,8 @@ with tab1:
 
     with col2:
         if st.button("💾 Save Keys", key="save_paper", use_container_width=True):
-            if not paper_api_key or not paper_secret_key or paper_api_key.startswith("••"):
-                st.warning("Please enter both API key and secret key")
+            if not paper_api_key or not paper_secret_key:
+                st.warning("Please enter both API key and secret key to update")
             else:
                 success = keys_manager.save_user_keys(
                     user_email=user_email,
@@ -169,35 +179,44 @@ with tab2:
         st.success(f"✅ Live trading keys validated on {user_keys['live_validated_at'][:10]}")
 
     # Input fields
+    has_live_keys = user_keys and user_keys.get("live_api_key")
+
+    if has_live_keys:
+        st.caption("✅ Live trading keys are configured. Enter new values to update.")
+
     live_api_key = st.text_input(
         "Live API Key",
         type="password",
-        placeholder="AK...",
+        placeholder="AK... (enter new key to update)" if has_live_keys else "AK...",
         help="Your Alpaca live trading API key (starts with 'AK')",
-        value="" if not user_keys else "••••••••••••••••" if user_keys.get("live_api_key") else ""
+        key="live_api_key_input"
     )
 
     live_secret_key = st.text_input(
         "Live Secret Key",
         type="password",
-        placeholder="Enter your live secret key",
+        placeholder="Enter new secret key to update" if has_live_keys else "Enter your live secret key",
         help="Your Alpaca live trading secret key",
-        value="" if not user_keys else "••••••••••••••••" if user_keys.get("live_secret_key") else ""
+        key="live_secret_key_input"
     )
 
     col1, col2 = st.columns(2)
 
     with col1:
         if st.button("🧪 Test Connection", key="test_live", use_container_width=True):
-            if not live_api_key or live_api_key.startswith("••"):
+            # Use saved keys if no new keys entered
+            test_api_key = live_api_key if live_api_key else (user_keys.get("live_api_key") if user_keys else None)
+            test_secret_key = live_secret_key if live_secret_key else (user_keys.get("live_secret_key") if user_keys else None)
+
+            if not test_api_key or not test_secret_key:
                 st.warning("Please enter your API keys first")
             else:
                 with st.spinner("Testing connection to LIVE account..."):
                     result = keys_manager.validate_and_save_keys(
                         user_email=user_email,
                         user_name=user_name,
-                        api_key=live_api_key,
-                        secret_key=live_secret_key,
+                        api_key=test_api_key,
+                        secret_key=test_secret_key,
                         is_paper=False
                     )
 
@@ -219,8 +238,8 @@ with tab2:
 
     with col2:
         if st.button("💾 Save Keys", key="save_live", use_container_width=True):
-            if not live_api_key or not live_secret_key or live_api_key.startswith("••"):
-                st.warning("Please enter both API key and secret key")
+            if not live_api_key or not live_secret_key:
+                st.warning("Please enter both API key and secret key to update")
             else:
                 success = keys_manager.save_user_keys(
                     user_email=user_email,
@@ -255,49 +274,55 @@ with tab3:
     """)
 
     # Show existing validation status
+    has_supabase = user_keys and user_keys.get("supabase_url")
+
     if user_keys and user_keys.get("supabase_validated_at"):
         st.success(f"✅ Supabase configured and validated on {user_keys['supabase_validated_at'][:10]}")
+    elif has_supabase:
+        st.caption("✅ Supabase credentials are configured. Enter new values to update.")
 
     # Input fields
     supabase_url = st.text_input(
         "Supabase Project URL",
         type="default",
-        placeholder="https://xxxxx.supabase.co",
+        placeholder="https://xxxxx.supabase.co (enter to update)" if has_supabase else "https://xxxxx.supabase.co",
         help="Your Supabase project URL (found in Project Settings)",
-        value="" if not user_keys else user_keys.get("supabase_url") or ""
+        key="supabase_url_input"
     )
 
     supabase_anon_key = st.text_input(
         "Supabase Anon Key",
         type="password",
-        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+        placeholder="Enter new anon key to update" if has_supabase else "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
         help="Your Supabase anonymous (public) key",
-        value="" if not user_keys else "••••••••••••••••" if user_keys.get("supabase_anon_key") else ""
+        key="supabase_anon_key_input"
     )
 
     supabase_service_key = st.text_input(
         "Supabase Service Role Key (Optional)",
         type="password",
-        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+        placeholder="Enter new service key to update" if has_supabase else "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
         help="Your Supabase service role key (admin access - optional, use with caution)",
-        value="" if not user_keys else "••••••••••••••••" if user_keys.get("supabase_service_role_key") else ""
+        key="supabase_service_key_input"
     )
 
     col1, col2 = st.columns(2)
 
     with col1:
         if st.button("🧪 Test Connection", key="test_supabase", use_container_width=True):
-            if not supabase_url or not supabase_anon_key:
+            # Use saved credentials if no new ones entered
+            test_url = supabase_url if supabase_url else (user_keys.get("supabase_url") if user_keys else None)
+            test_anon = supabase_anon_key if supabase_anon_key else (user_keys.get("supabase_anon_key") if user_keys else None)
+
+            if not test_url or not test_anon:
                 st.warning("Please enter both Supabase URL and Anon Key")
-            elif supabase_url.startswith("••") or supabase_anon_key.startswith("••"):
-                st.warning("Please enter new credentials to test")
             else:
                 with st.spinner("Testing Supabase connection..."):
                     try:
                         from supabase import create_client, Client
 
                         # Test connection
-                        test_client: Client = create_client(supabase_url, supabase_anon_key)
+                        test_client: Client = create_client(test_url, test_anon)
 
                         # Try a simple query
                         response = test_client.table("politicians").select("id", count="exact").limit(1).execute()
@@ -336,9 +361,7 @@ with tab3:
     with col2:
         if st.button("💾 Save Keys", key="save_supabase", use_container_width=True):
             if not supabase_url or not supabase_anon_key:
-                st.warning("Please enter at least Supabase URL and Anon Key")
-            elif supabase_url.startswith("••") or supabase_anon_key.startswith("••"):
-                st.info("Credentials already saved. To update, enter new values.")
+                st.warning("Please enter at least Supabase URL and Anon Key to update")
             else:
                 success = keys_manager.save_user_keys(
                     user_email=user_email,
@@ -376,22 +399,29 @@ with tab4:
     """)
 
     # Show existing validation status
+    has_quiver = user_keys and user_keys.get("quiverquant_api_key")
+
     if user_keys and user_keys.get("quiverquant_validated_at"):
         st.success(f"✅ QuiverQuant API key validated on {user_keys['quiverquant_validated_at'][:10]}")
+    elif has_quiver:
+        st.caption("✅ QuiverQuant API key is configured. Enter new value to update.")
 
     quiverquant_key = st.text_input(
         "QuiverQuant API Key",
         type="password",
-        placeholder="Enter your QuiverQuant API key",
+        placeholder="Enter new API key to update" if has_quiver else "Enter your QuiverQuant API key",
         help="Your QuiverQuant API key for enhanced Congress data",
-        value="" if not user_keys else "••••••••••••••••" if user_keys.get("quiverquant_api_key") else ""
+        key="quiverquant_api_key_input"
     )
 
     col1, col2 = st.columns(2)
 
     with col1:
         if st.button("🧪 Test API Key", key="test_quiver", use_container_width=True):
-            if not quiverquant_key or quiverquant_key.startswith("••"):
+            # Use saved key if no new key entered
+            test_key = quiverquant_key if quiverquant_key else (user_keys.get("quiverquant_api_key") if user_keys else None)
+
+            if not test_key:
                 st.warning("Please enter your QuiverQuant API key")
             else:
                 with st.spinner("Testing QuiverQuant API..."):
@@ -437,8 +467,8 @@ with tab4:
 
     with col2:
         if st.button("💾 Save API Key", key="save_quiver", use_container_width=True):
-            if not quiverquant_key or quiverquant_key.startswith("••"):
-                st.warning("Please enter your QuiverQuant API key")
+            if not quiverquant_key:
+                st.warning("Please enter your QuiverQuant API key to update")
             else:
                 success = keys_manager.save_user_keys(
                     user_email=user_email,
