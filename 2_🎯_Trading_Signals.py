@@ -178,6 +178,7 @@ if st.button("🎯 Generate Signals", width="stretch"):
                         "asset_name": signal.asset_name,
                         "signal_type": signal.signal_type.value,
                         "signal_strength": signal.signal_strength.value,
+                        "strength": signal.signal_strength.value,  # Some schemas use strength instead of signal_strength
                         "confidence_score": signal.confidence_score,
                         "confidence": signal.confidence_score,  # Some schemas use confidence instead of confidence_score
                         "target_price": float(signal.target_price) if signal.target_price else None,
