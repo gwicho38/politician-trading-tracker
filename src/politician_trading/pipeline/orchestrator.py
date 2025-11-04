@@ -87,7 +87,8 @@ class PipelineOrchestrator:
         source_name: str,
         source_type: str,
         config: Optional[Dict[str, Any]] = None,
-        job_id: Optional[str] = None
+        job_id: Optional[str] = None,
+        db_client: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
         Run the complete pipeline for a single source.
@@ -97,6 +98,7 @@ class PipelineOrchestrator:
             source_type: Type of source (e.g., "us_house")
             config: Source-specific configuration
             job_id: Optional job ID for tracking
+            db_client: Optional Supabase client for storage operations
 
         Returns:
             Dictionary with pipeline results and metrics
@@ -111,7 +113,8 @@ class PipelineOrchestrator:
             source_type=source_type,
             job_id=job_id,
             config=config or {},
-            started_at=start_time
+            started_at=start_time,
+            db_client=db_client  # Pass db_client for storage operations
         )
 
         # Track results from each stage
