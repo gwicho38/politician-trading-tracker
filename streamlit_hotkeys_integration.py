@@ -28,7 +28,7 @@ def register_hotkeys() -> None:
     instruction with install steps (so the app keeps working).
     """
     try:
-        from streamlit_hotkeys import activate
+        from streamlit_hotkeys import activate, hk, pressed
     except Exception:
         # Friendly instruction for users/deployers to install the package
         st.sidebar.info(
@@ -40,44 +40,36 @@ def register_hotkeys() -> None:
 
     # If the package is present, register hotkeys
     try:
-        # Define hotkey callbacks
-        def go_to_data_collection():
-            st.switch_page("1_📥_Data_Collection.py")
-
-        def go_to_trading_signals():
-            st.switch_page("2_🎯_Trading_Signals.py")
-
-        def go_to_trading_operations():
-            st.switch_page("3_💼_Trading_Operations.py")
-
-        def go_to_portfolio():
-            st.switch_page("4_📈_Portfolio.py")
-
-        def go_to_scheduled_jobs():
-            st.switch_page("5_⏰_Scheduled_Jobs.py")
-
-        def go_to_settings():
-            st.switch_page("6_⚙️_Settings.py")
-
-        def go_to_action_logs():
-            st.switch_page("8_📋_Action_Logs.py")
-
-        def go_to_auth_test():
-            st.switch_page("99_🧪_Auth_Test.py")
-
-        # Register hotkeys with the activate API
+        # Register hotkeys using hk() dicts
         activate(
-            [
-                ("d", "Go to Data Collection", go_to_data_collection),
-                ("t", "Go to Trading Signals", go_to_trading_signals),
-                ("o", "Go to Trading Operations", go_to_trading_operations),
-                ("p", "Go to Portfolio", go_to_portfolio),
-                ("j", "Go to Scheduled Jobs", go_to_scheduled_jobs),
-                ("s", "Go to Settings", go_to_settings),
-                ("l", "Go to Action Logs", go_to_action_logs),
-                ("a", "Go to Auth Test", go_to_auth_test),
-            ]
+            hk("data", "d", help="Go to Data Collection"),
+            hk("signals", "t", help="Go to Trading Signals"),
+            hk("operations", "o", help="Go to Trading Operations"),
+            hk("portfolio", "p", help="Go to Portfolio"),
+            hk("jobs", "j", help="Go to Scheduled Jobs"),
+            hk("settings", "s", help="Go to Settings"),
+            hk("logs", "l", help="Go to Action Logs"),
+            hk("auth", "a", help="Go to Auth Test"),
+            key="global"
         )
+
+        # Check for pressed keys and navigate
+        if pressed("data"):
+            st.switch_page("1_📥_Data_Collection.py")
+        elif pressed("signals"):
+            st.switch_page("2_🎯_Trading_Signals.py")
+        elif pressed("operations"):
+            st.switch_page("3_💼_Trading_Operations.py")
+        elif pressed("portfolio"):
+            st.switch_page("4_📈_Portfolio.py")
+        elif pressed("jobs"):
+            st.switch_page("5_⏰_Scheduled_Jobs.py")
+        elif pressed("settings"):
+            st.switch_page("6_⚙️_Settings.py")
+        elif pressed("logs"):
+            st.switch_page("8_📋_Action_Logs.py")
+        elif pressed("auth"):
+            st.switch_page("99_🧪_Auth_Test.py")
 
         # Show hotkeys legend in sidebar
         with st.sidebar:
