@@ -35,9 +35,9 @@ def register_hotkeys() -> None:
     except Exception:
         # Friendly instruction for users/deployers to install the package
         st.sidebar.info(
-            "⌨️ Hotkeys not enabled — to enable keyboard shortcuts install:\n"
-            "`pip install git+https://github.com/viktor-shcherb/streamlit-hotkeys.git`\n"
-            "(or add the same line to requirements.txt and reinstall)."
+            "⌨️ Keyboard shortcuts are installing...\n\n"
+            "Package is in requirements.txt.\n"
+            "On Streamlit Cloud: Settings → Reboot app"
         )
         return
 

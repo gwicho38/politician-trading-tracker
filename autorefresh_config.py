@@ -72,8 +72,9 @@ def setup_autorefresh(
         # Show info message only once per session
         if not st.session_state.get("autorefresh_warning_shown", False):
             st.sidebar.info(
-                "📊 Auto-refresh not enabled. Install with:\n"
-                "`uv pip install streamlit-autorefresh`"
+                "📊 Auto-refresh is installing...\n\n"
+                "Package is in requirements.txt.\n"
+                "On Streamlit Cloud: Settings → Reboot app"
             )
             st.session_state.autorefresh_warning_shown = True
         return 0

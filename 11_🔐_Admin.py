@@ -213,27 +213,26 @@ with tab1:
             st.info("No analytics data stored yet. Use `streamlit_analytics.track(save_to_json='analytics.json')` in app.py")
 
     except ImportError:
-        st.warning("⚠️ streamlit-analytics not installed. Install with: `uv pip install streamlit-analytics`")
+        st.info("📊 Analytics feature is installing...")
 
-        st.markdown("""
-        ### Setup Instructions
+        with st.expander("ℹ️ About Analytics Installation"):
+            st.markdown("""
+            **Status:** Package is in `requirements.txt` but not yet available.
 
-        1. Install the package:
-        ```bash
-        uv pip install streamlit-analytics
-        ```
+            **On Streamlit Cloud:**
+            - The package will be available after the app rebuilds
+            - Go to **Settings** → **Reboot app** to trigger rebuild
+            - This is a one-time setup step
 
-        2. Add tracking to app.py:
-        ```python
-        import streamlit_analytics
+            **For Local Development:**
+            ```bash
+            uv pip install streamlit-analytics
+            ```
 
-        with streamlit_analytics.track(save_to_json="analytics.json"):
-            # your app code
-            page.run()
-        ```
-
-        3. View analytics by adding `?analytics=on` to URL
-        """)
+            **Once Installed:**
+            Analytics will track page views, widget interactions, and user behavior.
+            View with `?analytics=on` URL parameter.
+            """)
 
 # Tab 2: Supabase Connection
 with tab2:
