@@ -6,13 +6,15 @@ The OAuth redirect was pointing to `localhost` even in production, causing authe
 
 ## Solution
 
-### 1. Remove Hardcoded redirect_uri
+### 1. Set Correct redirect_uri for Production
 
-Streamlit automatically determines the correct redirect URI based on the environment:
-- **Local**: `http://localhost:8501/oauth2callback`
-- **Production**: `https://your-app.streamlit.app/oauth2callback`
+**IMPORTANT**: Streamlit's built-in auth requires an explicit `redirect_uri` in secrets.toml. It does NOT auto-detect based on environment.
 
-We've removed the hardcoded `redirect_uri` from `.streamlit/secrets.toml` to let Streamlit handle this automatically.
+You need to set the correct redirect_uri for your environment:
+- **Production**: `https://politician-trading-tracker.streamlit.app/oauth2callback`
+- **Local Development**: `http://localhost:8501/oauth2callback`
+
+The `.streamlit/secrets.toml` file is configured for **production** by default. If you need to run locally, temporarily change the `redirect_uri` to localhost.
 
 ### 2. Configure Google Cloud Console
 
