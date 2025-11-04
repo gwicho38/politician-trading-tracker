@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 import re
 
 from .base_source import BaseSource, SourceConfig
+from ..storage import StorageManager
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,16 @@ class QuiverQuantSource(BaseSource):
     Source: https://www.quiverquant.com/congresstrading/
     Type: Third-party aggregator (free web scraping or paid API)
     """
+
+    def __init__(self, config: Optional[SourceConfig] = None):
+        """
+        Initialize QuiverQuant source.
+
+        Args:
+            config: Optional source configuration
+        """
+        super().__init__(config)
+        self.storage_manager: Optional[StorageManager] = None  # Set externally if needed
 
     def _create_default_config(self) -> SourceConfig:
         """Create default configuration"""
@@ -100,6 +111,21 @@ class QuiverQuantSource(BaseSource):
 
             if isinstance(response, dict):
                 self.logger.info(f"Received QuiverQuant API response")
+
+                # Save raw API response to storage if storage manager available
+                if self.storage_manager:
+                    try:
+                        storage_path, file_id = await self.storage_manager.save_api_response(
+                            response_data=response,
+                            source='quiverquant',
+                            endpoint='/congresstrading',
+                            metadata={'url': api_url, 'lookback_days': lookback_days}
+                        )
+                        self.logger.info(f"Saved API response to storage: {storage_path} (file_id: {file_id})")
+                    except Exception as storage_error:
+                        self.logger.error(f"Failed to save API response to storage: {storage_error}", exc_info=True)
+                        # Continue processing even if storage fails
+
                 return response
             else:
                 self.logger.warning("Unexpected API response format")
