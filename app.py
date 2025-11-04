@@ -10,6 +10,9 @@ from sidebar_config import apply_sidebar_styling
 # Enable analytics tracking
 from analytics_wrapper import safe_track, ANALYTICS_AVAILABLE
 
+# Initialize shopping cart
+from shopping_cart import render_shopping_cart
+
 # Page configuration
 st.set_page_config(
     page_title="Politician Trading Tracker",
@@ -88,6 +91,9 @@ pages = [
         icon="🧪"
     ),
 ]
+
+# Render shopping cart in sidebar
+render_shopping_cart()
 
 # Create navigation and run
 page = st.navigation(pages)

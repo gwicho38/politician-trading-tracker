@@ -42,6 +42,10 @@ from auth_utils import require_authentication, show_user_info
 require_authentication()
 show_user_info()
 
+# Initialize shopping cart
+from shopping_cart import render_shopping_cart, ShoppingCart
+render_shopping_cart()
+
 logger.info("Trading Operations page loaded")
 
 st.title("💼 Trading Operations")
@@ -139,6 +143,120 @@ try:
 except Exception as e:
     st.error(f"Failed to connect to Alpaca: {str(e)}")
     st.stop()
+
+# Execute cart trades
+st.markdown("---")
+st.markdown("### 🛒 Execute Cart Trades")
+
+cart_items = ShoppingCart.get_items()
+
+if cart_items:
+    st.info(f"📦 You have {len(cart_items)} items in your cart ready to execute")
+
+    # Show cart summary
+    with st.expander("📋 Cart Summary", expanded=True):
+        for item in cart_items:
+            col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
+
+            with col1:
+                st.markdown(f"**{item['ticker']}** - {item['asset_name']}")
+            with col2:
+                signal_color = {
+                    "strong_buy": "🟢",
+                    "buy": "🟡",
+                    "hold": "🔵",
+                    "sell": "🟠",
+                    "strong_sell": "🔴",
+                }.get(item['signal_type'], "⚪")
+                st.markdown(f"{signal_color} {item['signal_type'].upper().replace('_', ' ')}")
+            with col3:
+                st.markdown(f"Qty: **{item['quantity']}**")
+            with col4:
+                if item.get('confidence_score'):
+                    st.markdown(f"*{item['confidence_score']:.1%}*")
+
+    # Execute button
+    if st.button("🚀 Execute All Cart Trades", type="primary", use_container_width=True):
+        with st.spinner("Executing trades..."):
+            success_count = 0
+            error_count = 0
+            results = []
+
+            for item in cart_items:
+                try:
+                    # Determine order side based on signal type
+                    if item['signal_type'] in ['buy', 'strong_buy']:
+                        side = 'buy'
+                    elif item['signal_type'] in ['sell', 'strong_sell']:
+                        side = 'sell'
+                    else:
+                        # Hold signals shouldn't be executed
+                        results.append({
+                            "ticker": item['ticker'],
+                            "status": "skipped",
+                            "message": "Hold signals are not executed"
+                        })
+                        continue
+
+                    # Place market order
+                    logger.info(f"Placing {side} order for {item['quantity']} shares of {item['ticker']}")
+
+                    order = alpaca_client.place_market_order(
+                        ticker=item['ticker'],
+                        quantity=item['quantity'],
+                        side=side,
+                        time_in_force='day'
+                    )
+
+                    results.append({
+                        "ticker": item['ticker'],
+                        "status": "success",
+                        "order_id": order.alpaca_order_id,
+                        "quantity": item['quantity'],
+                        "side": side
+                    })
+
+                    success_count += 1
+                    logger.info(f"Successfully placed order for {item['ticker']}")
+
+                except Exception as e:
+                    error_msg = str(e)
+                    results.append({
+                        "ticker": item['ticker'],
+                        "status": "error",
+                        "message": error_msg
+                    })
+                    error_count += 1
+                    logger.error(f"Failed to place order for {item['ticker']}: {e}")
+
+            # Show results
+            st.markdown("### 📊 Execution Results")
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("✅ Successful", success_count)
+            with col2:
+                st.metric("❌ Failed", error_count)
+            with col3:
+                st.metric("⏭️ Skipped", len(results) - success_count - error_count)
+
+            # Detailed results
+            for result in results:
+                if result['status'] == 'success':
+                    st.success(f"✅ {result['ticker']}: {result['side'].upper()} {result['quantity']} shares (Order ID: {result['order_id'][:8]}...)")
+                elif result['status'] == 'error':
+                    st.error(f"❌ {result['ticker']}: {result['message']}")
+                else:
+                    st.info(f"⏭️ {result['ticker']}: {result['message']}")
+
+            # Clear cart after successful execution
+            if success_count > 0:
+                ShoppingCart.clear()
+                st.success(f"🎉 Cart cleared! {success_count} trades executed successfully.")
+                st.rerun()
+
+else:
+    st.info("🛒 Your cart is empty. Add signals from the Trading Signals page to get started!")
 
 # Execute trades from signals
 st.markdown("---")
