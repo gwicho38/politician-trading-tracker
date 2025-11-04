@@ -126,7 +126,7 @@ else:
     # Read SQL files
     sql_dir = Path(__file__).parent / "supabase" / "sql"
 
-    tab1, tab2 = st.tabs(["📊 Politician Trading Schema", "💼 Trading Schema"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Politician Trading Schema", "💼 Trading Schema", "🔧 Fix Trading Schema", "🩹 Fix Portfolio ID"])
 
     with tab1:
         st.markdown("#### Step 1: Politician Trading Schema")
@@ -177,6 +177,61 @@ else:
 
             # Copy button
             st.code(trading_sql, language="sql")
+        else:
+            st.error("SQL file not found")
+
+    with tab3:
+        st.markdown("#### Step 3: Fix Trading Schema (if needed)")
+        st.markdown("Adds missing columns to existing trading tables")
+
+        fix_trading_schema_file = sql_dir / "fix_trading_schema.sql"
+        if fix_trading_schema_file.exists():
+            with open(fix_trading_schema_file, 'r') as f:
+                fix_trading_sql = f.read()
+
+            with st.expander("📄 View SQL"):
+                st.code(fix_trading_sql, language="sql")
+
+            st.markdown("""
+            **To run this migration:**
+            1. Go to your [Supabase Dashboard](https://supabase.com/dashboard)
+            2. Click **SQL Editor** in the sidebar
+            3. Click **New query**
+            4. Copy the SQL above
+            5. Paste and click **Run**
+            """)
+
+            # Copy button
+            st.code(fix_trading_sql, language="sql")
+        else:
+            st.error("SQL file not found")
+
+    with tab4:
+        st.markdown("#### Step 4: Fix Portfolio ID Constraint")
+        st.markdown("Makes portfolio_id nullable in trading_signals (signals should exist independently of portfolios)")
+
+        fix_portfolio_id_file = sql_dir / "fix_portfolio_id_constraint.sql"
+        if fix_portfolio_id_file.exists():
+            with open(fix_portfolio_id_file, 'r') as f:
+                fix_portfolio_id_sql = f.read()
+
+            with st.expander("📄 View SQL"):
+                st.code(fix_portfolio_id_sql, language="sql")
+
+            st.markdown("""
+            **Run this migration if you're getting:**
+            > `null value in column "portfolio_id" violates not-null constraint`
+
+            **To run this migration:**
+            1. Go to your [Supabase Dashboard](https://supabase.com/dashboard)
+            2. Click **SQL Editor** in the sidebar
+            3. Click **New query**
+            4. Copy the SQL above
+            5. Paste and click **Run**
+            """)
+
+            # Copy button
+            st.code(fix_portfolio_id_sql, language="sql")
         else:
             st.error("SQL file not found")
 

@@ -179,12 +179,18 @@ class QuiverQuantSource(BaseSource):
 
             for trade in trades:
                 # Map QuiverQuant API fields to our schema
+                ticker = trade.get('Ticker', '')
+                description = trade.get('Description') or trade.get('AssetDescription', '')
+
+                # Use ticker as fallback for asset_name if description is empty
+                asset_name = description if description else ticker
+
                 disclosure = {
                     'politician_name': trade.get('Representative', ''),
                     'transaction_date': trade.get('TransactionDate', ''),
                     'disclosure_date': trade.get('ReportDate', ''),
-                    'asset_name': trade.get('Description') or trade.get('AssetDescription', ''),
-                    'asset_ticker': trade.get('Ticker', ''),
+                    'asset_name': asset_name,  # Use ticker as fallback
+                    'asset_ticker': ticker,
                     'transaction_type': self._normalize_transaction_type(trade.get('Transaction', '')),
                     'amount': trade.get('Range') or trade.get('Amount', ''),
                     'source_url': 'https://www.quiverquant.com/congresstrading/',
