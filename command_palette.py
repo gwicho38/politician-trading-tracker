@@ -106,13 +106,7 @@ class CommandPalette:
             icon="🗑️"
         )
 
-        self.add_command(
-            "Shortcuts",
-            self._show_shortcuts,
-            category="Help",
-            keywords=["shortcuts", "hotkeys", "keyboard", "help"],
-            icon="⌨️"
-        )
+        # Shortcuts removed from grid - accessible via ? icon in footer
 
     def add_command(
         self,
@@ -192,14 +186,14 @@ class CommandPalette:
 
         /* Make buttons look like app icons */
         .stButton > button {
-            height: 80px !important;
-            padding: 0.5rem !important;
+            height: 70px !important;
+            padding: 0.4rem !important;
             display: flex !important;
             flex-direction: column !important;
             align-items: center !important;
             justify-content: center !important;
-            gap: 0.25rem !important;
-            border-radius: 1rem !important;
+            gap: 0.2rem !important;
+            border-radius: 0.875rem !important;
             background: var(--secondary-background-color) !important;
             border: none !important;
             transition: all 0.2s ease !important;
@@ -213,18 +207,18 @@ class CommandPalette:
 
         /* Icon styling */
         .stButton > button p {
-            font-size: 1.75rem !important;
+            font-size: 1.5rem !important;
             margin: 0 !important;
             line-height: 1 !important;
         }
 
         /* Label styling */
         .stButton > button div {
-            font-size: 0.7rem !important;
+            font-size: 0.65rem !important;
             font-weight: 500 !important;
             text-align: center !important;
             line-height: 1.1 !important;
-            margin-top: 0.15rem !important;
+            margin-top: 0.1rem !important;
         }
 
         /* Search input styling */
@@ -309,9 +303,18 @@ class CommandPalette:
         else:
             st.info("No matching applications found")
 
-        # Footer
+        # Footer with help icon
         st.markdown("---")
-        st.caption("💡 Press **CMD/CTRL + K** to close")
+
+        col1, col2 = st.columns([0.85, 0.15])
+
+        with col1:
+            st.caption("💡 Press **CMD/CTRL + K** to close")
+
+        with col2:
+            # Help button - shows shortcuts
+            if st.button("❓", key="help_button", help="Show keyboard shortcuts", use_container_width=True):
+                self._show_shortcuts()
 
 
 # Global command palette instance
