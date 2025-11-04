@@ -44,9 +44,9 @@ def register_hotkeys() -> None:
     try:
         # Register hotkeys using hk() dicts
         activate(
-            # Command palette
-            hk("palette", "k", meta=True, help="Open command palette (Mac)"),
-            hk("palette", "k", ctrl=True, help="Open command palette (Win/Linux)"),
+            # Command palette - prevent default to avoid conflicts with inputs
+            hk("palette", "k", meta=True, prevent_default=True, help="Open command palette (Mac)"),
+            hk("palette", "k", ctrl=True, prevent_default=True, help="Open command palette (Win/Linux)"),
             # Page navigation
             hk("data", "d", help="Go to Data Collection"),
             hk("signals", "t", help="Go to Trading Signals"),
@@ -60,10 +60,15 @@ def register_hotkeys() -> None:
         )
 
         # Check for pressed keys and navigate/act
+        # Only act on keypresses, not on every rerun
         if pressed("palette"):
-            # Toggle command palette
-            toggle_command_palette()
-            st.rerun()
+            # Toggle command palette only if not already in desired state
+            if not st.session_state.get("_palette_just_toggled", False):
+                st.session_state._palette_just_toggled = True
+                toggle_command_palette()
+                st.rerun()
+            else:
+                st.session_state._palette_just_toggled = False
         elif pressed("data"):
             st.switch_page("1_📥_Data_Collection.py")
         elif pressed("signals"):
