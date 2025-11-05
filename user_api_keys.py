@@ -93,8 +93,24 @@ class UserAPIKeysManager:
             return None
 
         except Exception as e:
-            st.error(f"Error fetching user API keys: {str(e)}")
-            return None
+            # Table might not exist yet - return empty dict instead of None
+            # This allows the UI to render even before migration is run
+            import traceback
+            print(f"Error fetching user API keys: {str(e)}")
+            print(traceback.format_exc())
+            # Return empty structure so UI can still render
+            return {
+                "paper_api_key": "",
+                "paper_secret_key": "",
+                "live_api_key": "",
+                "live_secret_key": "",
+                "supabase_url": "",
+                "supabase_anon_key": "",
+                "supabase_service_role_key": "",
+                "quiverquant_api_key": "",
+                "subscription_tier": "free",
+                "subscription_status": "active",
+            }
 
     def save_user_keys(
         self,

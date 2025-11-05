@@ -261,7 +261,16 @@ with tab2:
 
 with tab3:
     st.markdown("### 💾 Supabase Database Configuration")
+
     st.info("**Supabase** is your personal database for storing politician trading data")
+
+    st.warning("""
+    ⚠️ **Before configuring:** Make sure you've run the database migration!
+
+    1. Go to **[Database Setup](/Database_Setup)** page
+    2. Run the migration SQL in your Supabase SQL Editor
+    3. Come back here to configure your credentials
+    """)
 
     st.markdown("""
     **Why configure your own Supabase?**
