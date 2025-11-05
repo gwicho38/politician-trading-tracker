@@ -54,7 +54,13 @@ with col2:
                 st.caption(f"Status: {sub.get('status', 'active')}")
     else:
         st.warning("**Free Plan**")
-        st.button("🚀 Upgrade Now", type="primary", use_container_width=True)
+        # Use add_paywall to show proper Stripe upgrade button
+        add_paywall(
+            required=False,
+            use_sidebar=False,
+            subscription_button_text="🚀 Upgrade Now",
+            show_tier_info=False
+        )
 
 st.divider()
 

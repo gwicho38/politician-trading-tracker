@@ -77,6 +77,8 @@ dependencies = [
   "streamlit-shadcn-ui>=0.1.19",
   "stqdm>=0.0.5",
   "st-supabase-connection>=2.1.0",
+  "st-paywall>=1.0.1",
+  "stripe>=11.0.0",
 ]
 
 [project.urls]
@@ -102,8 +104,6 @@ dev = [
 # Streamlit deployment extras (not in main dependencies)
 streamlit-extras = [
   "streamlit-extras>=0.6.0",
-  "st-paywall>=1.0.1",
-  "stripe>=11.0.0",
   "streamlit-autorefresh>=1.0.1",
   "streamlit-analytics>=0.4.1",
 ]

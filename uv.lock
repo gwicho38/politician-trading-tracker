@@ -4022,6 +4022,7 @@ dependencies = [
     { name = "scikit-learn", version = "1.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "sqlalchemy" },
+    { name = "st-paywall" },
     { name = "st-supabase-connection", version = "2.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "st-supabase-connection", version = "2.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "stqdm" },
@@ -4031,6 +4032,7 @@ dependencies = [
     { name = "streamlit-elements" },
     { name = "streamlit-shadcn-ui" },
     { name = "streamlit-tags" },
+    { name = "stripe" },
     { name = "supabase" },
     { name = "ta-lib" },
     { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -4058,11 +4060,9 @@ dev = [
     { name = "ruff" },
 ]
 streamlit-extras = [
-    { name = "st-paywall" },
     { name = "streamlit-analytics" },
     { name = "streamlit-autorefresh" },
     { name = "streamlit-extras" },
-    { name = "stripe" },
 ]
 
 [package.metadata]
@@ -4100,7 +4100,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "scikit-learn", specifier = ">=1.3.0" },
     { name = "sqlalchemy", specifier = ">=2.0.0" },
-    { name = "st-paywall", marker = "extra == 'streamlit-extras'", specifier = ">=1.0.1" },
+    { name = "st-paywall", specifier = ">=1.0.1" },
     { name = "st-supabase-connection", specifier = ">=2.1.0" },
     { name = "stqdm", specifier = ">=0.0.5" },
     { name = "streamlit", specifier = ">=1.31.0" },
@@ -4111,7 +4111,7 @@ requires-dist = [
     { name = "streamlit-extras", marker = "extra == 'streamlit-extras'", specifier = ">=0.6.0" },
     { name = "streamlit-shadcn-ui", specifier = ">=0.1.19" },
     { name = "streamlit-tags", specifier = ">=1.2.8" },
-    { name = "stripe", marker = "extra == 'streamlit-extras'", specifier = ">=11.0.0" },
+    { name = "stripe", specifier = ">=11.0.0" },
     { name = "supabase", specifier = ">=2.18.1" },
     { name = "ta-lib", specifier = ">=0.4.28" },
     { name = "torch", specifier = ">=2.0.0" },
