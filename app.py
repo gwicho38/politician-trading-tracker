@@ -105,6 +105,76 @@ pages = [
 # Render shopping cart indicator in sidebar
 render_shopping_cart_sidebar()
 
+# Add trading mode toggle in sidebar
+with st.sidebar:
+    st.markdown("---")
+
+    # Initialize trading mode in session state
+    if "global_trading_mode" not in st.session_state:
+        st.session_state.global_trading_mode = "paper"
+
+    # Toggle between paper and live
+    current_mode = st.session_state.global_trading_mode
+
+    # Display current mode with prominent styling
+    if current_mode == "live":
+        st.markdown("""
+        <div style="
+            padding: 12px;
+            border: 3px solid #ff4b4b;
+            border-radius: 8px;
+            background-color: #ffe6e6;
+            text-align: center;
+            margin-bottom: 10px;
+        ">
+            <h3 style="color: #ff4b4b; margin: 0;">🔴 LIVE TRADING</h3>
+            <p style="margin: 5px 0 0 0; color: #ff4b4b; font-weight: bold;">Real Money Mode</p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style="
+            padding: 12px;
+            border: 2px solid #31d843;
+            border-radius: 8px;
+            background-color: #e6f7e9;
+            text-align: center;
+            margin-bottom: 10px;
+        ">
+            <h3 style="color: #31d843; margin: 0;">🟢 PAPER TRADING</h3>
+            <p style="margin: 5px 0 0 0; color: #31d843; font-weight: bold;">Simulated Money Mode</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Toggle button
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("📝 Paper", use_container_width=True, type="primary" if current_mode == "paper" else "secondary"):
+            st.session_state.global_trading_mode = "paper"
+            st.rerun()
+
+    with col2:
+        if st.button("💰 Live", use_container_width=True, type="primary" if current_mode == "live" else "secondary"):
+            # Check if user has live access
+            try:
+                from user_api_keys import get_user_api_keys_manager
+                from auth_utils import require_authentication
+
+                if st.user.is_logged_in:
+                    keys_manager = get_user_api_keys_manager()
+                    user_keys = keys_manager.get_user_keys(st.user.email)
+
+                    if user_keys and keys_manager.has_live_access(st.user.email) and user_keys.get("live_api_key"):
+                        st.session_state.global_trading_mode = "live"
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Live trading requires a paid subscription and configured live API keys. Go to Settings.")
+                else:
+                    st.warning("Please log in first")
+            except:
+                st.warning("⚠️ Configure your API keys in Settings first")
+
 # Create navigation and run
 page = st.navigation(pages)
 
