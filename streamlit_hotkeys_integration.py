@@ -19,7 +19,6 @@ This file purposely keeps the API usage tolerant because the
 we show an install message in the sidebar.
 """
 import streamlit as st
-from command_palette import get_command_palette, toggle_command_palette
 
 HOTKEYS_SESSION_KEY = "_hotkeys_target_page"
 
@@ -32,6 +31,7 @@ def register_hotkeys() -> None:
     """
     try:
         from streamlit_hotkeys import activate, hk, pressed
+        from command_palette import get_command_palette, toggle_command_palette
     except Exception as e:
         # Friendly instruction for users/deployers to install the package
         st.sidebar.info(
