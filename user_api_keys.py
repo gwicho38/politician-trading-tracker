@@ -90,7 +90,20 @@ class UserAPIKeysManager:
                     "stripe_customer_id": user_data.get("stripe_customer_id", ""),
                 }
 
-            return None
+            # If no record found for user, return empty structure instead of None
+            # This allows the UI to render properly for new users
+            return {
+                "paper_api_key": "",
+                "paper_secret_key": "",
+                "live_api_key": "",
+                "live_secret_key": "",
+                "supabase_url": "",
+                "supabase_anon_key": "",
+                "supabase_service_role_key": "",
+                "quiverquant_api_key": "",
+                "subscription_tier": "free",
+                "subscription_status": "active",
+            }
 
         except Exception as e:
             # Table might not exist yet - return empty dict instead of None
