@@ -105,10 +105,18 @@ jobs:
         ALPACA_PAPER_API_KEY: PKTEST1234567890
         ALPACA_PAPER_SECRET_KEY: test_secret_key_12345
 
+    - name: Run advanced E2E scenarios
+      run: |
+        pytest tests/integration/test_e2e_advanced_scenarios.py -v -s --tb=short -m "not real_alpaca"
+      env:
+        # Mock Alpaca keys for testing (not real keys)
+        ALPACA_PAPER_API_KEY: PKTEST1234567890
+        ALPACA_PAPER_SECRET_KEY: test_secret_key_12345
+
     - name: Generate E2E test report
       if: always()
       run: |
-        pytest tests/integration/test_e2e_trading_flow.py --junitxml=e2e-test-report.xml
+        pytest tests/integration/test_e2e_*.py --junitxml=e2e-test-report.xml -m "not real_alpaca"
 
     - name: Upload E2E test results
       if: always()
