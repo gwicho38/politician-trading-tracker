@@ -127,23 +127,31 @@ class CongressTradingScraper(BaseScraper):
                         html = await response.text()
                         logger.info("Successfully accessed House financial disclosure search form")
 
+                        # Log first 1000 chars of HTML for debugging
+                        logger.debug(f"House search page HTML preview: {html[:1000]}")
+
+                        # Log response headers for debugging
+                        logger.debug(f"Response headers: {dict(response.headers)}")
+
                         # Extract form data for ASPX
                         soup = BeautifulSoup(html, "html.parser")
 
-                        # Look for common ASPX form fields
+                        # Look for form fields (ASP.NET Core uses __RequestVerificationToken)
                         form_fields = {}
                         for field_name in [
                             "__VIEWSTATE",
                             "__VIEWSTATEGENERATOR",
                             "__EVENTVALIDATION",
-                            "__REQUESTVERIFICATIONTOKEN",
+                            "__RequestVerificationToken",  # ASP.NET Core uses this
                         ]:
                             field = soup.find("input", {"name": field_name})
                             if field and field.get("value"):
                                 form_fields[field_name] = field["value"]
 
-                        if "__VIEWSTATE" in form_fields:
-                            logger.info("Found required ASPX form fields")
+                        # ASP.NET Core sites use __RequestVerificationToken instead of __VIEWSTATE
+                        if "__VIEWSTATE" in form_fields or "__RequestVerificationToken" in form_fields:
+                            logger.info("Found required form fields")
+                            logger.debug(f"Form fields found: {list(form_fields.keys())}")
 
                             # Search for recent disclosures - try different form field names
                             current_year = str(datetime.now().year)
@@ -165,6 +173,13 @@ class CongressTradingScraper(BaseScraper):
                             for name in common_names:
                                 possible_form_data_sets.extend(
                                     [
+                                        # ASP.NET Core field names (discovered from diagnostic)
+                                        {
+                                            **form_fields,
+                                            "LastName": name,
+                                            "FilingYear": current_year,
+                                        },
+                                        # Old ASPX field names (fallback)
                                         {
                                             **form_fields,
                                             "ctl00$MainContent$txtLastName": name,
@@ -177,18 +192,18 @@ class CongressTradingScraper(BaseScraper):
                                             "ctl00$ContentPlaceHolder1$ddlFilingYear": current_year,
                                             "ctl00$ContentPlaceHolder1$btnSearch": "Search",
                                         },
-                                        {
-                                            **form_fields,
-                                            "LastName": name,
-                                            "FilingYear": current_year,
-                                            "Search": "Search",
-                                        },
                                     ]
                                 )
 
                             # Also try without names (all results)
                             possible_form_data_sets.extend(
                                 [
+                                    # ASP.NET Core field names (discovered from diagnostic)
+                                    {
+                                        **form_fields,
+                                        "FilingYear": current_year,
+                                    },
+                                    # Old ASPX field names (fallback)
                                     {
                                         **form_fields,
                                         "ctl00$MainContent$ddlFilingYear": current_year,
@@ -242,6 +257,12 @@ class CongressTradingScraper(BaseScraper):
                             logger.warning(
                                 "Could not find required ASPX form fields, using basic page scraping"
                             )
+                            # Log what fields we did find
+                            all_inputs = soup.find_all("input")
+                            logger.debug(f"Found {len(all_inputs)} input fields total")
+                            input_names = [inp.get("name", "unnamed") for inp in all_inputs[:10]]
+                            logger.debug(f"Sample input field names: {input_names}")
+
                             # Fall back to parsing any existing links
                             disclosures = await self._parse_house_results(html, base_url)
                     else:
@@ -260,7 +281,8 @@ class CongressTradingScraper(BaseScraper):
         """Scrape Senate financial disclosures from the official EFD database"""
         disclosures = []
         base_url = "https://efdsearch.senate.gov"
-        search_url = f"{base_url}/search/"
+        # The search endpoint needs to be the correct path
+        search_url = f"{base_url}/search/view/ptr/"  # PTR = Periodic Transaction Report
 
         try:
             logger.info("Starting Senate disclosures scrape from EFD database")
@@ -270,18 +292,16 @@ class CongressTradingScraper(BaseScraper):
                 headers={"User-Agent": self.config.user_agent},
             ) as session:
 
-                # Search for recent periodic transaction reports (PTRs)
-                search_params = {
-                    "report_type": "11",  # Periodic Transaction Report
-                    "submitted_start_date": (datetime.now() - timedelta(days=90)).strftime(
-                        "%m/%d/%Y"
-                    ),
-                    "submitted_end_date": datetime.now().strftime("%m/%d/%Y"),
-                }
-
-                async with session.get(search_url, params=search_params) as response:
+                # Try the public PTR listing page first
+                async with session.get(search_url) as response:
                     if response.status == 200:
                         html = await response.text()
+
+                        # Log response details for debugging
+                        logger.debug(f"Senate search page HTML preview: {html[:1000]}")
+                        logger.debug(f"Senate response headers: {dict(response.headers)}")
+                        logger.debug(f"Senate search URL with params: {response.url}")
+
                         disclosures = await self._parse_senate_results(html, base_url)
                         logger.info(f"Found {len(disclosures)} Senate disclosures")
                     else:
@@ -413,6 +433,12 @@ class CongressTradingScraper(BaseScraper):
             # Look for search result rows
             result_rows = soup.find_all("tr", class_="searchresult") or soup.select("tbody tr")
 
+            logger.debug(f"Senate parser found {len(result_rows)} potential result rows")
+
+            # Log table structure if available
+            tables = soup.find_all("table")
+            logger.debug(f"Found {len(tables)} tables in Senate results")
+
             for row in result_rows[:20]:  # Limit to 20 most recent
                 cells = row.find_all("td")
                 if len(cells) >= 4:
@@ -485,71 +511,98 @@ class QuiverQuantScraper(BaseScraper):
             html = await self.fetch_page(url)
 
             if html:
+                # Log response details for debugging
+                logger.debug(f"QuiverQuant page HTML preview: {html[:1000]}")
+                logger.debug(f"QuiverQuant page HTML length: {len(html)} bytes")
+
                 soup = BeautifulSoup(html, "html.parser")
 
                 # Parse the trading data table (simplified example)
                 # In reality, this might require handling JavaScript rendering
                 trade_rows = soup.select("table tr")
 
-                for row in trade_rows[1:10]:  # Skip header, limit to 10 for example
+                logger.debug(f"QuiverQuant found {len(trade_rows)} table rows")
+
+                # Check if the page requires JavaScript
+                if "javascript" in html.lower() and len(trade_rows) < 2:
+                    logger.warning(
+                        "QuiverQuant page appears to require JavaScript rendering"
+                    )
+
+                # Filter out header rows and empty rows
+                for idx, row in enumerate(trade_rows):
                     cells = row.select("td")
-                    if len(cells) >= 4:
-                        # Extract cell contents and try to identify the correct fields
-                        cell_texts = [cell.get_text(strip=True) for cell in cells]
+                    # Skip rows with no td elements (likely header rows with th elements)
+                    if len(cells) < 3:
+                        continue
 
-                        # Try to identify which cell contains what data
-                        politician_name = cell_texts[0] if len(cell_texts) > 0 else ""
+                    # Extract cell contents and try to identify the correct fields
+                    cell_texts = [cell.get_text(strip=True) for cell in cells]
 
-                        # Look for date-like patterns (YYYY-MM-DD, MM/DD/YYYY, etc.)
-                        transaction_date = ""
-                        ticker = ""
-                        asset_name = ""
-                        transaction_type = ""
-                        amount = ""
+                    # Filter out empty rows
+                    if not any(cell_texts):
+                        continue
 
-                        for i, text in enumerate(
-                            cell_texts[1:], 1
-                        ):  # Skip first cell (politician name)
-                            # Check if this looks like a date
-                            if self._looks_like_date(text):
-                                transaction_date = text
-                            # Check if this looks like a ticker (all caps, short)
-                            elif text.isupper() and len(text) <= 5 and text.isalpha():
-                                ticker = text
-                            # Check if this looks like a company name (has mixed case, contains "Inc", "Corp", "Ltd", etc.)
-                            elif any(word in text for word in ["Inc", "Corp", "Ltd", "LLC", "Corporation", "Company"]):
-                                asset_name = text
-                            # Check if this contains transaction type keywords
-                            elif any(
-                                word in text.lower() for word in ["purchase", "sale", "buy", "sell"]
-                            ):
-                                # Split transaction type and amount if combined
-                                if "$" in text:
-                                    # Split on $ to separate transaction type from amount
-                                    parts = text.split("$", 1)
-                                    transaction_type = parts[0].strip()
-                                    amount = "$" + parts[1] if len(parts) > 1 else ""
-                                else:
-                                    transaction_type = text
-                            # Check if this looks like an amount (contains $ or numbers with ,)
-                            elif "$" in text or ("," in text and any(c.isdigit() for c in text)):
-                                amount = text
-                            # If not identified as anything else and has mixed case, might be asset name
-                            elif text and not text.isupper() and not text.islower() and len(text) > 6:
-                                asset_name = text
+                    logger.debug(f"QuiverQuant row {idx}: {len(cells)} cells, texts: {cell_texts[:5]}")
 
-                        # Only create trade data if we have essential fields
-                        if politician_name and (transaction_date or ticker):
-                            trade_data = {
-                                "politician_name": politician_name,
-                                "transaction_date": transaction_date,
-                                "ticker": ticker,
-                                "asset_name": asset_name,
-                                "transaction_type": transaction_type,
-                                "amount": amount,
-                                "source": "quiverquant",
-                            }
-                            trades.append(trade_data)
+                    # Try to identify which cell contains what data
+                    politician_name = cell_texts[0] if len(cell_texts) > 0 else ""
+
+                    # Look for date-like patterns (YYYY-MM-DD, MM/DD/YYYY, etc.)
+                    transaction_date = ""
+                    ticker = ""
+                    asset_name = ""
+                    transaction_type = ""
+                    amount = ""
+
+                    for i, text in enumerate(
+                        cell_texts[1:], 1
+                    ):  # Skip first cell (politician name)
+                        # Check if this looks like a date
+                        if self._looks_like_date(text):
+                            transaction_date = text
+                        # Check if this looks like a ticker (all caps, short)
+                        elif text.isupper() and len(text) <= 5 and text.isalpha():
+                            ticker = text
+                        # Check if this looks like a company name (has mixed case, contains "Inc", "Corp", "Ltd", etc.)
+                        elif any(word in text for word in ["Inc", "Corp", "Ltd", "LLC", "Corporation", "Company"]):
+                            asset_name = text
+                        # Check if this contains transaction type keywords
+                        elif any(
+                            word in text.lower() for word in ["purchase", "sale", "buy", "sell"]
+                        ):
+                            # Split transaction type and amount if combined
+                            if "$" in text:
+                                # Split on $ to separate transaction type from amount
+                                parts = text.split("$", 1)
+                                transaction_type = parts[0].strip()
+                                amount = "$" + parts[1] if len(parts) > 1 else ""
+                            else:
+                                transaction_type = text
+                        # Check if this looks like an amount (contains $ or numbers with ,)
+                        elif "$" in text or ("," in text and any(c.isdigit() for c in text)):
+                            amount = text
+                        # If not identified as anything else and has mixed case, might be asset name
+                        elif text and not text.isupper() and not text.islower() and len(text) > 6:
+                            asset_name = text
+
+                    # Only create trade data if we have essential fields
+                    if politician_name and (transaction_date or ticker):
+                        trade_data = {
+                            "politician_name": politician_name,
+                            "transaction_date": transaction_date,
+                            "ticker": ticker,
+                            "asset_name": asset_name,
+                            "transaction_type": transaction_type,
+                            "amount": amount,
+                            "source": "quiverquant",
+                        }
+                        trades.append(trade_data)
+
+                    # Limit to prevent excessive data collection
+                    if len(trades) >= 10:
+                        logger.info(f"Reached limit of 10 trades, stopping")
+                        break
 
         except Exception as e:
             logger.error(f"QuiverQuant scrape failed: {e}")

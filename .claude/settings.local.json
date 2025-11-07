@@ -82,7 +82,8 @@
       "Bash(lsh secrets get:*)",
       "Bash(lsh secrets set:*)",
       "Bash(./scripts/sync_secrets_to_streamlit.sh:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(uv sync:*)"
     ],
     "deny": [],
     "ask": []
