@@ -374,6 +374,27 @@ if tab == 'Data Sources':
 
                     add_log(f"🎉 Collection completed successfully in {elapsed:.1f}s")
 
+                    # Add link to action logs
+                    st.markdown("---")
+                    st.markdown("#### 📋 View Detailed Logs")
+
+                    action_id = st.session_state.get("action_id")
+                    if action_id:
+                        st.info(f"""
+                        💡 **View complete logs for this collection:**
+
+                        Go to **[📋 Action Logs](/8_📋_Action_Logs)** page and filter by:
+                        - Action ID: `{action_id}`
+                        - Action Type: `data_collection_start`
+                        - Time: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`
+                        """)
+                    else:
+                        st.info("""
+                        💡 **View complete logs for all collections:**
+
+                        Go to **[📋 Action Logs](/8_📋_Action_Logs)** page to see detailed logs for all data collection runs.
+                        """)
+
                 st.rerun()
 
             except Exception as e:
@@ -411,6 +432,27 @@ if tab == 'Data Sources':
 
                     with st.expander("📋 Full Error Details"):
                         st.code(error_details, language="python")
+
+                    # Add link to action logs for error case
+                    st.markdown("---")
+                    st.markdown("#### 📋 View Error Logs")
+
+                    action_id = st.session_state.get("action_id")
+                    if action_id:
+                        st.warning(f"""
+                        🔍 **View complete error logs:**
+
+                        Go to **[📋 Action Logs](/8_📋_Action_Logs)** page and filter by:
+                        - Action ID: `{action_id}`
+                        - Status: `failed`
+                        - Time: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`
+                        """)
+                    else:
+                        st.info("""
+                        🔍 **View error logs:**
+
+                        Go to **[📋 Action Logs](/8_📋_Action_Logs)** page to see detailed error logs.
+                        """)
 
                 st.session_state.collection_running = False
                 st.rerun()
