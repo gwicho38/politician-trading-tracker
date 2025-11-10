@@ -69,23 +69,50 @@ if tab == 'Data Sources':
 
     with col1:
         st.markdown("**🇺🇸 United States**")
-        us_congress = st.checkbox("US Congress (House & Senate)", value=True)
-        california = st.checkbox("California State", value=False)
-        texas = st.checkbox("Texas State", value=False)
-        new_york = st.checkbox("New York State", value=False)
+        us_congress = st.checkbox("US Congress (Senate)", value=True, help="7,524 Senate disclosures + 961 from QuiverQuant")
+
+        # Commented out - test data only, not real scraping
+        # california = st.checkbox("California State", value=False)
+        # texas = st.checkbox("Texas State", value=False)
+        # new_york = st.checkbox("New York State", value=False)
+        california = False
+        texas = False
+        new_york = False
 
     with col2:
         st.markdown("**🇪🇺 European Union**")
-        eu_parliament = st.checkbox("EU Parliament", value=False)
-        germany = st.checkbox("Germany (Bundestag)", value=False)
-        france = st.checkbox("France (National Assembly)", value=False)
-        italy = st.checkbox("Italy (Parliament)", value=False)
+        # eu_parliament = st.checkbox("EU Parliament", value=False)  # ❌ Currently returning 0 records
+        eu_parliament = False  # Disabled - not working
+
+        # Commented out - test data only, not real scraping
+        # germany = st.checkbox("Germany (Bundestag)", value=False)
+        # france = st.checkbox("France (National Assembly)", value=False)
+        # italy = st.checkbox("Italy (Parliament)", value=False)
+        germany = False
+        france = False
+        italy = False
 
     with col3:
         st.markdown("**🇬🇧 United Kingdom**")
-        uk_parliament = st.checkbox("UK Parliament", value=False)
+        uk_parliament = st.checkbox("UK Parliament", value=False, help="Can collect 135+ MP financial interests")
+
         st.markdown("**📊 Third-Party**")
-        quiver = st.checkbox("QuiverQuant", value=False)
+        # QuiverQuant is automatically included with US Congress
+        quiver = False
+
+    # Show status of data sources
+    st.success("""
+    **📊 Current Database Status**:
+
+    ✅ **8,485 actionable trades** with stock tickers from:
+    - **7,524 US Senate disclosures** (official Senate EFD)
+    - **961 congressional trades** (QuiverQuant aggregator)
+    - **126 politicians tracked** (Senators like Marjorie Taylor Greene, Sheldon Whitehouse, etc.)
+
+    🔄 **Data Collection**: Run collection to add new disclosures from Senate & QuiverQuant
+
+    💡 **Recent Trades**: Marjorie Taylor Greene (PANW, BX, CVX, IBIT), Sheldon Whitehouse (PGR), David Taylor (T, AAPL)
+    """)
 
     # Collection parameters
     st.markdown("---")

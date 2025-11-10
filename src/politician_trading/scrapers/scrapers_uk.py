@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 
-from .models import Politician, PoliticianRole, TradingDisclosure, TransactionType
+from ..models import Politician, PoliticianRole, TradingDisclosure, TransactionType
 from .scrapers import BaseScraper
 
 logger = logging.getLogger(__name__)
