@@ -38,11 +38,26 @@ def apply_sidebar_styling():
 
     /* Mobile responsive - collapse to normal size on small screens */
     @media (max-width: 768px) {
-        [data-testid="stSidebar"] {
+        /* When sidebar is collapsed on mobile, hide it completely */
+        [data-testid="stSidebar"][aria-expanded="false"] {
+            margin-left: -21rem !important;
             min-width: 21rem !important;
             max-width: 21rem !important;
         }
 
+        /* When sidebar is expanded on mobile, show it as overlay */
+        [data-testid="stSidebar"][aria-expanded="true"] {
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            z-index: 999999 !important;
+            min-width: 21rem !important;
+            max-width: 21rem !important;
+            height: 100vh !important;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1) !important;
+        }
+
+        /* Main content always starts at left edge on mobile */
         .appview-container .main {
             margin-left: 0 !important;
         }
@@ -50,6 +65,11 @@ def apply_sidebar_styling():
         .main .block-container {
             padding-left: 1rem !important;
             padding-right: 1rem !important;
+        }
+
+        /* Remove any sidebar padding that might show when collapsed */
+        [data-testid="stSidebar"][aria-expanded="false"] > div {
+            display: none !important;
         }
     }
     </style>
