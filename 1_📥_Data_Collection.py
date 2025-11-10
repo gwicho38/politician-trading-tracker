@@ -47,6 +47,7 @@ logger.info("Data Collection page loaded")
 
 st.title("📥 Data Collection")
 st.markdown("Collect and view politician trading disclosures")
+# Force redeploy - single page layout with sections
 
 # Initialize session state
 if "collection_running" not in st.session_state:
