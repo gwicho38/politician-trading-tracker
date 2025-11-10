@@ -18,7 +18,7 @@ st.set_page_config(
     page_title="Politician Trading Tracker",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",  # Start collapsed, especially important for mobile
     menu_items={
         "Get help": "https://github.com/gwicho38/politician-trading-tracker#readme",
         "Report a bug": "https://github.com/gwicho38/politician-trading-tracker/issues",
