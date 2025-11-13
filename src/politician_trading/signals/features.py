@@ -2,9 +2,8 @@
 Feature engineering for politician trading signals
 """
 
-from datetime import datetime, timedelta
-from decimal import Decimal
-from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List, Any, Optional
 import logging
 
 import pandas as pd
@@ -106,7 +105,7 @@ class FeatureEngineer:
                 if isinstance(d["transaction_date"], str):
                     try:
                         dates.append(datetime.fromisoformat(d["transaction_date"].replace("Z", "+00:00")))
-                    except:
+                    except (ValueError, TypeError):
                         continue
                 elif isinstance(d["transaction_date"], datetime):
                     dates.append(d["transaction_date"])
@@ -365,7 +364,7 @@ class FeatureEngineer:
                     try:
                         date = datetime.fromisoformat(d["transaction_date"].replace("Z", "+00:00"))
                         dated_disclosures.append((date, d))
-                    except:
+                    except (ValueError, TypeError):
                         continue
                 elif isinstance(d["transaction_date"], datetime):
                     dated_disclosures.append((d["transaction_date"], d))

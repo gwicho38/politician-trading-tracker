@@ -4,7 +4,6 @@ Unit tests for analytics_wrapper module
 import json
 import tempfile
 from pathlib import Path
-import pytest
 
 from analytics_wrapper import sanitize_for_json
 

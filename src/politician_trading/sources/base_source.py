@@ -5,7 +5,7 @@ Base source class for all disclosure sources.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 import aiohttp
 import asyncio
@@ -195,7 +195,7 @@ class BaseSource(ABC):
                     # Return JSON if possible, otherwise text
                     try:
                         return await response.json()
-                    except:
+                    except (ValueError, aiohttp.ContentTypeError):
                         return await response.text()
 
             except aiohttp.ClientError as e:

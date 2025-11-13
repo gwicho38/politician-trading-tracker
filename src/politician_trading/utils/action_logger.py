@@ -6,7 +6,6 @@ Provides centralized logging for all user actions and system events
 import time
 from datetime import datetime
 from typing import Any, Dict, Optional
-from uuid import uuid4
 
 from politician_trading.config import SupabaseConfig
 from politician_trading.database.database import SupabaseClient

@@ -152,7 +152,6 @@ class CleaningStage(PipelineStage[CleanedDisclosure]):
     def _compute_hash(self, data: dict) -> str:
         """Compute hash for duplicate detection"""
         import hashlib
-        import json
 
         # Create a stable hash from key fields
         key_fields = [

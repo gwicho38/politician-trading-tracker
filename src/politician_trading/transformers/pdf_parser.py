@@ -7,7 +7,6 @@ Handles downloading and parsing PDF financial disclosure forms from the Senate w
 import re
 import logging
 from typing import Optional, Dict, List, Any
-from datetime import datetime
 import aiohttp
 from io import BytesIO
 
@@ -344,7 +343,7 @@ class SenatePDFParser:
             try:
                 import json
                 raw_data = json.loads(raw_data)
-            except:
+            except (json.JSONDecodeError, ValueError):
                 raw_data = {}
 
         pdf_url = raw_data.get('ptr_link') or disclosure.get('source_url', '')

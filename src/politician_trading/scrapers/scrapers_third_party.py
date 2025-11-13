@@ -11,8 +11,7 @@ politician trading activity:
 
 import logging
 import os
-import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional
 
 import requests
@@ -45,7 +44,7 @@ class StockNearScraper:
             response = self.session.get(self.BASE_URL, timeout=30)
             response.raise_for_status()
 
-            soup = BeautifulSoup(response.content, "html.parser")
+            BeautifulSoup(response.content, "html.parser")
 
             # StockNear loads data via JavaScript - would need Selenium or API access
             # For now, return structure for manual data entry or API integration
@@ -319,7 +318,7 @@ class ThirdPartyDataFetcher:
                     asset_type="stock",
                     amount_range_min=amount_min,
                     amount_range_max=amount_max,
-                    source_url=f"https://www.propublica.org/",
+                    source_url="https://www.propublica.org/",
                     raw_data=txn,
                 )
                 disclosures.append(disclosure)

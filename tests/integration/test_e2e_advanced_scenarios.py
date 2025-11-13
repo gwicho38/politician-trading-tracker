@@ -15,10 +15,9 @@ import os
 import sys
 import time
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
-from typing import Dict, Any, List, Optional
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -30,24 +29,16 @@ if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 
 from models import (
-    Politician,
-    TradingDisclosure,
-    TradingSignal,
     SignalType,
     TransactionType,
-    OrderType,
-    OrderStatus,
-    TradingMode,
 )
-from politician_trading.signals.signal_generator import SignalGenerator
 from politician_trading.trading.alpaca_client import AlpacaTradingClient
 from shopping_cart import ShoppingCart, CartItem
-from paywall_config import PaywallConfig
 from tests.fixtures.test_data import TestDataFactory
 
 # Import MockSupabaseClient from the main E2E test
 sys.path.insert(0, str(Path(__file__).parent))
-from test_e2e_trading_flow import MockSupabaseClient, MockSupabaseTable
+from test_e2e_trading_flow import MockSupabaseClient
 
 
 @pytest.fixture
@@ -135,7 +126,7 @@ class TestE2ELimitOrders:
             take_profit=float(msft_signal.take_profit) if msft_signal.take_profit else None,
         )
         ShoppingCart.add_item(cart_item)
-        print(f"✅ Added MSFT to cart with quantity: 20 shares")
+        print("✅ Added MSFT to cart with quantity: 20 shares")
 
         # Execute limit order
         with patch("politician_trading.trading.alpaca_client.TradingClient") as mock_trading_client:
@@ -512,7 +503,7 @@ class TestE2ERealAlpacaIntegration:
         assert account_info is not None
         assert account_info["status"] == "ACTIVE"
 
-        print(f"✅ Connected to Alpaca Paper Trading")
+        print("✅ Connected to Alpaca Paper Trading")
         print(f"   Account ID: {account_info['account_id']}")
         print(f"   Status: {account_info['status']}")
         print(f"   Cash: ${float(account_info['cash']):,.2f}")

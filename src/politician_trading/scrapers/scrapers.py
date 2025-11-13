@@ -8,13 +8,13 @@ import re
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 import aiohttp
 from bs4 import BeautifulSoup
 
 from ..config import ScrapingConfig
-from ..models import Politician, PoliticianRole, TradingDisclosure, TransactionType
+from ..models import Politician, TradingDisclosure, TransactionType
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,6 @@ class CongressTradingScraper(BaseScraper):
         """Scrape House financial disclosures from the official database"""
         disclosures = []
         base_url = "https://disclosures-clerk.house.gov"
-        search_url = f"{base_url}/FinancialDisclosure"
 
         try:
             logger.info("Starting House disclosures scrape from official database")
@@ -601,7 +600,7 @@ class QuiverQuantScraper(BaseScraper):
 
                     # Limit to prevent excessive data collection
                     if len(trades) >= 10:
-                        logger.info(f"Reached limit of 10 trades, stopping")
+                        logger.info("Reached limit of 10 trades, stopping")
                         break
 
         except Exception as e:
@@ -745,7 +744,7 @@ class EUParliamentScraper(BaseScraper):
                                     logger.info(f"Processed {i} MEP profiles")
 
                             except Exception as e:
-                                logger.warning(f"Failed to process MEP profile {mep_url}: {e}")
+                                logger.warning(f"Failed to process MEP profile {mep_info['url']}: {e}")
                                 continue
                     else:
                         logger.warning(f"Failed to access MEP list: {response.status}")

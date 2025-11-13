@@ -6,8 +6,7 @@ import pytest
 import sys
 import time
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
-from datetime import datetime
+from unittest.mock import Mock, patch
 
 # Add src to path
 src_path = Path(__file__).parent.parent.parent / "src"
@@ -16,7 +15,6 @@ if str(src_path) not in sys.path:
 
 from politician_trading.utils.action_logger import (
     ActionLogger,
-    get_action_logger,
     log_action,
     start_action,
     complete_action,
@@ -281,7 +279,7 @@ class TestActionLogger:
 
         mock_table.select.return_value = mock_chain
 
-        actions = action_logger.get_recent_actions(
+        action_logger.get_recent_actions(
             action_type="data_collection",
             user_id="test@example.com",
             source="ui_button",

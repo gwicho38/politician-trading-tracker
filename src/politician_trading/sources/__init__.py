@@ -35,7 +35,7 @@ def get_source(source_type: str) -> Optional[BaseSource]:
         return None
 
     # Lazy import to avoid circular dependencies
-    class_name = source_map[source_type]
+    source_map[source_type]
 
     if source_type == 'us_house':
         from .us_house import USHouseSource

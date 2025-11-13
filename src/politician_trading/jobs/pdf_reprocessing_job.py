@@ -272,7 +272,7 @@ class PDFReprocessingJob:
         if isinstance(raw_data, str):
             try:
                 raw_data = json.loads(raw_data)
-            except:
+            except (json.JSONDecodeError, ValueError):
                 raw_data = {}
 
         pdf_url = raw_data.get('ptr_link') or raw_data.get('pdf_url')
@@ -306,7 +306,6 @@ class PDFReprocessingJob:
         politician_name: str
     ) -> List[Dict[str, Any]]:
         """Parse PDF with retry logic"""
-        last_error = None
 
         for attempt in range(self.max_retries + 1):
             try:
@@ -314,7 +313,6 @@ class PDFReprocessingJob:
                 return transactions
 
             except Exception as e:
-                last_error = e
                 if attempt < self.max_retries:
                     wait_time = 2 ** attempt  # Exponential backoff
                     self.logger.warning(
@@ -368,7 +366,7 @@ class PDFReprocessingJob:
 
     async def _handle_failed_parse(self, db, record_id: str):
         """Handle failed PDF parse"""
-        self.logger.warning(f"No transactions extracted from PDF")
+        self.logger.warning("No transactions extracted from PDF")
 
         db.table("trading_disclosures").update({
             "status": "pdf_parse_failed"

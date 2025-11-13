@@ -6,9 +6,7 @@ to be called by APScheduler.
 """
 
 import asyncio
-import sys
 from datetime import datetime
-from pathlib import Path
 
 from politician_trading.utils.logger import create_logger
 from politician_trading.config import SupabaseConfig, ScrapingConfig, WorkflowConfig

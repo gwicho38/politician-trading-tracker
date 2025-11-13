@@ -4,7 +4,6 @@ Trading strategy engine that executes trades based on politician trading signals
 
 from decimal import Decimal
 from typing import List, Optional, Dict, Any
-from datetime import datetime
 import logging
 
 from politician_trading.trading.alpaca_client import AlpacaTradingClient
@@ -15,7 +14,6 @@ from src.models import (
     Portfolio,
     Position,
     SignalType,
-    OrderType,
 )
 
 logger = logging.getLogger(__name__)

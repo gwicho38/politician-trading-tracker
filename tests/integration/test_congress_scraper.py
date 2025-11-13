@@ -68,7 +68,7 @@ async def test_congress_name_extraction():
             if d.raw_data.get("politician_name") and len(d.raw_data.get("politician_name", "")) > 3
         )
 
-        print(f"\n📈 RESULTS:")
+        print("\n📈 RESULTS:")
         print(f"Total disclosures found: {total_disclosures}")
         print(f"Disclosures with names: {real_names}")
         print(

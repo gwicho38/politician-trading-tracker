@@ -130,6 +130,22 @@ multi_line_output = 3
 line_length = 100
 known_first_party = ["politician_trading"]
 
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501"]  # Ignore line too long - handled by black formatter
+
+[tool.ruff.lint.per-file-ignores]
+# Ignore E402 (module level import not at top of file) in files that manipulate sys.path
+"src/politician_trading/models/__init__.py" = ["E402"]
+"tests/**/*.py" = ["E402"]
+# Ignore F401 (unused import) for optional dependency checks in try/except blocks
+"tests/integration/test_*.py" = ["F401"]
+"tests/manual/test_*.py" = ["F401"]
+
 [tool.mypy]
 python_version = "3.9"
 warn_return_any = true

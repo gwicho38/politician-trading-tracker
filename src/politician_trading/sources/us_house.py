@@ -5,9 +5,8 @@ Fetches financial disclosures from the House Clerk's office.
 """
 
 from typing import List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
-from bs4 import BeautifulSoup
 
 from .base_source import BaseSource, SourceConfig
 
@@ -46,7 +45,7 @@ class USHouseSource(BaseSource):
 
         try:
             # Step 1: Get the main page to get ViewState
-            main_page = await self._make_request(url)
+            await self._make_request(url)
 
             # Step 2: Parse form data (simplified - real version would extract ViewState)
             # For now, return placeholder
@@ -115,7 +114,7 @@ class USHouseSource(BaseSource):
             # House typically uses MM/DD/YYYY
             dt = datetime.strptime(date_str, '%m/%d/%Y')
             return dt.isoformat()
-        except:
+        except (ValueError, TypeError):
             return date_str
 
     def _normalize_transaction_type(self, trans_type: str) -> str:

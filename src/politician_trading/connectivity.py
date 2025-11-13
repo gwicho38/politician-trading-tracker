@@ -3,16 +3,13 @@ Continuous Supabase connectivity validation and monitoring
 """
 
 import asyncio
-import json
 import logging
 import time
-from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from datetime import datetime
+from typing import Any, Dict
 
 from rich.console import Console
-from rich.live import Live
 from rich.panel import Panel
-from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from .config import WorkflowConfig
@@ -137,7 +134,7 @@ class SupabaseConnectivityValidator:
 
             for table in tables_to_test:
                 try:
-                    result = self.db.client.table(table).select("*").limit(1).execute()
+                    self.db.client.table(table).select("*").limit(1).execute()
                     read_results[table] = "accessible"
                 except Exception as e:
                     error_msg = str(e)
@@ -206,7 +203,7 @@ class SupabaseConnectivityValidator:
                 inserted_id = insert_result.data[0]["id"]
 
                 # Update the record
-                update_result = (
+                (
                     self.db.client.table("data_pull_jobs")
                     .update(
                         {
@@ -320,7 +317,7 @@ class SupabaseConnectivityValidator:
         try:
             # Create a timestamped record and verify immediate retrieval
             timestamp = datetime.utcnow().isoformat()
-            test_source_id = f"rt_test_{int(time.time())}"
+            f"rt_test_{int(time.time())}"
 
             # Insert
             insert_result = (

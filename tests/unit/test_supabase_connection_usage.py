@@ -2,8 +2,7 @@
 Unit tests for Supabase connection usage patterns
 Tests that the API is being used correctly
 """
-import pytest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock
 
 
 class TestSupabaseConnectionUsage:

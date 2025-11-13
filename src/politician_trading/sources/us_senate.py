@@ -75,7 +75,7 @@ class USSenateSource(BaseSource):
             )
 
             if isinstance(response, str):
-                self.logger.info(f"Received Senate search results (HTML response)")
+                self.logger.info("Received Senate search results (HTML response)")
                 return response
             else:
                 self.logger.warning("Unexpected response type from Senate EFD")
@@ -185,7 +185,7 @@ class USSenateSource(BaseSource):
                     try:
                         filing_date = datetime.strptime(date_match.group(1), '%m/%d/%Y').isoformat()
                         break
-                    except:
+                    except (ValueError, TypeError):
                         pass
 
             # Find report link

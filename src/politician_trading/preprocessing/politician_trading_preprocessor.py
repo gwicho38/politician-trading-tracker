@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -12,7 +12,6 @@ import pandas as pd
 
 from .data_cleaners import CleaningStats, MissingValueHandler, OutlierDetector, TradingDataCleaner
 from .feature_extractors import (
-    FeatureExtractionStats,
     MarketFeatureExtractor,
     PoliticianFeatureExtractor,
     SentimentFeatureExtractor,

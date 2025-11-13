@@ -2,7 +2,7 @@
 Politician matcher transformer.
 """
 
-from typing import Optional, Tuple, Dict, List
+from typing import Optional, Tuple, Dict
 import logging
 
 logger = logging.getLogger(__name__)

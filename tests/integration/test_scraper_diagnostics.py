@@ -32,7 +32,6 @@ if HAS_BS4:
     from politician_trading.scrapers import (
         CongressTradingScraper,
         QuiverQuantScraper,
-        EUParliamentScraper,
     )
 
 

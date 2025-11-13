@@ -36,7 +36,6 @@ except ImportError:
     # python-dotenv not installed, try loading from .streamlit/secrets.toml
     pass
 
-from .data_sources import ALL_DATA_SOURCES, AccessMethod, DataSource
 from .models import Politician, TradingDisclosure
 from .scrapers_free_sources import FreeDataFetcher
 
@@ -85,7 +84,7 @@ def create_data_pull_job(client: Client, job_type: str, config: Optional[Dict] =
     Returns:
         Job ID
     """
-    logger.info(f"🚀 Creating data pull job", extra={"job_type": job_type})
+    logger.info("🚀 Creating data pull job", extra={"job_type": job_type})
     try:
         result = (
             client.table("data_pull_jobs")
@@ -99,7 +98,7 @@ def create_data_pull_job(client: Client, job_type: str, config: Optional[Dict] =
             )
             .execute()
         )
-        logger.info(f"✅ Data pull job created successfully", extra={"job_type": job_type})
+        logger.info("✅ Data pull job created successfully", extra={"job_type": job_type})
 
         job_id = result.data[0]["id"]
         logger.info(f"Created data pull job: {job_id} (type: {job_type})")
@@ -127,7 +126,7 @@ def update_data_pull_job(
         stats: Optional statistics (records_found, records_new, etc.)
         error: Optional error message if failed
     """
-    logger.info(f"🔄 Updating data pull job", extra={
+    logger.info("🔄 Updating data pull job", extra={
         "job_id": str(job_id),
         "status": status,
         "has_stats": bool(stats),
@@ -139,16 +138,16 @@ def update_data_pull_job(
 
         if stats:
             update_data.update(stats)
-            logger.debug(f"Job statistics", extra=stats)
+            logger.debug("Job statistics", extra=stats)
 
         if error:
             update_data["error_message"] = error
-            logger.error(f"Job failed with error", extra={"job_id": str(job_id), "error": error})
+            logger.error("Job failed with error", extra={"job_id": str(job_id), "error": error})
 
         client.table("data_pull_jobs").update(update_data).eq("id", str(job_id)).execute()
 
         if status == "completed":
-            logger.info(f"✅ Job completed successfully", extra={
+            logger.info("✅ Job completed successfully", extra={
                 "job_id": str(job_id),
                 "records_found": stats.get("records_found", 0) if stats else 0,
                 "records_new": stats.get("records_new", 0) if stats else 0,
@@ -274,7 +273,7 @@ def upsert_politicians(client: Client, politicians: List[Politician]) -> Dict[st
     # Calculate success rate
     success_rate = ((new_count + updated_count) / len(politicians) * 100) if len(politicians) > 0 else 0
 
-    logger.info(f"✅ Politician upsert completed", extra={
+    logger.info("✅ Politician upsert completed", extra={
         "total_processed": len(politicians),
         "new_politicians": new_count,
         "updated_politicians": updated_count,
@@ -405,7 +404,7 @@ def upsert_trading_disclosures(
     # Calculate success rate
     success_rate = ((new_count + updated_count) / len(disclosures) * 100) if len(disclosures) > 0 else 0
 
-    logger.info(f"✅ Disclosure upsert completed", extra={
+    logger.info("✅ Disclosure upsert completed", extra={
         "total_processed": len(disclosures),
         "new_disclosures": new_count,
         "updated_disclosures": updated_count,
@@ -458,7 +457,7 @@ def seed_from_senate_watcher(
         fetcher = FreeDataFetcher()
 
         # Fetch data
-        logger.info(f"📡 Fetching data from Senate Stock Watcher", extra={
+        logger.info("📡 Fetching data from Senate Stock Watcher", extra={
             "recent_only": recent_only,
             "days": days if recent_only else "all",
         })
@@ -467,7 +466,7 @@ def seed_from_senate_watcher(
         politicians = data["politicians"]
         disclosures = data["disclosures"]
 
-        logger.info(f"✅ Fetched data successfully", extra={
+        logger.info("✅ Fetched data successfully", extra={
             "politicians": len(politicians),
             "disclosures": len(disclosures),
             "total_records": len(politicians) + len(disclosures),
@@ -495,14 +494,14 @@ def seed_from_senate_watcher(
         # Upsert politicians
         logger.info("👥 Starting politician upsert phase")
         politician_map = upsert_politicians(client, politicians)
-        logger.info(f"✅ Politician upsert phase completed", extra={
+        logger.info("✅ Politician upsert phase completed", extra={
             "mapped_politicians": len(politician_map),
         })
 
         # Upsert disclosures
         logger.info("📊 Starting disclosure upsert phase")
         disclosure_stats = upsert_trading_disclosures(client, disclosures, politician_map)
-        logger.info(f"✅ Disclosure upsert phase completed")
+        logger.info("✅ Disclosure upsert phase completed")
 
         # Update job record
         update_data_pull_job(client, job_id, "completed", disclosure_stats)

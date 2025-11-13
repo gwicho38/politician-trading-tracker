@@ -3,8 +3,8 @@ Ingestion stage - Fetches raw data from sources.
 """
 
 import asyncio
-from typing import List, Optional
-from datetime import datetime, timedelta
+from typing import List
+from datetime import datetime
 import logging
 
 from .base import (

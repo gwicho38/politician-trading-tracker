@@ -4,7 +4,6 @@ Alpaca API client for trading operations
 
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
-from datetime import datetime
 
 from politician_trading.utils.logger import create_logger
 
@@ -13,14 +12,11 @@ from alpaca.trading.requests import (
     MarketOrderRequest,
     LimitOrderRequest,
     StopOrderRequest,
-    StopLimitOrderRequest,
     TrailingStopOrderRequest,
     GetOrdersRequest,
 )
-from alpaca.trading.enums import OrderSide, TimeInForce, OrderType as AlpacaOrderType
+from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest
-from alpaca.data.timeframe import TimeFrame
 
 from src.models import (
     TradingOrder,
@@ -292,7 +288,7 @@ class AlpacaTradingClient:
         Returns:
             TradingOrder object
         """
-        logger.debug(f"Placing market order", metadata={
+        logger.debug("Placing market order", metadata={
             "ticker": ticker,
             "quantity": quantity,
             "side": side,

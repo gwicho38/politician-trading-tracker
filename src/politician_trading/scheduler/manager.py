@@ -5,13 +5,10 @@ Manages APScheduler for running scheduled jobs within the Streamlit app.
 Uses singleton pattern to ensure only one scheduler runs across Streamlit reruns.
 """
 
-import asyncio
 import atexit
 import logging
 import time
 from datetime import datetime
-from io import StringIO
-from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional
 
@@ -445,7 +442,7 @@ class SchedulerManager:
     def _job_error(self, event):
         """Handler for job execution errors"""
         job_id = event.job_id
-        exception = str(event.exception) if event.exception else "Unknown error"
+        str(event.exception) if event.exception else "Unknown error"
         logger.error(f"Job failed: {job_id}", error=event.exception)
         # Execution already recorded in wrapper
 
@@ -574,7 +571,7 @@ class SchedulerManager:
             logger.warning("Cannot add interval job - scheduler not available")
             return False
 
-        logger.info(f"add_interval_job called", metadata={
+        logger.info("add_interval_job called", metadata={
             "job_id": job_id,
             "name": name,
             "hours": hours,
@@ -597,13 +594,13 @@ class SchedulerManager:
                     return False
 
             # Create trigger
-            logger.info(f"Creating IntervalTrigger", metadata={
+            logger.info("Creating IntervalTrigger", metadata={
                 "hours": hours,
                 "minutes": minutes,
                 "seconds": seconds
             })
             trigger = IntervalTrigger(hours=hours, minutes=minutes, seconds=seconds, timezone="UTC")
-            logger.info(f"IntervalTrigger created successfully")
+            logger.info("IntervalTrigger created successfully")
 
             # Wrap function to capture logs
             logger.info(f"Wrapping function to capture logs for {job_id}")

@@ -95,7 +95,7 @@ class QuiverQuantSource(BaseSource):
         """Fetch via paid API (if available)"""
         api_url = "https://api.quiverquant.com/beta/live/congresstrading"
 
-        self.logger.info(f"Fetching QuiverQuant data via API")
+        self.logger.info("Fetching QuiverQuant data via API")
 
         try:
             headers = {
@@ -351,7 +351,7 @@ class QuiverQuantSource(BaseSource):
             try:
                 dt = datetime.strptime(date_str, fmt)
                 return dt.isoformat()
-            except:
+            except (ValueError, TypeError):
                 continue
 
         return date_str

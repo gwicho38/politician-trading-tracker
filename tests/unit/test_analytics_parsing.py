@@ -2,7 +2,6 @@
 Unit tests for analytics data parsing logic
 Tests the logic used in the Admin dashboard to parse analytics.json
 """
-import pytest
 
 
 class TestAnalyticsParsing:

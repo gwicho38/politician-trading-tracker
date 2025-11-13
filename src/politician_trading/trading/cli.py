@@ -212,7 +212,7 @@ async def _execute_trades(days, live, auto, dry_run):
         console.print(f"[green]Found {len(signals)} signals[/]")
 
         # Evaluate signals
-        console.print(f"[yellow]Evaluating signals...[/]")
+        console.print("[yellow]Evaluating signals...[/]")
         recommendations = strategy.evaluate_signals(signals, dry_run=dry_run)
 
         if not recommendations:

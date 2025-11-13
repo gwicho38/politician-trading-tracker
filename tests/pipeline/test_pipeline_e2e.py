@@ -5,7 +5,6 @@ These tests verify that the full pipeline works from ingestion to publishing.
 """
 
 import pytest
-import asyncio
 from datetime import datetime
 
 # Test that imports work
@@ -14,11 +13,7 @@ def test_pipeline_imports():
     from politician_trading.pipeline import (
         PipelineStage,
         PipelineResult,
-        PipelineContext,
         IngestionStage,
-        CleaningStage,
-        NormalizationStage,
-        PublishingStage,
         PipelineOrchestrator
     )
 
