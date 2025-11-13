@@ -29,7 +29,15 @@ class StoragePaths:
         Returns:
             Chamber directory name ("senate" or "house")
         """
-        return "senate" if "senate" in source_type.lower() else "house"
+        lowered = source_type.lower()
+        if "senate" in lowered:
+            return "senate"
+        elif "house" in lowered:
+            return "house"
+        else:
+            raise ValueError(
+                f"Unrecognized chamber in source_type: '{source_type}'. Expected 'senate' or 'house'."
+            )
 
     @staticmethod
     def construct_pdf_path(chamber: str, year: int, month: int, filename: str) -> str:
