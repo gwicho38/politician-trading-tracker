@@ -590,7 +590,7 @@ def seed_from_all_sources(client: Client, test_run: bool = False) -> Dict[str, D
         results["senate_watcher"] = seed_from_senate_watcher(client, test_run)
     except Exception as e:
         logger.error(f"Senate Stock Watcher seeding failed: {e}")
-        results["senate_watcher"] = {"error": str(e)}
+        results["senate_watcher"] = {"errors": 1, "total": 0}
 
     # TODO: Add other sources as implemented
     # - Finnhub (requires free API key from finnhub.io)
