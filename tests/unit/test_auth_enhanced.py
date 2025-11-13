@@ -15,6 +15,39 @@ if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 
 
+class SessionStateMock:
+    """Mock object that mimics Streamlit's session_state behavior.
+
+    Supports both dictionary-style and attribute-style access.
+    """
+
+    def __init__(self, data=None):
+        self.__dict__["_data"] = data or {}
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __setitem__(self, key, value):
+        self._data[key] = value
+
+    def __contains__(self, key):
+        return key in self._data
+
+    def __getattr__(self, key):
+        if key == "_data":
+            return self.__dict__["_data"]
+        return self._data.get(key)
+
+    def __setattr__(self, key, value):
+        if key == "_data":
+            self.__dict__["_data"] = value
+        else:
+            self._data[key] = value
+
+    def get(self, key, default=None):
+        return self._data.get(key, default)
+
+
 class TestAuthenticationManager:
     """Test the AuthenticationManager class"""
 
@@ -24,11 +57,13 @@ class TestAuthenticationManager:
         from auth_utils_enhanced import AuthenticationManager
 
         # Setup mock session state
-        mock_st.session_state = {
-            "auth_sessions": {},
-            "auth_login_attempts": {},
-            "auth_current_session_id": None,
-        }
+        mock_st.session_state = SessionStateMock(
+            {
+                "auth_sessions": {},
+                "auth_login_attempts": {},
+                "auth_current_session_id": None,
+            }
+        )
 
         auth_manager = AuthenticationManager()
 
@@ -51,24 +86,26 @@ class TestAuthenticationManager:
         old_time = now - timedelta(hours=9)  # Older than 8 hour timeout
         recent_time = now - timedelta(hours=1)  # Within timeout
 
-        mock_st.session_state = {
-            "auth_sessions": {
-                "session_1": {
-                    "user_email": "test@example.com",
-                    "user_name": "Test User",
-                    "login_time": old_time,
-                    "last_activity": old_time,
+        mock_st.session_state = SessionStateMock(
+            {
+                "auth_sessions": {
+                    "session_1": {
+                        "user_email": "test@example.com",
+                        "user_name": "Test User",
+                        "login_time": old_time,
+                        "last_activity": old_time,
+                    },
+                    "session_2": {
+                        "user_email": "test@example.com",
+                        "user_name": "Test User",
+                        "login_time": recent_time,
+                        "last_activity": recent_time,
+                    },
                 },
-                "session_2": {
-                    "user_email": "test@example.com",
-                    "user_name": "Test User",
-                    "login_time": recent_time,
-                    "last_activity": recent_time,
-                },
-            },
-            "auth_login_attempts": {},
-            "auth_current_session_id": None,
-        }
+                "auth_login_attempts": {},
+                "auth_current_session_id": None,
+            }
+        )
 
         auth_manager = AuthenticationManager()
 
@@ -105,11 +142,13 @@ class TestAuthenticationManager:
                 "last_activity": session_time,
             }
 
-        mock_st.session_state = {
-            "auth_sessions": sessions,
-            "auth_login_attempts": {},
-            "auth_current_session_id": None,
-        }
+        mock_st.session_state = SessionStateMock(
+            {
+                "auth_sessions": sessions,
+                "auth_login_attempts": {},
+                "auth_current_session_id": None,
+            }
+        )
 
         auth_manager = AuthenticationManager(max_concurrent_sessions=5)
         auth_manager._log_auth_event = Mock()
@@ -134,18 +173,20 @@ class TestAuthenticationManager:
 
         old_time = datetime.now() - timedelta(minutes=10)
 
-        mock_st.session_state = {
-            "auth_sessions": {
-                "test_session": {
-                    "user_email": "test@example.com",
-                    "user_name": "Test User",
-                    "login_time": old_time,
-                    "last_activity": old_time,
-                }
-            },
-            "auth_login_attempts": {},
-            "auth_current_session_id": "test_session",
-        }
+        mock_st.session_state = SessionStateMock(
+            {
+                "auth_sessions": {
+                    "test_session": {
+                        "user_email": "test@example.com",
+                        "user_name": "Test User",
+                        "login_time": old_time,
+                        "last_activity": old_time,
+                    }
+                },
+                "auth_login_attempts": {},
+                "auth_current_session_id": "test_session",
+            }
+        )
 
         auth_manager = AuthenticationManager()
 
@@ -163,30 +204,32 @@ class TestAuthenticationManager:
 
         now = datetime.now()
 
-        mock_st.session_state = {
-            "auth_sessions": {
-                "session_1": {
-                    "user_email": "user1@example.com",
-                    "user_name": "User 1",
-                    "login_time": now,
-                    "last_activity": now,
+        mock_st.session_state = SessionStateMock(
+            {
+                "auth_sessions": {
+                    "session_1": {
+                        "user_email": "user1@example.com",
+                        "user_name": "User 1",
+                        "login_time": now,
+                        "last_activity": now,
+                    },
+                    "session_2": {
+                        "user_email": "user1@example.com",
+                        "user_name": "User 1",
+                        "login_time": now,
+                        "last_activity": now,
+                    },
+                    "session_3": {
+                        "user_email": "user2@example.com",
+                        "user_name": "User 2",
+                        "login_time": now,
+                        "last_activity": now,
+                    },
                 },
-                "session_2": {
-                    "user_email": "user1@example.com",
-                    "user_name": "User 1",
-                    "login_time": now,
-                    "last_activity": now,
-                },
-                "session_3": {
-                    "user_email": "user2@example.com",
-                    "user_name": "User 2",
-                    "login_time": now,
-                    "last_activity": now,
-                },
-            },
-            "auth_login_attempts": {},
-            "auth_current_session_id": None,
-        }
+                "auth_login_attempts": {},
+                "auth_current_session_id": None,
+            }
+        )
 
         auth_manager = AuthenticationManager()
         stats = auth_manager.get_session_stats()

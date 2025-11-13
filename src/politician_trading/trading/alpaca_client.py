@@ -190,20 +190,20 @@ class AlpacaTradingClient:
         Get account information.
 
         Returns:
-            Dictionary with account details
+            Dictionary with account details (all Decimal values converted to strings for JSON serialization)
         """
         try:
             account = self.trading_client.get_account()
             return {
                 "account_id": str(account.id),
                 "status": account.status,
-                "cash": Decimal(account.cash),
-                "portfolio_value": Decimal(account.portfolio_value),
-                "buying_power": Decimal(account.buying_power),
-                "equity": Decimal(account.equity),
-                "last_equity": Decimal(account.last_equity),
-                "long_market_value": Decimal(account.long_market_value),
-                "short_market_value": Decimal(account.short_market_value),
+                "cash": str(Decimal(account.cash)),
+                "portfolio_value": str(Decimal(account.portfolio_value)),
+                "buying_power": str(Decimal(account.buying_power)),
+                "equity": str(Decimal(account.equity)),
+                "last_equity": str(Decimal(account.last_equity)),
+                "long_market_value": str(Decimal(account.long_market_value)),
+                "short_market_value": str(Decimal(account.short_market_value)),
                 "currency": account.currency,
                 "pattern_day_trader": account.pattern_day_trader,
                 "trading_blocked": account.trading_blocked,
