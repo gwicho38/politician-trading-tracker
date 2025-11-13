@@ -28,15 +28,19 @@ class StoragePaths:
 
         Returns:
             Chamber directory name ("senate" or "house")
+
+        Raises:
+            ValueError: If source_type is not a recognized US chamber type
         """
-        lowered = source_type.lower()
-        if "senate" in lowered:
+        source_lower = source_type.lower()
+        if "senate" in source_lower:
             return "senate"
-        elif "house" in lowered:
+        elif "house" in source_lower:
             return "house"
         else:
             raise ValueError(
-                f"Unrecognized chamber in source_type: '{source_type}'. Expected 'senate' or 'house'."
+                f"Unrecognized chamber source type: '{source_type}'. "
+                f"Expected source type containing 'senate' or 'house'."
             )
 
     @staticmethod

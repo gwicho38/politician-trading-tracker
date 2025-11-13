@@ -206,7 +206,7 @@ src/politician_trading/config.py:
   Line 87:51: Use DataSourceType.EU_PARLIAMENT instead of 'eu_parliament'
   Line 96:72: Use ProcessingStatus.ACTIVE instead of 'active'
 
-Summary: 7 violations in 1 files
+Summary: 7 violations in 1 file
 ```
 
 ### Import Verification

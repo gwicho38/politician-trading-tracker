@@ -40,6 +40,24 @@ class Tables:
 class Columns:
     """Database column names organized by logical grouping."""
 
+    @staticmethod
+    def qualified(table_name: str, column_name: str) -> str:
+        """
+        Generate a qualified column name for dynamic SQL queries.
+
+        Args:
+            table_name: The table name (e.g., 'politicians', 'trading_disclosures')
+            column_name: The column name (e.g., 'id', 'created_at')
+
+        Returns:
+            Qualified column name in format 'table_name.column_name'
+
+        Example:
+            >>> Columns.qualified(Tables.POLITICIANS, Columns.Politician.ID)
+            'politicians.id'
+        """
+        return f"{table_name}.{column_name}"
+
     class Common:
         """Commonly used columns across multiple tables."""
 

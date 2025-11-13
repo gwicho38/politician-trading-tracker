@@ -69,19 +69,27 @@ class HardcodedStringFinder(ast.NodeVisitor):
         self.violations: List[Tuple[int, int, str, str]] = []
         self.constant_values = self._load_constant_values()
 
-    def _load_constant_values(self) -> dict:
-        """Load all constant values organized by category."""
-        constants = {}
+    @staticmethod
+    def _build_constant_dict(cls, prefix: str) -> dict:
+        """Helper to build a constant dictionary from a class.
 
-        # Database tables
-        constants["Tables"] = {
-            getattr(Tables, attr): f"Tables.{attr}"
-            for attr in dir(Tables)
+        Args:
+            cls: The class to extract constants from
+            prefix: The prefix to use in the constant path (e.g., "Tables")
+
+        Returns:
+            Dictionary mapping constant values to their reference paths
+        """
+        return {
+            getattr(cls, attr): f"{prefix}.{attr}"
+            for attr in dir(cls)
             if not attr.startswith("_")
         }
 
+    def _load_constant_values(self) -> dict:
+        """Load all constant values organized by category."""
         # Database columns (flattened from nested classes)
-        constants["Columns"] = {}
+        columns_dict = {}
         for column_class in [
             Columns.Common,
             Columns.Politician,
@@ -97,115 +105,10 @@ class HardcodedStringFinder(ast.NodeVisitor):
                 if not attr.startswith("_"):
                     value = getattr(column_class, attr)
                     class_name = column_class.__name__
-                    constants["Columns"][value] = f"Columns.{class_name}.{attr}"
-
-        # Job statuses
-        constants["JobStatus"] = {
-            getattr(JobStatus, attr): f"JobStatus.{attr}"
-            for attr in dir(JobStatus)
-            if not attr.startswith("_")
-        }
-
-        # Order statuses
-        constants["OrderStatus"] = {
-            getattr(OrderStatus, attr): f"OrderStatus.{attr}"
-            for attr in dir(OrderStatus)
-            if not attr.startswith("_")
-        }
-
-        # Parse statuses
-        constants["ParseStatus"] = {
-            getattr(ParseStatus, attr): f"ParseStatus.{attr}"
-            for attr in dir(ParseStatus)
-            if not attr.startswith("_")
-        }
-
-        # Transaction types
-        constants["TransactionType"] = {
-            getattr(TransactionType, attr): f"TransactionType.{attr}"
-            for attr in dir(TransactionType)
-            if not attr.startswith("_")
-        }
-
-        # Signal types
-        constants["SignalType"] = {
-            getattr(SignalType, attr): f"SignalType.{attr}"
-            for attr in dir(SignalType)
-            if not attr.startswith("_")
-        }
-
-        # Action types
-        constants["ActionType"] = {
-            getattr(ActionType, attr): f"ActionType.{attr}"
-            for attr in dir(ActionType)
-            if not attr.startswith("_")
-        }
-
-        # Politician roles
-        constants["PoliticianRole"] = {
-            getattr(PoliticianRole, attr): f"PoliticianRole.{attr}"
-            for attr in dir(PoliticianRole)
-            if not attr.startswith("_")
-        }
-
-        # Environment keys
-        constants["EnvKeys"] = {
-            getattr(EnvKeys, attr): f"EnvKeys.{attr}"
-            for attr in dir(EnvKeys)
-            if not attr.startswith("_")
-        }
-
-        # Storage buckets
-        constants["StorageBuckets"] = {
-            getattr(StorageBuckets, attr): f"StorageBuckets.{attr}"
-            for attr in dir(StorageBuckets)
-            if not attr.startswith("_")
-        }
-
-        # Processing statuses
-        constants["ProcessingStatus"] = {
-            getattr(ProcessingStatus, attr): f"ProcessingStatus.{attr}"
-            for attr in dir(ProcessingStatus)
-            if not attr.startswith("_")
-        }
-
-        # Trading modes
-        constants["TradingMode"] = {
-            getattr(TradingMode, attr): f"TradingMode.{attr}"
-            for attr in dir(TradingMode)
-            if not attr.startswith("_")
-        }
-
-        # Data source types
-        constants["DataSourceType"] = {
-            getattr(DataSourceType, attr): f"DataSourceType.{attr}"
-            for attr in dir(DataSourceType)
-            if not attr.startswith("_")
-        }
-
-        # Source types (storage)
-        constants["SourceTypes"] = {
-            getattr(SourceTypes, attr): f"SourceTypes.{attr}"
-            for attr in dir(SourceTypes)
-            if not attr.startswith("_")
-        }
-
-        # API URLs
-        constants["ApiUrls"] = {
-            getattr(ApiUrls, attr): f"ApiUrls.{attr}"
-            for attr in dir(ApiUrls)
-            if not attr.startswith("_")
-        }
-
-        # Web URLs
-        constants["WebUrls"] = {
-            getattr(WebUrls, attr): f"WebUrls.{attr}"
-            for attr in dir(WebUrls)
-            if not attr.startswith("_")
-        }
+                    columns_dict[value] = f"Columns.{class_name}.{attr}"
 
         # ConfigDefaults (only string-based defaults, not numeric)
-        constants["ConfigDefaults"] = {
+        config_defaults_dict = {
             value: f"ConfigDefaults.{attr}"
             for attr in dir(ConfigDefaults)
             if not attr.startswith("_")
@@ -213,7 +116,27 @@ class HardcodedStringFinder(ast.NodeVisitor):
             if isinstance(value, str)
         }
 
-        return constants
+        # Build the constants dictionary with all mappings
+        return {
+            "Tables": self._build_constant_dict(Tables, "Tables"),
+            "Columns": columns_dict,
+            "JobStatus": self._build_constant_dict(JobStatus, "JobStatus"),
+            "OrderStatus": self._build_constant_dict(OrderStatus, "OrderStatus"),
+            "ParseStatus": self._build_constant_dict(ParseStatus, "ParseStatus"),
+            "TransactionType": self._build_constant_dict(TransactionType, "TransactionType"),
+            "SignalType": self._build_constant_dict(SignalType, "SignalType"),
+            "ActionType": self._build_constant_dict(ActionType, "ActionType"),
+            "PoliticianRole": self._build_constant_dict(PoliticianRole, "PoliticianRole"),
+            "EnvKeys": self._build_constant_dict(EnvKeys, "EnvKeys"),
+            "StorageBuckets": self._build_constant_dict(StorageBuckets, "StorageBuckets"),
+            "ProcessingStatus": self._build_constant_dict(ProcessingStatus, "ProcessingStatus"),
+            "TradingMode": self._build_constant_dict(TradingMode, "TradingMode"),
+            "DataSourceType": self._build_constant_dict(DataSourceType, "DataSourceType"),
+            "SourceTypes": self._build_constant_dict(SourceTypes, "SourceTypes"),
+            "ApiUrls": self._build_constant_dict(ApiUrls, "ApiUrls"),
+            "WebUrls": self._build_constant_dict(WebUrls, "WebUrls"),
+            "ConfigDefaults": config_defaults_dict,
+        }
 
     def _check_string_literal(self, node: ast.Str, line: int, col: int):
         """Check if a string literal should use a constant."""
