@@ -10,12 +10,7 @@ The pipeline consists of four stages:
 Each stage can be run independently or as part of a full pipeline.
 """
 
-from .base import (
-    PipelineStage,
-    PipelineResult,
-    PipelineContext,
-    PipelineError
-)
+from .base import PipelineStage, PipelineResult, PipelineContext, PipelineError
 from .ingest import IngestionStage
 from .clean import CleaningStage
 from .normalize import NormalizationStage
@@ -23,13 +18,13 @@ from .publish import PublishingStage
 from .orchestrator import PipelineOrchestrator
 
 __all__ = [
-    'PipelineStage',
-    'PipelineResult',
-    'PipelineContext',
-    'PipelineError',
-    'IngestionStage',
-    'CleaningStage',
-    'NormalizationStage',
-    'PublishingStage',
-    'PipelineOrchestrator'
+    "PipelineStage",
+    "PipelineResult",
+    "PipelineContext",
+    "PipelineError",
+    "IngestionStage",
+    "CleaningStage",
+    "NormalizationStage",
+    "PublishingStage",
+    "PipelineOrchestrator",
 ]

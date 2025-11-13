@@ -53,9 +53,7 @@ async def test_house_scraper_diagnostics():
 
             if len(disclosures) == 0:
                 print("⚠️  WARNING: No disclosures found")
-                print(
-                    "   Check the DEBUG logs above for HTML preview and form field details"
-                )
+                print("   Check the DEBUG logs above for HTML preview and form field details")
             else:
                 print("✅ SUCCESS: House scraper returned data")
                 for i, d in enumerate(disclosures[:3]):
@@ -89,9 +87,7 @@ async def test_senate_scraper_diagnostics():
 
             if len(disclosures) == 0:
                 print("⚠️  WARNING: No disclosures found")
-                print(
-                    "   Check the DEBUG logs above for HTML preview and search URL details"
-                )
+                print("   Check the DEBUG logs above for HTML preview and search URL details")
             else:
                 print("✅ SUCCESS: Senate scraper returned data")
                 for i, d in enumerate(disclosures[:3]):
@@ -126,9 +122,7 @@ async def test_quiverquant_scraper_diagnostics():
 
             if len(trades) == 0:
                 print("⚠️  WARNING: No trades found")
-                print(
-                    "   Check the DEBUG logs above for HTML length and JavaScript detection"
-                )
+                print("   Check the DEBUG logs above for HTML length and JavaScript detection")
             else:
                 print("✅ SUCCESS: QuiverQuant scraper returned data")
                 for i, trade in enumerate(trades[:3]):
@@ -161,9 +155,7 @@ async def test_all_scrapers():
     print("\n" + "=" * 70)
     print("✅ DIAGNOSTIC TESTS COMPLETE")
     print("=" * 70)
-    print(
-        "\nReview the DEBUG logs above to identify why scrapers are returning 0 results"
-    )
+    print("\nReview the DEBUG logs above to identify why scrapers are returning 0 results")
     print("Common issues:")
     print("  1. Website structure changed (check HTML preview)")
     print("  2. Anti-scraping measures (check response headers)")

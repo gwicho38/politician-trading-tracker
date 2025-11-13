@@ -7,6 +7,7 @@ These tests verify that the full pipeline works from ingestion to publishing.
 import pytest
 from datetime import datetime
 
+
 # Test that imports work
 def test_pipeline_imports():
     """Test that all pipeline modules can be imported"""
@@ -14,7 +15,7 @@ def test_pipeline_imports():
         PipelineStage,
         PipelineResult,
         IngestionStage,
-        PipelineOrchestrator
+        PipelineOrchestrator,
     )
 
     assert PipelineStage is not None
@@ -33,11 +34,7 @@ def test_source_imports():
 
 def test_transformer_imports():
     """Test that transformer modules can be imported"""
-    from politician_trading.transformers import (
-        TickerExtractor,
-        AmountParser,
-        PoliticianMatcher
-    )
+    from politician_trading.transformers import TickerExtractor, AmountParser, PoliticianMatcher
 
     assert TickerExtractor is not None
     assert AmountParser is not None
@@ -49,16 +46,16 @@ def test_get_source_factory():
     from politician_trading.sources import get_source
 
     # Test known sources
-    us_house = get_source('us_house')
-    us_senate = get_source('us_senate')
-    quiverquant = get_source('quiverquant')
+    us_house = get_source("us_house")
+    us_senate = get_source("us_senate")
+    quiverquant = get_source("quiverquant")
 
     assert us_house is not None
     assert us_senate is not None
     assert quiverquant is not None
 
     # Test unknown source
-    unknown = get_source('nonexistent')
+    unknown = get_source("nonexistent")
     assert unknown is None
 
 
@@ -105,11 +102,7 @@ async def test_pipeline_context():
     """Test pipeline context creation"""
     from politician_trading.pipeline import PipelineContext
 
-    context = PipelineContext(
-        source_name="Test Source",
-        source_type="test",
-        job_id="test_job_123"
-    )
+    context = PipelineContext(source_name="Test Source", source_type="test", job_id="test_job_123")
 
     assert context.source_name == "Test Source"
     assert context.source_type == "test"
@@ -132,36 +125,36 @@ async def test_cleaning_stage_basic():
             source="test",
             source_type="test",
             raw_data={
-                'politician_name': 'John Doe',
-                'transaction_date': '2025-01-15',
-                'disclosure_date': '2025-01-20',
-                'asset_name': 'Apple Inc.',
-                'transaction_type': 'purchase'
-            }
+                "politician_name": "John Doe",
+                "transaction_date": "2025-01-15",
+                "disclosure_date": "2025-01-20",
+                "asset_name": "Apple Inc.",
+                "transaction_type": "purchase",
+            },
         ),
         # Duplicate
         RawDisclosure(
             source="test",
             source_type="test",
             raw_data={
-                'politician_name': 'John Doe',
-                'transaction_date': '2025-01-15',
-                'disclosure_date': '2025-01-20',
-                'asset_name': 'Apple Inc.',
-                'transaction_type': 'purchase'
-            }
+                "politician_name": "John Doe",
+                "transaction_date": "2025-01-15",
+                "disclosure_date": "2025-01-20",
+                "asset_name": "Apple Inc.",
+                "transaction_type": "purchase",
+            },
         ),
         # Different disclosure
         RawDisclosure(
             source="test",
             source_type="test",
             raw_data={
-                'politician_name': 'Jane Smith',
-                'transaction_date': '2025-01-16',
-                'disclosure_date': '2025-01-21',
-                'asset_name': 'Microsoft Corp',
-                'transaction_type': 'sale'
-            }
+                "politician_name": "Jane Smith",
+                "transaction_date": "2025-01-16",
+                "disclosure_date": "2025-01-21",
+                "asset_name": "Microsoft Corp",
+                "transaction_type": "sale",
+            },
         ),
     ]
 
@@ -194,7 +187,7 @@ async def test_normalization_stage_basic():
             asset_name="Apple Inc. (AAPL)",
             transaction_type="purchase",
             amount_text="$15,001 - $50,000",
-            raw_data={}
+            raw_data={},
         )
     ]
 
@@ -213,18 +206,19 @@ async def test_normalization_stage_basic():
 
 def test_pipeline_result_status():
     """Test pipeline result status checks"""
-    from politician_trading.pipeline.base import PipelineResult, PipelineStatus, PipelineMetrics, PipelineContext
+    from politician_trading.pipeline.base import (
+        PipelineResult,
+        PipelineStatus,
+        PipelineMetrics,
+        PipelineContext,
+    )
 
     context = PipelineContext(source_name="Test", source_type="test")
     metrics = PipelineMetrics()
 
     # Success result
     result = PipelineResult(
-        status=PipelineStatus.SUCCESS,
-        data=[],
-        context=context,
-        metrics=metrics,
-        stage_name="test"
+        status=PipelineStatus.SUCCESS, data=[], context=context, metrics=metrics, stage_name="test"
     )
 
     assert result.success
@@ -232,11 +226,7 @@ def test_pipeline_result_status():
 
     # Failed result
     result = PipelineResult(
-        status=PipelineStatus.FAILED,
-        data=[],
-        context=context,
-        metrics=metrics,
-        stage_name="test"
+        status=PipelineStatus.FAILED, data=[], context=context, metrics=metrics, stage_name="test"
     )
 
     assert not result.success

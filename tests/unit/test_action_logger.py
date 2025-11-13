@@ -37,7 +37,9 @@ class TestActionLogger:
     def action_logger(self, mock_db_client):
         """Create an ActionLogger instance with mocked database"""
         mock_client, _ = mock_db_client
-        with patch('politician_trading.utils.action_logger.SupabaseClient', return_value=mock_client):
+        with patch(
+            "politician_trading.utils.action_logger.SupabaseClient", return_value=mock_client
+        ):
             logger = ActionLogger()
             return logger
 
@@ -78,11 +80,7 @@ class TestActionLogger:
         mock_response.data = [{"id": "test-id"}]
         mock_table.insert.return_value.execute.return_value = mock_response
 
-        action_details = {
-            "param1": "value1",
-            "param2": 42,
-            "nested": {"key": "value"}
-        }
+        action_details = {"param1": "value1", "param2": 42, "nested": {"key": "value"}}
 
         action_id = action_logger.log_action(
             action_type="test_action",
@@ -255,7 +253,9 @@ class TestActionLogger:
 
         mock_response = Mock()
         mock_response.data = mock_actions
-        mock_table.select.return_value.order.return_value.limit.return_value.execute.return_value = mock_response
+        mock_table.select.return_value.order.return_value.limit.return_value.execute.return_value = (
+            mock_response
+        )
 
         actions = action_logger.get_recent_actions(limit=10)
 
@@ -326,7 +326,7 @@ class TestConvenienceFunctions:
 
     def test_log_action_convenience(self):
         """Test the log_action convenience function"""
-        with patch('politician_trading.utils.action_logger.get_action_logger') as mock_get_logger:
+        with patch("politician_trading.utils.action_logger.get_action_logger") as mock_get_logger:
             mock_logger = Mock()
             mock_logger.log_action.return_value = "action-id-123"
             mock_get_logger.return_value = mock_logger
@@ -346,7 +346,7 @@ class TestConvenienceFunctions:
 
     def test_start_action_convenience(self):
         """Test the start_action convenience function"""
-        with patch('politician_trading.utils.action_logger.get_action_logger') as mock_get_logger:
+        with patch("politician_trading.utils.action_logger.get_action_logger") as mock_get_logger:
             mock_logger = Mock()
             mock_logger.start_action.return_value = "action-id-456"
             mock_get_logger.return_value = mock_logger
@@ -358,7 +358,7 @@ class TestConvenienceFunctions:
 
     def test_complete_action_convenience(self):
         """Test the complete_action convenience function"""
-        with patch('politician_trading.utils.action_logger.get_action_logger') as mock_get_logger:
+        with patch("politician_trading.utils.action_logger.get_action_logger") as mock_get_logger:
             mock_logger = Mock()
             mock_logger.complete_action.return_value = True
             mock_get_logger.return_value = mock_logger
@@ -370,7 +370,7 @@ class TestConvenienceFunctions:
 
     def test_fail_action_convenience(self):
         """Test the fail_action convenience function"""
-        with patch('politician_trading.utils.action_logger.get_action_logger') as mock_get_logger:
+        with patch("politician_trading.utils.action_logger.get_action_logger") as mock_get_logger:
             mock_logger = Mock()
             mock_logger.fail_action.return_value = True
             mock_get_logger.return_value = mock_logger
@@ -405,7 +405,9 @@ class TestActionLoggerIntegration:
         mock_update_response.data = [{"id": "action-789"}]
         mock_table.update.return_value.eq.return_value.execute.return_value = mock_update_response
 
-        with patch('politician_trading.utils.action_logger.SupabaseClient', return_value=mock_client):
+        with patch(
+            "politician_trading.utils.action_logger.SupabaseClient", return_value=mock_client
+        ):
             logger = ActionLogger()
 
             # Start action
@@ -452,7 +454,9 @@ class TestActionLoggerIntegration:
         mock_update_response.data = [{"id": "action-error"}]
         mock_table.update.return_value.eq.return_value.execute.return_value = mock_update_response
 
-        with patch('politician_trading.utils.action_logger.SupabaseClient', return_value=mock_client):
+        with patch(
+            "politician_trading.utils.action_logger.SupabaseClient", return_value=mock_client
+        ):
             logger = ActionLogger()
 
             # Start action

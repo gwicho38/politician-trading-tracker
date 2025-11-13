@@ -23,11 +23,11 @@ from models import (
 )
 
 __all__ = [
-    'Politician',
-    'PoliticianRole',
-    'TradingDisclosure',
-    'TransactionType',
-    'DisclosureStatus',
-    'DataSource',
-    'DataPullJob',
+    "Politician",
+    "PoliticianRole",
+    "TradingDisclosure",
+    "TransactionType",
+    "DisclosureStatus",
+    "DataSource",
+    "DataPullJob",
 ]

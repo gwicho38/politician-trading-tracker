@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SourceConfig:
     """Configuration for a data source"""
+
     name: str
     source_type: str
     base_url: str
@@ -74,11 +75,7 @@ class BaseSource(ABC):
         """
         pass
 
-    async def fetch(
-        self,
-        lookback_days: int = 30,
-        **kwargs
-    ) -> List[Dict[str, Any]]:
+    async def fetch(self, lookback_days: int = 30, **kwargs) -> List[Dict[str, Any]]:
         """
         Fetch disclosures from this source.
 
@@ -90,8 +87,7 @@ class BaseSource(ABC):
             List of raw disclosure dictionaries
         """
         self.logger.info(
-            f"Fetching disclosures from {self.config.name} "
-            f"(lookback: {lookback_days} days)"
+            f"Fetching disclosures from {self.config.name} " f"(lookback: {lookback_days} days)"
         )
 
         start_time = datetime.utcnow()
@@ -102,7 +98,7 @@ class BaseSource(ABC):
             if not self.session:
                 self.session = aiohttp.ClientSession(
                     headers=self.config.headers,
-                    timeout=aiohttp.ClientTimeout(total=self.config.timeout)
+                    timeout=aiohttp.ClientTimeout(total=self.config.timeout),
                 )
 
             # Fetch data (source-specific implementation)
@@ -124,11 +120,7 @@ class BaseSource(ABC):
         return disclosures
 
     async def fetch_batch(
-        self,
-        offset: int,
-        limit: int,
-        lookback_days: int = 30,
-        **kwargs
+        self, offset: int, limit: int, lookback_days: int = 30, **kwargs
     ) -> List[Dict[str, Any]]:
         """
         Fetch a batch of disclosures (for batch ingestion).
@@ -164,12 +156,7 @@ class BaseSource(ABC):
         """
         pass
 
-    async def _make_request(
-        self,
-        url: str,
-        method: str = "GET",
-        **kwargs
-    ) -> Any:
+    async def _make_request(self, url: str, method: str = "GET", **kwargs) -> Any:
         """
         Make HTTP request with retry logic.
 
@@ -183,7 +170,9 @@ class BaseSource(ABC):
         """
         for attempt in range(self.config.max_retries):
             try:
-                self.logger.debug(f"Request attempt {attempt + 1}/{self.config.max_retries}: {method} {url}")
+                self.logger.debug(
+                    f"Request attempt {attempt + 1}/{self.config.max_retries}: {method} {url}"
+                )
 
                 async with self.session.request(method, url, **kwargs) as response:
                     response.raise_for_status()
@@ -204,7 +193,7 @@ class BaseSource(ABC):
                 )
                 if attempt == self.config.max_retries - 1:
                     raise
-                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                await asyncio.sleep(2**attempt)  # Exponential backoff
 
     async def close(self):
         """Close HTTP session"""

@@ -107,12 +107,12 @@ class AlpacaTradingClient:
             raise ValueError("API key is required")
 
         # Check key prefix matches mode
-        if paper and not api_key.startswith('PK'):
+        if paper and not api_key.startswith("PK"):
             logger.warning(
                 f"Paper mode enabled but API key starts with '{api_key[:2]}' instead of 'PK'. "
                 f"This may cause authentication errors."
             )
-        elif not paper and not api_key.startswith('AK'):
+        elif not paper and not api_key.startswith("AK"):
             logger.warning(
                 f"Live mode enabled but API key starts with '{api_key[:2]}' instead of 'AK'. "
                 f"This may cause authentication errors."
@@ -152,7 +152,7 @@ class AlpacaTradingClient:
                         "Paper trading requires keys starting with 'PK'",
                         "Live trading requires keys starting with 'AK'",
                         "Get new keys from: https://alpaca.markets/",
-                    ]
+                    ],
                 }
             elif "403" in error_str or "forbidden" in error_str.lower():
                 return {
@@ -162,7 +162,7 @@ class AlpacaTradingClient:
                     "troubleshooting": [
                         "Check if your Alpaca account is approved for trading",
                         "Verify your account status at: https://alpaca.markets/",
-                    ]
+                    ],
                 }
             elif "404" in error_str:
                 return {
@@ -172,7 +172,7 @@ class AlpacaTradingClient:
                     "troubleshooting": [
                         "Check if you're using the correct base URL",
                         f"Current base URL: {self.base_url}",
-                    ]
+                    ],
                 }
             else:
                 return {
@@ -182,7 +182,7 @@ class AlpacaTradingClient:
                     "troubleshooting": [
                         "Check your internet connection",
                         "Verify Alpaca service status at: https://alpaca.markets/status",
-                    ]
+                    ],
                 }
 
     def get_account(self) -> Dict[str, Any]:
@@ -288,13 +288,16 @@ class AlpacaTradingClient:
         Returns:
             TradingOrder object
         """
-        logger.debug("Placing market order", metadata={
-            "ticker": ticker,
-            "quantity": quantity,
-            "side": side,
-            "time_in_force": time_in_force,
-            "trading_mode": self.trading_mode.value,
-        })
+        logger.debug(
+            "Placing market order",
+            metadata={
+                "ticker": ticker,
+                "quantity": quantity,
+                "side": side,
+                "time_in_force": time_in_force,
+                "trading_mode": self.trading_mode.value,
+            },
+        )
 
         try:
             order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
@@ -310,23 +313,30 @@ class AlpacaTradingClient:
             alpaca_order = self.trading_client.submit_order(request)
 
             order = self._convert_alpaca_order(alpaca_order)
-            logger.info(f"Placed market {side} order for {quantity} shares of {ticker}", metadata={
-                "order_id": order.alpaca_order_id,
-                "ticker": ticker,
-                "quantity": quantity,
-                "side": side,
-                "status": order.status.value,
-                "trading_mode": self.trading_mode.value,
-            })
+            logger.info(
+                f"Placed market {side} order for {quantity} shares of {ticker}",
+                metadata={
+                    "order_id": order.alpaca_order_id,
+                    "ticker": ticker,
+                    "quantity": quantity,
+                    "side": side,
+                    "status": order.status.value,
+                    "trading_mode": self.trading_mode.value,
+                },
+            )
 
             return order
 
         except Exception as e:
-            logger.error(f"Error placing market order for {ticker}", error=e, metadata={
-                "ticker": ticker,
-                "quantity": quantity,
-                "side": side,
-            })
+            logger.error(
+                f"Error placing market order for {ticker}",
+                error=e,
+                metadata={
+                    "ticker": ticker,
+                    "quantity": quantity,
+                    "side": side,
+                },
+            )
             raise
 
     def place_limit_order(
@@ -411,7 +421,9 @@ class AlpacaTradingClient:
             alpaca_order = self.trading_client.submit_order(request)
 
             order = self._convert_alpaca_order(alpaca_order)
-            logger.info(f"Placed stop {side} order for {quantity} shares of {ticker} at ${stop_price}")
+            logger.info(
+                f"Placed stop {side} order for {quantity} shares of {ticker} at ${stop_price}"
+            )
 
             return order
 
@@ -590,13 +602,19 @@ class AlpacaTradingClient:
             quantity=int(alpaca_order.qty),
             limit_price=Decimal(alpaca_order.limit_price) if alpaca_order.limit_price else None,
             stop_price=Decimal(alpaca_order.stop_price) if alpaca_order.stop_price else None,
-            trailing_percent=float(alpaca_order.trail_percent) if alpaca_order.trail_percent else None,
+            trailing_percent=(
+                float(alpaca_order.trail_percent) if alpaca_order.trail_percent else None
+            ),
             status=status_map.get(alpaca_order.status, OrderStatus.PENDING),
             filled_quantity=int(alpaca_order.filled_qty) if alpaca_order.filled_qty else 0,
-            filled_avg_price=Decimal(alpaca_order.filled_avg_price) if alpaca_order.filled_avg_price else None,
+            filled_avg_price=(
+                Decimal(alpaca_order.filled_avg_price) if alpaca_order.filled_avg_price else None
+            ),
             trading_mode=self.trading_mode,
             alpaca_order_id=str(alpaca_order.id),
-            alpaca_client_order_id=str(alpaca_order.client_order_id) if alpaca_order.client_order_id else None,
+            alpaca_client_order_id=(
+                str(alpaca_order.client_order_id) if alpaca_order.client_order_id else None
+            ),
             submitted_at=alpaca_order.submitted_at,
             filled_at=alpaca_order.filled_at,
             canceled_at=alpaca_order.canceled_at,

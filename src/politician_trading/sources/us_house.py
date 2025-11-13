@@ -29,9 +29,7 @@ class USHouseSource(BaseSource):
             request_delay=2.0,  # Be respectful with government servers
             max_retries=3,
             timeout=60,
-            headers={
-                'User-Agent': 'Mozilla/5.0 (compatible; PoliticianTradingBot/1.0)'
-            }
+            headers={"User-Agent": "Mozilla/5.0 (compatible; PoliticianTradingBot/1.0)"},
         )
 
     async def _fetch_data(self, lookback_days: int, **kwargs) -> Any:
@@ -52,14 +50,10 @@ class USHouseSource(BaseSource):
             # TODO: Implement full ASPX form handling
 
             self.logger.warning(
-                "US House source is using placeholder data. "
-                "Full ASPX implementation needed."
+                "US House source is using placeholder data. " "Full ASPX implementation needed."
             )
 
-            return {
-                'status': 'placeholder',
-                'message': 'Real implementation coming soon'
-            }
+            return {"status": "placeholder", "message": "Real implementation coming soon"}
 
         except Exception as e:
             self.logger.error(f"Error fetching House data: {e}", exc_info=True)
@@ -94,25 +88,25 @@ class USHouseSource(BaseSource):
             Standardized disclosure dictionary
         """
         return {
-            'politician_name': row_data.get('name', ''),
-            'transaction_date': self._parse_date(row_data.get('transaction_date')),
-            'disclosure_date': self._parse_date(row_data.get('disclosure_date')),
-            'asset_name': row_data.get('asset', ''),
-            'asset_ticker': row_data.get('ticker'),
-            'transaction_type': self._normalize_transaction_type(row_data.get('type', '')),
-            'amount': row_data.get('amount', ''),
-            'source_url': row_data.get('url', ''),
-            'document_id': row_data.get('doc_id'),
+            "politician_name": row_data.get("name", ""),
+            "transaction_date": self._parse_date(row_data.get("transaction_date")),
+            "disclosure_date": self._parse_date(row_data.get("disclosure_date")),
+            "asset_name": row_data.get("asset", ""),
+            "asset_ticker": row_data.get("ticker"),
+            "transaction_type": self._normalize_transaction_type(row_data.get("type", "")),
+            "amount": row_data.get("amount", ""),
+            "source_url": row_data.get("url", ""),
+            "document_id": row_data.get("doc_id"),
         }
 
     def _parse_date(self, date_str: str) -> str:
         """Parse date string to ISO format"""
         if not date_str:
-            return ''
+            return ""
 
         try:
             # House typically uses MM/DD/YYYY
-            dt = datetime.strptime(date_str, '%m/%d/%Y')
+            dt = datetime.strptime(date_str, "%m/%d/%Y")
             return dt.isoformat()
         except (ValueError, TypeError):
             return date_str
@@ -122,12 +116,12 @@ class USHouseSource(BaseSource):
         trans_type = trans_type.lower().strip()
 
         type_map = {
-            'p': 'purchase',
-            'purchase': 'purchase',
-            's': 'sale',
-            'sale': 'sale',
-            'e': 'exchange',
-            'exchange': 'exchange',
+            "p": "purchase",
+            "purchase": "purchase",
+            "s": "sale",
+            "sale": "sale",
+            "e": "exchange",
+            "exchange": "exchange",
         }
 
         return type_map.get(trans_type, trans_type)

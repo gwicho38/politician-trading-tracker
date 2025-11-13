@@ -146,7 +146,9 @@ async def _execute_trades(days, live, auto, dry_run):
         return
 
     if live and not dry_run:
-        if not click.confirm("⚠️  WARNING: This will execute LIVE trades with real money. Continue?"):
+        if not click.confirm(
+            "⚠️  WARNING: This will execute LIVE trades with real money. Continue?"
+        ):
             console.print("[yellow]Aborted[/]")
             return
 
@@ -176,6 +178,7 @@ async def _execute_trades(days, live, auto, dry_run):
         db = SupabaseClient(config)
 
         from datetime import datetime, timedelta
+
         cutoff_date = datetime.utcnow() - timedelta(days=days)
 
         query = db.client.table("trading_signals").select("*")
@@ -200,7 +203,9 @@ async def _execute_trades(days, live, auto, dry_run):
                 signal_type=SignalType(data["signal_type"]),
                 signal_strength=SignalStrength(data["signal_strength"]),
                 confidence_score=data["confidence_score"],
-                target_price=Decimal(str(data["target_price"])) if data.get("target_price") else None,
+                target_price=(
+                    Decimal(str(data["target_price"])) if data.get("target_price") else None
+                ),
                 stop_loss=Decimal(str(data["stop_loss"])) if data.get("stop_loss") else None,
                 take_profit=Decimal(str(data["take_profit"])) if data.get("take_profit") else None,
                 politician_activity_count=data.get("politician_activity_count", 0),
@@ -338,7 +343,7 @@ def portfolio(live):
         console.print(Panel.fit(portfolio_info, title=f"[bold cyan]{mode}[/]", border_style="cyan"))
 
         # Display risk metrics
-        risk_metrics = summary['risk_metrics']
+        risk_metrics = summary["risk_metrics"]
         risk_info = f"""
 [bold]Total Exposure:[/] ${risk_metrics['total_exposure']:,.2f} ({risk_metrics['exposure_pct']:.1f}%)
 [bold]Unrealized P&L:[/] ${risk_metrics['total_unrealized_pl']:,.2f} ({risk_metrics['unrealized_pl_pct']:.1f}%)
@@ -347,10 +352,12 @@ def portfolio(live):
 [bold]Cash %:[/] {risk_metrics['cash_pct']:.1f}%
         """.strip()
 
-        console.print(Panel.fit(risk_info, title="[bold yellow]Risk Metrics[/]", border_style="yellow"))
+        console.print(
+            Panel.fit(risk_info, title="[bold yellow]Risk Metrics[/]", border_style="yellow")
+        )
 
         # Display positions
-        if summary['positions_detail']:
+        if summary["positions_detail"]:
             table = Table(title="Position Details", box=box.ROUNDED)
             table.add_column("Ticker", style="cyan")
             table.add_column("Qty", justify="right")
@@ -360,12 +367,12 @@ def portfolio(live):
             table.add_column("P&L", justify="right")
             table.add_column("P&L %", justify="right")
 
-            for pos in summary['positions_detail']:
-                pl_color = "green" if pos['unrealized_pl'] >= 0 else "red"
+            for pos in summary["positions_detail"]:
+                pl_color = "green" if pos["unrealized_pl"] >= 0 else "red"
 
                 table.add_row(
-                    pos['ticker'],
-                    str(pos['quantity']),
+                    pos["ticker"],
+                    str(pos["quantity"]),
                     f"${pos['avg_entry_price']:.2f}",
                     f"${pos['current_price']:.2f}",
                     f"${pos['market_value']:,.2f}",

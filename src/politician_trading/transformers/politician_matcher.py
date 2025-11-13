@@ -40,8 +40,7 @@ class PoliticianMatcher:
                 for politician in response.data:
                     # Create cache key from name
                     key = self._make_cache_key(
-                        politician.get('first_name', ''),
-                        politician.get('last_name', '')
+                        politician.get("first_name", ""), politician.get("last_name", "")
                     )
                     self._politicians_cache[key] = politician
 
@@ -54,10 +53,7 @@ class PoliticianMatcher:
             self.logger.error(f"Failed to load politicians: {e}", exc_info=True)
 
     async def match(
-        self,
-        first_name: str,
-        last_name: str,
-        source: str
+        self, first_name: str, last_name: str, source: str
     ) -> Tuple[Optional[str], str, Optional[str], Optional[str]]:
         """
         Match politician by name.
@@ -81,21 +77,23 @@ class PoliticianMatcher:
             politician = self._politicians_cache[cache_key]
             self.logger.debug(f"Found cached politician: {first_name} {last_name}")
             return (
-                politician.get('id'),
-                politician.get('role', self._infer_role_from_source(source)),
-                politician.get('party'),
-                politician.get('state_or_country')
+                politician.get("id"),
+                politician.get("role", self._infer_role_from_source(source)),
+                politician.get("party"),
+                politician.get("state_or_country"),
             )
 
         # Try fuzzy match (last name only)
         for key, politician in self._politicians_cache.items():
             if last_name.lower() in key.lower():
-                self.logger.debug(f"Fuzzy matched politician: {first_name} {last_name} -> {politician.get('full_name')}")
+                self.logger.debug(
+                    f"Fuzzy matched politician: {first_name} {last_name} -> {politician.get('full_name')}"
+                )
                 return (
-                    politician.get('id'),
-                    politician.get('role', self._infer_role_from_source(source)),
-                    politician.get('party'),
-                    politician.get('state_or_country')
+                    politician.get("id"),
+                    politician.get("role", self._infer_role_from_source(source)),
+                    politician.get("party"),
+                    politician.get("state_or_country"),
                 )
 
         # No match found - will need to create new politician
@@ -111,21 +109,21 @@ class PoliticianMatcher:
         """Infer politician role from data source"""
         source_lower = source.lower()
 
-        if 'house' in source_lower or 'representative' in source_lower:
-            return 'US_HOUSE_REP'
-        elif 'senate' in source_lower or 'senator' in source_lower:
-            return 'US_SENATOR'
-        elif 'uk' in source_lower or 'parliament' in source_lower:
-            if 'lords' in source_lower:
-                return 'UK_LORD'
-            return 'UK_MP'
-        elif 'eu' in source_lower or 'european' in source_lower:
-            return 'EU_MEP'
-        elif 'california' in source_lower:
-            return 'CA_STATE_LEGISLATOR'
-        elif 'new york' in source_lower or 'ny' in source_lower:
-            return 'NY_STATE_LEGISLATOR'
-        elif 'texas' in source_lower or 'tx' in source_lower:
-            return 'TX_STATE_LEGISLATOR'
+        if "house" in source_lower or "representative" in source_lower:
+            return "US_HOUSE_REP"
+        elif "senate" in source_lower or "senator" in source_lower:
+            return "US_SENATOR"
+        elif "uk" in source_lower or "parliament" in source_lower:
+            if "lords" in source_lower:
+                return "UK_LORD"
+            return "UK_MP"
+        elif "eu" in source_lower or "european" in source_lower:
+            return "EU_MEP"
+        elif "california" in source_lower:
+            return "CA_STATE_LEGISLATOR"
+        elif "new york" in source_lower or "ny" in source_lower:
+            return "NY_STATE_LEGISLATOR"
+        elif "texas" in source_lower or "tx" in source_lower:
+            return "TX_STATE_LEGISLATOR"
         else:
-            return 'UNKNOWN'
+            return "UNKNOWN"

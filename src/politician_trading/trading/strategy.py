@@ -129,7 +129,9 @@ class TradingStrategy:
 
         # Check portfolio limits
         trade_value = Decimal(shares) * current_price
-        can_trade, reason = self.risk_manager.check_portfolio_limits(portfolio, positions, trade_value)
+        can_trade, reason = self.risk_manager.check_portfolio_limits(
+            portfolio, positions, trade_value
+        )
         if not can_trade:
             logger.warning(f"Portfolio limits check failed for {signal.ticker}: {reason}")
             return None
@@ -206,20 +208,24 @@ class TradingStrategy:
                     if self.auto_execute:
                         success = self.alpaca_client.close_position(position.ticker)
                         if success:
-                            actions.append({
+                            actions.append(
+                                {
+                                    "ticker": position.ticker,
+                                    "action": "close",
+                                    "reason": reason,
+                                    "executed": True,
+                                }
+                            )
+                    else:
+                        actions.append(
+                            {
                                 "ticker": position.ticker,
                                 "action": "close",
                                 "reason": reason,
-                                "executed": True,
-                            })
-                    else:
-                        actions.append({
-                            "ticker": position.ticker,
-                            "action": "close",
-                            "reason": reason,
-                            "executed": False,
-                            "note": "Auto-execute disabled",
-                        })
+                                "executed": False,
+                                "note": "Auto-execute disabled",
+                            }
+                        )
 
             except Exception as e:
                 logger.error(f"Error monitoring position {position.ticker}: {e}")
@@ -263,7 +269,8 @@ class TradingStrategy:
                     "unrealized_pl": float(p.unrealized_pl),
                     "unrealized_pl_pct": p.unrealized_pl_pct,
                 }
-                for p in positions if p.is_open
+                for p in positions
+                if p.is_open
             ],
         }
 
@@ -330,7 +337,9 @@ class TradingStrategy:
 
         # Check portfolio limits
         trade_value = Decimal(shares) * current_price
-        can_trade, reason = self.risk_manager.check_portfolio_limits(portfolio, positions, trade_value)
+        can_trade, reason = self.risk_manager.check_portfolio_limits(
+            portfolio, positions, trade_value
+        )
 
         recommendation = {
             "ticker": signal.ticker,

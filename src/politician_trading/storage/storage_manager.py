@@ -43,7 +43,7 @@ class StorageManager:
         politician_name: str,
         source_url: str,
         transaction_date: datetime,
-        source_type: str = "senate_pdf"
+        source_type: str = "senate_pdf",
     ) -> tuple[str, str]:
         """
         Save PDF to storage and create database record.
@@ -66,8 +66,8 @@ class StorageManager:
             date_str = transaction_date.strftime("%Y%m%d")
 
             # Clean politician name for filename
-            clean_name = "".join(c for c in politician_name if c.isalnum() or c in (' ', '-'))
-            clean_name = clean_name.replace(' ', '_')[:50]
+            clean_name = "".join(c for c in politician_name if c.isalnum() or c in (" ", "-"))
+            clean_name = clean_name.replace(" ", "_")[:50]
 
             filename = f"{disclosure_id}_{clean_name}_{date_str}.pdf"
 
@@ -81,44 +81,42 @@ class StorageManager:
             file_hash = hashlib.sha256(pdf_content).hexdigest()
 
             # Upload to storage
-            self.client.storage.from_('raw-pdfs').upload(
+            self.client.storage.from_("raw-pdfs").upload(
                 path,
                 pdf_content,
-                {
-                    'content-type': 'application/pdf',
-                    'x-upsert': 'true'  # Overwrite if exists
-                }
+                {"content-type": "application/pdf", "x-upsert": "true"},  # Overwrite if exists
             )
 
             self.logger.debug(f"PDF uploaded successfully: {len(pdf_content)} bytes")
 
             # Save metadata to database
             metadata = {
-                'disclosure_id': disclosure_id,
-                'storage_bucket': 'raw-pdfs',
-                'storage_path': path,
-                'file_type': 'pdf',
-                'file_size_bytes': len(pdf_content),
-                'file_hash_sha256': file_hash,
-                'mime_type': 'application/pdf',
-                'source_url': source_url,
-                'source_type': source_type,
-                'parse_status': 'pending',
-                'expires_at': (datetime.utcnow() + timedelta(days=365)).isoformat()  # 1 year retention
+                "disclosure_id": disclosure_id,
+                "storage_bucket": "raw-pdfs",
+                "storage_path": path,
+                "file_type": "pdf",
+                "file_size_bytes": len(pdf_content),
+                "file_hash_sha256": file_hash,
+                "mime_type": "application/pdf",
+                "source_url": source_url,
+                "source_type": source_type,
+                "parse_status": "pending",
+                "expires_at": (
+                    datetime.utcnow() + timedelta(days=365)
+                ).isoformat(),  # 1 year retention
             }
 
-            response = self.client.table('stored_files').insert(metadata).execute()
+            response = self.client.table("stored_files").insert(metadata).execute()
 
-            file_id = response.data[0]['id'] if response.data else None
+            file_id = response.data[0]["id"] if response.data else None
 
             self.logger.info(f"PDF metadata saved: file_id={file_id}")
 
             # Update disclosure record
             if file_id:
-                self.client.table('trading_disclosures').update({
-                    'source_file_id': file_id,
-                    'has_raw_pdf': True
-                }).eq('id', disclosure_id).execute()
+                self.client.table("trading_disclosures").update(
+                    {"source_file_id": file_id, "has_raw_pdf": True}
+                ).eq("id", disclosure_id).execute()
 
             return path, file_id
 
@@ -131,7 +129,7 @@ class StorageManager:
         response_data: Dict[str, Any],
         source: str,
         endpoint: str = "",
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> tuple[str, str]:
         """
         Save API response JSON to storage.
@@ -157,19 +155,14 @@ class StorageManager:
 
             # Convert to JSON
             json_content = json.dumps(response_data, indent=2)
-            json_bytes = json_content.encode('utf-8')
+            json_bytes = json_content.encode("utf-8")
 
             # Calculate hash
             file_hash = hashlib.sha256(json_bytes).hexdigest()
 
             # Upload
-            self.client.storage.from_('api-responses').upload(
-                path,
-                json_bytes,
-                {
-                    'content-type': 'application/json',
-                    'x-upsert': 'true'
-                }
+            self.client.storage.from_("api-responses").upload(
+                path, json_bytes, {"content-type": "application/json", "x-upsert": "true"}
             )
 
             self.logger.debug(f"API response uploaded: {len(json_bytes)} bytes")
@@ -180,34 +173,38 @@ class StorageManager:
                 record_count = len(response_data)
             elif isinstance(response_data, dict):
                 # Try common keys for record lists
-                for key in ['data', 'trades', 'results', 'records']:
+                for key in ["data", "trades", "results", "records"]:
                     if key in response_data and isinstance(response_data[key], list):
                         record_count = len(response_data[key])
                         break
 
             # Save metadata to database
             db_metadata = {
-                'storage_bucket': 'api-responses',
-                'storage_path': path,
-                'file_type': 'json',
-                'file_size_bytes': len(json_bytes),
-                'file_hash_sha256': file_hash,
-                'mime_type': 'application/json',
-                'source_type': f'{source}_api',
-                'parse_status': 'pending',
-                'transactions_found': record_count,
-                'expires_at': (datetime.utcnow() + timedelta(days=90)).isoformat()  # 90 day retention
+                "storage_bucket": "api-responses",
+                "storage_path": path,
+                "file_type": "json",
+                "file_size_bytes": len(json_bytes),
+                "file_hash_sha256": file_hash,
+                "mime_type": "application/json",
+                "source_type": f"{source}_api",
+                "parse_status": "pending",
+                "transactions_found": record_count,
+                "expires_at": (
+                    datetime.utcnow() + timedelta(days=90)
+                ).isoformat(),  # 90 day retention
             }
 
             # Add custom metadata if provided
             if metadata:
-                db_metadata['source_url'] = metadata.get('url', '')
+                db_metadata["source_url"] = metadata.get("url", "")
 
-            response = self.client.table('stored_files').insert(db_metadata).execute()
+            response = self.client.table("stored_files").insert(db_metadata).execute()
 
-            file_id = response.data[0]['id'] if response.data else None
+            file_id = response.data[0]["id"] if response.data else None
 
-            self.logger.info(f"API response metadata saved: file_id={file_id}, records={record_count}")
+            self.logger.info(
+                f"API response metadata saved: file_id={file_id}, records={record_count}"
+            )
 
             return path, file_id
 
@@ -216,10 +213,7 @@ class StorageManager:
             raise
 
     async def save_parsed_data(
-        self,
-        parsed_data: Dict[str, Any],
-        source_file_id: str,
-        disclosure_id: Optional[str] = None
+        self, parsed_data: Dict[str, Any], source_file_id: str, disclosure_id: Optional[str] = None
     ) -> tuple[str, str]:
         """
         Save parsed/intermediate data.
@@ -249,40 +243,37 @@ class StorageManager:
 
             # Convert to JSON
             json_content = json.dumps(parsed_data, indent=2, default=str)
-            json_bytes = json_content.encode('utf-8')
+            json_bytes = json_content.encode("utf-8")
 
             # Upload
-            self.client.storage.from_('parsed-data').upload(
-                path,
-                json_bytes,
-                {
-                    'content-type': 'application/json',
-                    'x-upsert': 'true'
-                }
+            self.client.storage.from_("parsed-data").upload(
+                path, json_bytes, {"content-type": "application/json", "x-upsert": "true"}
             )
 
             # Save metadata
             metadata = {
-                'disclosure_id': disclosure_id,
-                'storage_bucket': 'parsed-data',
-                'storage_path': path,
-                'file_type': 'json',
-                'file_size_bytes': len(json_bytes),
-                'mime_type': 'application/json',
-                'source_type': 'parsed_data',
-                'parse_status': 'success',
-                'expires_at': (datetime.utcnow() + timedelta(days=730)).isoformat()  # 2 year retention
+                "disclosure_id": disclosure_id,
+                "storage_bucket": "parsed-data",
+                "storage_path": path,
+                "file_type": "json",
+                "file_size_bytes": len(json_bytes),
+                "mime_type": "application/json",
+                "source_type": "parsed_data",
+                "parse_status": "success",
+                "expires_at": (
+                    datetime.utcnow() + timedelta(days=730)
+                ).isoformat(),  # 2 year retention
             }
 
-            response = self.client.table('stored_files').insert(metadata).execute()
+            response = self.client.table("stored_files").insert(metadata).execute()
 
-            file_id = response.data[0]['id'] if response.data else None
+            file_id = response.data[0]["id"] if response.data else None
 
             # Update disclosure record
             if disclosure_id:
-                self.client.table('trading_disclosures').update({
-                    'has_parsed_data': True
-                }).eq('id', disclosure_id).execute()
+                self.client.table("trading_disclosures").update({"has_parsed_data": True}).eq(
+                    "id", disclosure_id
+                ).execute()
 
             return path, file_id
 
@@ -302,7 +293,7 @@ class StorageManager:
         """
         try:
             self.logger.debug(f"Retrieving PDF: {storage_path}")
-            response = self.client.storage.from_('raw-pdfs').download(storage_path)
+            response = self.client.storage.from_("raw-pdfs").download(storage_path)
             return response
         except Exception as e:
             self.logger.error(f"Error retrieving PDF: {e}", exc_info=True)
@@ -320,46 +311,35 @@ class StorageManager:
         """
         try:
             self.logger.debug(f"Retrieving API response: {storage_path}")
-            response = self.client.storage.from_('api-responses').download(storage_path)
+            response = self.client.storage.from_("api-responses").download(storage_path)
             return json.loads(response)
         except Exception as e:
             self.logger.error(f"Error retrieving API response: {e}", exc_info=True)
             raise
 
-    async def mark_file_parsed(
-        self,
-        file_id: str,
-        transactions_count: int = 0
-    ):
+    async def mark_file_parsed(self, file_id: str, transactions_count: int = 0):
         """Mark file as successfully parsed"""
         try:
-            self.client.rpc('mark_file_parsed', {
-                'p_file_id': file_id,
-                'p_transactions_count': transactions_count
-            }).execute()
+            self.client.rpc(
+                "mark_file_parsed",
+                {"p_file_id": file_id, "p_transactions_count": transactions_count},
+            ).execute()
             self.logger.info(f"File marked as parsed: {file_id}")
         except Exception as e:
             self.logger.error(f"Error marking file as parsed: {e}")
 
-    async def mark_file_failed(
-        self,
-        file_id: str,
-        error_message: str
-    ):
+    async def mark_file_failed(self, file_id: str, error_message: str):
         """Mark file as failed to parse"""
         try:
-            self.client.rpc('mark_file_failed', {
-                'p_file_id': file_id,
-                'p_error_message': error_message
-            }).execute()
+            self.client.rpc(
+                "mark_file_failed", {"p_file_id": file_id, "p_error_message": error_message}
+            ).execute()
             self.logger.info(f"File marked as failed: {file_id}")
         except Exception as e:
             self.logger.error(f"Error marking file as failed: {e}")
 
     async def get_files_to_parse(
-        self,
-        bucket: str = 'raw-pdfs',
-        limit: int = 50
+        self, bucket: str = "raw-pdfs", limit: int = 50
     ) -> List[Dict[str, Any]]:
         """
         Get list of files ready for parsing.
@@ -372,10 +352,9 @@ class StorageManager:
             List of file records
         """
         try:
-            response = self.client.rpc('get_files_to_parse', {
-                'p_bucket': bucket,
-                'p_limit': limit
-            }).execute()
+            response = self.client.rpc(
+                "get_files_to_parse", {"p_bucket": bucket, "p_limit": limit}
+            ).execute()
 
             return response.data if response.data else []
 
@@ -386,7 +365,7 @@ class StorageManager:
     async def get_storage_statistics(self) -> List[Dict[str, Any]]:
         """Get storage usage statistics"""
         try:
-            response = self.client.table('storage_statistics').select('*').execute()
+            response = self.client.table("storage_statistics").select("*").execute()
             return response.data if response.data else []
         except Exception as e:
             self.logger.error(f"Error getting storage statistics: {e}")

@@ -1,6 +1,7 @@
 """
 Unit tests for analytics_wrapper module
 """
+
 import json
 import tempfile
 from pathlib import Path
@@ -39,14 +40,7 @@ class TestSanitizeForJson:
         """Test that nested dictionaries are sanitized"""
         path1 = Path("/tmp/test1.txt")
         path2 = Path("/tmp/test2.txt")
-        data = {
-            "outer": {
-                path1: "value1",
-                "inner": {
-                    "key": path2
-                }
-            }
-        }
+        data = {"outer": {path1: "value1", "inner": {"key": path2}}}
         result = sanitize_for_json(data)
         assert isinstance(result, dict)
         assert "/tmp/test1.txt" in result["outer"]
@@ -63,13 +57,7 @@ class TestSanitizeForJson:
 
     def test_sanitize_preserves_primitives(self):
         """Test that primitive types are preserved"""
-        data = {
-            "string": "value",
-            "int": 42,
-            "float": 3.14,
-            "bool": True,
-            "none": None
-        }
+        data = {"string": "value", "int": 42, "float": 3.14, "bool": True, "none": None}
         result = sanitize_for_json(data)
         assert result == data
 
@@ -77,22 +65,16 @@ class TestSanitizeForJson:
         """Test that sanitized data can be serialized to JSON"""
         path1 = Path("/tmp/test1.txt")
         path2 = Path("/tmp/test2.txt")
-        data = {
-            "paths": [path1, path2],
-            "nested": {
-                path1: "value",
-                "key": path2
-            }
-        }
+        data = {"paths": [path1, path2], "nested": {path1: "value", "key": path2}}
         result = sanitize_for_json(data)
 
         # Should not raise an exception
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             json.dump(result, f)
             temp_path = f.name
 
         # Verify it can be loaded back
-        with open(temp_path, 'r') as f:
+        with open(temp_path, "r") as f:
             loaded = json.load(f)
 
         assert "/tmp/test1.txt" in loaded["nested"]
@@ -111,6 +93,7 @@ class TestSanitizeForJson:
 
     def test_sanitize_complex_object(self):
         """Test that complex non-serializable objects are converted to strings"""
+
         class CustomObject:
             def __str__(self):
                 return "custom_object"

@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ProcessingStats:
     """Track processing statistics"""
+
     total_records: int = 0
     processed: int = 0
     successful: int = 0
@@ -55,15 +56,15 @@ class ProcessingStats:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return {
-            'total_records': self.total_records,
-            'processed': self.processed,
-            'successful': self.successful,
-            'failed': self.failed,
-            'errors': self.errors,
-            'transactions_extracted': self.transactions_extracted,
-            'duration_seconds': self.duration_seconds(),
-            'records_per_second': self.records_per_second(),
-            'success_rate': self.success_rate()
+            "total_records": self.total_records,
+            "processed": self.processed,
+            "successful": self.successful,
+            "failed": self.failed,
+            "errors": self.errors,
+            "transactions_extracted": self.transactions_extracted,
+            "duration_seconds": self.duration_seconds(),
+            "records_per_second": self.records_per_second(),
+            "success_rate": self.success_rate(),
         }
 
 
@@ -84,7 +85,7 @@ class PDFReprocessingJob:
         batch_size: int = 50,
         delay_between_records: float = 3.0,
         delay_between_batches: float = 30.0,
-        max_retries: int = 2
+        max_retries: int = 2,
     ):
         self.batch_size = batch_size
         self.delay_between_records = delay_between_records
@@ -174,9 +175,14 @@ class PDFReprocessingJob:
             if limit <= 0:
                 return []
 
-            response = db.table("trading_disclosures").select("*").eq(
-                "status", "needs_pdf_parsing"
-            ).order("transaction_date", desc=True).limit(limit).execute()
+            response = (
+                db.table("trading_disclosures")
+                .select("*")
+                .eq("status", "needs_pdf_parsing")
+                .order("transaction_date", desc=True)
+                .limit(limit)
+                .execute()
+            )
 
             return response.data if response.data else []
 
@@ -184,35 +190,28 @@ class PDFReprocessingJob:
             self.logger.error(f"Error fetching batch: {e}", exc_info=True)
             return []
 
-    async def _process_batch(
-        self,
-        db,
-        parser: SenatePDFParser,
-        records: List[Dict[str, Any]]
-    ):
+    async def _process_batch(self, db, parser: SenatePDFParser, records: List[Dict[str, Any]]):
         """Process a batch of records"""
         for i, record in enumerate(records):
-            record_id = record['id']
-            politician_id = record.get('politician_id')
+            record_id = record["id"]
+            politician_id = record.get("politician_id")
 
-            self.logger.info(
-                f"Processing record {i+1}/{len(records)}: {record_id}"
-            )
+            self.logger.info(f"Processing record {i+1}/{len(records)}: {record_id}")
 
             try:
                 # Update status to 'processing'
-                db.table("trading_disclosures").update({
-                    "status": "pdf_parsing"
-                }).eq("id", record_id).execute()
+                db.table("trading_disclosures").update({"status": "pdf_parsing"}).eq(
+                    "id", record_id
+                ).execute()
 
                 # Extract PDF URL
                 pdf_url = self._extract_pdf_url(record)
 
                 if not pdf_url:
                     self.logger.warning(f"No PDF URL found for record {record_id}")
-                    db.table("trading_disclosures").update({
-                        "status": "pdf_parse_failed"
-                    }).eq("id", record_id).execute()
+                    db.table("trading_disclosures").update({"status": "pdf_parse_failed"}).eq(
+                        "id", record_id
+                    ).execute()
                     self.stats.failed += 1
                     self.stats.processed += 1
                     continue
@@ -221,17 +220,11 @@ class PDFReprocessingJob:
                 politician_name = await self._get_politician_name(db, politician_id)
 
                 # Parse PDF with retries
-                transactions = await self._parse_with_retry(
-                    parser,
-                    pdf_url,
-                    politician_name
-                )
+                transactions = await self._parse_with_retry(parser, pdf_url, politician_name)
 
                 # Process results
                 if transactions:
-                    await self._handle_successful_parse(
-                        db, record_id, politician_id, transactions
-                    )
+                    await self._handle_successful_parse(db, record_id, politician_id, transactions)
                     self.stats.successful += 1
                     self.stats.transactions_extracted += len(transactions)
                 else:
@@ -250,13 +243,10 @@ class PDFReprocessingJob:
                     )
 
             except Exception as e:
-                self.logger.error(
-                    f"Error processing record {record_id}: {e}",
-                    exc_info=True
-                )
-                db.table("trading_disclosures").update({
-                    "status": "pdf_parse_error"
-                }).eq("id", record_id).execute()
+                self.logger.error(f"Error processing record {record_id}: {e}", exc_info=True)
+                db.table("trading_disclosures").update({"status": "pdf_parse_error"}).eq(
+                    "id", record_id
+                ).execute()
                 self.stats.errors += 1
                 self.stats.processed += 1
 
@@ -267,7 +257,7 @@ class PDFReprocessingJob:
     def _extract_pdf_url(self, record: Dict[str, Any]) -> Optional[str]:
         """Extract PDF URL from record"""
         # Try raw_data field
-        raw_data = record.get('raw_data', {})
+        raw_data = record.get("raw_data", {})
 
         if isinstance(raw_data, str):
             try:
@@ -275,24 +265,30 @@ class PDFReprocessingJob:
             except (json.JSONDecodeError, ValueError):
                 raw_data = {}
 
-        pdf_url = raw_data.get('ptr_link') or raw_data.get('pdf_url')
+        pdf_url = raw_data.get("ptr_link") or raw_data.get("pdf_url")
 
         # Fallback to source_url
         if not pdf_url:
-            pdf_url = record.get('source_url')
+            pdf_url = record.get("source_url")
 
         return pdf_url
 
     async def _get_politician_name(self, db, politician_id: str) -> str:
         """Get politician name from database"""
         try:
-            response = db.table("politicians").select("full_name,first_name,last_name").eq(
-                "id", politician_id
-            ).execute()
+            response = (
+                db.table("politicians")
+                .select("full_name,first_name,last_name")
+                .eq("id", politician_id)
+                .execute()
+            )
 
             if response.data and len(response.data) > 0:
                 politician = response.data[0]
-                return politician.get('full_name') or f"{politician.get('first_name')} {politician.get('last_name')}"
+                return (
+                    politician.get("full_name")
+                    or f"{politician.get('first_name')} {politician.get('last_name')}"
+                )
 
         except Exception as e:
             self.logger.warning(f"Could not fetch politician name: {e}")
@@ -300,10 +296,7 @@ class PDFReprocessingJob:
         return "Unknown"
 
     async def _parse_with_retry(
-        self,
-        parser: SenatePDFParser,
-        pdf_url: str,
-        politician_name: str
+        self, parser: SenatePDFParser, pdf_url: str, politician_name: str
     ) -> List[Dict[str, Any]]:
         """Parse PDF with retry logic"""
 
@@ -314,7 +307,7 @@ class PDFReprocessingJob:
 
             except Exception as e:
                 if attempt < self.max_retries:
-                    wait_time = 2 ** attempt  # Exponential backoff
+                    wait_time = 2**attempt  # Exponential backoff
                     self.logger.warning(
                         f"PDF parsing attempt {attempt + 1} failed: {e}. "
                         f"Retrying in {wait_time}s..."
@@ -328,11 +321,7 @@ class PDFReprocessingJob:
         return []
 
     async def _handle_successful_parse(
-        self,
-        db,
-        record_id: str,
-        politician_id: str,
-        transactions: List[Dict[str, Any]]
+        self, db, record_id: str, politician_id: str, transactions: List[Dict[str, Any]]
     ):
         """Handle successful PDF parse - create new disclosure records"""
         self.logger.info(f"Successfully extracted {len(transactions)} transactions")
@@ -346,17 +335,18 @@ class PDFReprocessingJob:
                 # Convert transaction to disclosure record
                 disclosure_data = {
                     "politician_id": politician_id,
-                    "transaction_date": transaction.get('transaction_date'),
-                    "disclosure_date": transaction.get('disclosure_date') or transaction.get('transaction_date'),
-                    "asset_name": transaction.get('asset_name'),
-                    "asset_ticker": transaction.get('asset_ticker'),
-                    "asset_type": transaction.get('asset_type', 'stock'),
-                    "transaction_type": transaction.get('transaction_type'),
-                    "amount": transaction.get('amount'),
+                    "transaction_date": transaction.get("transaction_date"),
+                    "disclosure_date": transaction.get("disclosure_date")
+                    or transaction.get("transaction_date"),
+                    "asset_name": transaction.get("asset_name"),
+                    "asset_ticker": transaction.get("asset_ticker"),
+                    "asset_type": transaction.get("asset_type", "stock"),
+                    "transaction_type": transaction.get("transaction_type"),
+                    "amount": transaction.get("amount"),
                     "source": "us_senate_pdf",
-                    "source_url": transaction.get('source_url'),
+                    "source_url": transaction.get("source_url"),
                     "raw_data": transaction,
-                    "status": "processed"
+                    "status": "processed",
                 }
 
                 db.table("trading_disclosures").insert(disclosure_data).execute()
@@ -368,6 +358,6 @@ class PDFReprocessingJob:
         """Handle failed PDF parse"""
         self.logger.warning("No transactions extracted from PDF")
 
-        db.table("trading_disclosures").update({
-            "status": "pdf_parse_failed"
-        }).eq("id", record_id).execute()
+        db.table("trading_disclosures").update({"status": "pdf_parse_failed"}).eq(
+            "id", record_id
+        ).execute()

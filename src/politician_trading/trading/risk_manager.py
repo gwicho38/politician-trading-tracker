@@ -42,13 +42,16 @@ class RiskManager:
         self.max_positions = max_positions
         self.min_confidence = min_confidence
 
-        logger.info("Initialized RiskManager", metadata={
-            "max_position_size_pct": max_position_size_pct,
-            "max_portfolio_risk_pct": max_portfolio_risk_pct,
-            "max_total_exposure_pct": max_total_exposure_pct,
-            "max_positions": max_positions,
-            "min_confidence": min_confidence
-        })
+        logger.info(
+            "Initialized RiskManager",
+            metadata={
+                "max_position_size_pct": max_position_size_pct,
+                "max_portfolio_risk_pct": max_portfolio_risk_pct,
+                "max_total_exposure_pct": max_total_exposure_pct,
+                "max_positions": max_positions,
+                "min_confidence": min_confidence,
+            },
+        )
 
     def validate_signal(self, signal: TradingSignal) -> tuple[bool, str]:
         """
@@ -60,29 +63,35 @@ class RiskManager:
         Returns:
             Tuple of (is_valid, reason)
         """
-        logger.debug("Validating signal", metadata={
-            "ticker": signal.ticker,
-            "confidence": signal.confidence_score,
-            "signal_type": signal.signal_type.value
-        })
+        logger.debug(
+            "Validating signal",
+            metadata={
+                "ticker": signal.ticker,
+                "confidence": signal.confidence_score,
+                "signal_type": signal.signal_type.value,
+            },
+        )
 
         # Check confidence threshold
         if signal.confidence_score < self.min_confidence:
             reason = f"Confidence {signal.confidence_score:.1%} below threshold {self.min_confidence:.1%}"
-            logger.info("Signal rejected - low confidence", metadata={
-                "ticker": signal.ticker,
-                "confidence": signal.confidence_score,
-                "min_required": self.min_confidence,
-                "reason": reason
-            })
+            logger.info(
+                "Signal rejected - low confidence",
+                metadata={
+                    "ticker": signal.ticker,
+                    "confidence": signal.confidence_score,
+                    "min_required": self.min_confidence,
+                    "reason": reason,
+                },
+            )
             return False, reason
 
         # Check if signal has price targets (needed for risk calculation)
         if signal.stop_loss is None and signal.signal_type.value in ["buy", "strong_buy"]:
-            logger.warning("Signal missing stop loss", metadata={
-                "ticker": signal.ticker,
-                "signal_type": signal.signal_type.value
-            })
+            logger.warning(
+                "Signal missing stop loss",
+                metadata={"ticker": signal.ticker, "signal_type": signal.signal_type.value},
+            )
 
         logger.debug("Signal passed validation", metadata={"ticker": signal.ticker})
         return True, "Signal passed validation"
@@ -239,14 +248,28 @@ class RiskManager:
             Dictionary of risk metrics
         """
         total_exposure = sum(pos.market_value for pos in positions if pos.is_open)
-        exposure_pct = (float(total_exposure) / float(portfolio.portfolio_value)) * 100 if portfolio.portfolio_value > 0 else 0
+        exposure_pct = (
+            (float(total_exposure) / float(portfolio.portfolio_value)) * 100
+            if portfolio.portfolio_value > 0
+            else 0
+        )
 
         total_unrealized_pl = sum(pos.unrealized_pl for pos in positions if pos.is_open)
-        unrealized_pl_pct = (float(total_unrealized_pl) / float(portfolio.portfolio_value)) * 100 if portfolio.portfolio_value > 0 else 0
+        unrealized_pl_pct = (
+            (float(total_unrealized_pl) / float(portfolio.portfolio_value)) * 100
+            if portfolio.portfolio_value > 0
+            else 0
+        )
 
         # Calculate largest position
-        largest_position_value = max([pos.market_value for pos in positions if pos.is_open], default=Decimal(0))
-        largest_position_pct = (float(largest_position_value) / float(portfolio.portfolio_value)) * 100 if portfolio.portfolio_value > 0 else 0
+        largest_position_value = max(
+            [pos.market_value for pos in positions if pos.is_open], default=Decimal(0)
+        )
+        largest_position_pct = (
+            (float(largest_position_value) / float(portfolio.portfolio_value)) * 100
+            if portfolio.portfolio_value > 0
+            else 0
+        )
 
         # Count winning/losing positions
         winning_positions = sum(1 for pos in positions if pos.is_open and pos.unrealized_pl > 0)
@@ -265,7 +288,11 @@ class RiskManager:
             "winning_positions": winning_positions,
             "losing_positions": losing_positions,
             "win_rate": win_rate,
-            "cash_pct": (float(portfolio.cash) / float(portfolio.portfolio_value)) * 100 if portfolio.portfolio_value > 0 else 0,
+            "cash_pct": (
+                (float(portfolio.cash) / float(portfolio.portfolio_value)) * 100
+                if portfolio.portfolio_value > 0
+                else 0
+            ),
         }
 
         return metrics
@@ -292,10 +319,18 @@ class RiskManager:
         report.append(f"Portfolio Value: ${float(portfolio.portfolio_value):,.2f}")
         report.append(f"Cash: ${float(portfolio.cash):,.2f} ({metrics['cash_pct']:.1f}%)")
         report.append(f"Open Positions: {metrics['open_positions']}/{self.max_positions}")
-        report.append(f"Total Exposure: ${metrics['total_exposure']:,.2f} ({metrics['exposure_pct']:.1f}%)")
-        report.append(f"Unrealized P&L: ${metrics['total_unrealized_pl']:,.2f} ({metrics['unrealized_pl_pct']:.1f}%)")
-        report.append(f"Largest Position: ${metrics['largest_position_value']:,.2f} ({metrics['largest_position_pct']:.1f}%)")
-        report.append(f"Win Rate: {metrics['win_rate']:.1f}% ({metrics['winning_positions']}/{metrics['total_positions']})")
+        report.append(
+            f"Total Exposure: ${metrics['total_exposure']:,.2f} ({metrics['exposure_pct']:.1f}%)"
+        )
+        report.append(
+            f"Unrealized P&L: ${metrics['total_unrealized_pl']:,.2f} ({metrics['unrealized_pl_pct']:.1f}%)"
+        )
+        report.append(
+            f"Largest Position: ${metrics['largest_position_value']:,.2f} ({metrics['largest_position_pct']:.1f}%)"
+        )
+        report.append(
+            f"Win Rate: {metrics['win_rate']:.1f}% ({metrics['winning_positions']}/{metrics['total_positions']})"
+        )
         report.append("")
         report.append("Risk Limits:")
         report.append(f"  Max Position Size: {self.max_position_size_pct}%")
@@ -305,12 +340,18 @@ class RiskManager:
 
         # Check for violations
         violations = []
-        if metrics['exposure_pct'] > self.max_total_exposure_pct:
-            violations.append(f"⚠️  EXPOSURE EXCEEDED: {metrics['exposure_pct']:.1f}% > {self.max_total_exposure_pct}%")
-        if metrics['largest_position_pct'] > self.max_position_size_pct:
-            violations.append(f"⚠️  POSITION SIZE EXCEEDED: {metrics['largest_position_pct']:.1f}% > {self.max_position_size_pct}%")
-        if metrics['open_positions'] >= self.max_positions:
-            violations.append(f"⚠️  MAX POSITIONS REACHED: {metrics['open_positions']}/{self.max_positions}")
+        if metrics["exposure_pct"] > self.max_total_exposure_pct:
+            violations.append(
+                f"⚠️  EXPOSURE EXCEEDED: {metrics['exposure_pct']:.1f}% > {self.max_total_exposure_pct}%"
+            )
+        if metrics["largest_position_pct"] > self.max_position_size_pct:
+            violations.append(
+                f"⚠️  POSITION SIZE EXCEEDED: {metrics['largest_position_pct']:.1f}% > {self.max_position_size_pct}%"
+            )
+        if metrics["open_positions"] >= self.max_positions:
+            violations.append(
+                f"⚠️  MAX POSITIONS REACHED: {metrics['open_positions']}/{self.max_positions}"
+            )
 
         if violations:
             report.append("VIOLATIONS:")

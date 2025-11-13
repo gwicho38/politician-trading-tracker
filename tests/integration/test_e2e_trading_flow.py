@@ -549,13 +549,19 @@ class TestE2ETradingFlow:
         # Trace: Politician → Disclosure → Signal → Order → Position
         print("\n📊 Complete Trade Lineage:")
         print(f"   1. Politician: {nancy_pelosi.full_name} ({nancy_pelosi.party})")
-        print(f"   2. Disclosure: {aapl_disclosure.transaction_type.value.upper()} "
-              f"{aapl_disclosure.asset_ticker} on {aapl_disclosure.transaction_date.date()}")
-        print(f"   3. Signal: {test_signal.signal_type.value.upper()} "
-              f"(Confidence: {test_signal.confidence_score:.1%})")
+        print(
+            f"   2. Disclosure: {aapl_disclosure.transaction_type.value.upper()} "
+            f"{aapl_disclosure.asset_ticker} on {aapl_disclosure.transaction_date.date()}"
+        )
+        print(
+            f"   3. Signal: {test_signal.signal_type.value.upper()} "
+            f"(Confidence: {test_signal.confidence_score:.1%})"
+        )
         print(f"   4. Order: {order.side.upper()} {order.quantity} shares @ MARKET")
-        print(f"   5. Position: {position['side'].upper()} {abs(position['quantity'])} shares "
-              f"@ ${position['avg_entry_price']:.2f}")
+        print(
+            f"   5. Position: {position['side'].upper()} {abs(position['quantity'])} shares "
+            f"@ ${position['avg_entry_price']:.2f}"
+        )
 
         # Verify links
         assert position["signal_ids"][0] == test_signal.id
@@ -593,7 +599,9 @@ class TestE2ETradingFlow:
 
         # Verify cleanup
         assert len(mock_supabase_client.table("politicians").select("*").execute().data) == 0
-        assert len(mock_supabase_client.table("trading_disclosures").select("*").execute().data) == 0
+        assert (
+            len(mock_supabase_client.table("trading_disclosures").select("*").execute().data) == 0
+        )
         assert len(mock_supabase_client.table("trading_signals").select("*").execute().data) == 0
         assert len(mock_supabase_client.table("trading_orders").select("*").execute().data) == 0
         assert len(mock_supabase_client.table("portfolios").select("*").execute().data) == 0

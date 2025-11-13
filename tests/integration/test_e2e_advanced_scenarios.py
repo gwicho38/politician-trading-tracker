@@ -215,7 +215,9 @@ class TestE2ELimitOrders:
             assert len(result.data) == 1
             assert result.data[0]["order_type"] == "limit"
             assert result.data[0]["limit_price"] == 380.00
-            print(f"✅ Limit order stored in database with limit_price=${result.data[0]['limit_price']}")
+            print(
+                f"✅ Limit order stored in database with limit_price=${result.data[0]['limit_price']}"
+            )
 
         # Cleanup
         ShoppingCart.clear()
@@ -252,9 +254,24 @@ class TestE2EMultipleSignals:
 
         # Create 3 different disclosures and signals
         trades = [
-            {"ticker": "AAPL", "name": "Apple Inc.", "transaction": TransactionType.SALE, "signal_type": SignalType.SELL},
-            {"ticker": "MSFT", "name": "Microsoft Corporation", "transaction": TransactionType.PURCHASE, "signal_type": SignalType.BUY},
-            {"ticker": "TSLA", "name": "Tesla Inc.", "transaction": TransactionType.SALE, "signal_type": SignalType.SELL},
+            {
+                "ticker": "AAPL",
+                "name": "Apple Inc.",
+                "transaction": TransactionType.SALE,
+                "signal_type": SignalType.SELL,
+            },
+            {
+                "ticker": "MSFT",
+                "name": "Microsoft Corporation",
+                "transaction": TransactionType.PURCHASE,
+                "signal_type": SignalType.BUY,
+            },
+            {
+                "ticker": "TSLA",
+                "name": "Tesla Inc.",
+                "transaction": TransactionType.SALE,
+                "signal_type": SignalType.SELL,
+            },
         ]
 
         signals = []
@@ -298,7 +315,9 @@ class TestE2EMultipleSignals:
         assert len(cart_items) == 3
         print(f"✅ Added {len(cart_items)} signals to cart")
         for item in cart_items:
-            print(f"   • {item['ticker']}: {item['quantity']} shares ({item['signal_type'].upper()})")
+            print(
+                f"   • {item['ticker']}: {item['quantity']} shares ({item['signal_type'].upper()})"
+            )
 
         # Execute with mixed order types
         with patch("politician_trading.trading.alpaca_client.TradingClient") as mock_trading_client:
@@ -339,7 +358,11 @@ class TestE2EMultipleSignals:
                 mock_order.type = order_type
                 mock_order.side = Mock(value=item["signal_type"])
                 mock_order.status = "pending_new"
-                mock_order.limit_price = str(item["target_price"]) if order_type == "limit" and item.get("target_price") else None
+                mock_order.limit_price = (
+                    str(item["target_price"])
+                    if order_type == "limit" and item.get("target_price")
+                    else None
+                )
                 mock_order.stop_price = None
                 mock_order.trail_percent = None
                 mock_order.filled_avg_price = None
@@ -362,11 +385,15 @@ class TestE2EMultipleSignals:
                         ticker=item["ticker"],
                         quantity=item["quantity"],
                         side=item["signal_type"],
-                        limit_price=float(item["target_price"]) if item.get("target_price") else 100.0,
+                        limit_price=(
+                            float(item["target_price"]) if item.get("target_price") else 100.0
+                        ),
                     )
 
                 executed_orders.append(order)
-                print(f"✅ Placed {order_type.upper()} order: {order.side.upper()} {order.quantity} {order.ticker}")
+                print(
+                    f"✅ Placed {order_type.upper()} order: {order.side.upper()} {order.quantity} {order.ticker}"
+                )
 
             # Verify all orders
             assert len(executed_orders) == 3
@@ -423,7 +450,9 @@ class TestE2EPerformance:
             ShoppingCart.add_item(cart_item)
 
         add_duration = time.time() - start_time
-        print(f"✅ Added 50 signals in {add_duration:.4f} seconds ({add_duration/50*1000:.2f}ms per item)")
+        print(
+            f"✅ Added 50 signals in {add_duration:.4f} seconds ({add_duration/50*1000:.2f}ms per item)"
+        )
 
         # Benchmark: Retrieve cart items
         start_time = time.time()
@@ -453,7 +482,9 @@ class TestE2EPerformance:
         assert clear_duration < 0.1, f"Clearing cart took too long: {clear_duration}s"
 
         print("\n📊 Performance Summary:")
-        print(f"   Add 50 items: {add_duration*1000:.2f}ms total, {add_duration/50*1000:.2f}ms per item")
+        print(
+            f"   Add 50 items: {add_duration*1000:.2f}ms total, {add_duration/50*1000:.2f}ms per item"
+        )
         print(f"   Retrieve: {retrieve_duration*1000:.2f}ms")
         print(f"   Update 10: {update_duration*1000:.2f}ms")
         print(f"   Clear: {clear_duration*1000:.2f}ms")

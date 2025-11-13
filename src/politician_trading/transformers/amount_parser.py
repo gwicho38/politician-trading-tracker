@@ -38,8 +38,7 @@ class AmountParser:
         self.logger = logging.getLogger(__name__)
 
     def parse(
-        self,
-        amount_text: Optional[str]
+        self, amount_text: Optional[str]
     ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
         """
         Parse amount from text.
@@ -64,8 +63,7 @@ class AmountParser:
 
         # Try to parse as range: "$X - $Y" or "$X-$Y"
         range_match = re.search(
-            r'\$\s*([\d,]+(?:\.\d{2})?)\s*[-–]\s*\$\s*([\d,]+(?:\.\d{2})?)',
-            amount_text
+            r"\$\s*([\d,]+(?:\.\d{2})?)\s*[-–]\s*\$\s*([\d,]+(?:\.\d{2})?)", amount_text
         )
         if range_match:
             try:
@@ -78,9 +76,7 @@ class AmountParser:
 
         # Try "Over $X" or "$X+"
         over_match = re.search(
-            r'(?:over|above|\>)\s*\$\s*([\d,]+(?:\.\d{2})?)',
-            amount_text,
-            re.IGNORECASE
+            r"(?:over|above|\>)\s*\$\s*([\d,]+(?:\.\d{2})?)", amount_text, re.IGNORECASE
         )
         if over_match:
             try:
@@ -92,9 +88,7 @@ class AmountParser:
 
         # Try "Under $X" or "$X or less"
         under_match = re.search(
-            r'(?:under|below|less than|\<)\s*\$\s*([\d,]+(?:\.\d{2})?)',
-            amount_text,
-            re.IGNORECASE
+            r"(?:under|below|less than|\<)\s*\$\s*([\d,]+(?:\.\d{2})?)", amount_text, re.IGNORECASE
         )
         if under_match:
             try:
@@ -105,7 +99,7 @@ class AmountParser:
                 self.logger.warning(f"Failed to parse 'under' number: {e}")
 
         # Try single amount: "$X"
-        single_match = re.search(r'\$\s*([\d,]+(?:\.\d{2})?)', amount_text)
+        single_match = re.search(r"\$\s*([\d,]+(?:\.\d{2})?)", amount_text)
         if single_match:
             try:
                 exact_val = self._parse_number(single_match.group(1))
@@ -129,7 +123,7 @@ class AmountParser:
             Parsed float value
         """
         # Remove commas
-        number_str = number_str.replace(',', '')
+        number_str = number_str.replace(",", "")
 
         # Convert to float
         return float(number_str)
