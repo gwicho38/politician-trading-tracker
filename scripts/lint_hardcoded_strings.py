@@ -13,10 +13,9 @@ Exit codes:
 
 import argparse
 import ast
-import re
 import sys
 from pathlib import Path
-from typing import List, Set, Tuple
+from typing import List, Tuple
 
 # Add src directory to Python path
 project_root = Path(__file__).parent.parent
