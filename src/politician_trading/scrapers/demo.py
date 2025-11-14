@@ -3,17 +3,13 @@ Demonstration script showing politician trading workflow execution and data crea
 """
 
 import asyncio
-import json
 import uuid
-from datetime import datetime
 
 from rich.console import Console
 from rich.json import JSON
-from rich.panel import Panel
 from rich.table import Table
 
 from .connectivity import SupabaseConnectivityValidator
-from .monitoring import run_health_check, run_stats_report
 from .workflow import run_politician_trading_collection
 
 console = Console()
@@ -29,7 +25,7 @@ async def demonstrate_workflow_execution():
     console.print("\n📋 STEP 1: Supabase Connectivity Validation", style="bold blue")
     console.print("This step validates database connectivity and operations...")
 
-    validator = SupabaseConnectivityValidator()
+    SupabaseConnectivityValidator()
 
     # Show the types of tests that would run
     tests_info = [

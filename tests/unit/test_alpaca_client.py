@@ -5,12 +5,10 @@ Unit tests for Alpaca trading client
 import json
 import sys
 from pathlib import Path
-from decimal import Decimal
 from datetime import datetime
 from unittest.mock import Mock, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
 
-import pytest
 
 # Add src to path
 src_path = Path(__file__).parent.parent.parent / "src"
@@ -46,9 +44,7 @@ class TestAlpacaClientUUIDSerialization:
         mock_trading_client.return_value.get_account.return_value = mock_account
 
         # Create client
-        client = AlpacaTradingClient(
-            api_key="test_key", secret_key="test_secret", paper=True
-        )
+        client = AlpacaTradingClient(api_key="test_key", secret_key="test_secret", paper=True)
 
         # Get account
         account_info = client.get_account()
@@ -85,9 +81,7 @@ class TestAlpacaClientUUIDSerialization:
         mock_trading_client.return_value.submit_order.return_value = mock_order
 
         # Create client
-        client = AlpacaTradingClient(
-            api_key="test_key", secret_key="test_secret", paper=True
-        )
+        client = AlpacaTradingClient(api_key="test_key", secret_key="test_secret", paper=True)
 
         # Place order
         order = client.place_market_order("AAPL", 10, "buy")
@@ -123,9 +117,7 @@ class TestAlpacaClientUUIDSerialization:
         mock_trading_client.return_value.submit_order.return_value = mock_order
 
         # Create client
-        client = AlpacaTradingClient(
-            api_key="test_key", secret_key="test_secret", paper=True
-        )
+        client = AlpacaTradingClient(api_key="test_key", secret_key="test_secret", paper=True)
 
         # Place order
         order = client.place_market_order("AAPL", 10, "buy")

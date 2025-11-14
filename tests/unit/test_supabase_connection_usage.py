@@ -2,8 +2,8 @@
 Unit tests for Supabase connection usage patterns
 Tests that the API is being used correctly
 """
-import pytest
-from unittest.mock import Mock, MagicMock, patch
+
+from unittest.mock import Mock
 
 
 class TestSupabaseConnectionUsage:
@@ -56,7 +56,13 @@ class TestSupabaseConnectionUsage:
         mock_order.execute.return_value = mock_response
 
         # Test the pattern
-        response = mock_conn.table("action_logs").select("*").order("created_at", desc=True).limit(5).execute()
+        response = (
+            mock_conn.table("action_logs")
+            .select("*")
+            .order("created_at", desc=True)
+            .limit(5)
+            .execute()
+        )
 
         # Verify the calls
         mock_conn.table.assert_called_once_with("action_logs")
@@ -78,7 +84,7 @@ class TestSupabaseConnectionUsage:
         conn = mock_client
 
         # Verify it has the table method
-        assert hasattr(conn, 'table')
+        assert hasattr(conn, "table")
         assert callable(conn.table)
 
     def test_response_has_data_attribute(self):
@@ -96,7 +102,7 @@ class TestSupabaseConnectionUsage:
         mock_response.count = 42
 
         # This is the pattern we use in the code
-        count = mock_response.count if hasattr(mock_response, 'count') else 0
+        count = mock_response.count if hasattr(mock_response, "count") else 0
         assert count == 42
 
     def test_pandas_dataframe_from_response(self):
@@ -104,10 +110,7 @@ class TestSupabaseConnectionUsage:
         import pandas as pd
 
         mock_response = Mock()
-        mock_response.data = [
-            {"id": 1, "name": "test1"},
-            {"id": 2, "name": "test2"}
-        ]
+        mock_response.data = [{"id": 1, "name": "test1"}, {"id": 2, "name": "test2"}]
 
         # This is how we convert to DataFrame in the code
         df = pd.DataFrame(mock_response.data)

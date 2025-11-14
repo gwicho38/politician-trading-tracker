@@ -1,10 +1,8 @@
 """Political influence features for stock recommendation models"""
 
 import logging
-from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd

@@ -32,9 +32,7 @@ class USSenateSource(BaseSource):
             request_delay=2.0,  # Respectful rate limiting for government servers
             max_retries=3,
             timeout=60,
-            headers={
-                'User-Agent': 'Mozilla/5.0 (compatible; PoliticianTradingBot/1.0)'
-            }
+            headers={"User-Agent": "Mozilla/5.0 (compatible; PoliticianTradingBot/1.0)"},
         )
 
     async def _fetch_data(self, lookback_days: int, **kwargs) -> Any:
@@ -68,14 +66,10 @@ class USSenateSource(BaseSource):
 
         try:
             # Make search request
-            response = await self._make_request(
-                search_url,
-                method="GET",
-                params=params
-            )
+            response = await self._make_request(search_url, method="GET", params=params)
 
             if isinstance(response, str):
-                self.logger.info(f"Received Senate search results (HTML response)")
+                self.logger.info("Received Senate search results (HTML response)")
                 return response
             else:
                 self.logger.warning("Unexpected response type from Senate EFD")
@@ -105,15 +99,15 @@ class USSenateSource(BaseSource):
             return disclosures
 
         try:
-            soup = BeautifulSoup(response_data, 'html.parser')
+            soup = BeautifulSoup(response_data, "html.parser")
 
             # Find result rows - Senate EFD uses a results table
             # The exact selector may need adjustment based on current site structure
             result_rows = (
-                soup.find_all('tr', class_='searchResultOdd') +
-                soup.find_all('tr', class_='searchResultEven') or
-                soup.select('table.table tr') or
-                soup.find_all('tr')
+                soup.find_all("tr", class_="searchResultOdd")
+                + soup.find_all("tr", class_="searchResultEven")
+                or soup.select("table.table tr")
+                or soup.find_all("tr")
             )
 
             self.logger.info(f"Found {len(result_rows)} potential result rows")
@@ -144,7 +138,7 @@ class USSenateSource(BaseSource):
         Returns:
             Disclosure dictionary or None if invalid
         """
-        cells = row.find_all('td')
+        cells = row.find_all("td")
 
         if len(cells) < 3:  # Need at least 3 cells for valid data
             return None
@@ -157,18 +151,15 @@ class USSenateSource(BaseSource):
             politician_name = ""
             for text in cell_texts:
                 if (
-                    len(text) > 3 and
-                    any(c.isalpha() for c in text) and
-                    not text.isdigit() and
-                    'pdf' not in text.lower()
+                    len(text) > 3
+                    and any(c.isalpha() for c in text)
+                    and not text.isdigit()
+                    and "pdf" not in text.lower()
                 ):
                     clean_name = (
-                        text.replace('Hon.', '')
-                        .replace('Sen.', '')
-                        .replace('Senator', '')
-                        .strip()
+                        text.replace("Hon.", "").replace("Sen.", "").replace("Senator", "").strip()
                     )
-                    if len(clean_name) > 3 and ' ' in clean_name:
+                    if len(clean_name) > 3 and " " in clean_name:
                         politician_name = clean_name
                         break
 
@@ -180,20 +171,20 @@ class USSenateSource(BaseSource):
             filing_date = None
             for text in cell_texts:
                 # Look for date pattern MM/DD/YYYY
-                date_match = re.search(r'(\d{1,2}/\d{1,2}/\d{4})', text)
+                date_match = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", text)
                 if date_match:
                     try:
-                        filing_date = datetime.strptime(date_match.group(1), '%m/%d/%Y').isoformat()
+                        filing_date = datetime.strptime(date_match.group(1), "%m/%d/%Y").isoformat()
                         break
-                    except:
+                    except (ValueError, TypeError):
                         pass
 
             # Find report link
             report_url = None
-            pdf_link = row.find('a', href=True)
+            pdf_link = row.find("a", href=True)
             if pdf_link:
-                href = pdf_link['href']
-                if href.startswith('http'):
+                href = pdf_link["href"]
+                if href.startswith("http"):
                     report_url = href
                 else:
                     report_url = f"{self.config.base_url}{href}"
@@ -201,24 +192,24 @@ class USSenateSource(BaseSource):
             # Extract report type
             report_type = ""
             for text in cell_texts:
-                if 'periodic' in text.lower() or 'transaction' in text.lower():
+                if "periodic" in text.lower() or "transaction" in text.lower():
                     report_type = text
                     break
 
             # Create disclosure dictionary
             # Note: Full transaction details would require parsing the PDF/detailed report
             disclosure = {
-                'politician_name': politician_name,
-                'transaction_date': filing_date or datetime.now().isoformat(),
-                'disclosure_date': filing_date or datetime.now().isoformat(),
-                'asset_name': 'Multiple Assets',  # PTRs contain multiple transactions
-                'transaction_type': 'purchase',  # Default - actual type in PDF
-                'amount': 'See Report',  # Actual amounts in PDF
-                'source_url': report_url,
-                'document_id': self._extract_document_id(report_url),
-                'report_type': report_type,
-                'requires_pdf_parsing': True,
-                'extraction_method': 'senate_efd_search'
+                "politician_name": politician_name,
+                "transaction_date": filing_date or datetime.now().isoformat(),
+                "disclosure_date": filing_date or datetime.now().isoformat(),
+                "asset_name": "Multiple Assets",  # PTRs contain multiple transactions
+                "transaction_type": "purchase",  # Default - actual type in PDF
+                "amount": "See Report",  # Actual amounts in PDF
+                "source_url": report_url,
+                "document_id": self._extract_document_id(report_url),
+                "report_type": report_type,
+                "requires_pdf_parsing": True,
+                "extraction_method": "senate_efd_search",
             }
 
             return disclosure
@@ -233,12 +224,12 @@ class USSenateSource(BaseSource):
             return None
 
         # Senate EFD URLs typically have an ID parameter
-        match = re.search(r'[?&]id=([^&]+)', url)
+        match = re.search(r"[?&]id=([^&]+)", url)
         if match:
             return match.group(1)
 
         # Or extract from path
-        match = re.search(r'/(\d+)\.pdf', url)
+        match = re.search(r"/(\d+)\.pdf", url)
         if match:
             return match.group(1)
 

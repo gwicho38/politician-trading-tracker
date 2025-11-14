@@ -14,7 +14,7 @@ from .base import (
     PipelineMetrics,
     PipelineStatus,
     CleanedDisclosure,
-    NormalizedDisclosure
+    NormalizedDisclosure,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,9 +39,7 @@ class NormalizationStage(PipelineStage[NormalizedDisclosure]):
         self._politician_cache = {}  # Cache for politician lookups
 
     async def process(
-        self,
-        data: List[CleanedDisclosure],
-        context: PipelineContext
+        self, data: List[CleanedDisclosure], context: PipelineContext
     ) -> PipelineResult[NormalizedDisclosure]:
         """
         Normalize cleaned disclosures.
@@ -61,11 +59,7 @@ class NormalizationStage(PipelineStage[NormalizedDisclosure]):
         self.logger.info(f"Starting normalization of {len(data)} cleaned disclosures")
 
         # Load transformers
-        from ..transformers import (
-            TickerExtractor,
-            AmountParser,
-            PoliticianMatcher
-        )
+        from ..transformers import TickerExtractor, AmountParser, PoliticianMatcher
 
         ticker_extractor = TickerExtractor()
         amount_parser = AmountParser()
@@ -83,9 +77,7 @@ class NormalizationStage(PipelineStage[NormalizedDisclosure]):
 
                 # Match to existing politician or prepare for creation
                 politician_id, role, party, state = await politician_matcher.match(
-                    first_name=first_name,
-                    last_name=last_name,
-                    source=cleaned.source
+                    first_name=first_name, last_name=last_name, source=cleaned.source
                 )
 
                 # Extract ticker if not already present
@@ -95,19 +87,14 @@ class NormalizationStage(PipelineStage[NormalizedDisclosure]):
 
                 # Determine asset type
                 asset_type = cleaned.asset_type or self._infer_asset_type(
-                    cleaned.asset_name,
-                    asset_ticker
+                    cleaned.asset_name, asset_ticker
                 )
 
                 # Parse amount range
-                amount_min, amount_max, amount_exact = amount_parser.parse(
-                    cleaned.amount_text
-                )
+                amount_min, amount_max, amount_exact = amount_parser.parse(cleaned.amount_text)
 
                 # Normalize transaction type
-                transaction_type = self._normalize_transaction_type(
-                    cleaned.transaction_type
-                )
+                transaction_type = self._normalize_transaction_type(cleaned.transaction_type)
 
                 # Create normalized disclosure
                 normalized = NormalizedDisclosure(
@@ -130,17 +117,14 @@ class NormalizationStage(PipelineStage[NormalizedDisclosure]):
                     source=cleaned.source,
                     source_url=cleaned.source_url,
                     source_document_id=cleaned.source_document_id,
-                    raw_data=cleaned.raw_data
+                    raw_data=cleaned.raw_data,
                 )
 
                 normalized_disclosures.append(normalized)
                 metrics.records_output += 1
 
             except Exception as e:
-                self.logger.error(
-                    f"Error normalizing record {i}: {e}",
-                    exc_info=True
-                )
+                self.logger.error(f"Error normalizing record {i}: {e}", exc_info=True)
                 metrics.records_failed += 1
                 metrics.errors.append(f"Record {i}: {str(e)}")
 
@@ -164,16 +148,10 @@ class NormalizationStage(PipelineStage[NormalizedDisclosure]):
         )
 
         return self._create_result(
-            status=status,
-            data=normalized_disclosures,
-            context=context,
-            metrics=metrics
+            status=status, data=normalized_disclosures, context=context, metrics=metrics
         )
 
-    def _parse_politician_name(
-        self,
-        full_name: str
-    ) -> Tuple[str, str, str]:
+    def _parse_politician_name(self, full_name: str) -> Tuple[str, str, str]:
         """
         Parse politician name into components.
 
@@ -182,12 +160,12 @@ class NormalizationStage(PipelineStage[NormalizedDisclosure]):
         # Remove titles and prefixes
         clean_name = full_name
         titles = [
-            r'^(Sen\.|Senator|Rep\.|Representative|Hon\.|Honorable|Mr\.|Mrs\.|Ms\.|Dr\.)\s+',
-            r'^(The\s+)?(Right\s+)?(Honourable|Honorable)\s+',
+            r"^(Sen\.|Senator|Rep\.|Representative|Hon\.|Honorable|Mr\.|Mrs\.|Ms\.|Dr\.)\s+",
+            r"^(The\s+)?(Right\s+)?(Honourable|Honorable)\s+",
         ]
 
         for title_pattern in titles:
-            clean_name = re.sub(title_pattern, '', clean_name, flags=re.IGNORECASE)
+            clean_name = re.sub(title_pattern, "", clean_name, flags=re.IGNORECASE)
 
         clean_name = clean_name.strip()
 
@@ -204,47 +182,43 @@ class NormalizationStage(PipelineStage[NormalizedDisclosure]):
             # Handle middle names/initials - take first and last
             return parts[0], parts[-1], full_name
 
-    def _infer_asset_type(
-        self,
-        asset_name: str,
-        asset_ticker: Optional[str]
-    ) -> str:
+    def _infer_asset_type(self, asset_name: str, asset_ticker: Optional[str]) -> str:
         """Infer asset type from asset name and ticker"""
         asset_lower = asset_name.lower()
 
         # Check for specific indicators
-        if any(word in asset_lower for word in ['fund', 'mutual', 'etf', 'index']):
-            if 'etf' in asset_lower or 'exchange traded' in asset_lower:
-                return 'etf'
-            return 'mutual_fund'
+        if any(word in asset_lower for word in ["fund", "mutual", "etf", "index"]):
+            if "etf" in asset_lower or "exchange traded" in asset_lower:
+                return "etf"
+            return "mutual_fund"
 
-        if any(word in asset_lower for word in ['bond', 'treasury', 'note', 'bill']):
-            return 'bond'
+        if any(word in asset_lower for word in ["bond", "treasury", "note", "bill"]):
+            return "bond"
 
-        if any(word in asset_lower for word in ['option', 'call', 'put']):
-            return 'option'
+        if any(word in asset_lower for word in ["option", "call", "put"]):
+            return "option"
 
-        if any(word in asset_lower for word in ['crypto', 'bitcoin', 'ethereum']):
-            return 'cryptocurrency'
+        if any(word in asset_lower for word in ["crypto", "bitcoin", "ethereum"]):
+            return "cryptocurrency"
 
         # If has ticker, likely a stock
         if asset_ticker:
-            return 'stock'
+            return "stock"
 
         # Default to stock if can't determine
-        return 'stock'
+        return "stock"
 
     def _normalize_transaction_type(self, trans_type: str) -> str:
         """Normalize transaction type to standard values"""
         # These should already be normalized from cleaning stage
         # Just ensure consistency
         type_map = {
-            'purchase': 'purchase',
-            'sale': 'sale',
-            'exchange': 'exchange',
-            'option_purchase': 'option_purchase',
-            'option_sale': 'option_sale',
-            'option_exercise': 'option_exercise',
+            "purchase": "purchase",
+            "sale": "sale",
+            "exchange": "exchange",
+            "option_purchase": "option_purchase",
+            "option_sale": "option_sale",
+            "option_exercise": "option_exercise",
         }
 
         return type_map.get(trans_type.lower(), trans_type)

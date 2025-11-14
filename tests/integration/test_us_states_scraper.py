@@ -62,7 +62,7 @@ async def test_us_states_name_extraction():
                     state_counts[state] = 0
                 state_counts[state] += 1
 
-            print(f"📈 RESULTS:")
+            print("📈 RESULTS:")
             print(f"Total disclosures found: {len(disclosures)}")
             print(f"Disclosures with real names: {real_names}")
             print(
@@ -71,7 +71,7 @@ async def test_us_states_name_extraction():
                 else "No data"
             )
 
-            print(f"\n📋 By State:")
+            print("\n📋 By State:")
             for state, count in state_counts.items():
                 print(f"  {state}: {count} disclosures")
 

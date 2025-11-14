@@ -5,13 +5,10 @@ Manages APScheduler for running scheduled jobs within the Streamlit app.
 Uses singleton pattern to ensure only one scheduler runs across Streamlit reruns.
 """
 
-import asyncio
 import atexit
 import logging
 import time
 from datetime import datetime
-from io import StringIO
-from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional
 
@@ -21,6 +18,7 @@ try:
     from apscheduler.triggers.cron import CronTrigger
     from apscheduler.triggers.interval import IntervalTrigger
     from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+
     APSCHEDULER_AVAILABLE = True
 except ImportError:
     APSCHEDULER_AVAILABLE = False
@@ -55,7 +53,7 @@ class LogCaptureHandler(logging.Handler):
                 self.logs.append(msg)
                 # Keep only last N lines
                 if len(self.logs) > self.max_lines:
-                    self.logs = self.logs[-self.max_lines:]
+                    self.logs = self.logs[-self.max_lines :]
         except Exception:
             self.handleError(record)
 
@@ -73,7 +71,12 @@ class LogCaptureHandler(logging.Handler):
 class JobHistory:
     """Tracks job execution history with logs and persists to database"""
 
-    def __init__(self, max_history: int = 100, max_log_lines: int = 1000, db_client: Optional[SupabaseClient] = None):
+    def __init__(
+        self,
+        max_history: int = 100,
+        max_log_lines: int = 1000,
+        db_client: Optional[SupabaseClient] = None,
+    ):
         self.max_history = max_history
         self.max_log_lines = max_log_lines
         self.executions: List[Dict[str, Any]] = []
@@ -105,11 +108,17 @@ class JobHistory:
                 for record in reversed(response.data):  # Reverse to maintain chronological order
                     execution = {
                         "job_id": record["job_id"],
-                        "timestamp": datetime.fromisoformat(record["started_at"].replace('Z', '+00:00')),
+                        "timestamp": datetime.fromisoformat(
+                            record["started_at"].replace("Z", "+00:00")
+                        ),
                         "status": record["status"],
                         "error": record.get("error_message"),
                         "logs": record.get("logs", "").split("\n") if record.get("logs") else [],
-                        "duration_seconds": float(record["duration_seconds"]) if record.get("duration_seconds") else None,
+                        "duration_seconds": (
+                            float(record["duration_seconds"])
+                            if record.get("duration_seconds")
+                            else None
+                        ),
                         "db_id": record["id"],  # Store database ID for reference
                     }
                     self.executions.insert(0, execution)
@@ -139,11 +148,7 @@ class JobHistory:
             }
 
             # Insert to database
-            response = (
-                self.db_client.client.table("job_executions")
-                .insert(db_record)
-                .execute()
-            )
+            response = self.db_client.client.table("job_executions").insert(db_record).execute()
 
             if response.data:
                 db_id = response.data[0]["id"]
@@ -174,13 +179,21 @@ class JobHistory:
                 db_updates["logs"] = "\n".join(updates["logs"])
 
             if db_updates:
-                self.db_client.client.table("job_executions").update(db_updates).eq("id", db_id).execute()
+                self.db_client.client.table("job_executions").update(db_updates).eq(
+                    "id", db_id
+                ).execute()
                 logger.debug(f"Updated job execution in database: {db_id}")
 
         except Exception as e:
             logger.error(f"Failed to update job execution in database: {e}")
 
-    def add_execution(self, job_id: str, status: str, error: Optional[str] = None, logs: Optional[List[str]] = None):
+    def add_execution(
+        self,
+        job_id: str,
+        status: str,
+        error: Optional[str] = None,
+        logs: Optional[List[str]] = None,
+    ):
         """Add a job execution record with logs and persist to database"""
         with self._lock:
             execution = {
@@ -215,7 +228,9 @@ class JobHistory:
 
                     break
 
-    def get_history(self, job_id: Optional[str] = None, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    def get_history(
+        self, job_id: Optional[str] = None, limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
         """Get execution history, optionally filtered by job_id and limited"""
         with self._lock:
             if job_id:
@@ -334,11 +349,12 @@ class SchedulerManager:
         Returns:
             Wrapped function that captures logs
         """
+
         def wrapper():
             # Create log handler for this execution
             log_handler = LogCaptureHandler(max_lines=1000)
             log_handler.setLevel(logging.DEBUG)
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
             log_handler.setFormatter(formatter)
 
             # Store handler for this job
@@ -358,7 +374,7 @@ class SchedulerManager:
                 action_name=f"Scheduled Job: {job_id}",
                 source="scheduled_job",
                 job_id=job_id,
-                action_details={"scheduled": True}
+                action_details={"scheduled": True},
             )
 
             try:
@@ -382,7 +398,7 @@ class SchedulerManager:
                 self.job_history.update_execution(
                     job_id=job_id,
                     timestamp=self.job_history.get_last_execution(job_id)["timestamp"],
-                    duration_seconds=duration
+                    duration_seconds=duration,
                 )
 
                 # Complete action logging
@@ -393,8 +409,8 @@ class SchedulerManager:
                         action_details={
                             "scheduled": True,
                             "duration_seconds": duration,
-                            "db_execution_id": execution.get("db_id") if execution else None
-                        }
+                            "db_execution_id": execution.get("db_id") if execution else None,
+                        },
                     )
 
                 return result
@@ -417,7 +433,7 @@ class SchedulerManager:
                 self.job_history.update_execution(
                     job_id=job_id,
                     timestamp=self.job_history.get_last_execution(job_id)["timestamp"],
-                    duration_seconds=duration
+                    duration_seconds=duration,
                 )
 
                 # Fail action logging
@@ -428,8 +444,8 @@ class SchedulerManager:
                         action_details={
                             "scheduled": True,
                             "duration_seconds": duration,
-                            "db_execution_id": execution.get("db_id") if execution else None
-                        }
+                            "db_execution_id": execution.get("db_id") if execution else None,
+                        },
                     )
 
                 raise
@@ -445,7 +461,7 @@ class SchedulerManager:
     def _job_error(self, event):
         """Handler for job execution errors"""
         job_id = event.job_id
-        exception = str(event.exception) if event.exception else "Unknown error"
+        str(event.exception) if event.exception else "Unknown error"
         logger.error(f"Job failed: {job_id}", error=event.exception)
         # Execution already recorded in wrapper
 
@@ -533,10 +549,13 @@ class SchedulerManager:
                     job_function=f"{func.__module__}.{func.__name__}",
                     schedule_type="cron",
                     schedule_value=cron_expression or f"{hour} {minute} * * {day_of_week or '*'}",
-                    metadata={"description": description}
+                    metadata={"description": description},
                 )
 
-            logger.info(f"Added cron job: {name}", metadata={"job_id": job_id, "schedule": cron_expression or f"{hour}:{minute:02d}"})
+            logger.info(
+                f"Added cron job: {name}",
+                metadata={"job_id": job_id, "schedule": cron_expression or f"{hour}:{minute:02d}"},
+            )
             return True
 
         except Exception as e:
@@ -574,36 +593,41 @@ class SchedulerManager:
             logger.warning("Cannot add interval job - scheduler not available")
             return False
 
-        logger.info(f"add_interval_job called", metadata={
-            "job_id": job_id,
-            "name": name,
-            "hours": hours,
-            "minutes": minutes,
-            "seconds": seconds,
-            "replace_existing": replace_existing,
-            "func_name": func.__name__ if hasattr(func, '__name__') else str(func)
-        })
+        logger.info(
+            "add_interval_job called",
+            metadata={
+                "job_id": job_id,
+                "name": name,
+                "hours": hours,
+                "minutes": minutes,
+                "seconds": seconds,
+                "replace_existing": replace_existing,
+                "func_name": func.__name__ if hasattr(func, "__name__") else str(func),
+            },
+        )
 
         try:
             # Check if job already exists
             existing_job = self.scheduler.get_job(job_id)
             if existing_job:
-                logger.info(f"Found existing job with id {job_id}", metadata={
-                    "existing_job_name": existing_job.name,
-                    "replace_existing": replace_existing
-                })
+                logger.info(
+                    f"Found existing job with id {job_id}",
+                    metadata={
+                        "existing_job_name": existing_job.name,
+                        "replace_existing": replace_existing,
+                    },
+                )
                 if not replace_existing:
                     logger.warning(f"Job {job_id} already exists and replace_existing=False")
                     return False
 
             # Create trigger
-            logger.info(f"Creating IntervalTrigger", metadata={
-                "hours": hours,
-                "minutes": minutes,
-                "seconds": seconds
-            })
+            logger.info(
+                "Creating IntervalTrigger",
+                metadata={"hours": hours, "minutes": minutes, "seconds": seconds},
+            )
             trigger = IntervalTrigger(hours=hours, minutes=minutes, seconds=seconds, timezone="UTC")
-            logger.info(f"IntervalTrigger created successfully")
+            logger.info("IntervalTrigger created successfully")
 
             # Wrap function to capture logs
             logger.info(f"Wrapping function to capture logs for {job_id}")
@@ -645,9 +669,9 @@ class SchedulerManager:
                 "interval": " ".join(interval_str),
                 "metadata_stored": {
                     **metadata_to_store,
-                    "added_at": metadata_to_store["added_at"].isoformat()
+                    "added_at": metadata_to_store["added_at"].isoformat(),
                 },
-                "return_value": True
+                "return_value": True,
             }
 
             # Register job in database for recovery
@@ -659,18 +683,27 @@ class SchedulerManager:
                     job_function=f"{func.__module__}.{func.__name__}",
                     schedule_type="interval",
                     schedule_value=str(total_seconds),
-                    metadata={"description": description, "hours": hours, "minutes": minutes, "seconds": seconds}
+                    metadata={
+                        "description": description,
+                        "hours": hours,
+                        "minutes": minutes,
+                        "seconds": seconds,
+                    },
                 )
 
             logger.info(f"Added interval job: {name}", metadata=metadata_for_log)
             return True
 
         except Exception as e:
-            logger.error(f"Failed to add interval job: {name}", error=e, metadata={
-                "job_id": job_id,
-                "exception_type": type(e).__name__,
-                "return_value": False
-            })
+            logger.error(
+                f"Failed to add interval job: {name}",
+                error=e,
+                metadata={
+                    "job_id": job_id,
+                    "exception_type": type(e).__name__,
+                    "return_value": False,
+                },
+            )
             return False
 
     def remove_job(self, job_id: str) -> bool:
@@ -802,11 +835,11 @@ class SchedulerManager:
             logger.info(f"Found {len(overdue_jobs)} overdue job(s) to recover")
 
             for job_record in overdue_jobs:
-                job_id = job_record['job_id']
-                job_name = job_record['job_name']
-                consecutive_failures = job_record['consecutive_failures']
-                max_failures = job_record['max_consecutive_failures']
-                last_run = job_record.get('last_attempted_run')
+                job_id = job_record["job_id"]
+                job_name = job_record["job_name"]
+                consecutive_failures = job_record["consecutive_failures"]
+                max_failures = job_record["max_consecutive_failures"]
+                last_run = job_record.get("last_attempted_run")
 
                 logger.info(f"📋 Attempting to recover job: {job_name} ({job_id})")
                 logger.info(f"   Last run: {last_run or 'Never'}")
@@ -823,6 +856,7 @@ class SchedulerManager:
         except Exception as e:
             logger.error(f"❌ Error during job recovery: {e}")
             import traceback
+
             traceback.print_exc()
 
     def _get_overdue_jobs(self) -> List[Dict[str, Any]]:
@@ -850,8 +884,9 @@ class SchedulerManager:
 
             # Filter out jobs that have exceeded max failures
             overdue_jobs = [
-                job for job in response.data
-                if job['consecutive_failures'] < job['max_consecutive_failures']
+                job
+                for job in response.data
+                if job["consecutive_failures"] < job["max_consecutive_failures"]
             ]
 
             return overdue_jobs
@@ -870,16 +905,17 @@ class SchedulerManager:
         Returns:
             True if execution succeeded, False otherwise
         """
-        job_id = job_record['job_id']
-        job_function = job_record['job_function']
+        job_id = job_record["job_id"]
+        job_function = job_record["job_function"]
 
         try:
             # Import and get the job function
             logger.info(f"🔄 Loading job function: {job_function}")
 
-            module_path, function_name = job_function.rsplit('.', 1)
+            module_path, function_name = job_function.rsplit(".", 1)
 
             import importlib
+
             module = importlib.import_module(module_path)
             func = getattr(module, function_name)
 
@@ -898,6 +934,7 @@ class SchedulerManager:
         except Exception as e:
             logger.error(f"❌ Error executing missed job {job_id}: {e}")
             import traceback
+
             traceback.print_exc()
 
             # Update job status in database - failure
@@ -919,15 +956,13 @@ class SchedulerManager:
             if success:
                 logger.info(f"✅ Updating job status: {job_id} - SUCCESS")
                 self.db_client.client.rpc(
-                    'update_job_after_execution',
-                    {'p_job_id': job_id, 'p_success': True}
+                    "update_job_after_execution", {"p_job_id": job_id, "p_success": True}
                 ).execute()
             else:
                 logger.warning(f"⚠️  Updating job status: {job_id} - FAILED")
                 logger.warning(f"   Error: {error}")
                 self.db_client.client.rpc(
-                    'update_job_after_execution',
-                    {'p_job_id': job_id, 'p_success': False}
+                    "update_job_after_execution", {"p_job_id": job_id, "p_success": False}
                 ).execute()
 
         except Exception as e:
@@ -940,7 +975,7 @@ class SchedulerManager:
         job_function: str,
         schedule_type: str,
         schedule_value: str,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         """
         Register a scheduled job in the database for recovery tracking.
@@ -957,7 +992,7 @@ class SchedulerManager:
             logger.info(f"📝 Registering job in database: {job_id}")
 
             # Calculate next_scheduled_run
-            if schedule_type == 'interval':
+            if schedule_type == "interval":
                 next_run = datetime.now()
             else:
                 next_run = datetime.now()
@@ -975,8 +1010,7 @@ class SchedulerManager:
 
             # Upsert job record (insert or update if exists)
             self.db_client.client.table("scheduled_jobs").upsert(
-                job_record,
-                on_conflict="job_id"
+                job_record, on_conflict="job_id"
             ).execute()
 
             logger.info(f"✅ Job registered in database: {job_id}")
@@ -994,10 +1028,12 @@ class SchedulerManager:
 
         try:
             # Get all enabled jobs from database
-            response = self.db_client.client.table("scheduled_jobs")\
-                .select("*")\
-                .eq("enabled", True)\
+            response = (
+                self.db_client.client.table("scheduled_jobs")
+                .select("*")
+                .eq("enabled", True)
                 .execute()
+            )
 
             if not response.data:
                 logger.info("No enabled jobs found in database")
@@ -1030,8 +1066,9 @@ class SchedulerManager:
 
                 try:
                     # Dynamically import the job function
-                    module_path, function_name = job_function_path.rsplit('.', 1)
+                    module_path, function_name = job_function_path.rsplit(".", 1)
                     import importlib
+
                     module = importlib.import_module(module_path)
                     func = getattr(module, function_name)
 
@@ -1043,11 +1080,11 @@ class SchedulerManager:
                             minute, hour, day, month, day_of_week = parts[:5]
 
                             # Convert cron wildcards to None for CronTrigger
-                            minute = None if minute == '*' else minute
-                            hour = None if hour == '*' else hour
-                            day = None if day == '*' else day
-                            month = None if month == '*' else month
-                            day_of_week = None if day_of_week == '*' else day_of_week
+                            minute = None if minute == "*" else minute
+                            hour = None if hour == "*" else hour
+                            day = None if day == "*" else day
+                            month = None if month == "*" else month
+                            day_of_week = None if day_of_week == "*" else day_of_week
 
                             trigger = CronTrigger(
                                 minute=minute,
@@ -1055,7 +1092,7 @@ class SchedulerManager:
                                 day=day,
                                 month=month,
                                 day_of_week=day_of_week,
-                                timezone="UTC"
+                                timezone="UTC",
                             )
 
                             wrapped_func = self._create_job_wrapper(func, job_id)
@@ -1064,7 +1101,7 @@ class SchedulerManager:
                                 trigger=trigger,
                                 id=job_id,
                                 name=job_name,
-                                replace_existing=False
+                                replace_existing=False,
                             )
 
                             # Store metadata
@@ -1074,14 +1111,18 @@ class SchedulerManager:
                                 "type": "cron",
                                 "schedule": schedule_value,
                                 "added_at": datetime.now(),
-                                "loaded_from_database": True
+                                "loaded_from_database": True,
                             }
 
-                            logger.info(f"✅ Loaded cron job from database: {job_name} (schedule: {schedule_value})")
+                            logger.info(
+                                f"✅ Loaded cron job from database: {job_name} (schedule: {schedule_value})"
+                            )
                             loaded_count += 1
 
                         else:
-                            logger.error(f"Invalid cron expression for job {job_name}: {schedule_value}")
+                            logger.error(
+                                f"Invalid cron expression for job {job_name}: {schedule_value}"
+                            )
 
                     elif schedule_type == "interval":
                         # Interval in seconds
@@ -1094,7 +1135,7 @@ class SchedulerManager:
                             trigger=trigger,
                             id=job_id,
                             name=job_name,
-                            replace_existing=False
+                            replace_existing=False,
                         )
 
                         # Store metadata
@@ -1104,22 +1145,27 @@ class SchedulerManager:
                             "type": "interval",
                             "schedule": f"every {seconds}s",
                             "added_at": datetime.now(),
-                            "loaded_from_database": True
+                            "loaded_from_database": True,
                         }
 
-                        logger.info(f"✅ Loaded interval job from database: {job_name} (every {seconds}s)")
+                        logger.info(
+                            f"✅ Loaded interval job from database: {job_name} (every {seconds}s)"
+                        )
                         loaded_count += 1
 
                     else:
                         logger.error(f"Unknown schedule type for job {job_name}: {schedule_type}")
 
                 except Exception as e:
-                    logger.error(f"Failed to load job {job_name} from database", error=e, metadata={
-                        "job_id": job_id,
-                        "job_function": job_function_path
-                    })
+                    logger.error(
+                        f"Failed to load job {job_name} from database",
+                        error=e,
+                        metadata={"job_id": job_id, "job_function": job_function_path},
+                    )
 
-            logger.info(f"✅ Database job loading complete: {loaded_count} loaded, {skipped_count} skipped")
+            logger.info(
+                f"✅ Database job loading complete: {loaded_count} loaded, {skipped_count} skipped"
+            )
 
         except Exception as e:
             logger.error("Failed to load jobs from database", error=e)

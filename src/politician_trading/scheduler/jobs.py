@@ -6,9 +6,7 @@ to be called by APScheduler.
 """
 
 import asyncio
-import sys
 from datetime import datetime
-from pathlib import Path
 
 from politician_trading.utils.logger import create_logger
 from politician_trading.config import SupabaseConfig, ScrapingConfig, WorkflowConfig
@@ -70,10 +68,10 @@ def data_collection_job():
         if enable_us_states:
             enabled_sources.append("US States")
 
-        logger.info("Running data collection", metadata={
-            "enabled_sources": enabled_sources,
-            "source_count": len(enabled_sources)
-        })
+        logger.info(
+            "Running data collection",
+            metadata={"enabled_sources": enabled_sources, "source_count": len(enabled_sources)},
+        )
 
         if not enabled_sources:
             logger.warning("No data sources enabled for collection")
@@ -106,12 +104,15 @@ def data_collection_job():
         summary = results.get("summary", {})
         duration = (datetime.now() - start_time).total_seconds()
 
-        logger.info("Data collection completed", metadata={
-            "total_new_disclosures": summary.get("total_new_disclosures", 0),
-            "total_updated_disclosures": summary.get("total_updated_disclosures", 0),
-            "duration_seconds": duration,
-            "status": results.get("status")
-        })
+        logger.info(
+            "Data collection completed",
+            metadata={
+                "total_new_disclosures": summary.get("total_new_disclosures", 0),
+                "total_updated_disclosures": summary.get("total_updated_disclosures", 0),
+                "duration_seconds": duration,
+                "status": results.get("status"),
+            },
+        )
 
     try:
         # Run the async function
@@ -119,9 +120,11 @@ def data_collection_job():
         logger.info("Scheduled data collection job completed successfully")
 
     except Exception as e:
-        logger.error("Scheduled data collection job failed", error=e, metadata={
-            "duration_seconds": (datetime.now() - start_time).total_seconds()
-        })
+        logger.error(
+            "Scheduled data collection job failed",
+            error=e,
+            metadata={"duration_seconds": (datetime.now() - start_time).total_seconds()},
+        )
         raise  # Re-raise so APScheduler marks it as failed
 
 
@@ -145,18 +148,24 @@ def ticker_backfill_job():
 
         # Get all disclosures where ticker is null or empty
         logger.debug("Query 1: Fetching disclosures with null ticker")
-        response = db.client.table("trading_disclosures").select(
-            "id, asset_name, asset_ticker"
-        ).is_("asset_ticker", "null").execute()
+        response = (
+            db.client.table("trading_disclosures")
+            .select("id, asset_name, asset_ticker")
+            .is_("asset_ticker", "null")
+            .execute()
+        )
 
         disclosures_no_ticker = response.data or []
         logger.debug(f"Found {len(disclosures_no_ticker)} disclosures with null ticker")
 
         # Also get disclosures where ticker is empty string
         logger.debug("Query 2: Fetching disclosures with empty ticker")
-        response2 = db.client.table("trading_disclosures").select(
-            "id, asset_name, asset_ticker"
-        ).eq("asset_ticker", "").execute()
+        response2 = (
+            db.client.table("trading_disclosures")
+            .select("id, asset_name, asset_ticker")
+            .eq("asset_ticker", "")
+            .execute()
+        )
 
         disclosures_empty_ticker = response2.data or []
         logger.debug(f"Found {len(disclosures_empty_ticker)} disclosures with empty ticker")
@@ -164,11 +173,14 @@ def ticker_backfill_job():
         # Combine both lists
         all_disclosures = disclosures_no_ticker + disclosures_empty_ticker
 
-        logger.info("Found disclosures with missing tickers", metadata={
-            "total_count": len(all_disclosures),
-            "null_tickers": len(disclosures_no_ticker),
-            "empty_tickers": len(disclosures_empty_ticker)
-        })
+        logger.info(
+            "Found disclosures with missing tickers",
+            metadata={
+                "total_count": len(all_disclosures),
+                "null_tickers": len(disclosures_no_ticker),
+                "empty_tickers": len(disclosures_empty_ticker),
+            },
+        )
 
         if not all_disclosures:
             logger.info("✅ No disclosures need ticker backfill - database is up to date!")
@@ -187,7 +199,9 @@ def ticker_backfill_job():
 
             if not asset_name:
                 no_ticker_found += 1
-                logger.debug("Disclosure has no asset_name", metadata={"disclosure_id": disclosure_id})
+                logger.debug(
+                    "Disclosure has no asset_name", metadata={"disclosure_id": disclosure_id}
+                )
                 continue
 
             # Extract ticker
@@ -196,9 +210,9 @@ def ticker_backfill_job():
             if ticker:
                 try:
                     # Update the record
-                    db.client.table("trading_disclosures").update(
-                        {"asset_ticker": ticker}
-                    ).eq("id", disclosure_id).execute()
+                    db.client.table("trading_disclosures").update({"asset_ticker": ticker}).eq(
+                        "id", disclosure_id
+                    ).execute()
 
                     updated += 1
 
@@ -206,36 +220,46 @@ def ticker_backfill_job():
                     if len(examples_updated) < 5:
                         examples_updated.append(f"{asset_name} → {ticker}")
 
-                    logger.debug("✅ Updated disclosure with ticker", metadata={
-                        "disclosure_id": disclosure_id,
-                        "asset_name": asset_name,
-                        "ticker": ticker
-                    })
+                    logger.debug(
+                        "✅ Updated disclosure with ticker",
+                        metadata={
+                            "disclosure_id": disclosure_id,
+                            "asset_name": asset_name,
+                            "ticker": ticker,
+                        },
+                    )
                 except Exception as e:
                     failed += 1
-                    logger.error("❌ Failed to update disclosure", error=e, metadata={
-                        "disclosure_id": disclosure_id,
-                        "asset_name": asset_name,
-                        "ticker": ticker
-                    })
+                    logger.error(
+                        "❌ Failed to update disclosure",
+                        error=e,
+                        metadata={
+                            "disclosure_id": disclosure_id,
+                            "asset_name": asset_name,
+                            "ticker": ticker,
+                        },
+                    )
             else:
                 no_ticker_found += 1
-                logger.debug("⚠️ No ticker found for asset", metadata={
-                    "disclosure_id": disclosure_id,
-                    "asset_name": asset_name
-                })
+                logger.debug(
+                    "⚠️ No ticker found for asset",
+                    metadata={"disclosure_id": disclosure_id, "asset_name": asset_name},
+                )
 
             # Log progress every 100 items
             if i % 100 == 0:
                 percent_complete = (i / len(all_disclosures)) * 100
-                logger.info(f"📊 Backfill progress: {percent_complete:.1f}% complete", metadata={
-                    "processed": i,
-                    "total": len(all_disclosures),
-                    "updated": updated,
-                    "no_ticker_found": no_ticker_found,
-                    "failed": failed,
-                    "success_rate": f"{(updated / i * 100):.1f}%" if i > 0 else "0%"
-                })
+                logger.info(
+                    f"📊 Backfill progress: {percent_complete:.1f}% complete",
+                    metadata={
+                        "processed": i,
+                        "total": len(all_disclosures),
+                        "updated": updated,
+                        "no_ticker_found": no_ticker_found,
+                        "failed": failed,
+                        "success_rate": f"{(updated / i * 100):.1f}%" if i > 0 else "0%",
+                    },
+                )
 
         duration = (datetime.now() - start_time).total_seconds()
 
@@ -243,17 +267,22 @@ def ticker_backfill_job():
         success_rate = (updated / len(all_disclosures) * 100) if len(all_disclosures) > 0 else 0
         failure_rate = (failed / len(all_disclosures) * 100) if len(all_disclosures) > 0 else 0
 
-        logger.info("✅ Ticker backfill completed successfully!", metadata={
-            "total_processed": len(all_disclosures),
-            "total_updated": updated,
-            "examples": examples_updated,
-            "total_no_ticker_found": no_ticker_found,
-            "total_failed": failed,
-            "success_rate": f"{success_rate:.1f}%",
-            "failure_rate": f"{failure_rate:.1f}%",
-            "duration_seconds": duration,
-            "disclosures_per_second": f"{len(all_disclosures) / duration:.1f}" if duration > 0 else "N/A"
-        })
+        logger.info(
+            "✅ Ticker backfill completed successfully!",
+            metadata={
+                "total_processed": len(all_disclosures),
+                "total_updated": updated,
+                "examples": examples_updated,
+                "total_no_ticker_found": no_ticker_found,
+                "total_failed": failed,
+                "success_rate": f"{success_rate:.1f}%",
+                "failure_rate": f"{failure_rate:.1f}%",
+                "duration_seconds": duration,
+                "disclosures_per_second": (
+                    f"{len(all_disclosures) / duration:.1f}" if duration > 0 else "N/A"
+                ),
+            },
+        )
 
         if failed > 0:
             logger.warning(f"⚠️ Ticker backfill completed with {failed} failures")
@@ -263,7 +292,9 @@ def ticker_backfill_job():
 
     except Exception as e:
         duration = (datetime.now() - start_time).total_seconds()
-        logger.error("❌ Scheduled ticker backfill job failed", error=e, metadata={
-            "duration_seconds": duration
-        })
+        logger.error(
+            "❌ Scheduled ticker backfill job failed",
+            error=e,
+            metadata={"duration_seconds": duration},
+        )
         raise  # Re-raise so APScheduler marks it as failed

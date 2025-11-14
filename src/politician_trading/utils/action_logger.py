@@ -6,7 +6,6 @@ Provides centralized logging for all user actions and system events
 import time
 from datetime import datetime
 from typing import Any, Dict, Optional
-from uuid import uuid4
 
 from politician_trading.config import SupabaseConfig
 from politician_trading.database.database import SupabaseClient
@@ -213,12 +212,21 @@ class ActionLogger:
             if status in ("completed", "failed", "cancelled"):
                 update_data["completed_at"] = datetime.now().isoformat()
 
-            response = self.db.client.table("action_logs").update(update_data).eq("id", action_id).execute()
+            response = (
+                self.db.client.table("action_logs")
+                .update(update_data)
+                .eq("id", action_id)
+                .execute()
+            )
 
             if response.data and len(response.data) > 0:
                 logger.debug(
                     f"Updated action {action_id}",
-                    metadata={"action_id": action_id, "status": status, "duration": duration_seconds},
+                    metadata={
+                        "action_id": action_id,
+                        "status": status,
+                        "duration": duration_seconds,
+                    },
                 )
 
                 # Clean up tracking if action is complete
@@ -231,7 +239,9 @@ class ActionLogger:
             return False
 
         except Exception as e:
-            logger.error(f"Failed to update action {action_id}: {e}", metadata={"action_id": action_id})
+            logger.error(
+                f"Failed to update action {action_id}: {e}", metadata={"action_id": action_id}
+            )
             return False
 
     def complete_action(
@@ -252,7 +262,10 @@ class ActionLogger:
             True if successful, False otherwise
         """
         return self.update_action(
-            action_id=action_id, status="completed", result_message=result_message, action_details=action_details
+            action_id=action_id,
+            status="completed",
+            result_message=result_message,
+            action_details=action_details,
         )
 
     def fail_action(
@@ -273,7 +286,10 @@ class ActionLogger:
             True if successful, False otherwise
         """
         return self.update_action(
-            action_id=action_id, status="failed", error_message=error_message, action_details=action_details
+            action_id=action_id,
+            status="failed",
+            error_message=error_message,
+            action_details=action_details,
         )
 
     def get_recent_actions(

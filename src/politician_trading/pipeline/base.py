@@ -11,11 +11,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class PipelineStatus(Enum):
     """Pipeline execution status"""
+
     PENDING = "pending"
     RUNNING = "running"
     SUCCESS = "success"
@@ -26,12 +27,14 @@ class PipelineStatus(Enum):
 
 class PipelineError(Exception):
     """Base exception for pipeline errors"""
+
     pass
 
 
 @dataclass
 class PipelineMetrics:
     """Metrics collected during pipeline execution"""
+
     records_input: int = 0
     records_output: int = 0
     records_skipped: int = 0
@@ -50,6 +53,7 @@ class PipelineMetrics:
 @dataclass
 class PipelineContext:
     """Context passed between pipeline stages"""
+
     source_name: str
     source_type: str
     job_id: Optional[str] = None
@@ -62,6 +66,7 @@ class PipelineContext:
 @dataclass
 class PipelineResult(Generic[T]):
     """Result from a pipeline stage"""
+
     status: PipelineStatus
     data: List[T]
     context: PipelineContext
@@ -105,11 +110,7 @@ class PipelineStage(ABC, Generic[T]):
         self.logger = logging.getLogger(f"{__name__}.{name}")
 
     @abstractmethod
-    async def process(
-        self,
-        data: List[Any],
-        context: PipelineContext
-    ) -> PipelineResult[T]:
+    async def process(self, data: List[Any], context: PipelineContext) -> PipelineResult[T]:
         """
         Process data through this pipeline stage.
 
@@ -127,25 +128,17 @@ class PipelineStage(ABC, Generic[T]):
         status: PipelineStatus,
         data: List[T],
         context: PipelineContext,
-        metrics: Optional[PipelineMetrics] = None
+        metrics: Optional[PipelineMetrics] = None,
     ) -> PipelineResult[T]:
         """Helper to create a PipelineResult"""
         if metrics is None:
             metrics = PipelineMetrics()
 
         return PipelineResult(
-            status=status,
-            data=data,
-            context=context,
-            metrics=metrics,
-            stage_name=self.name
+            status=status, data=data, context=context, metrics=metrics, stage_name=self.name
         )
 
-    async def __call__(
-        self,
-        data: List[Any],
-        context: PipelineContext
-    ) -> PipelineResult[T]:
+    async def __call__(self, data: List[Any], context: PipelineContext) -> PipelineResult[T]:
         """Allow stage to be called as a function"""
         return await self.process(data, context)
 
@@ -153,6 +146,7 @@ class PipelineStage(ABC, Generic[T]):
 @dataclass
 class RawDisclosure:
     """Raw disclosure data from a source (before cleaning/normalization)"""
+
     source: str
     source_type: str
     raw_data: Dict[str, Any]
@@ -164,6 +158,7 @@ class RawDisclosure:
 @dataclass
 class CleanedDisclosure:
     """Cleaned disclosure data (validated, no nulls in required fields)"""
+
     source: str
     politician_name: str
     transaction_date: datetime
@@ -183,6 +178,7 @@ class CleanedDisclosure:
 @dataclass
 class NormalizedDisclosure:
     """Normalized disclosure ready for database insertion"""
+
     politician_id: Optional[str]  # None if politician needs to be created
     politician_first_name: str
     politician_last_name: str
