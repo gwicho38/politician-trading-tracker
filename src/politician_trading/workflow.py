@@ -852,15 +852,21 @@ class PoliticianTradingWorkflow:
             r"^-.*CT$",  # -ETHEREUMCT, -DOGCT patterns
             r"^[A-Z]{2,5}$",  # Short all-caps (likely tickers)
             r"^\$",  # Starting with $
+            # Company name patterns (likely stock names)
+            r"\bINC\b",  # Inc or INC (word boundary)
+            r"\bCORP\b",  # Corp or CORP
+            r"\bLLC\b",  # LLC
+            r"\bLTD\b",  # Ltd or LTD
+            r"\bCO\b",  # Co. or CO
+            r"\bCOMPANY\b",
+            r"\bCORPORATION\b",
+            r"\bLIMITED\b",
+            r"\bCLASS [A-Z]",  # "CLASS A", "CLASS AOT", etc.
             # Municipal and financial terms
             r"MUNICIPAL",
             r"BOND",
             r"TRUST",
             r"FUND",
-            r"CORP",
-            r"INC\.$",
-            r"LLC$",
-            r"LP$",
             # Common non-name patterns
             r"^UNKNOWN",
             r"^TEST",

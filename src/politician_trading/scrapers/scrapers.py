@@ -302,7 +302,7 @@ class CongressTradingScraper(BaseScraper):
             # Extract text from each page
             full_text = ""
             for i, page in enumerate(pages):
-                logger.debug(f"OCR processing page {i+1}/{len(pages)}")
+                logger.debug(f"OCR processing page {i + 1}/{len(pages)}")
                 text = pytesseract.image_to_string(page)
                 full_text += text + "\n\n"
 
@@ -470,7 +470,6 @@ class CongressTradingScraper(BaseScraper):
                 timeout=aiohttp.ClientTimeout(total=self.config.timeout * 3),  # Longer for PDFs
                 headers={"User-Agent": self.config.user_agent},
             ) as session:
-
                 # Download and parse the ZIP index file
                 disclosure_metadata_list = await self._download_and_parse_house_index(
                     year=year, session=session, base_url=base_url
@@ -551,6 +550,7 @@ class CongressTradingScraper(BaseScraper):
                                 source_url=metadata["pdf_url"],
                                 status=DisclosureStatus.PENDING,
                                 raw_data={
+                                    "politician_name": metadata["politician_name"],
                                     "politician": politician,
                                     "doc_id": metadata["doc_id"],
                                     "filing_type": metadata["filing_type"],
@@ -576,6 +576,7 @@ class CongressTradingScraper(BaseScraper):
                                 else DisclosureStatus.PROCESSED
                             ),
                             raw_data={
+                                "politician_name": metadata["politician_name"],
                                 "politician": politician,
                                 "doc_id": metadata["doc_id"],
                                 "filing_type": metadata["filing_type"],
@@ -609,7 +610,6 @@ class CongressTradingScraper(BaseScraper):
                 timeout=aiohttp.ClientTimeout(total=self.config.timeout),
                 headers={"User-Agent": self.config.user_agent},
             ) as session:
-
                 # Try the public PTR listing page first
                 async with session.get(search_url) as response:
                     if response.status == 200:
@@ -676,7 +676,6 @@ class CongressTradingScraper(BaseScraper):
                             and "pdf" not in text.lower()
                             and "view" not in text.lower()
                         ):
-
                             # Clean up potential name
                             clean_name = (
                                 text.replace("Hon.", "")
@@ -1041,7 +1040,6 @@ class EUParliamentScraper(BaseScraper):
                 timeout=aiohttp.ClientTimeout(total=self.config.timeout),
                 headers={"User-Agent": self.config.user_agent},
             ) as session:
-
                 # Get list of current MEPs
                 mep_list_url = f"{base_url}/meps/en/full-list/all"
 
