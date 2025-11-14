@@ -233,7 +233,7 @@ class CongressTradingScraper(BaseScraper):
                 try:
                     month, day, year = date_match.groups()
                     transaction_date = datetime(int(year), int(month), int(day))
-                except:
+                except (ValueError, TypeError):
                     pass
 
             # Only add transaction if we found a ticker
@@ -360,7 +360,7 @@ class CongressTradingScraper(BaseScraper):
                     with z.open(txt_filename) as f:
                         index_content = f.read().decode('utf-8', errors='ignore')
 
-                    logger.info(f"Extracted index file")
+                    logger.info("Extracted index file")
 
                     # Parse the tab-separated index file
                     lines = index_content.strip().split('\n')
@@ -382,7 +382,7 @@ class CongressTradingScraper(BaseScraper):
                         suffix = fields[3].strip()
                         filing_type = fields[4].strip()
                         state_district = fields[5].strip()
-                        file_year = fields[6].strip()
+                        # Note: fields[6] is file_year but not used (year param already known)
                         filing_date_str = fields[7].strip()
                         doc_id = fields[8].strip()  # Important: strip removes \r
 
@@ -398,10 +398,10 @@ class CongressTradingScraper(BaseScraper):
                         if filing_date_str:
                             try:
                                 filing_date = datetime.strptime(filing_date_str, "%m/%d/%Y")
-                            except:
+                            except (ValueError, TypeError):
                                 try:
                                     filing_date = datetime.strptime(filing_date_str, "%Y-%m-%d")
-                                except:
+                                except (ValueError, TypeError):
                                     pass
 
                         # Build PDF URL - CRITICAL: Use financial-pdfs, not ptr-pdfs
