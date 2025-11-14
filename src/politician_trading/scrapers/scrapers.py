@@ -128,20 +128,20 @@ class CongressTradingScraper(BaseScraper):
             return None, None, None
 
         # Clean up text - remove commas for parsing
-        text = text.replace(',', '')
+        text = text.replace(",", "")
 
         # Standard House disclosure ranges (with regex for OCR variations)
         range_mappings = {
-            r'\$1,?001\s*-\s*\$15,?000': (Decimal("1001"), Decimal("15000")),
-            r'\$15,?001\s*-\s*\$50,?000': (Decimal("15001"), Decimal("50000")),
-            r'\$50,?001\s*-\s*\$100,?000': (Decimal("50001"), Decimal("100000")),
-            r'\$100,?001\s*-\s*\$250,?000': (Decimal("100001"), Decimal("250000")),
-            r'\$250,?001\s*-\s*\$500,?000': (Decimal("250001"), Decimal("500000")),
-            r'\$500,?001\s*-\s*\$1,?000,?000': (Decimal("500001"), Decimal("1000000")),
-            r'\$1,?000,?001\s*-\s*\$5,?000,?000': (Decimal("1000001"), Decimal("5000000")),
-            r'\$5,?000,?001\s*-\s*\$25,?000,?000': (Decimal("5000001"), Decimal("25000000")),
-            r'\$25,?000,?001\s*-\s*\$50,?000,?000': (Decimal("25000001"), Decimal("50000000")),
-            r'Over\s+\$50,?000,?000': (Decimal("50000001"), None),
+            r"\$1,?001\s*-\s*\$15,?000": (Decimal("1001"), Decimal("15000")),
+            r"\$15,?001\s*-\s*\$50,?000": (Decimal("15001"), Decimal("50000")),
+            r"\$50,?001\s*-\s*\$100,?000": (Decimal("50001"), Decimal("100000")),
+            r"\$100,?001\s*-\s*\$250,?000": (Decimal("100001"), Decimal("250000")),
+            r"\$250,?001\s*-\s*\$500,?000": (Decimal("250001"), Decimal("500000")),
+            r"\$500,?001\s*-\s*\$1,?000,?000": (Decimal("500001"), Decimal("1000000")),
+            r"\$1,?000,?001\s*-\s*\$5,?000,?000": (Decimal("1000001"), Decimal("5000000")),
+            r"\$5,?000,?001\s*-\s*\$25,?000,?000": (Decimal("5000001"), Decimal("25000000")),
+            r"\$25,?000,?001\s*-\s*\$50,?000,?000": (Decimal("25000001"), Decimal("50000000")),
+            r"Over\s+\$50,?000,?000": (Decimal("50000001"), None),
         }
 
         # Check standard ranges
@@ -150,14 +150,14 @@ class CongressTradingScraper(BaseScraper):
                 return min_val, max_val, None
 
         # Look for custom range patterns: $X - $Y or $X-$Y
-        range_match = re.search(r'\$(\d+)\s*-\s*\$(\d+)', text)
+        range_match = re.search(r"\$(\d+)\s*-\s*\$(\d+)", text)
         if range_match:
             min_val = Decimal(range_match.group(1))
             max_val = Decimal(range_match.group(2))
             return min_val, max_val, None
 
         # Look for exact amounts: $X or $X.XX
-        exact_match = re.search(r'\$(\d+(?:\.\d{2})?)', text)
+        exact_match = re.search(r"\$(\d+(?:\.\d{2})?)", text)
         if exact_match:
             exact_val = Decimal(exact_match.group(1))
             return None, None, exact_val
@@ -182,20 +182,20 @@ class CongressTradingScraper(BaseScraper):
         transactions = []
 
         # Split by double newlines to get paragraphs/sections
-        sections = text.split('\n\n')
+        sections = text.split("\n\n")
 
         for section in sections:
             # Remove single newlines within section for easier parsing
-            line = section.replace('\r', '').replace('\n', ' ')
+            line = section.replace("\r", "").replace("\n", " ")
 
             # Look for transaction type indicators
             transaction_type = None
-            if ' P ' in line or ' Purchase ' in line or 'Purchase' in line:
-                transaction_type = 'PURCHASE'
-            elif ' S ' in line or ' Sale ' in line or 'Sale' in line:
-                transaction_type = 'SALE'
-            elif ' E ' in line or ' Exchange ' in line or 'Exchange' in line:
-                transaction_type = 'EXCHANGE'
+            if " P " in line or " Purchase " in line or "Purchase" in line:
+                transaction_type = "PURCHASE"
+            elif " S " in line or " Sale " in line or "Sale" in line:
+                transaction_type = "SALE"
+            elif " E " in line or " Exchange " in line or "Exchange" in line:
+                transaction_type = "EXCHANGE"
 
             if not transaction_type:
                 continue
@@ -203,13 +203,17 @@ class CongressTradingScraper(BaseScraper):
             # Extract ticker symbol from parentheses
             ticker = None
             opening_paren = -1
-            closing_paren = line.find(')')
+            closing_paren = line.find(")")
             if closing_paren != -1:
-                opening_paren = line.rfind('(', 0, closing_paren)
+                opening_paren = line.rfind("(", 0, closing_paren)
                 if opening_paren != -1:
-                    potential_ticker = line[opening_paren+1:closing_paren].strip()
+                    potential_ticker = line[opening_paren + 1 : closing_paren].strip()
                     # Tickers are usually 1-5 uppercase letters
-                    if potential_ticker and potential_ticker.isupper() and 1 <= len(potential_ticker) <= 5:
+                    if (
+                        potential_ticker
+                        and potential_ticker.isupper()
+                        and 1 <= len(potential_ticker) <= 5
+                    ):
                         ticker = potential_ticker
 
             # Extract asset name (usually before the ticker in parentheses)
@@ -220,14 +224,14 @@ class CongressTradingScraper(BaseScraper):
                 # Asset name is typically the last few words before the ticker
                 words = before_ticker.split()
                 if len(words) >= 2:
-                    asset_name = ' '.join(words[-5:])  # Take up to last 5 words
+                    asset_name = " ".join(words[-5:])  # Take up to last 5 words
 
             # Extract amount range
             amount_min, amount_max, amount_exact = self._parse_amount_from_pdf_text(line)
 
             # Extract transaction date (MM/DD/YYYY)
             transaction_date = None
-            date_pattern = r'\b(\d{1,2})/(\d{1,2})/(\d{4})\b'
+            date_pattern = r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b"
             date_match = re.search(date_pattern, line)
             if date_match:
                 try:
@@ -239,24 +243,21 @@ class CongressTradingScraper(BaseScraper):
             # Only add transaction if we found a ticker
             if ticker:
                 transaction = {
-                    'ticker': ticker,
-                    'asset_name': asset_name or ticker,
-                    'transaction_type': transaction_type,
-                    'transaction_date': transaction_date,
-                    'amount_min': amount_min,
-                    'amount_max': amount_max,
-                    'amount_exact': amount_exact,
-                    'raw_text': line[:200],  # Keep snippet for debugging
+                    "ticker": ticker,
+                    "asset_name": asset_name or ticker,
+                    "transaction_type": transaction_type,
+                    "transaction_date": transaction_date,
+                    "amount_min": amount_min,
+                    "amount_max": amount_max,
+                    "amount_exact": amount_exact,
+                    "raw_text": line[:200],  # Keep snippet for debugging
                 }
                 transactions.append(transaction)
 
         return transactions
 
     async def _parse_house_pdf(
-        self,
-        pdf_url: str,
-        pdf_content: bytes = None,
-        session: aiohttp.ClientSession = None
+        self, pdf_url: str, pdf_content: bytes = None, session: aiohttp.ClientSession = None
     ) -> List[Dict[str, Any]]:
         """Parse a House disclosure PDF to extract transaction details
 
@@ -280,13 +281,17 @@ class CongressTradingScraper(BaseScraper):
                     async with aiohttp.ClientSession() as temp_session:
                         async with temp_session.get(pdf_url) as response:
                             if response.status != 200:
-                                logger.warning(f"Failed to download PDF: {pdf_url} (status {response.status})")
+                                logger.warning(
+                                    f"Failed to download PDF: {pdf_url} (status {response.status})"
+                                )
                                 return []
                             pdf_content = await response.read()
                 else:
                     async with session.get(pdf_url) as response:
                         if response.status != 200:
-                            logger.warning(f"Failed to download PDF: {pdf_url} (status {response.status})")
+                            logger.warning(
+                                f"Failed to download PDF: {pdf_url} (status {response.status})"
+                            )
                             return []
                         pdf_content = await response.read()
 
@@ -316,7 +321,7 @@ class CongressTradingScraper(BaseScraper):
         self,
         year: int,
         session: aiohttp.ClientSession,
-        base_url: str = "https://disclosures-clerk.house.gov"
+        base_url: str = "https://disclosures-clerk.house.gov",
     ) -> List[Dict[str, Any]]:
         """Download and parse House disclosure ZIP index file
 
@@ -358,17 +363,17 @@ class CongressTradingScraper(BaseScraper):
 
                     # Read the index file
                     with z.open(txt_filename) as f:
-                        index_content = f.read().decode('utf-8', errors='ignore')
+                        index_content = f.read().decode("utf-8", errors="ignore")
 
                     logger.info("Extracted index file")
 
                     # Parse the tab-separated index file
-                    lines = index_content.strip().split('\n')
+                    lines = index_content.strip().split("\n")
                     logger.info(f"Found {len(lines)} filing records in index")
 
                     # Skip header line (line 0)
                     for i, line in enumerate(lines[1:], start=1):
-                        fields = line.split('\t')
+                        fields = line.split("\t")
 
                         if len(fields) < 9:
                             continue  # Skip malformed lines
@@ -386,12 +391,12 @@ class CongressTradingScraper(BaseScraper):
                         filing_date_str = fields[7].strip()
                         doc_id = fields[8].strip()  # Important: strip removes \r
 
-                        if not doc_id or doc_id == 'DocID':  # Skip header or empty
+                        if not doc_id or doc_id == "DocID":  # Skip header or empty
                             continue
 
                         # Build full name with prefix/suffix
                         name_parts = [p for p in [prefix, first_name, last_name, suffix] if p]
-                        full_name = ' '.join(name_parts)
+                        full_name = " ".join(name_parts)
 
                         # Parse filing date
                         filing_date = None
@@ -435,7 +440,7 @@ class CongressTradingScraper(BaseScraper):
         self,
         year: Optional[int] = None,
         parse_pdfs: bool = False,
-        max_pdfs_per_run: Optional[int] = None
+        max_pdfs_per_run: Optional[int] = None,
     ) -> List[TradingDisclosure]:
         """Scrape House financial disclosures using ZIP index approach
 
@@ -468,16 +473,16 @@ class CongressTradingScraper(BaseScraper):
 
                 # Download and parse the ZIP index file
                 disclosure_metadata_list = await self._download_and_parse_house_index(
-                    year=year,
-                    session=session,
-                    base_url=base_url
+                    year=year, session=session, base_url=base_url
                 )
 
                 if not disclosure_metadata_list:
                     logger.warning(f"No House disclosures found for {year}")
                     return []
 
-                logger.info(f"Retrieved metadata for {len(disclosure_metadata_list)} House disclosures")
+                logger.info(
+                    f"Retrieved metadata for {len(disclosure_metadata_list)} House disclosures"
+                )
 
                 # Convert metadata dictionaries to TradingDisclosure objects
                 parsed_pdf_count = 0
@@ -485,17 +490,20 @@ class CongressTradingScraper(BaseScraper):
                 for metadata in disclosure_metadata_list:
                     # Check if we've hit the PDF parsing limit
                     if parse_pdfs and max_pdfs_per_run and parsed_pdf_count >= max_pdfs_per_run:
-                        logger.info(f"Reached max_pdfs_per_run limit ({max_pdfs_per_run}), skipping remaining PDF parsing")
+                        logger.info(
+                            f"Reached max_pdfs_per_run limit ({max_pdfs_per_run}), skipping remaining PDF parsing"
+                        )
                         parse_pdfs = False  # Stop parsing for remaining items
 
                     # Optionally parse the PDF to extract transactions
                     transactions_data = []
                     if parse_pdfs:
                         try:
-                            logger.info(f"Parsing PDF {parsed_pdf_count + 1}/{max_pdfs_per_run or '∞'}: {metadata['politician_name']}")
+                            logger.info(
+                                f"Parsing PDF {parsed_pdf_count + 1}/{max_pdfs_per_run or '∞'}: {metadata['politician_name']}"
+                            )
                             transactions_data = await self._parse_house_pdf(
-                                pdf_url=metadata['pdf_url'],
-                                session=session
+                                pdf_url=metadata["pdf_url"], session=session
                             )
 
                             if transactions_data:
@@ -507,16 +515,20 @@ class CongressTradingScraper(BaseScraper):
                             await asyncio.sleep(self.config.request_delay)
 
                         except Exception as e:
-                            logger.error(f"  Error parsing PDF for {metadata['politician_name']}: {e}")
+                            logger.error(
+                                f"  Error parsing PDF for {metadata['politician_name']}: {e}"
+                            )
 
                     # Create politician object (minimal info from index)
                     politician = Politician(
-                        first_name=metadata['first_name'],
-                        last_name=metadata['last_name'],
-                        full_name=metadata['politician_name'],
+                        first_name=metadata["first_name"],
+                        last_name=metadata["last_name"],
+                        full_name=metadata["politician_name"],
                         role="House",
                         party="",  # Not available in index file
-                        state_or_country=metadata['state_district'][:2] if metadata['state_district'] else ""
+                        state_or_country=(
+                            metadata["state_district"][:2] if metadata["state_district"] else ""
+                        ),
                     )
 
                     # Create TradingDisclosure object for each transaction found
@@ -525,21 +537,24 @@ class CongressTradingScraper(BaseScraper):
                         for txn in transactions_data:
                             disclosure = TradingDisclosure(
                                 politician_id="",  # Will be set later
-                                asset_name=txn.get('asset_name', 'Unknown'),
-                                asset_ticker=txn.get('ticker'),
-                                transaction_type=TransactionType[txn.get('transaction_type', 'PURCHASE')],
-                                transaction_date=txn.get('transaction_date') or metadata.get('filing_date'),
-                                amount_range_min=txn.get('amount_min'),
-                                amount_range_max=txn.get('amount_max'),
-                                amount_exact=txn.get('amount_exact'),
-                                disclosure_date=metadata.get('filing_date'),
-                                source_url=metadata['pdf_url'],
+                                asset_name=txn.get("asset_name", "Unknown"),
+                                asset_ticker=txn.get("ticker"),
+                                transaction_type=TransactionType[
+                                    txn.get("transaction_type", "PURCHASE")
+                                ],
+                                transaction_date=txn.get("transaction_date")
+                                or metadata.get("filing_date"),
+                                amount_range_min=txn.get("amount_min"),
+                                amount_range_max=txn.get("amount_max"),
+                                amount_exact=txn.get("amount_exact"),
+                                disclosure_date=metadata.get("filing_date"),
+                                source_url=metadata["pdf_url"],
                                 status=DisclosureStatus.PENDING,
                                 raw_data={
-                                    'politician': politician,
-                                    'doc_id': metadata['doc_id'],
-                                    'filing_type': metadata['filing_type']
-                                }
+                                    "politician": politician,
+                                    "doc_id": metadata["doc_id"],
+                                    "filing_type": metadata["filing_type"],
+                                },
                             )
                             disclosures.append(disclosure)
                     else:
@@ -549,18 +564,22 @@ class CongressTradingScraper(BaseScraper):
                             asset_name=f"{metadata['filing_type']} Filing",
                             asset_ticker=None,
                             transaction_type=TransactionType.PURCHASE,  # Default, unknown
-                            transaction_date=metadata.get('filing_date'),
+                            transaction_date=metadata.get("filing_date"),
                             amount_range_min=None,
                             amount_range_max=None,
                             amount_exact=None,
-                            disclosure_date=metadata.get('filing_date'),
-                            source_url=metadata['pdf_url'],
-                            status=DisclosureStatus.PENDING if not parse_pdfs else DisclosureStatus.PROCESSED,
+                            disclosure_date=metadata.get("filing_date"),
+                            source_url=metadata["pdf_url"],
+                            status=(
+                                DisclosureStatus.PENDING
+                                if not parse_pdfs
+                                else DisclosureStatus.PROCESSED
+                            ),
                             raw_data={
-                                'politician': politician,
-                                'doc_id': metadata['doc_id'],
-                                'filing_type': metadata['filing_type']
-                            }
+                                "politician": politician,
+                                "doc_id": metadata["doc_id"],
+                                "filing_type": metadata["filing_type"],
+                            },
                         )
                         disclosures.append(disclosure)
 
