@@ -3,8 +3,10 @@ Web scrapers for politician trading data
 """
 
 import asyncio
+import io
 import logging
 import re
+import zipfile
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
@@ -12,9 +14,11 @@ from urllib.parse import urljoin
 
 import aiohttp
 from bs4 import BeautifulSoup
+from pdf2image import convert_from_bytes
+import pytesseract
 
 from ..config import ScrapingConfig
-from ..models import Politician, TradingDisclosure, TransactionType
+from ..models import Politician, TradingDisclosure, TransactionType, DisclosureStatus
 
 logger = logging.getLogger(__name__)
 
@@ -106,176 +110,469 @@ class BaseScraper:
 class CongressTradingScraper(BaseScraper):
     """Scraper for US Congress trading data"""
 
-    async def scrape_house_disclosures(self) -> List[TradingDisclosure]:
-        """Scrape House financial disclosures from the official database"""
+    def _parse_amount_from_pdf_text(
+        self, text: str
+    ) -> Tuple[Optional[Decimal], Optional[Decimal], Optional[Decimal]]:
+        """Parse amount/value from OCR'd PDF text
+
+        This is an enhanced version of parse_amount_range that handles
+        the specific patterns found in House disclosure PDFs after OCR.
+
+        Args:
+            text: Text extracted from PDF via OCR
+
+        Returns:
+            Tuple of (min_amount, max_amount, exact_amount)
+        """
+        if not text:
+            return None, None, None
+
+        # Clean up text - remove commas for parsing
+        text = text.replace(',', '')
+
+        # Standard House disclosure ranges (with regex for OCR variations)
+        range_mappings = {
+            r'\$1,?001\s*-\s*\$15,?000': (Decimal("1001"), Decimal("15000")),
+            r'\$15,?001\s*-\s*\$50,?000': (Decimal("15001"), Decimal("50000")),
+            r'\$50,?001\s*-\s*\$100,?000': (Decimal("50001"), Decimal("100000")),
+            r'\$100,?001\s*-\s*\$250,?000': (Decimal("100001"), Decimal("250000")),
+            r'\$250,?001\s*-\s*\$500,?000': (Decimal("250001"), Decimal("500000")),
+            r'\$500,?001\s*-\s*\$1,?000,?000': (Decimal("500001"), Decimal("1000000")),
+            r'\$1,?000,?001\s*-\s*\$5,?000,?000': (Decimal("1000001"), Decimal("5000000")),
+            r'\$5,?000,?001\s*-\s*\$25,?000,?000': (Decimal("5000001"), Decimal("25000000")),
+            r'\$25,?000,?001\s*-\s*\$50,?000,?000': (Decimal("25000001"), Decimal("50000000")),
+            r'Over\s+\$50,?000,?000': (Decimal("50000001"), None),
+        }
+
+        # Check standard ranges
+        for pattern, (min_val, max_val) in range_mappings.items():
+            if re.search(pattern, text, re.IGNORECASE):
+                return min_val, max_val, None
+
+        # Look for custom range patterns: $X - $Y or $X-$Y
+        range_match = re.search(r'\$(\d+)\s*-\s*\$(\d+)', text)
+        if range_match:
+            min_val = Decimal(range_match.group(1))
+            max_val = Decimal(range_match.group(2))
+            return min_val, max_val, None
+
+        # Look for exact amounts: $X or $X.XX
+        exact_match = re.search(r'\$(\d+(?:\.\d{2})?)', text)
+        if exact_match:
+            exact_val = Decimal(exact_match.group(1))
+            return None, None, exact_val
+
+        return None, None, None
+
+    def _extract_transactions_from_text(self, text: str) -> List[Dict[str, Any]]:
+        """Extract transaction details from OCR'd PDF text
+
+        Looks for patterns like:
+        - " P " for Purchase, " S " for Sale, " E " for Exchange
+        - Ticker symbols in parentheses: (AAPL), (MSFT)
+        - Amount ranges: $1,001 - $15,000
+        - Dates: MM/DD/YYYY
+
+        Args:
+            text: OCR'd text from PDF
+
+        Returns:
+            List of transaction dictionaries with extracted data
+        """
+        transactions = []
+
+        # Split by double newlines to get paragraphs/sections
+        sections = text.split('\n\n')
+
+        for section in sections:
+            # Remove single newlines within section for easier parsing
+            line = section.replace('\r', '').replace('\n', ' ')
+
+            # Look for transaction type indicators
+            transaction_type = None
+            if ' P ' in line or ' Purchase ' in line or 'Purchase' in line:
+                transaction_type = 'PURCHASE'
+            elif ' S ' in line or ' Sale ' in line or 'Sale' in line:
+                transaction_type = 'SALE'
+            elif ' E ' in line or ' Exchange ' in line or 'Exchange' in line:
+                transaction_type = 'EXCHANGE'
+
+            if not transaction_type:
+                continue
+
+            # Extract ticker symbol from parentheses
+            ticker = None
+            opening_paren = -1
+            closing_paren = line.find(')')
+            if closing_paren != -1:
+                opening_paren = line.rfind('(', 0, closing_paren)
+                if opening_paren != -1:
+                    potential_ticker = line[opening_paren+1:closing_paren].strip()
+                    # Tickers are usually 1-5 uppercase letters
+                    if potential_ticker and potential_ticker.isupper() and 1 <= len(potential_ticker) <= 5:
+                        ticker = potential_ticker
+
+            # Extract asset name (usually before the ticker in parentheses)
+            asset_name = None
+            if ticker and opening_paren != -1:
+                # Look backwards from opening paren for the asset name
+                before_ticker = line[:opening_paren].strip()
+                # Asset name is typically the last few words before the ticker
+                words = before_ticker.split()
+                if len(words) >= 2:
+                    asset_name = ' '.join(words[-5:])  # Take up to last 5 words
+
+            # Extract amount range
+            amount_min, amount_max, amount_exact = self._parse_amount_from_pdf_text(line)
+
+            # Extract transaction date (MM/DD/YYYY)
+            transaction_date = None
+            date_pattern = r'\b(\d{1,2})/(\d{1,2})/(\d{4})\b'
+            date_match = re.search(date_pattern, line)
+            if date_match:
+                try:
+                    month, day, year = date_match.groups()
+                    transaction_date = datetime(int(year), int(month), int(day))
+                except:
+                    pass
+
+            # Only add transaction if we found a ticker
+            if ticker:
+                transaction = {
+                    'ticker': ticker,
+                    'asset_name': asset_name or ticker,
+                    'transaction_type': transaction_type,
+                    'transaction_date': transaction_date,
+                    'amount_min': amount_min,
+                    'amount_max': amount_max,
+                    'amount_exact': amount_exact,
+                    'raw_text': line[:200],  # Keep snippet for debugging
+                }
+                transactions.append(transaction)
+
+        return transactions
+
+    async def _parse_house_pdf(
+        self,
+        pdf_url: str,
+        pdf_content: bytes = None,
+        session: aiohttp.ClientSession = None
+    ) -> List[Dict[str, Any]]:
+        """Parse a House disclosure PDF to extract transaction details
+
+        Uses OCR (pytesseract + pdf2image) to extract text from PDFs,
+        then pattern matching to identify transactions.
+
+        Args:
+            pdf_url: URL of the PDF to parse
+            pdf_content: Optional pre-downloaded PDF bytes
+            session: Optional aiohttp session for downloading
+
+        Returns:
+            List of transaction dictionaries with extracted data
+        """
+        transactions = []
+
+        try:
+            # Download PDF if not provided
+            if pdf_content is None:
+                if session is None:
+                    async with aiohttp.ClientSession() as temp_session:
+                        async with temp_session.get(pdf_url) as response:
+                            if response.status != 200:
+                                logger.warning(f"Failed to download PDF: {pdf_url} (status {response.status})")
+                                return []
+                            pdf_content = await response.read()
+                else:
+                    async with session.get(pdf_url) as response:
+                        if response.status != 200:
+                            logger.warning(f"Failed to download PDF: {pdf_url} (status {response.status})")
+                            return []
+                        pdf_content = await response.read()
+
+            # Convert PDF pages to images at 600 DPI for better OCR
+            logger.info(f"Converting PDF to images ({len(pdf_content)} bytes)")
+            pages = convert_from_bytes(pdf_content, dpi=600)
+
+            # Extract text from each page
+            full_text = ""
+            for i, page in enumerate(pages):
+                logger.debug(f"OCR processing page {i+1}/{len(pages)}")
+                text = pytesseract.image_to_string(page)
+                full_text += text + "\n\n"
+
+            logger.info(f"Extracted {len(full_text)} characters of text")
+
+            # Parse transactions from text
+            transactions = self._extract_transactions_from_text(full_text)
+            logger.info(f"Extracted {len(transactions)} transactions from PDF")
+
+        except Exception as e:
+            logger.error(f"Error parsing PDF {pdf_url}: {e}")
+
+        return transactions
+
+    async def _download_and_parse_house_index(
+        self,
+        year: int,
+        session: aiohttp.ClientSession,
+        base_url: str = "https://disclosures-clerk.house.gov"
+    ) -> List[Dict[str, Any]]:
+        """Download and parse House disclosure ZIP index file
+
+        Downloads the annual ZIP file containing tab-separated index of all filings.
+        This is much faster and more reliable than form-based scraping.
+
+        Args:
+            year: Year to scrape
+            session: aiohttp session for HTTP requests
+            base_url: Base URL for House disclosure site
+
+        Returns:
+            List of disclosure metadata dictionaries
+        """
         disclosures = []
+        zip_url = f"{base_url}/public_disc/financial-pdfs/{year}FD.ZIP"
+
+        try:
+            logger.info(f"Downloading House disclosure index for {year}...")
+
+            # Download the ZIP index file
+            async with session.get(zip_url) as response:
+                if response.status != 200:
+                    logger.error(f"Failed to download index: {response.status}")
+                    return []
+
+                zip_content = await response.read()
+                logger.info(f"Downloaded index file ({len(zip_content)} bytes)")
+
+                # Extract the index file from the ZIP
+                with zipfile.ZipFile(io.BytesIO(zip_content)) as z:
+                    # The ZIP contains a TXT file with the index
+                    txt_filename = f"{year}FD.txt"
+
+                    if txt_filename not in z.namelist():
+                        logger.error(f"Expected file {txt_filename} not found in ZIP")
+                        logger.info(f"Available files: {z.namelist()}")
+                        return []
+
+                    # Read the index file
+                    with z.open(txt_filename) as f:
+                        index_content = f.read().decode('utf-8', errors='ignore')
+
+                    logger.info(f"Extracted index file")
+
+                    # Parse the tab-separated index file
+                    lines = index_content.strip().split('\n')
+                    logger.info(f"Found {len(lines)} filing records in index")
+
+                    # Skip header line (line 0)
+                    for i, line in enumerate(lines[1:], start=1):
+                        fields = line.split('\t')
+
+                        if len(fields) < 9:
+                            continue  # Skip malformed lines
+
+                        # Extract key information
+                        # Field indices: [0]=Prefix, [1]=Last, [2]=First, [3]=Suffix, [4]=FilingType,
+                        #                [5]=StateDst, [6]=Year, [7]=FilingDate, [8]=DocID
+                        prefix = fields[0].strip()
+                        last_name = fields[1].strip()
+                        first_name = fields[2].strip()
+                        suffix = fields[3].strip()
+                        filing_type = fields[4].strip()
+                        state_district = fields[5].strip()
+                        file_year = fields[6].strip()
+                        filing_date_str = fields[7].strip()
+                        doc_id = fields[8].strip()  # Important: strip removes \r
+
+                        if not doc_id or doc_id == 'DocID':  # Skip header or empty
+                            continue
+
+                        # Build full name with prefix/suffix
+                        name_parts = [p for p in [prefix, first_name, last_name, suffix] if p]
+                        full_name = ' '.join(name_parts)
+
+                        # Parse filing date
+                        filing_date = None
+                        if filing_date_str:
+                            try:
+                                filing_date = datetime.strptime(filing_date_str, "%m/%d/%Y")
+                            except:
+                                try:
+                                    filing_date = datetime.strptime(filing_date_str, "%Y-%m-%d")
+                                except:
+                                    pass
+
+                        # Build PDF URL - CRITICAL: Use financial-pdfs, not ptr-pdfs
+                        pdf_url = f"{base_url}/public_disc/financial-pdfs/{year}/{doc_id}.pdf"
+
+                        # Create disclosure metadata
+                        disclosure_info = {
+                            "politician_name": full_name,
+                            "first_name": first_name,
+                            "last_name": last_name,
+                            "state_district": state_district,
+                            "filing_type": filing_type,
+                            "filing_date": filing_date,
+                            "doc_id": doc_id,
+                            "pdf_url": pdf_url,
+                            "year": year,
+                        }
+
+                        disclosures.append(disclosure_info)
+
+                    logger.info(f"Successfully parsed {len(disclosures)} House disclosure records")
+
+        except zipfile.BadZipFile as e:
+            logger.error(f"Invalid ZIP file: {e}")
+        except Exception as e:
+            logger.error(f"Error downloading/parsing index: {e}", exc_info=True)
+
+        return disclosures
+
+    async def scrape_house_disclosures(
+        self,
+        year: Optional[int] = None,
+        parse_pdfs: bool = False,
+        max_pdfs_per_run: Optional[int] = None
+    ) -> List[TradingDisclosure]:
+        """Scrape House financial disclosures using ZIP index approach
+
+        This implementation downloads the annual ZIP index file which contains
+        metadata for ALL House filings. This is much faster and more reliable
+        than the old form-based scraping approach.
+
+        Args:
+            year: Year to scrape (defaults to current year)
+            parse_pdfs: If True, download and parse PDFs to extract transactions (slow!)
+            max_pdfs_per_run: Maximum number of PDFs to parse per run (for rate limiting)
+
+        Returns:
+            List of TradingDisclosure objects with metadata (and transactions if parse_pdfs=True)
+        """
+        disclosures = []
+
+        if year is None:
+            year = datetime.now().year
+
         base_url = "https://disclosures-clerk.house.gov"
 
         try:
-            logger.info("Starting House disclosures scrape from official database")
+            logger.info(f"Starting House disclosures scrape for {year} using ZIP index approach")
 
             async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=self.config.timeout),
+                timeout=aiohttp.ClientTimeout(total=self.config.timeout * 3),  # Longer for PDFs
                 headers={"User-Agent": self.config.user_agent},
             ) as session:
 
-                # Get the ViewSearch form page
-                view_search_url = f"{base_url}/FinancialDisclosure/ViewSearch"
-                async with session.get(view_search_url) as response:
-                    if response.status == 200:
-                        html = await response.text()
-                        logger.info("Successfully accessed House financial disclosure search form")
+                # Download and parse the ZIP index file
+                disclosure_metadata_list = await self._download_and_parse_house_index(
+                    year=year,
+                    session=session,
+                    base_url=base_url
+                )
 
-                        # Log first 1000 chars of HTML for debugging
-                        logger.debug(f"House search page HTML preview: {html[:1000]}")
+                if not disclosure_metadata_list:
+                    logger.warning(f"No House disclosures found for {year}")
+                    return []
 
-                        # Log response headers for debugging
-                        logger.debug(f"Response headers: {dict(response.headers)}")
+                logger.info(f"Retrieved metadata for {len(disclosure_metadata_list)} House disclosures")
 
-                        # Extract form data for ASPX
-                        soup = BeautifulSoup(html, "html.parser")
+                # Convert metadata dictionaries to TradingDisclosure objects
+                parsed_pdf_count = 0
 
-                        # Look for form fields (ASP.NET Core uses __RequestVerificationToken)
-                        form_fields = {}
-                        for field_name in [
-                            "__VIEWSTATE",
-                            "__VIEWSTATEGENERATOR",
-                            "__EVENTVALIDATION",
-                            "__RequestVerificationToken",  # ASP.NET Core uses this
-                        ]:
-                            field = soup.find("input", {"name": field_name})
-                            if field and field.get("value"):
-                                form_fields[field_name] = field["value"]
+                for metadata in disclosure_metadata_list:
+                    # Check if we've hit the PDF parsing limit
+                    if parse_pdfs and max_pdfs_per_run and parsed_pdf_count >= max_pdfs_per_run:
+                        logger.info(f"Reached max_pdfs_per_run limit ({max_pdfs_per_run}), skipping remaining PDF parsing")
+                        parse_pdfs = False  # Stop parsing for remaining items
 
-                        # ASP.NET Core sites use __RequestVerificationToken instead of __VIEWSTATE
-                        if (
-                            "__VIEWSTATE" in form_fields
-                            or "__RequestVerificationToken" in form_fields
-                        ):
-                            logger.info("Found required form fields")
-                            logger.debug(f"Form fields found: {list(form_fields.keys())}")
-
-                            # Search for recent disclosures - try different form field names
-                            current_year = str(datetime.now().year)
-
-                            # Search for common politician last names to get real data
-                            common_names = [
-                                "Smith",
-                                "Johnson",
-                                "Brown",
-                                "Davis",
-                                "Wilson",
-                                "Miller",
-                                "Garcia",
-                            ]
-
-                            # Try different form patterns with actual names
-                            possible_form_data_sets = []
-
-                            for name in common_names:
-                                possible_form_data_sets.extend(
-                                    [
-                                        # ASP.NET Core field names (discovered from diagnostic)
-                                        {
-                                            **form_fields,
-                                            "LastName": name,
-                                            "FilingYear": current_year,
-                                        },
-                                        # Old ASPX field names (fallback)
-                                        {
-                                            **form_fields,
-                                            "ctl00$MainContent$txtLastName": name,
-                                            "ctl00$MainContent$ddlFilingYear": current_year,
-                                            "ctl00$MainContent$btnSearch": "Search",
-                                        },
-                                        {
-                                            **form_fields,
-                                            "ctl00$ContentPlaceHolder1$txtLastName": name,
-                                            "ctl00$ContentPlaceHolder1$ddlFilingYear": current_year,
-                                            "ctl00$ContentPlaceHolder1$btnSearch": "Search",
-                                        },
-                                    ]
-                                )
-
-                            # Also try without names (all results)
-                            possible_form_data_sets.extend(
-                                [
-                                    # ASP.NET Core field names (discovered from diagnostic)
-                                    {
-                                        **form_fields,
-                                        "FilingYear": current_year,
-                                    },
-                                    # Old ASPX field names (fallback)
-                                    {
-                                        **form_fields,
-                                        "ctl00$MainContent$ddlFilingYear": current_year,
-                                        "ctl00$MainContent$btnSearch": "Search",
-                                    },
-                                    {
-                                        **form_fields,
-                                        "ctl00$ContentPlaceHolder1$ddlFilingYear": current_year,
-                                        "ctl00$ContentPlaceHolder1$btnSearch": "Search",
-                                    },
-                                ]
+                    # Optionally parse the PDF to extract transactions
+                    transactions_data = []
+                    if parse_pdfs:
+                        try:
+                            logger.info(f"Parsing PDF {parsed_pdf_count + 1}/{max_pdfs_per_run or '∞'}: {metadata['politician_name']}")
+                            transactions_data = await self._parse_house_pdf(
+                                pdf_url=metadata['pdf_url'],
+                                session=session
                             )
 
-                            # Try each form configuration
-                            for i, form_data in enumerate(possible_form_data_sets):
-                                try:
-                                    logger.info(f"Attempting search with form configuration {i+1}")
-                                    async with session.post(
-                                        view_search_url, data=form_data
-                                    ) as search_response:
-                                        if search_response.status == 200:
-                                            results_html = await search_response.text()
-                                            if (
-                                                "search results" in results_html.lower()
-                                                or "disclosure" in results_html.lower()
-                                            ):
-                                                disclosures = await self._parse_house_results(
-                                                    results_html, base_url
-                                                )
-                                                logger.info(
-                                                    f"Successfully found {len(disclosures)} House disclosures"
-                                                )
-                                                break
-                                            else:
-                                                logger.debug(
-                                                    f"Form config {i+1} didn't return results"
-                                                )
-                                        else:
-                                            logger.debug(
-                                                f"Form config {i+1} failed with status {search_response.status}"
-                                            )
-                                except Exception as e:
-                                    logger.debug(f"Form config {i+1} failed: {e}")
-                            else:
-                                logger.warning(
-                                    "All form configurations failed, using basic page scraping"
-                                )
-                                # Fall back to scraping any existing disclosure links on the page
-                                disclosures = await self._parse_house_results(html, base_url)
-                        else:
-                            logger.warning(
-                                "Could not find required ASPX form fields, using basic page scraping"
-                            )
-                            # Log what fields we did find
-                            all_inputs = soup.find_all("input")
-                            logger.debug(f"Found {len(all_inputs)} input fields total")
-                            input_names = [inp.get("name", "unnamed") for inp in all_inputs[:10]]
-                            logger.debug(f"Sample input field names: {input_names}")
+                            if transactions_data:
+                                logger.info(f"  Found {len(transactions_data)} transactions")
 
-                            # Fall back to parsing any existing links
-                            disclosures = await self._parse_house_results(html, base_url)
+                            parsed_pdf_count += 1
+
+                            # Rate limiting between PDF downloads
+                            await asyncio.sleep(self.config.request_delay)
+
+                        except Exception as e:
+                            logger.error(f"  Error parsing PDF for {metadata['politician_name']}: {e}")
+
+                    # Create politician object (minimal info from index)
+                    politician = Politician(
+                        first_name=metadata['first_name'],
+                        last_name=metadata['last_name'],
+                        full_name=metadata['politician_name'],
+                        role="House",
+                        party="",  # Not available in index file
+                        state_or_country=metadata['state_district'][:2] if metadata['state_district'] else ""
+                    )
+
+                    # Create TradingDisclosure object for each transaction found
+                    # If no transactions, create one disclosure with the metadata
+                    if transactions_data:
+                        for txn in transactions_data:
+                            disclosure = TradingDisclosure(
+                                politician_id="",  # Will be set later
+                                asset_name=txn.get('asset_name', 'Unknown'),
+                                asset_ticker=txn.get('ticker'),
+                                transaction_type=TransactionType[txn.get('transaction_type', 'PURCHASE')],
+                                transaction_date=txn.get('transaction_date') or metadata.get('filing_date'),
+                                amount_range_min=txn.get('amount_min'),
+                                amount_range_max=txn.get('amount_max'),
+                                amount_exact=txn.get('amount_exact'),
+                                disclosure_date=metadata.get('filing_date'),
+                                source_url=metadata['pdf_url'],
+                                status=DisclosureStatus.PENDING,
+                                raw_data={
+                                    'politician': politician,
+                                    'doc_id': metadata['doc_id'],
+                                    'filing_type': metadata['filing_type']
+                                }
+                            )
+                            disclosures.append(disclosure)
                     else:
-                        logger.warning(f"Failed to access House disclosure site: {response.status}")
+                        # Create disclosure with metadata only (no transaction details yet)
+                        disclosure = TradingDisclosure(
+                            politician_id="",  # Will be set later
+                            asset_name=f"{metadata['filing_type']} Filing",
+                            asset_ticker=None,
+                            transaction_type=TransactionType.PURCHASE,  # Default, unknown
+                            transaction_date=metadata.get('filing_date'),
+                            amount_range_min=None,
+                            amount_range_max=None,
+                            amount_exact=None,
+                            disclosure_date=metadata.get('filing_date'),
+                            source_url=metadata['pdf_url'],
+                            status=DisclosureStatus.PENDING if not parse_pdfs else DisclosureStatus.PROCESSED,
+                            raw_data={
+                                'politician': politician,
+                                'doc_id': metadata['doc_id'],
+                                'filing_type': metadata['filing_type']
+                            }
+                        )
+                        disclosures.append(disclosure)
 
                 # Rate limiting
                 await asyncio.sleep(self.config.request_delay)
 
+                logger.info(f"Successfully created {len(disclosures)} House disclosure records")
+                if parse_pdfs:
+                    logger.info(f"Parsed {parsed_pdf_count} PDFs for transaction details")
+
         except Exception as e:
-            logger.error(f"House disclosures scrape failed: {e}")
-            # Return empty list on error rather than sample data
+            logger.error(f"House disclosures scrape failed: {e}", exc_info=True)
 
         return disclosures
 
