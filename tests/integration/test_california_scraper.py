@@ -60,7 +60,7 @@ async def test_california_name_extraction():
                 and len(d.raw_data.get("politician_name", "")) > 3
             )
 
-            print(f"📈 RESULTS:")
+            print("📈 RESULTS:")
             print(f"Total disclosures found: {len(disclosures)}")
             print(f"Disclosures with real names: {total_with_names}")
             print(

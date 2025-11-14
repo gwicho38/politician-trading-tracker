@@ -28,7 +28,9 @@ def main():
 @click.option("--days", default=30, help="Look back period in days")
 @click.option("--min-confidence", default=0.6, help="Minimum confidence threshold")
 @click.option("--fetch-market-data/--no-market-data", default=True, help="Fetch market data")
-@click.option("--output", type=click.Choice(["table", "json"]), default="table", help="Output format")
+@click.option(
+    "--output", type=click.Choice(["table", "json"]), default="table", help="Output format"
+)
 def generate(days, min_confidence, fetch_market_data, output):
     """Generate trading signals from politician trading data"""
     asyncio.run(_generate_signals(days, min_confidence, fetch_market_data, output))
@@ -47,6 +49,7 @@ async def _generate_signals(days, min_confidence, fetch_market_data, output):
         console.print("[yellow]Fetching politician trading disclosures...[/]")
         cutoff_date = datetime.utcnow()
         from datetime import timedelta
+
         cutoff_date = cutoff_date - timedelta(days=days)
 
         # Query disclosures
@@ -149,18 +152,20 @@ def _display_signals_json(signals):
 
     signals_data = []
     for signal in signals:
-        signals_data.append({
-            "ticker": signal.ticker,
-            "signal_type": signal.signal_type.value,
-            "signal_strength": signal.signal_strength.value,
-            "confidence_score": signal.confidence_score,
-            "politician_activity_count": signal.politician_activity_count,
-            "buy_sell_ratio": signal.buy_sell_ratio,
-            "target_price": float(signal.target_price) if signal.target_price else None,
-            "stop_loss": float(signal.stop_loss) if signal.stop_loss else None,
-            "take_profit": float(signal.take_profit) if signal.take_profit else None,
-            "generated_at": signal.generated_at.isoformat(),
-        })
+        signals_data.append(
+            {
+                "ticker": signal.ticker,
+                "signal_type": signal.signal_type.value,
+                "signal_strength": signal.signal_strength.value,
+                "confidence_score": signal.confidence_score,
+                "politician_activity_count": signal.politician_activity_count,
+                "buy_sell_ratio": signal.buy_sell_ratio,
+                "target_price": float(signal.target_price) if signal.target_price else None,
+                "stop_loss": float(signal.stop_loss) if signal.stop_loss else None,
+                "take_profit": float(signal.take_profit) if signal.take_profit else None,
+                "generated_at": signal.generated_at.isoformat(),
+            }
+        )
 
     console.print(json.dumps(signals_data, indent=2))
 
@@ -182,7 +187,11 @@ async def _save_signals(db: SupabaseClient, signals):
                 "valid_until": signal.valid_until.isoformat() if signal.valid_until else None,
                 "model_version": signal.model_version,
                 "politician_activity_count": signal.politician_activity_count,
-                "total_transaction_volume": float(signal.total_transaction_volume) if signal.total_transaction_volume else None,
+                "total_transaction_volume": (
+                    float(signal.total_transaction_volume)
+                    if signal.total_transaction_volume
+                    else None
+                ),
                 "buy_sell_ratio": signal.buy_sell_ratio,
                 "features": signal.features,
                 "disclosure_ids": signal.disclosure_ids,
@@ -211,6 +220,7 @@ async def _list_signals(days):
 
         # Fetch recent signals
         from datetime import timedelta
+
         cutoff_date = datetime.utcnow() - timedelta(days=days)
 
         query = db.client.table("trading_signals").select("*")
@@ -237,7 +247,9 @@ async def _list_signals(days):
                 signal_type=SignalType(data["signal_type"]),
                 signal_strength=SignalStrength(data["signal_strength"]),
                 confidence_score=data["confidence_score"],
-                target_price=Decimal(str(data["target_price"])) if data.get("target_price") else None,
+                target_price=(
+                    Decimal(str(data["target_price"])) if data.get("target_price") else None
+                ),
                 politician_activity_count=data.get("politician_activity_count", 0),
                 buy_sell_ratio=data.get("buy_sell_ratio", 0.0),
             )

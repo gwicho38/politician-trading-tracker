@@ -6,8 +6,4 @@ from .ticker_extractor import TickerExtractor
 from .amount_parser import AmountParser
 from .politician_matcher import PoliticianMatcher
 
-__all__ = [
-    'TickerExtractor',
-    'AmountParser',
-    'PoliticianMatcher'
-]
+__all__ = ["TickerExtractor", "AmountParser", "PoliticianMatcher"]

@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 
-from ..models import Politician, PoliticianRole, TradingDisclosure, TransactionType
+from ..models import TradingDisclosure, TransactionType
 from .scrapers import BaseScraper
 
 logger = logging.getLogger(__name__)
@@ -107,7 +107,7 @@ class CaliforniaNetFileScraper(BaseScraper):
                     transaction_date=datetime.now() - timedelta(days=30),
                     disclosure_date=datetime.now() - timedelta(days=15),
                     transaction_type=TransactionType.PURCHASE,
-                    asset_name=f"California State Investment Fund",
+                    asset_name="California State Investment Fund",
                     asset_type="investment",
                     amount_range_min=Decimal("1000"),
                     amount_range_max=Decimal("10000"),
@@ -336,7 +336,7 @@ class CaliforniaNetFileScraper(BaseScraper):
         try:
             exact_amount = Decimal(amount_clean)
             return None, None, exact_amount
-        except:
+        except (ValueError, TypeError):
             pass
 
         # Try range parsing

@@ -36,7 +36,6 @@ except ImportError:
     # python-dotenv not installed, try loading from .streamlit/secrets.toml
     pass
 
-from .data_sources import ALL_DATA_SOURCES, AccessMethod, DataSource
 from .models import Politician, TradingDisclosure
 from .scrapers_free_sources import FreeDataFetcher
 
@@ -85,7 +84,7 @@ def create_data_pull_job(client: Client, job_type: str, config: Optional[Dict] =
     Returns:
         Job ID
     """
-    logger.info(f"🚀 Creating data pull job", extra={"job_type": job_type})
+    logger.info("🚀 Creating data pull job", extra={"job_type": job_type})
     try:
         result = (
             client.table("data_pull_jobs")
@@ -99,7 +98,7 @@ def create_data_pull_job(client: Client, job_type: str, config: Optional[Dict] =
             )
             .execute()
         )
-        logger.info(f"✅ Data pull job created successfully", extra={"job_type": job_type})
+        logger.info("✅ Data pull job created successfully", extra={"job_type": job_type})
 
         job_id = result.data[0]["id"]
         logger.info(f"Created data pull job: {job_id} (type: {job_type})")
@@ -127,43 +126,52 @@ def update_data_pull_job(
         stats: Optional statistics (records_found, records_new, etc.)
         error: Optional error message if failed
     """
-    logger.info(f"🔄 Updating data pull job", extra={
-        "job_id": str(job_id),
-        "status": status,
-        "has_stats": bool(stats),
-        "has_error": bool(error),
-    })
+    logger.info(
+        "🔄 Updating data pull job",
+        extra={
+            "job_id": str(job_id),
+            "status": status,
+            "has_stats": bool(stats),
+            "has_error": bool(error),
+        },
+    )
 
     try:
         update_data = {"status": status, "completed_at": datetime.now().isoformat()}
 
         if stats:
             update_data.update(stats)
-            logger.debug(f"Job statistics", extra=stats)
+            logger.debug("Job statistics", extra=stats)
 
         if error:
             update_data["error_message"] = error
-            logger.error(f"Job failed with error", extra={"job_id": str(job_id), "error": error})
+            logger.error("Job failed with error", extra={"job_id": str(job_id), "error": error})
 
         client.table("data_pull_jobs").update(update_data).eq("id", str(job_id)).execute()
 
         if status == "completed":
-            logger.info(f"✅ Job completed successfully", extra={
-                "job_id": str(job_id),
-                "records_found": stats.get("records_found", 0) if stats else 0,
-                "records_new": stats.get("records_new", 0) if stats else 0,
-                "records_updated": stats.get("records_updated", 0) if stats else 0,
-            })
+            logger.info(
+                "✅ Job completed successfully",
+                extra={
+                    "job_id": str(job_id),
+                    "records_found": stats.get("records_found", 0) if stats else 0,
+                    "records_new": stats.get("records_new", 0) if stats else 0,
+                    "records_updated": stats.get("records_updated", 0) if stats else 0,
+                },
+            )
         elif status == "failed":
             logger.error(f"❌ Job marked as failed: {job_id}")
         else:
             logger.info(f"Updated job {job_id}: status={status}")
 
     except Exception as e:
-        logger.error(f"❌ Error updating data pull job: {e}", extra={
-            "job_id": str(job_id),
-            "attempted_status": status,
-        })
+        logger.error(
+            f"❌ Error updating data pull job: {e}",
+            extra={
+                "job_id": str(job_id),
+                "attempted_status": status,
+            },
+        )
 
 
 # =============================================================================
@@ -234,7 +242,9 @@ def upsert_politicians(client: Client, politicians: List[Politician]) -> Dict[st
                 updated_count += 1
 
                 if len(examples_updated) < 5:
-                    examples_updated.append(f"{politician.full_name} ({politician.party}, {politician.state_or_country})")
+                    examples_updated.append(
+                        f"{politician.full_name} ({politician.party}, {politician.state_or_country})"
+                    )
 
                 logger.debug(f"✅ Updated politician: {politician.full_name}")
             else:
@@ -244,7 +254,9 @@ def upsert_politicians(client: Client, politicians: List[Politician]) -> Dict[st
                 new_count += 1
 
                 if len(examples_new) < 5:
-                    examples_new.append(f"{politician.full_name} ({politician.party}, {politician.state_or_country})")
+                    examples_new.append(
+                        f"{politician.full_name} ({politician.party}, {politician.state_or_country})"
+                    )
 
                 logger.debug(f"➕ Inserted new politician: {politician.full_name}")
 
@@ -258,13 +270,16 @@ def upsert_politicians(client: Client, politicians: List[Politician]) -> Dict[st
             # Log progress every 100 politicians
             if i % 100 == 0:
                 percent_complete = (i / len(politicians)) * 100
-                logger.info(f"📊 Politician upsert progress: {percent_complete:.1f}% complete", extra={
-                    "processed": i,
-                    "total": len(politicians),
-                    "new": new_count,
-                    "updated": updated_count,
-                    "skipped": skipped_count,
-                })
+                logger.info(
+                    f"📊 Politician upsert progress: {percent_complete:.1f}% complete",
+                    extra={
+                        "processed": i,
+                        "total": len(politicians),
+                        "new": new_count,
+                        "updated": updated_count,
+                        "skipped": skipped_count,
+                    },
+                )
 
         except Exception as e:
             skipped_count += 1
@@ -272,17 +287,22 @@ def upsert_politicians(client: Client, politicians: List[Politician]) -> Dict[st
             continue
 
     # Calculate success rate
-    success_rate = ((new_count + updated_count) / len(politicians) * 100) if len(politicians) > 0 else 0
+    success_rate = (
+        ((new_count + updated_count) / len(politicians) * 100) if len(politicians) > 0 else 0
+    )
 
-    logger.info(f"✅ Politician upsert completed", extra={
-        "total_processed": len(politicians),
-        "new_politicians": new_count,
-        "updated_politicians": updated_count,
-        "skipped": skipped_count,
-        "examples_new": examples_new,
-        "examples_updated": examples_updated,
-        "success_rate": f"{success_rate:.1f}%",
-    })
+    logger.info(
+        "✅ Politician upsert completed",
+        extra={
+            "total_processed": len(politicians),
+            "new_politicians": new_count,
+            "updated_politicians": updated_count,
+            "skipped": skipped_count,
+            "examples_new": examples_new,
+            "examples_updated": examples_updated,
+            "success_rate": f"{success_rate:.1f}%",
+        },
+    )
 
     return politician_map
 
@@ -385,35 +405,54 @@ def upsert_trading_disclosures(
             # Log progress every 100 disclosures
             if i % 100 == 0:
                 percent_complete = (i / len(disclosures)) * 100
-                logger.info(f"📊 Disclosure upsert progress: {percent_complete:.1f}% complete", extra={
-                    "processed": i,
-                    "total": len(disclosures),
-                    "new": new_count,
-                    "updated": updated_count,
-                    "skipped": skipped_count,
-                    "success_rate": f"{((new_count + updated_count) / i * 100):.1f}%" if i > 0 else "0%",
-                })
+                logger.info(
+                    f"📊 Disclosure upsert progress: {percent_complete:.1f}% complete",
+                    extra={
+                        "processed": i,
+                        "total": len(disclosures),
+                        "new": new_count,
+                        "updated": updated_count,
+                        "skipped": skipped_count,
+                        "success_rate": (
+                            f"{((new_count + updated_count) / i * 100):.1f}%" if i > 0 else "0%"
+                        ),
+                    },
+                )
 
         except Exception as e:
             skipped_count += 1
-            logger.error(f"❌ Error upserting disclosure: {e}", extra={
-                "asset_name": disclosure.asset_name if hasattr(disclosure, 'asset_name') else 'unknown',
-                "transaction_type": disclosure.transaction_type if hasattr(disclosure, 'transaction_type') else 'unknown',
-            })
+            logger.error(
+                f"❌ Error upserting disclosure: {e}",
+                extra={
+                    "asset_name": (
+                        disclosure.asset_name if hasattr(disclosure, "asset_name") else "unknown"
+                    ),
+                    "transaction_type": (
+                        disclosure.transaction_type
+                        if hasattr(disclosure, "transaction_type")
+                        else "unknown"
+                    ),
+                },
+            )
             continue
 
     # Calculate success rate
-    success_rate = ((new_count + updated_count) / len(disclosures) * 100) if len(disclosures) > 0 else 0
+    success_rate = (
+        ((new_count + updated_count) / len(disclosures) * 100) if len(disclosures) > 0 else 0
+    )
 
-    logger.info(f"✅ Disclosure upsert completed", extra={
-        "total_processed": len(disclosures),
-        "new_disclosures": new_count,
-        "updated_disclosures": updated_count,
-        "skipped": skipped_count,
-        "examples_new": examples_new,
-        "examples_updated": examples_updated,
-        "success_rate": f"{success_rate:.1f}%",
-    })
+    logger.info(
+        "✅ Disclosure upsert completed",
+        extra={
+            "total_processed": len(disclosures),
+            "new_disclosures": new_count,
+            "updated_disclosures": updated_count,
+            "skipped": skipped_count,
+            "examples_new": examples_new,
+            "examples_updated": examples_updated,
+            "success_rate": f"{success_rate:.1f}%",
+        },
+    )
 
     return {
         "records_found": len(disclosures),
@@ -458,20 +497,26 @@ def seed_from_senate_watcher(
         fetcher = FreeDataFetcher()
 
         # Fetch data
-        logger.info(f"📡 Fetching data from Senate Stock Watcher", extra={
-            "recent_only": recent_only,
-            "days": days if recent_only else "all",
-        })
+        logger.info(
+            "📡 Fetching data from Senate Stock Watcher",
+            extra={
+                "recent_only": recent_only,
+                "days": days if recent_only else "all",
+            },
+        )
         data = fetcher.fetch_from_senate_watcher(recent_only=recent_only, days=days)
 
         politicians = data["politicians"]
         disclosures = data["disclosures"]
 
-        logger.info(f"✅ Fetched data successfully", extra={
-            "politicians": len(politicians),
-            "disclosures": len(disclosures),
-            "total_records": len(politicians) + len(disclosures),
-        })
+        logger.info(
+            "✅ Fetched data successfully",
+            extra={
+                "politicians": len(politicians),
+                "disclosures": len(disclosures),
+                "total_records": len(politicians) + len(disclosures),
+            },
+        )
 
         if test_run:
             logger.info("⚠️ TEST RUN - Not inserting to database")
@@ -495,19 +540,24 @@ def seed_from_senate_watcher(
         # Upsert politicians
         logger.info("👥 Starting politician upsert phase")
         politician_map = upsert_politicians(client, politicians)
-        logger.info(f"✅ Politician upsert phase completed", extra={
-            "mapped_politicians": len(politician_map),
-        })
+        logger.info(
+            "✅ Politician upsert phase completed",
+            extra={
+                "mapped_politicians": len(politician_map),
+            },
+        )
 
         # Upsert disclosures
         logger.info("📊 Starting disclosure upsert phase")
         disclosure_stats = upsert_trading_disclosures(client, disclosures, politician_map)
-        logger.info(f"✅ Disclosure upsert phase completed")
+        logger.info("✅ Disclosure upsert phase completed")
 
         # Update job record
         update_data_pull_job(client, job_id, "completed", disclosure_stats)
 
-        logger.info("🎉 Senate Stock Watcher seeding completed successfully!", extra=disclosure_stats)
+        logger.info(
+            "🎉 Senate Stock Watcher seeding completed successfully!", extra=disclosure_stats
+        )
 
         return disclosure_stats
 
@@ -540,7 +590,7 @@ def seed_from_all_sources(client: Client, test_run: bool = False) -> Dict[str, D
         results["senate_watcher"] = seed_from_senate_watcher(client, test_run)
     except Exception as e:
         logger.error(f"Senate Stock Watcher seeding failed: {e}")
-        results["senate_watcher"] = {"error": str(e)}
+        results["senate_watcher"] = {"errors": 1, "total": 0}
 
     # TODO: Add other sources as implemented
     # - Finnhub (requires free API key from finnhub.io)

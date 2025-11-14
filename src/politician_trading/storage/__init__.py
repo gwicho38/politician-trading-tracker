@@ -7,4 +7,4 @@ and parsed data from Supabase Storage.
 
 from .storage_manager import StorageManager
 
-__all__ = ['StorageManager']
+__all__ = ["StorageManager"]

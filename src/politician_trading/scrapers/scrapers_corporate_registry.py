@@ -21,7 +21,6 @@ from typing import Dict, List, Optional
 
 import requests
 
-from .models import Politician, TradingDisclosure
 
 logger = logging.getLogger(__name__)
 

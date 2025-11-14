@@ -14,7 +14,7 @@ from .base import (
     PipelineMetrics,
     PipelineStatus,
     RawDisclosure,
-    CleanedDisclosure
+    CleanedDisclosure,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,29 +38,27 @@ class CleaningStage(PipelineStage[CleanedDisclosure]):
         "transaction_date",
         "disclosure_date",
         "asset_name",
-        "transaction_type"
+        "transaction_type",
     }
 
     # Valid transaction types
     VALID_TRANSACTION_TYPES = {
-        "purchase", "sale", "exchange",
-        "option_purchase", "option_sale", "option_exercise"
+        "purchase",
+        "sale",
+        "exchange",
+        "option_purchase",
+        "option_sale",
+        "option_exercise",
     }
 
-    def __init__(
-        self,
-        remove_duplicates: bool = True,
-        strict_validation: bool = False
-    ):
+    def __init__(self, remove_duplicates: bool = True, strict_validation: bool = False):
         super().__init__("cleaning")
         self.remove_duplicates = remove_duplicates
         self.strict_validation = strict_validation
         self._seen_hashes: Set[str] = set()
 
     async def process(
-        self,
-        data: List[RawDisclosure],
-        context: PipelineContext
+        self, data: List[RawDisclosure], context: PipelineContext
     ) -> PipelineResult[CleanedDisclosure]:
         """
         Clean and validate raw disclosures.
@@ -84,9 +82,7 @@ class CleaningStage(PipelineStage[CleanedDisclosure]):
                 # Validate required fields
                 if not self._has_required_fields(raw.raw_data):
                     missing = self.REQUIRED_FIELDS - set(raw.raw_data.keys())
-                    self.logger.warning(
-                        f"Record {i} missing required fields: {missing}"
-                    )
+                    self.logger.warning(f"Record {i} missing required fields: {missing}")
                     metrics.records_skipped += 1
                     metrics.warnings.append(f"Record {i}: Missing fields {missing}")
                     continue
@@ -136,10 +132,7 @@ class CleaningStage(PipelineStage[CleanedDisclosure]):
         )
 
         return self._create_result(
-            status=status,
-            data=cleaned_disclosures,
-            context=context,
-            metrics=metrics
+            status=status, data=cleaned_disclosures, context=context, metrics=metrics
         )
 
     def _has_required_fields(self, data: dict) -> bool:
@@ -152,7 +145,6 @@ class CleaningStage(PipelineStage[CleanedDisclosure]):
     def _compute_hash(self, data: dict) -> str:
         """Compute hash for duplicate detection"""
         import hashlib
-        import json
 
         # Create a stable hash from key fields
         key_fields = [
@@ -160,7 +152,7 @@ class CleaningStage(PipelineStage[CleanedDisclosure]):
             str(data.get("transaction_date", "")),
             str(data.get("asset_name", "")),
             str(data.get("transaction_type", "")),
-            str(data.get("amount", ""))
+            str(data.get("amount", "")),
         ]
 
         hash_str = "|".join(key_fields)
@@ -219,7 +211,7 @@ class CleaningStage(PipelineStage[CleanedDisclosure]):
                 amount_text=amount_text,
                 source_url=raw.source_url,
                 source_document_id=raw.source_document_id,
-                raw_data=data
+                raw_data=data,
             )
 
         except Exception as e:
@@ -238,10 +230,10 @@ class CleaningStage(PipelineStage[CleanedDisclosure]):
         text = text.strip()
 
         # Remove extra whitespace
-        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r"\s+", " ", text)
 
         # Remove null bytes
-        text = text.replace('\x00', '')
+        text = text.replace("\x00", "")
 
         return text if text else None
 

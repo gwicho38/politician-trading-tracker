@@ -19,6 +19,6 @@ try:
         "create_logger",
         "logger",
     ]
-except (ImportError, KeyError) as e:
+except (ImportError, KeyError):
     # Allow module to load even if logger import fails
     __all__ = []

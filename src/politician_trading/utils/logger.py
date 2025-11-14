@@ -16,6 +16,7 @@ from enum import IntEnum
 
 class LogLevel(IntEnum):
     """Log levels matching Python's logging levels"""
+
     DEBUG = logging.DEBUG
     INFO = logging.INFO
     WARN = logging.WARNING
@@ -28,15 +29,15 @@ class ColoredFormatter(logging.Formatter):
 
     # ANSI color codes
     COLORS = {
-        'DEBUG': '\x1b[36m',      # Cyan
-        'INFO': '\x1b[32m',       # Green
-        'WARNING': '\x1b[33m',    # Yellow
-        'ERROR': '\x1b[31m',      # Red
-        'CRITICAL': '\x1b[41m',   # Red background
+        "DEBUG": "\x1b[36m",  # Cyan
+        "INFO": "\x1b[32m",  # Green
+        "WARNING": "\x1b[33m",  # Yellow
+        "ERROR": "\x1b[31m",  # Red
+        "CRITICAL": "\x1b[41m",  # Red background
     }
-    RESET = '\x1b[0m'
-    DIM = '\x1b[2m'
-    MAGENTA = '\x1b[35m'
+    RESET = "\x1b[0m"
+    DIM = "\x1b[2m"
+    MAGENTA = "\x1b[35m"
 
     def __init__(self, use_colors: bool = True):
         super().__init__()
@@ -52,25 +53,25 @@ class ColoredFormatter(logging.Formatter):
 
         if self.use_colors:
             # Colored output
-            color = self.COLORS.get(level_name, '')
+            color = self.COLORS.get(level_name, "")
             parts = [
                 f"{self.DIM}{timestamp}{self.RESET}",
                 f"{color}{level_name.ljust(8)}{self.RESET}",
             ]
 
             # Context (logger name)
-            if record.name != 'root':
+            if record.name != "root":
                 parts.append(f"{self.MAGENTA}[{record.name}]{self.RESET}")
 
             # Message
             parts.append(record.getMessage())
 
             # Metadata (if present)
-            if hasattr(record, 'metadata') and record.metadata:
+            if hasattr(record, "metadata") and record.metadata:
                 metadata_str = json.dumps(record.metadata)
                 parts.append(f"{self.DIM}{metadata_str}{self.RESET}")
 
-            return ' '.join(parts)
+            return " ".join(parts)
         else:
             # Plain text output
             parts = [
@@ -78,15 +79,15 @@ class ColoredFormatter(logging.Formatter):
                 level_name.ljust(8),
             ]
 
-            if record.name != 'root':
+            if record.name != "root":
                 parts.append(f"[{record.name}]")
 
             parts.append(record.getMessage())
 
-            if hasattr(record, 'metadata') and record.metadata:
+            if hasattr(record, "metadata") and record.metadata:
                 parts.append(json.dumps(record.metadata))
 
-            return ' '.join(parts)
+            return " ".join(parts)
 
 
 class JSONFormatter(logging.Formatter):
@@ -95,29 +96,29 @@ class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         """Format log record as JSON"""
         log_data = {
-            'timestamp': datetime.fromtimestamp(record.created).isoformat(),
-            'level': record.levelname,
-            'message': record.getMessage(),
-            'logger': record.name,
+            "timestamp": datetime.fromtimestamp(record.created).isoformat(),
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "logger": record.name,
         }
 
         # Add metadata if present
-        if hasattr(record, 'metadata') and record.metadata:
-            log_data['metadata'] = record.metadata
+        if hasattr(record, "metadata") and record.metadata:
+            log_data["metadata"] = record.metadata
 
         # Add exception info if present
         if record.exc_info:
-            log_data['exception'] = {
-                'type': record.exc_info[0].__name__,
-                'message': str(record.exc_info[1]),
-                'traceback': self.formatException(record.exc_info),
+            log_data["exception"] = {
+                "type": record.exc_info[0].__name__,
+                "message": str(record.exc_info[1]),
+                "traceback": self.formatException(record.exc_info),
             }
 
         # Add source location
-        log_data['source'] = {
-            'file': record.pathname,
-            'line': record.lineno,
-            'function': record.funcName,
+        log_data["source"] = {
+            "file": record.pathname,
+            "line": record.lineno,
+            "function": record.funcName,
         }
 
         return json.dumps(log_data)
@@ -153,7 +154,7 @@ class PTTLogger:
 
         # Get log level from env or parameter
         if level is None:
-            level = os.getenv('LOG_LEVEL', 'INFO').upper()
+            level = os.getenv("LOG_LEVEL", "INFO").upper()
 
         self.logger.setLevel(getattr(logging, level, logging.INFO))
 
@@ -199,7 +200,7 @@ class PTTLogger:
                 # Symlinks may not be supported on all systems
                 pass
 
-    def child(self, context: str) -> 'PTTLogger':
+    def child(self, context: str) -> "PTTLogger":
         """
         Create a child logger with additional context
 
@@ -226,9 +227,11 @@ class PTTLogger:
 
         return child_logger
 
-    def _log_with_metadata(self, level: int, message: str, metadata: Optional[Dict[str, Any]] = None):
+    def _log_with_metadata(
+        self, level: int, message: str, metadata: Optional[Dict[str, Any]] = None
+    ):
         """Internal method to log with metadata"""
-        extra = {'metadata': metadata} if metadata else {}
+        extra = {"metadata": metadata} if metadata else {}
         self.logger.log(level, message, extra=extra)
 
     def debug(self, message: str, metadata: Optional[Dict[str, Any]] = None):
@@ -247,19 +250,29 @@ class PTTLogger:
         """Alias for warn"""
         self.warn(message, metadata)
 
-    def error(self, message: str, error: Optional[Exception] = None, metadata: Optional[Dict[str, Any]] = None):
+    def error(
+        self,
+        message: str,
+        error: Optional[Exception] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
         """Log error message"""
-        extra = {'metadata': metadata} if metadata else {}
+        extra = {"metadata": metadata} if metadata else {}
         self.logger.error(message, exc_info=error, extra=extra)
 
-    def critical(self, message: str, error: Optional[Exception] = None, metadata: Optional[Dict[str, Any]] = None):
+    def critical(
+        self,
+        message: str,
+        error: Optional[Exception] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
         """Log critical message"""
-        extra = {'metadata': metadata} if metadata else {}
+        extra = {"metadata": metadata} if metadata else {}
         self.logger.critical(message, exc_info=error, extra=extra)
 
     def exception(self, message: str, metadata: Optional[Dict[str, Any]] = None):
         """Log exception with traceback"""
-        extra = {'metadata': metadata} if metadata else {}
+        extra = {"metadata": metadata} if metadata else {}
         self.logger.exception(message, extra=extra)
 
 
@@ -267,11 +280,7 @@ class PTTLogger:
 _default_logger: Optional[PTTLogger] = None
 
 
-def get_logger(
-    name: Optional[str] = None,
-    level: Optional[str] = None,
-    **kwargs
-) -> PTTLogger:
+def get_logger(name: Optional[str] = None, level: Optional[str] = None, **kwargs) -> PTTLogger:
     """
     Get or create a logger instance
 

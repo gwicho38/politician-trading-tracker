@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 
-from ..models import Politician, PoliticianRole, TradingDisclosure, TransactionType
+from ..models import Politician, TradingDisclosure, TransactionType
 from .scrapers import BaseScraper
 
 logger = logging.getLogger(__name__)
@@ -200,7 +200,7 @@ class UKParliamentScraper(BaseScraper):
                 amount_range_min=amount_min,
                 amount_range_max=amount_max,
                 amount_exact=amount_exact,
-                source_url=f"https://www.parliament.uk/mps-lords-and-offices/standards-and-financial-interests/",
+                source_url="https://www.parliament.uk/mps-lords-and-offices/standards-and-financial-interests/",
                 raw_data={
                     "uk_interest_id": interest_id,
                     "uk_member_id": member_id,

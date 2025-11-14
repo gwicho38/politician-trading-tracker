@@ -5,7 +5,7 @@ Monitoring and status reporting for politician trading data collection
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from rich.console import Console
 from rich.panel import Panel
@@ -69,7 +69,7 @@ class PoliticianTradingMonitor:
         """Check database connectivity and basic operations"""
         try:
             # Test connection with a simple query
-            result = self.db.client.table("data_pull_jobs").select("count").execute()
+            self.db.client.table("data_pull_jobs").select("count").execute()
 
             return {
                 "status": "healthy",

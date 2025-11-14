@@ -2,15 +2,14 @@
 Main workflow orchestrator for politician trading data collection
 """
 
-import asyncio
 import logging
 import uuid
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from datetime import datetime
+from typing import Any, Dict, List
 
 from .config import WorkflowConfig
 from .database import PoliticianTradingDB
-from .models import DataPullJob, Politician, PoliticianRole, TradingDisclosure
+from .models import DataPullJob, Politician, PoliticianRole
 from .scrapers import (
     CongressTradingScraper,
     EUParliamentScraper,
@@ -259,11 +258,16 @@ class PoliticianTradingWorkflow:
                     else:
                         # Extract ticker if missing
                         if not disclosure.asset_ticker and disclosure.asset_name:
-                            from politician_trading.utils.ticker_utils import extract_ticker_from_asset_name
+                            from politician_trading.utils.ticker_utils import (
+                                extract_ticker_from_asset_name,
+                            )
+
                             extracted_ticker = extract_ticker_from_asset_name(disclosure.asset_name)
                             if extracted_ticker:
                                 disclosure.asset_ticker = extracted_ticker
-                                logger.info(f"Extracted ticker '{extracted_ticker}' from '{disclosure.asset_name}'")
+                                logger.info(
+                                    f"Extracted ticker '{extracted_ticker}' from '{disclosure.asset_name}'"
+                                )
 
                         # Insert new record
                         disclosure_id = await self.db.insert_disclosure(disclosure)
@@ -531,7 +535,7 @@ class PoliticianTradingWorkflow:
             job.records_found = len(california_disclosures)
 
             # Process each disclosure
-            matcher = PoliticianMatcher(self.politicians)
+            PoliticianMatcher(self.politicians)
 
             for disclosure in california_disclosures:
                 try:
@@ -612,7 +616,7 @@ class PoliticianTradingWorkflow:
             job.records_found = len(eu_states_disclosures)
 
             # Process each disclosure
-            matcher = PoliticianMatcher(self.politicians)
+            PoliticianMatcher(self.politicians)
 
             for disclosure in eu_states_disclosures:
                 try:
@@ -732,7 +736,7 @@ class PoliticianTradingWorkflow:
                         if not politician:
                             # Create new politician with real name from scraper
                             state = disclosure.raw_data.get("state", "Unknown")
-                            source = disclosure.raw_data.get("source", "unknown")
+                            disclosure.raw_data.get("source", "unknown")
 
                             # Map state to appropriate role
                             role_map = {

@@ -2,17 +2,15 @@
 Database client and schema management for politician trading data
 """
 
-import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from postgrest.exceptions import APIError
 from supabase import Client, create_client
 
 from .config import WorkflowConfig
-from .models import DataPullJob, DataSource, Politician, TradingDisclosure
+from .models import DataPullJob, Politician, TradingDisclosure
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +50,7 @@ class PoliticianTradingDB:
     async def _check_table_exists(self, table_name: str):
         """Check if table exists"""
         try:
-            result = self.client.table(table_name).select("*").limit(1).execute()
+            self.client.table(table_name).select("*").limit(1).execute()
             return True
         except Exception as e:
             logger.warning(f"Table {table_name} may not exist: {e}")

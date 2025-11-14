@@ -116,9 +116,7 @@ class TestDataFactory:
                     "id": "sub_test_123",
                     "status": "active",
                     "metadata": {"tier": "pro"},
-                    "current_period_end": (
-                        datetime.utcnow() + timedelta(days=30)
-                    ).timestamp(),
+                    "current_period_end": (datetime.utcnow() + timedelta(days=30)).timestamp(),
                 }
             ],
         }
@@ -190,7 +188,9 @@ class TestDataFactory:
             "ticker": signal.ticker,
             "asset_name": signal.asset_name,
             "signal_type": (
-                signal.signal_type.value if hasattr(signal.signal_type, "value") else signal.signal_type
+                signal.signal_type.value
+                if hasattr(signal.signal_type, "value")
+                else signal.signal_type
             ),
             "signal_strength": (
                 signal.signal_strength.value

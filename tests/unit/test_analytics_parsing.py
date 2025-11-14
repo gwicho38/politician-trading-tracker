@@ -2,7 +2,6 @@
 Unit tests for analytics data parsing logic
 Tests the logic used in the Admin dashboard to parse analytics.json
 """
-import pytest
 
 
 class TestAnalyticsParsing:
@@ -10,11 +9,7 @@ class TestAnalyticsParsing:
 
     def test_parse_simple_widgets(self):
         """Test parsing widgets with simple integer values"""
-        widgets = {
-            "Button A": 5,
-            "Button B": 10,
-            "Button C": 3
-        }
+        widgets = {"Button A": 5, "Button B": 10, "Button C": 3}
 
         total_interactions = 0
         for widget_name, widget_value in widgets.items():
@@ -31,7 +26,7 @@ class TestAnalyticsParsing:
             "Select log file": {
                 "logs/2025-11-01.log": 2,
                 "logs/2025-11-02.log": 1,
-                "logs/2025-11-03.log": 0
+                "logs/2025-11-03.log": 0,
             }
         }
 
@@ -48,16 +43,9 @@ class TestAnalyticsParsing:
         """Test parsing widgets with both simple and nested values"""
         widgets = {
             "Button A": 5,
-            "Select dropdown": {
-                "Option 1": 2,
-                "Option 2": 3,
-                "Option 3": 1
-            },
+            "Select dropdown": {"Option 1": 2, "Option 2": 3, "Option 3": 1},
             "Button B": 10,
-            "Radio group": {
-                "Choice A": 4,
-                "Choice B": 0
-            }
+            "Radio group": {"Choice A": 4, "Choice B": 0},
         }
 
         total_interactions = 0
@@ -82,7 +70,7 @@ class TestAnalyticsParsing:
                     "Fast (5s)": 0,
                     "Medium (10s)": 1,
                     "Slow (30s)": 0,
-                    "Very slow (1m)": 0
+                    "Very slow (1m)": 0,
                 },
                 "🚀 Start Tracking": 0,
                 "🛑 Stop Tracking": 0,
@@ -91,12 +79,10 @@ class TestAnalyticsParsing:
                     "logs/latest.log": 0,
                     "logs/2025-11-03.log": 0,
                     "logs/2025-11-02.log": 0,
-                    "logs/2025-11-04.log": 0
+                    "logs/2025-11-04.log": 0,
                 },
-                "Lines to show": {
-                    "100": 1
-                }
-            }
+                "Lines to show": {"100": 1},
+            },
         }
 
         # Calculate total interactions
@@ -134,11 +120,7 @@ class TestAnalyticsParsing:
         widgets = {
             "Button A": 5,
             "Invalid": "not a number",
-            "Select": {
-                "Option 1": 2,
-                "Invalid Option": "also not a number",
-                "Option 2": 3
-            }
+            "Select": {"Option 1": 2, "Invalid Option": "also not a number", "Option 2": 3},
         }
 
         total_interactions = 0
@@ -155,14 +137,9 @@ class TestAnalyticsParsing:
         """Test counting unique widgets"""
         widgets = {
             "Button A": 5,
-            "Select dropdown": {
-                "Option 1": 2,
-                "Option 2": 3
-            },
+            "Select dropdown": {"Option 1": 2, "Option 2": 3},
             "Button B": 10,
-            "Radio group": {
-                "Choice A": 4
-            }
+            "Radio group": {"Choice A": 4},
         }
 
         unique_widgets = len(widgets)

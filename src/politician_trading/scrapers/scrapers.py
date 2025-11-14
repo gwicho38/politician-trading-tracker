@@ -8,13 +8,13 @@ import re
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 import aiohttp
 from bs4 import BeautifulSoup
 
 from ..config import ScrapingConfig
-from ..models import Politician, PoliticianRole, TradingDisclosure, TransactionType
+from ..models import Politician, TradingDisclosure, TransactionType
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,6 @@ class CongressTradingScraper(BaseScraper):
         """Scrape House financial disclosures from the official database"""
         disclosures = []
         base_url = "https://disclosures-clerk.house.gov"
-        search_url = f"{base_url}/FinancialDisclosure"
 
         try:
             logger.info("Starting House disclosures scrape from official database")
@@ -149,7 +148,10 @@ class CongressTradingScraper(BaseScraper):
                                 form_fields[field_name] = field["value"]
 
                         # ASP.NET Core sites use __RequestVerificationToken instead of __VIEWSTATE
-                        if "__VIEWSTATE" in form_fields or "__RequestVerificationToken" in form_fields:
+                        if (
+                            "__VIEWSTATE" in form_fields
+                            or "__RequestVerificationToken" in form_fields
+                        ):
                             logger.info("Found required form fields")
                             logger.debug(f"Form fields found: {list(form_fields.keys())}")
 
@@ -525,9 +527,7 @@ class QuiverQuantScraper(BaseScraper):
 
                 # Check if the page requires JavaScript
                 if "javascript" in html.lower() and len(trade_rows) < 2:
-                    logger.warning(
-                        "QuiverQuant page appears to require JavaScript rendering"
-                    )
+                    logger.warning("QuiverQuant page appears to require JavaScript rendering")
 
                 # Filter out header rows and empty rows
                 for idx, row in enumerate(trade_rows):
@@ -543,7 +543,9 @@ class QuiverQuantScraper(BaseScraper):
                     if not any(cell_texts):
                         continue
 
-                    logger.debug(f"QuiverQuant row {idx}: {len(cells)} cells, texts: {cell_texts[:5]}")
+                    logger.debug(
+                        f"QuiverQuant row {idx}: {len(cells)} cells, texts: {cell_texts[:5]}"
+                    )
 
                     # Try to identify which cell contains what data
                     politician_name = cell_texts[0] if len(cell_texts) > 0 else ""
@@ -565,7 +567,10 @@ class QuiverQuantScraper(BaseScraper):
                         elif text.isupper() and len(text) <= 5 and text.isalpha():
                             ticker = text
                         # Check if this looks like a company name (has mixed case, contains "Inc", "Corp", "Ltd", etc.)
-                        elif any(word in text for word in ["Inc", "Corp", "Ltd", "LLC", "Corporation", "Company"]):
+                        elif any(
+                            word in text
+                            for word in ["Inc", "Corp", "Ltd", "LLC", "Corporation", "Company"]
+                        ):
                             asset_name = text
                         # Check if this contains transaction type keywords
                         elif any(
@@ -601,7 +606,7 @@ class QuiverQuantScraper(BaseScraper):
 
                     # Limit to prevent excessive data collection
                     if len(trades) >= 10:
-                        logger.info(f"Reached limit of 10 trades, stopping")
+                        logger.info("Reached limit of 10 trades, stopping")
                         break
 
         except Exception as e:
@@ -745,7 +750,9 @@ class EUParliamentScraper(BaseScraper):
                                     logger.info(f"Processed {i} MEP profiles")
 
                             except Exception as e:
-                                logger.warning(f"Failed to process MEP profile {mep_url}: {e}")
+                                logger.warning(
+                                    f"Failed to process MEP profile {mep_info['url']}: {e}"
+                                )
                                 continue
                     else:
                         logger.warning(f"Failed to access MEP list: {response.status}")

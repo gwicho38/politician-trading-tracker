@@ -7,14 +7,13 @@ beyond federal Congress data.
 
 import asyncio
 import logging
-import re
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 import aiohttp
 
-from ..models import Politician, PoliticianRole, TradingDisclosure, TransactionType
+from ..models import TradingDisclosure, TransactionType
 from .scrapers import BaseScraper
 
 logger = logging.getLogger(__name__)

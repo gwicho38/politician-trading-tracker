@@ -3,8 +3,8 @@ Ingestion stage - Fetches raw data from sources.
 """
 
 import asyncio
-from typing import List, Optional
-from datetime import datetime, timedelta
+from typing import List
+from datetime import datetime
 import logging
 
 from .base import (
@@ -13,7 +13,7 @@ from .base import (
     PipelineContext,
     PipelineMetrics,
     PipelineStatus,
-    RawDisclosure
+    RawDisclosure,
 )
 from ..storage import StorageManager
 
@@ -38,9 +38,7 @@ class IngestionStage(PipelineStage[RawDisclosure]):
         self.enable_storage = enable_storage
 
     async def process(
-        self,
-        data: List[any],  # Typically empty for ingestion stage
-        context: PipelineContext
+        self, data: List[any], context: PipelineContext  # Typically empty for ingestion stage
     ) -> PipelineResult[RawDisclosure]:
         """
         Fetch raw data from the source.
@@ -64,6 +62,7 @@ class IngestionStage(PipelineStage[RawDisclosure]):
 
             # Get the source-specific scraper
             from ..sources import get_source
+
             source = get_source(context.source_type)
 
             if source is None:
@@ -73,9 +72,9 @@ class IngestionStage(PipelineStage[RawDisclosure]):
             source.configure(context.config)
 
             # Attach storage manager if enabled and db_client available
-            if self.enable_storage and hasattr(context, 'db_client') and context.db_client:
+            if self.enable_storage and hasattr(context, "db_client") and context.db_client:
                 storage_manager = StorageManager(context.db_client)
-                if hasattr(source, 'storage_manager'):
+                if hasattr(source, "storage_manager"):
                     source.storage_manager = storage_manager
                     self.logger.info("Storage manager attached to source for raw data archival")
             else:
@@ -97,15 +96,14 @@ class IngestionStage(PipelineStage[RawDisclosure]):
                         source_type=context.source_type,
                         raw_data=item,
                         source_url=item.get("source_url"),
-                        source_document_id=item.get("document_id")
+                        source_document_id=item.get("document_id"),
                     )
                     raw_disclosures.append(disclosure)
                     metrics.records_output += 1
 
                 except Exception as e:
                     self.logger.warning(
-                        f"Failed to create RawDisclosure from item: {e}",
-                        exc_info=True
+                        f"Failed to create RawDisclosure from item: {e}", exc_info=True
                     )
                     metrics.records_failed += 1
                     metrics.errors.append(f"Item conversion failed: {str(e)}")
@@ -130,10 +128,7 @@ class IngestionStage(PipelineStage[RawDisclosure]):
             )
 
             return self._create_result(
-                status=status,
-                data=raw_disclosures,
-                context=context,
-                metrics=metrics
+                status=status, data=raw_disclosures, context=context, metrics=metrics
             )
 
         except Exception as e:
@@ -142,10 +137,7 @@ class IngestionStage(PipelineStage[RawDisclosure]):
             metrics.errors.append(f"Ingestion error: {str(e)}")
 
             result = self._create_result(
-                status=PipelineStatus.FAILED,
-                data=[],
-                context=context,
-                metrics=metrics
+                status=PipelineStatus.FAILED, data=[], context=context, metrics=metrics
             )
             result.errors.append(e)
             return result
@@ -163,16 +155,14 @@ class BatchIngestionStage(IngestionStage):
         lookback_days: int = 30,
         max_retries: int = 3,
         batch_size: int = 100,
-        delay_between_batches: float = 1.0
+        delay_between_batches: float = 1.0,
     ):
         super().__init__(lookback_days, max_retries)
         self.batch_size = batch_size
         self.delay_between_batches = delay_between_batches
 
     async def process(
-        self,
-        data: List[any],
-        context: PipelineContext
+        self, data: List[any], context: PipelineContext
     ) -> PipelineResult[RawDisclosure]:
         """
         Fetch raw data in batches with rate limiting.
@@ -189,6 +179,7 @@ class BatchIngestionStage(IngestionStage):
 
             # Get the source-specific scraper
             from ..sources import get_source
+
             source = get_source(context.source_type)
 
             if source is None:
@@ -206,9 +197,7 @@ class BatchIngestionStage(IngestionStage):
                 self.logger.info(f"Fetching batch {batch_num + 1} (offset={offset})")
 
                 batch_data = await source.fetch_batch(
-                    offset=offset,
-                    limit=self.batch_size,
-                    lookback_days=self.lookback_days
+                    offset=offset, limit=self.batch_size, lookback_days=self.lookback_days
                 )
 
                 if not batch_data:
@@ -226,7 +215,7 @@ class BatchIngestionStage(IngestionStage):
                             source_type=context.source_type,
                             raw_data=item,
                             source_url=item.get("source_url"),
-                            source_document_id=item.get("document_id")
+                            source_document_id=item.get("document_id"),
                         )
                         raw_disclosures.append(disclosure)
                         metrics.records_output += 1
@@ -262,10 +251,7 @@ class BatchIngestionStage(IngestionStage):
             )
 
             return self._create_result(
-                status=status,
-                data=raw_disclosures,
-                context=context,
-                metrics=metrics
+                status=status, data=raw_disclosures, context=context, metrics=metrics
             )
 
         except Exception as e:
@@ -274,10 +260,7 @@ class BatchIngestionStage(IngestionStage):
             metrics.errors.append(f"Batch ingestion error: {str(e)}")
 
             result = self._create_result(
-                status=PipelineStatus.FAILED,
-                data=[],
-                context=context,
-                metrics=metrics
+                status=PipelineStatus.FAILED, data=[], context=context, metrics=metrics
             )
             result.errors.append(e)
             return result

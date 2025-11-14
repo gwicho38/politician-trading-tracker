@@ -29,7 +29,9 @@ class SupabaseConfig:
             "REDACTED",
         )
         # Check for service role key (supports both naming conventions)
-        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv(
+            "SUPABASE_SERVICE_KEY"
+        )
 
         return cls(url=url, key=key, service_role_key=service_role_key)
 

@@ -2,9 +2,8 @@
 Feature engineering for politician trading signals
 """
 
-from datetime import datetime, timedelta
-from decimal import Decimal
-from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List, Any, Optional
 import logging
 
 import pandas as pd
@@ -25,7 +24,10 @@ class FeatureEngineer:
         self.feature_names = []
 
     def extract_features(
-        self, ticker: str, disclosures: List[Dict[str, Any]], market_data: Optional[pd.DataFrame] = None
+        self,
+        ticker: str,
+        disclosures: List[Dict[str, Any]],
+        market_data: Optional[pd.DataFrame] = None,
     ) -> Dict[str, Any]:
         """
         Extract features for a given ticker from politician disclosures.
@@ -96,6 +98,7 @@ class FeatureEngineer:
     def _extract_temporal_features(self, disclosures: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Extract time-based features."""
         from datetime import timezone
+
         now = datetime.now(timezone.utc)
         features = {}
 
@@ -105,8 +108,10 @@ class FeatureEngineer:
             if "transaction_date" in d:
                 if isinstance(d["transaction_date"], str):
                     try:
-                        dates.append(datetime.fromisoformat(d["transaction_date"].replace("Z", "+00:00")))
-                    except:
+                        dates.append(
+                            datetime.fromisoformat(d["transaction_date"].replace("Z", "+00:00"))
+                        )
+                    except (ValueError, TypeError):
                         continue
                 elif isinstance(d["transaction_date"], datetime):
                     dates.append(d["transaction_date"])
@@ -126,7 +131,9 @@ class FeatureEngineer:
             # Acceleration of trading (recent vs older activity)
             recent_30d = sum(1 for d in dates if (now - d).days <= 30)
             older_30_60d = sum(1 for d in dates if 30 < (now - d).days <= 60)
-            features["activity_acceleration"] = recent_30d - older_30_60d if older_30_60d > 0 else recent_30d
+            features["activity_acceleration"] = (
+                recent_30d - older_30_60d if older_30_60d > 0 else recent_30d
+            )
         else:
             features["days_since_last_transaction"] = 999
             features["avg_days_since_transaction"] = 999
@@ -260,7 +267,8 @@ class FeatureEngineer:
         features["democrat_bullish"] = democrat_buys - democrat_sells
         features["republican_bullish"] = republican_buys - republican_sells
         features["bipartisan_agreement"] = (
-            1 if (democrat_buys > democrat_sells and republican_buys > republican_sells)
+            1
+            if (democrat_buys > democrat_sells and republican_buys > republican_sells)
             or (democrat_sells > democrat_buys and republican_sells > republican_buys)
             else 0
         )
@@ -316,7 +324,9 @@ class FeatureEngineer:
 
         # Volume ratio
         if features["total_sell_volume"] > 0:
-            features["buy_sell_volume_ratio"] = features["total_buy_volume"] / features["total_sell_volume"]
+            features["buy_sell_volume_ratio"] = (
+                features["total_buy_volume"] / features["total_sell_volume"]
+            )
         else:
             features["buy_sell_volume_ratio"] = features["total_buy_volume"]
 
@@ -334,9 +344,15 @@ class FeatureEngineer:
             prices = market_data["close"].values
             if len(prices) > 0:
                 features["current_price"] = prices[-1]
-                features["price_change_1d"] = (prices[-1] / prices[-2] - 1) if len(prices) > 1 else 0
-                features["price_change_5d"] = (prices[-1] / prices[-5] - 1) if len(prices) > 5 else 0
-                features["price_change_20d"] = (prices[-1] / prices[-20] - 1) if len(prices) > 20 else 0
+                features["price_change_1d"] = (
+                    (prices[-1] / prices[-2] - 1) if len(prices) > 1 else 0
+                )
+                features["price_change_5d"] = (
+                    (prices[-1] / prices[-5] - 1) if len(prices) > 5 else 0
+                )
+                features["price_change_20d"] = (
+                    (prices[-1] / prices[-20] - 1) if len(prices) > 20 else 0
+                )
 
                 # Volatility
                 returns = np.diff(prices) / prices[:-1]
@@ -365,7 +381,7 @@ class FeatureEngineer:
                     try:
                         date = datetime.fromisoformat(d["transaction_date"].replace("Z", "+00:00"))
                         dated_disclosures.append((date, d))
-                    except:
+                    except (ValueError, TypeError):
                         continue
                 elif isinstance(d["transaction_date"], datetime):
                     dated_disclosures.append((d["transaction_date"], d))
@@ -374,18 +390,26 @@ class FeatureEngineer:
 
         if len(dated_disclosures) >= 3:
             # Calculate trend in buying activity (are more recent transactions buys or sells?)
-            recent_half = dated_disclosures[len(dated_disclosures)//2:]
-            older_half = dated_disclosures[:len(dated_disclosures)//2]
+            recent_half = dated_disclosures[len(dated_disclosures) // 2 :]
+            older_half = dated_disclosures[: len(dated_disclosures) // 2]
 
-            recent_buys = sum(1 for _, d in recent_half if "purchase" in d.get("transaction_type", "").lower())
-            older_buys = sum(1 for _, d in older_half if "purchase" in d.get("transaction_type", "").lower())
+            recent_buys = sum(
+                1 for _, d in recent_half if "purchase" in d.get("transaction_type", "").lower()
+            )
+            older_buys = sum(
+                1 for _, d in older_half if "purchase" in d.get("transaction_type", "").lower()
+            )
 
             features["buying_momentum"] = recent_buys - older_buys
 
             # Frequency trend (are transactions accelerating?)
             if len(dated_disclosures) > 1:
-                recent_days = (dated_disclosures[-1][0] - dated_disclosures[len(dated_disclosures)//2][0]).days
-                older_days = (dated_disclosures[len(dated_disclosures)//2][0] - dated_disclosures[0][0]).days
+                recent_days = (
+                    dated_disclosures[-1][0] - dated_disclosures[len(dated_disclosures) // 2][0]
+                ).days
+                older_days = (
+                    dated_disclosures[len(dated_disclosures) // 2][0] - dated_disclosures[0][0]
+                ).days
 
                 if recent_days > 0 and older_days > 0:
                     recent_freq = len(recent_half) / max(recent_days, 1)
@@ -401,9 +425,7 @@ class FeatureEngineer:
 
         return features
 
-    def create_feature_dataframe(
-        self, ticker_features: Dict[str, Dict[str, Any]]
-    ) -> pd.DataFrame:
+    def create_feature_dataframe(self, ticker_features: Dict[str, Dict[str, Any]]) -> pd.DataFrame:
         """
         Create a pandas DataFrame from extracted features.
 

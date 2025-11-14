@@ -12,7 +12,7 @@ from .base import (
     PipelineContext,
     PipelineMetrics,
     PipelineStatus,
-    NormalizedDisclosure
+    NormalizedDisclosure,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,10 +31,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
     """
 
     def __init__(
-        self,
-        batch_size: int = 100,
-        skip_duplicates: bool = True,
-        update_existing: bool = True
+        self, batch_size: int = 100, skip_duplicates: bool = True, update_existing: bool = True
     ):
         super().__init__("publishing")
         self.batch_size = batch_size
@@ -42,9 +39,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
         self.update_existing = update_existing
 
     async def process(
-        self,
-        data: List[NormalizedDisclosure],
-        context: PipelineContext
+        self, data: List[NormalizedDisclosure], context: PipelineContext
     ) -> PipelineResult[Dict[str, Any]]:
         """
         Publish normalized disclosures to database.
@@ -75,12 +70,12 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
 
             # Track statistics
             stats = {
-                'politicians_created': 0,
-                'politicians_matched': 0,
-                'disclosures_inserted': 0,
-                'disclosures_updated': 0,
-                'disclosures_skipped': 0,
-                'errors': []
+                "politicians_created": 0,
+                "politicians_matched": 0,
+                "disclosures_inserted": 0,
+                "disclosures_updated": 0,
+                "disclosures_skipped": 0,
+                "errors": [],
             }
 
             # Process in batches
@@ -98,16 +93,14 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
 
                     try:
                         # Handle politician - create or match existing
-                        politician_id = await self._ensure_politician(
-                            db_client, disclosure, stats
-                        )
+                        politician_id = await self._ensure_politician(db_client, disclosure, stats)
 
                         if not politician_id:
                             self.logger.warning(
                                 f"Record {record_num}: Could not find or create politician"
                             )
                             metrics.records_failed += 1
-                            stats['errors'].append(
+                            stats["errors"].append(
                                 f"Record {record_num}: Politician creation/matching failed"
                             )
                             continue
@@ -119,34 +112,32 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
 
                         if existing:
                             if self.skip_duplicates and not self.update_existing:
-                                self.logger.debug(
-                                    f"Record {record_num}: Duplicate found, skipping"
-                                )
+                                self.logger.debug(f"Record {record_num}: Duplicate found, skipping")
                                 metrics.records_skipped += 1
-                                stats['disclosures_skipped'] += 1
+                                stats["disclosures_skipped"] += 1
                                 continue
 
                             if self.update_existing:
                                 # Update existing record
                                 updated = await self._update_disclosure(
-                                    db_client, existing['id'], disclosure
+                                    db_client, existing["id"], disclosure
                                 )
                                 if updated:
                                     self.logger.info(
                                         f"Record {record_num}: Updated disclosure {existing['id']}"
                                     )
                                     metrics.records_output += 1
-                                    stats['disclosures_updated'] += 1
-                                    published_records.append({
-                                        'action': 'updated',
-                                        'disclosure_id': existing['id'],
-                                        'politician_id': politician_id
-                                    })
+                                    stats["disclosures_updated"] += 1
+                                    published_records.append(
+                                        {
+                                            "action": "updated",
+                                            "disclosure_id": existing["id"],
+                                            "politician_id": politician_id,
+                                        }
+                                    )
                                 else:
                                     metrics.records_failed += 1
-                                    stats['errors'].append(
-                                        f"Record {record_num}: Update failed"
-                                    )
+                                    stats["errors"].append(f"Record {record_num}: Update failed")
                         else:
                             # Insert new disclosure
                             disclosure_id = await self._insert_disclosure(
@@ -158,35 +149,39 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
                                     f"Record {record_num}: Inserted new disclosure {disclosure_id}"
                                 )
                                 metrics.records_output += 1
-                                stats['disclosures_inserted'] += 1
-                                published_records.append({
-                                    'action': 'inserted',
-                                    'disclosure_id': disclosure_id,
-                                    'politician_id': politician_id
-                                })
+                                stats["disclosures_inserted"] += 1
+                                published_records.append(
+                                    {
+                                        "action": "inserted",
+                                        "disclosure_id": disclosure_id,
+                                        "politician_id": politician_id,
+                                    }
+                                )
                             else:
                                 metrics.records_failed += 1
-                                stats['errors'].append(
-                                    f"Record {record_num}: Insert failed"
-                                )
+                                stats["errors"].append(f"Record {record_num}: Insert failed")
 
                     except Exception as e:
                         self.logger.error(
-                            f"Error publishing record {record_num}: {e}",
-                            exc_info=True
+                            f"Error publishing record {record_num}: {e}", exc_info=True
                         )
                         metrics.records_failed += 1
-                        stats['errors'].append(f"Record {record_num}: {str(e)}")
+                        stats["errors"].append(f"Record {record_num}: {str(e)}")
 
             # Calculate metrics
             metrics.duration_seconds = (datetime.utcnow() - start_time).total_seconds()
-            metrics.errors.extend(stats['errors'])
+            metrics.errors.extend(stats["errors"])
 
             # Add summary to published records
-            published_records.insert(0, {
-                'summary': stats,
-                'total_processed': metrics.records_output + metrics.records_skipped + metrics.records_failed
-            })
+            published_records.insert(
+                0,
+                {
+                    "summary": stats,
+                    "total_processed": metrics.records_output
+                    + metrics.records_skipped
+                    + metrics.records_failed,
+                },
+            )
 
             # Determine status
             if metrics.records_output > 0 or metrics.records_skipped > 0:
@@ -207,10 +202,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
             )
 
             return self._create_result(
-                status=status,
-                data=published_records,
-                context=context,
-                metrics=metrics
+                status=status, data=published_records, context=context, metrics=metrics
             )
 
         except Exception as e:
@@ -219,19 +211,13 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
             metrics.errors.append(f"Publishing error: {str(e)}")
 
             result = self._create_result(
-                status=PipelineStatus.FAILED,
-                data=[],
-                context=context,
-                metrics=metrics
+                status=PipelineStatus.FAILED, data=[], context=context, metrics=metrics
             )
             result.errors.append(e)
             return result
 
     async def _ensure_politician(
-        self,
-        db_client,
-        disclosure: NormalizedDisclosure,
-        stats: Dict[str, int]
+        self, db_client, disclosure: NormalizedDisclosure, stats: Dict[str, int]
     ) -> Optional[str]:
         """
         Ensure politician exists in database.
@@ -240,19 +226,26 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
         """
         # If we already have a politician_id, use it
         if disclosure.politician_id:
-            stats['politicians_matched'] += 1
+            stats["politicians_matched"] += 1
             return disclosure.politician_id
 
         # Try to find existing politician by name
         try:
-            response = db_client.table("politicians").select("*").match({
-                "first_name": disclosure.politician_first_name,
-                "last_name": disclosure.politician_last_name
-            }).execute()
+            response = (
+                db_client.table("politicians")
+                .select("*")
+                .match(
+                    {
+                        "first_name": disclosure.politician_first_name,
+                        "last_name": disclosure.politician_last_name,
+                    }
+                )
+                .execute()
+            )
 
             if response.data and len(response.data) > 0:
-                stats['politicians_matched'] += 1
-                return response.data[0]['id']
+                stats["politicians_matched"] += 1
+                return response.data[0]["id"]
 
         except Exception as e:
             self.logger.debug(f"Error finding politician: {e}")
@@ -272,8 +265,8 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
             response = db_client.table("politicians").insert(politician_data).execute()
 
             if response.data and len(response.data) > 0:
-                stats['politicians_created'] += 1
-                return response.data[0]['id']
+                stats["politicians_created"] += 1
+                return response.data[0]["id"]
 
         except Exception as e:
             self.logger.error(f"Error creating politician: {e}", exc_info=True)
@@ -281,20 +274,24 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
         return None
 
     async def _find_existing_disclosure(
-        self,
-        db_client,
-        disclosure: NormalizedDisclosure,
-        politician_id: str
+        self, db_client, disclosure: NormalizedDisclosure, politician_id: str
     ) -> Optional[Dict[str, Any]]:
         """Find existing disclosure by unique key"""
         try:
             # Look for exact match on key fields
-            response = db_client.table("trading_disclosures").select("*").match({
-                "politician_id": politician_id,
-                "transaction_date": disclosure.transaction_date.isoformat(),
-                "asset_name": disclosure.asset_name,
-                "transaction_type": disclosure.transaction_type
-            }).execute()
+            response = (
+                db_client.table("trading_disclosures")
+                .select("*")
+                .match(
+                    {
+                        "politician_id": politician_id,
+                        "transaction_date": disclosure.transaction_date.isoformat(),
+                        "asset_name": disclosure.asset_name,
+                        "transaction_type": disclosure.transaction_type,
+                    }
+                )
+                .execute()
+            )
 
             if response.data and len(response.data) > 0:
                 return response.data[0]
@@ -305,10 +302,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
         return None
 
     async def _insert_disclosure(
-        self,
-        db_client,
-        disclosure: NormalizedDisclosure,
-        politician_id: str
+        self, db_client, disclosure: NormalizedDisclosure, politician_id: str
     ) -> Optional[str]:
         """Insert new disclosure record"""
         try:
@@ -327,13 +321,13 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
                 "source_url": disclosure.source_url,
                 "source_document_id": disclosure.source_document_id,
                 "raw_data": disclosure.raw_data,
-                "status": "active"
+                "status": "active",
             }
 
             response = db_client.table("trading_disclosures").insert(data).execute()
 
             if response.data and len(response.data) > 0:
-                return response.data[0]['id']
+                return response.data[0]["id"]
 
         except Exception as e:
             self.logger.error(f"Error inserting disclosure: {e}", exc_info=True)
@@ -341,10 +335,7 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
         return None
 
     async def _update_disclosure(
-        self,
-        db_client,
-        disclosure_id: str,
-        disclosure: NormalizedDisclosure
+        self, db_client, disclosure_id: str, disclosure: NormalizedDisclosure
     ) -> bool:
         """Update existing disclosure record"""
         try:
@@ -356,13 +347,15 @@ class PublishingStage(PipelineStage[Dict[str, Any]]):
                 "amount_exact": disclosure.amount_exact,
                 "source_url": disclosure.source_url,
                 "raw_data": disclosure.raw_data,
-                "updated_at": datetime.utcnow().isoformat()
+                "updated_at": datetime.utcnow().isoformat(),
             }
 
-            response = db_client.table("trading_disclosures")\
-                .update(data)\
-                .eq("id", disclosure_id)\
+            response = (
+                db_client.table("trading_disclosures")
+                .update(data)
+                .eq("id", disclosure_id)
                 .execute()
+            )
 
             return response.data and len(response.data) > 0
 

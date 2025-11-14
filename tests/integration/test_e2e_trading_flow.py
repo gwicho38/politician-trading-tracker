@@ -16,10 +16,9 @@ to actual stock purchase execution.
 import os
 import sys
 from pathlib import Path
-from datetime import datetime, timedelta
-from decimal import Decimal
-from typing import Dict, Any, List, Optional
-from unittest.mock import Mock, patch, MagicMock
+from datetime import datetime
+from typing import Dict, Any, List
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -31,16 +30,8 @@ if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 
 from models import (
-    Politician,
-    TradingDisclosure,
-    TradingSignal,
     SignalType,
-    TransactionType,
-    OrderType,
-    OrderStatus,
-    TradingMode,
 )
-from politician_trading.signals.signal_generator import SignalGenerator
 from politician_trading.trading.alpaca_client import AlpacaTradingClient
 from shopping_cart import ShoppingCart, CartItem
 from paywall_config import PaywallConfig
@@ -337,7 +328,7 @@ class TestE2ETradingFlow:
         assert updated is True
         cart_items = ShoppingCart.get_items()
         assert cart_items[0]["quantity"] == 15
-        print(f"✅ Updated quantity to 15 shares")
+        print("✅ Updated quantity to 15 shares")
 
         # ===================================================================
         # STEP 5: CHECKOUT - TRADE EXECUTION
@@ -393,7 +384,7 @@ class TestE2ETradingFlow:
             account_info = alpaca_client.get_account()
             assert account_info is not None
             assert account_info["status"] == "ACTIVE"
-            print(f"✅ Connected to Alpaca (Paper Trading)")
+            print("✅ Connected to Alpaca (Paper Trading)")
             print(f"   Account ID: {account_info['account_id'][:8]}...")
             print(f"   Buying Power: ${float(account_info['buying_power']):,.2f}")
 
@@ -417,7 +408,7 @@ class TestE2ETradingFlow:
                 assert order.status.value == "pending"  # Compare enum value, not identity
 
                 executed_orders.append(order)
-                print(f"✅ Placed order: SELL 15 shares of AAPL")
+                print("✅ Placed order: SELL 15 shares of AAPL")
                 print(f"   Order ID: {order.alpaca_order_id}")
                 print(f"   Status: {order.status.value}")
 
@@ -467,7 +458,7 @@ class TestE2ETradingFlow:
         assert order.side == "sell"
         assert order.order_type.value == "market"  # Compare enum value
         assert order.trading_mode.value == "paper"  # Compare enum value
-        print(f"✅ Order successfully submitted to Alpaca")
+        print("✅ Order successfully submitted to Alpaca")
         print(f"   Alpaca Order ID: {order.alpaca_order_id}")
 
         # Update order status in database (simulate fill)
@@ -526,7 +517,7 @@ class TestE2ETradingFlow:
         }
 
         mock_supabase_client.table("positions").insert(position_dict).execute()
-        print(f"✅ Position created: SHORT 15 shares AAPL @ $150.25")
+        print("✅ Position created: SHORT 15 shares AAPL @ $150.25")
 
         # Verify position in database
         result = (
@@ -544,7 +535,7 @@ class TestE2ETradingFlow:
         assert position["avg_entry_price"] == 150.25
         assert test_signal.id in position["signal_ids"]
         assert order.alpaca_order_id in position["order_ids"]
-        print(f"✅ Position verified in portfolio")
+        print("✅ Position verified in portfolio")
         print(f"   Entry Price: ${position['avg_entry_price']:.2f}")
         print(f"   Market Value: ${position['market_value']:.2f}")
         print(f"   Linked to Signal: {test_signal.id[:8]}...")
@@ -558,13 +549,19 @@ class TestE2ETradingFlow:
         # Trace: Politician → Disclosure → Signal → Order → Position
         print("\n📊 Complete Trade Lineage:")
         print(f"   1. Politician: {nancy_pelosi.full_name} ({nancy_pelosi.party})")
-        print(f"   2. Disclosure: {aapl_disclosure.transaction_type.value.upper()} "
-              f"{aapl_disclosure.asset_ticker} on {aapl_disclosure.transaction_date.date()}")
-        print(f"   3. Signal: {test_signal.signal_type.value.upper()} "
-              f"(Confidence: {test_signal.confidence_score:.1%})")
+        print(
+            f"   2. Disclosure: {aapl_disclosure.transaction_type.value.upper()} "
+            f"{aapl_disclosure.asset_ticker} on {aapl_disclosure.transaction_date.date()}"
+        )
+        print(
+            f"   3. Signal: {test_signal.signal_type.value.upper()} "
+            f"(Confidence: {test_signal.confidence_score:.1%})"
+        )
         print(f"   4. Order: {order.side.upper()} {order.quantity} shares @ MARKET")
-        print(f"   5. Position: {position['side'].upper()} {abs(position['quantity'])} shares "
-              f"@ ${position['avg_entry_price']:.2f}")
+        print(
+            f"   5. Position: {position['side'].upper()} {abs(position['quantity'])} shares "
+            f"@ ${position['avg_entry_price']:.2f}"
+        )
 
         # Verify links
         assert position["signal_ids"][0] == test_signal.id
@@ -602,7 +599,9 @@ class TestE2ETradingFlow:
 
         # Verify cleanup
         assert len(mock_supabase_client.table("politicians").select("*").execute().data) == 0
-        assert len(mock_supabase_client.table("trading_disclosures").select("*").execute().data) == 0
+        assert (
+            len(mock_supabase_client.table("trading_disclosures").select("*").execute().data) == 0
+        )
         assert len(mock_supabase_client.table("trading_signals").select("*").execute().data) == 0
         assert len(mock_supabase_client.table("trading_orders").select("*").execute().data) == 0
         assert len(mock_supabase_client.table("portfolios").select("*").execute().data) == 0

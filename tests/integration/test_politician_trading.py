@@ -2,8 +2,7 @@
 Integration tests for politician trading workflow
 """
 
-import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest

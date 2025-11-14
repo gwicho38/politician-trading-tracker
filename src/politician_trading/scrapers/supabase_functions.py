@@ -32,7 +32,7 @@ serve(async (req) => {
     // Create a new job record
     const jobId = crypto.randomUUID();
     const startTime = new Date().toISOString();
-    
+
     const { error: jobError } = await supabase
       .from('data_pull_jobs')
       .insert({
@@ -89,7 +89,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('❌ Cron job failed:', error);
-    
+
     return new Response(
       JSON.stringify({
         success: false,
@@ -107,7 +107,7 @@ serve(async (req) => {
 async function performDataCollection(supabase) {
   // This would implement the actual data collection logic
   // For now, we'll return mock results
-  
+
   const results = {
     recordsFound: 0,
     recordsProcessed: 0,
@@ -119,7 +119,7 @@ async function performDataCollection(supabase) {
   try {
     // Example: Check for new trading disclosures
     // In production, this would make HTTP requests to government APIs
-    
+
     // Simulate finding some new records
     const mockDisclosures = await simulateDataFetch();
     results.recordsFound = mockDisclosures.length;
@@ -190,7 +190,7 @@ async function performDataCollection(supabase) {
 async function simulateDataFetch() {
   // Simulate fetching data from external APIs
   // In production, this would make real HTTP requests
-  
+
   return [
     {
       politician_id: 'sample-politician-id',
@@ -232,23 +232,23 @@ async def handle_cron_collection() -> Dict[str, Any]:
     """
     try:
         print("🏛️ Starting scheduled politician trading data collection")
-        
+
         # Run the full collection workflow
         result = await run_politician_trading_collection()
-        
+
         # Log results
         print(f"✅ Collection completed: {result.get('summary', {})}")
-        
+
         return {
             "success": True,
             "result": result,
             "timestamp": datetime.utcnow().isoformat()
         }
-        
+
     except Exception as e:
         error_msg = f"❌ Scheduled collection failed: {e}"
         print(error_msg)
-        
+
         return {
             "success": False,
             "error": str(e),
@@ -304,8 +304,8 @@ SELECT cron.schedule(
 SELECT * FROM cron.job;
 
 -- View cron job run history
-SELECT * FROM cron.job_run_details 
-ORDER BY start_time DESC 
+SELECT * FROM cron.job_run_details
+ORDER BY start_time DESC
 LIMIT 10;
 
 -- Delete a cron job (if needed)
@@ -313,14 +313,14 @@ LIMIT 10;
 
 -- Monitor cron job failures
 CREATE OR REPLACE VIEW cron_job_monitoring AS
-SELECT 
+SELECT
     jobname,
     status,
     return_message,
     start_time,
     end_time,
     (end_time - start_time) as duration
-FROM cron.job_run_details 
+FROM cron.job_run_details
 WHERE jobname = 'politician-trading-collection'
 ORDER BY start_time DESC;
 
