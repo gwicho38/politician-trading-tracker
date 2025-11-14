@@ -237,28 +237,33 @@ Expected Endpoint: {alpaca_client.base_url}
     col1, col2, col3, col4, col5 = st.columns(5)
 
     with col1:
+        portfolio_val = float(account_info['portfolio_value'])
+        last_eq = float(account_info['last_equity'])
         st.metric(
             "Portfolio Value",
-            f"${account_info['portfolio_value']:,.2f}",
-            delta=f"${float(account_info['portfolio_value']) - float(account_info['last_equity']):,.2f}"
+            f"${portfolio_val:,.2f}",
+            delta=f"${portfolio_val - last_eq:,.2f}"
         )
 
     with col2:
+        cash_val = float(account_info['cash'])
         st.metric(
             "Cash",
-            f"${account_info['cash']:,.2f}"
+            f"${cash_val:,.2f}"
         )
 
     with col3:
+        buying_power_val = float(account_info['buying_power'])
         st.metric(
             "Buying Power",
-            f"${account_info['buying_power']:,.2f}"
+            f"${buying_power_val:,.2f}"
         )
 
     with col4:
+        long_val = float(account_info['long_market_value'])
         st.metric(
             "Long Value",
-            f"${account_info['long_market_value']:,.2f}"
+            f"${long_val:,.2f}"
         )
 
     with col5:
