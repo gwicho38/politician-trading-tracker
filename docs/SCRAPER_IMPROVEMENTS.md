@@ -339,6 +339,54 @@ Test 2 (PDF Parsing): ✅ PASSED
 
 ---
 
+### ✅ Phase 2: Fix Data Display Issue (COMPLETED - 2025-11-14)
+
+**Problem Discovered:**
+After deployment, House scraper successfully collected 1,552 disclosures (logs confirmed), but **NONE appeared in the UI**. Only QuiverQuant data was visible.
+
+**Root Cause:**
+- **House scraper** stored politician data as: `raw_data["politician"]` (nested Politician object)
+- **Workflow** expected: `raw_data["politician_name"]` (string)
+- **Result**: Workflow couldn't find politician name, logged "Skipping disclosure with empty politician name", and **skipped all 1,552 House disclosures**
+
+**Additional Issue Found:**
+QuiverQuant data had malformed politician names:
+- Example: "FIGFIGMA INC CLASS AOT" appearing as politician name
+- Cause: Insufficient validation in `_is_invalid_politician_name()`
+- Old pattern `r"INC\.$"` only matched "INC." not "INC"
+- Missing patterns for "CLASS A", "CLASS AOT", "CORP", "LLC", etc.
+
+**Changes Made:**
+1. ✅ Updated House scraper `raw_data` structure:
+   ```python
+   raw_data={
+       "politician_name": metadata["politician_name"],  # ← ADDED
+       "politician": politician,
+       "doc_id": metadata["doc_id"],
+       "filing_type": metadata["filing_type"],
+   }
+   ```
+
+2. ✅ Enhanced `_is_invalid_politician_name()` validation:
+   - Changed `r"INC\.$"` → `r"\bINC\b"` (matches "INC" without period)
+   - Added `r"\bCORP\b"`, `r"\bLLC\b"`, `r"\bLTD\b"`, `r"\bCO\b"`
+   - Added `r"\bCOMPANY\b"`, `r"\bCORPORATION\b"`, `r"\bLIMITED\b"`
+   - Added `r"\bCLASS [A-Z]"` (catches "CLASS A", "CLASS AOT", etc.)
+
+**Impact:**
+- ✅ House scraper data now flows through to database and UI
+- ✅ Company names like "FIGFIGMA INC CLASS AOT" rejected as politician names
+- ✅ All 1,552 House disclosures will be visible after next collection run
+- ✅ Duplicate/malformed QuiverQuant data will be filtered out
+
+**Files Modified:**
+- `src/politician_trading/scrapers/scrapers.py` (lines 554, 580)
+- `src/politician_trading/workflow.py` (lines 856-864)
+
+**Commit:** d36a506
+
+---
+
 ## Next Steps
 
 ### 1. Testing Phase
