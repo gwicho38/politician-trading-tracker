@@ -81,9 +81,7 @@ class HardcodedStringFinder(ast.NodeVisitor):
             Dictionary mapping constant values to their reference paths
         """
         return {
-            getattr(cls, attr): f"{prefix}.{attr}"
-            for attr in dir(cls)
-            if not attr.startswith("_")
+            getattr(cls, attr): f"{prefix}.{attr}" for attr in dir(cls) if not attr.startswith("_")
         }
 
     def _load_constant_values(self) -> dict:
@@ -149,9 +147,8 @@ class HardcodedStringFinder(ast.NodeVisitor):
         # Skip strings that look like messages, descriptions, or UI text
         # (they typically contain spaces or punctuation), unless they are in the exception list
         if (
-            (" " in value or any(char in value for char in ".!?,;:"))
-            and value not in self.EXCEPTION_STRINGS
-        ):
+            " " in value or any(char in value for char in ".!?,;:")
+        ) and value not in self.EXCEPTION_STRINGS:
             return
 
         # Skip URLs and file paths
@@ -162,9 +159,7 @@ class HardcodedStringFinder(ast.NodeVisitor):
         for category, const_map in self.constant_values.items():
             if value in const_map:
                 constant_name = const_map[value]
-                self.violations.append(
-                    (line, col, value, constant_name)
-                )
+                self.violations.append((line, col, value, constant_name))
                 return
 
     def visit_Str(self, node: ast.Str):
@@ -244,12 +239,6 @@ def should_skip_file(filepath: Path) -> bool:
         ".so",
     }
 
-    # Filename patterns to skip (for test files)
-    skip_name_patterns = {
-        "test_",
-        "_test.py",
-    }
-
     filepath_str = str(filepath)
     filepath_parts = filepath.parts
 
@@ -266,9 +255,14 @@ def should_skip_file(filepath: Path) -> bool:
     if any(filepath_str.endswith(suffix) for suffix in skip_suffixes):
         return True
 
-    # Check if filename matches skip patterns
+    # Check if filename is a test file (strict pattern matching)
     filename = filepath.name
-    if any(pattern in filename for pattern in skip_name_patterns):
+    # Only skip if filename starts with "test_" or ends with "_test.py"
+    if filename.startswith("test_") or filename.endswith("_test.py"):
+        return True
+
+    # Also skip conftest.py and other pytest files
+    if filename in {"conftest.py", "pytest.ini", "setup.py"}:
         return True
 
     return False
