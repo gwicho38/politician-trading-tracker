@@ -239,9 +239,12 @@ class TestExtractTickerFromText:
         """Test extracting ticker from parentheses"""
         assert extract_ticker_from_text("Apple Inc (AAPL)") == "AAPL"
 
-    def test_brackets_ticker(self):
-        """Test extracting ticker from brackets"""
-        assert extract_ticker_from_text("Microsoft Corp [MSFT]") == "MSFT"
+    def test_brackets_are_not_tickers(self):
+        """Test that brackets are NOT treated as tickers (they're asset type codes)"""
+        # Brackets like [ST] or [MF] indicate asset types, not ticker symbols
+        # So ticker extraction should NOT match content in brackets
+        assert extract_ticker_from_text("Microsoft Corp [MSFT]") is None
+        assert extract_ticker_from_text("Some Stock [ST]") is None
 
     def test_ticker_label(self):
         """Test extracting ticker with 'Ticker:' label"""
