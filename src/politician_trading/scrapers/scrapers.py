@@ -1311,6 +1311,28 @@ class PoliticianMatcher:
 
         return None
 
+    def add_politician(self, politician: Politician):
+        """Add a newly created politician to the matcher's cache"""
+        # Add to politicians list
+        self.politicians.append(politician)
+
+        # Add to name lookup
+        full_name = politician.full_name.lower()
+        self.name_lookup[full_name] = politician
+
+        # Last, First format
+        if politician.first_name and politician.last_name:
+            last_first = f"{politician.last_name.lower()}, {politician.first_name.lower()}"
+            self.name_lookup[last_first] = politician
+
+            # First Last format
+            first_last = f"{politician.first_name.lower()} {politician.last_name.lower()}"
+            self.name_lookup[first_last] = politician
+
+        # Bioguide ID lookup
+        if politician.bioguide_id:
+            self.bioguide_lookup[politician.bioguide_id] = politician
+
     def _names_similar(self, name1: str, name2: str) -> bool:
         """Simple similarity check for names"""
         # Remove common prefixes/suffixes

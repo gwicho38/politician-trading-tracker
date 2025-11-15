@@ -306,6 +306,28 @@ if st.session_state.collection_running:
                 st.session_state.collection_running = False
                 st.stop()
 
+            # Set up a custom logging handler to capture workflow logs
+            import logging
+            class StreamlitLogHandler(logging.Handler):
+                def __init__(self, log_callback):
+                    super().__init__()
+                    self.log_callback = log_callback
+
+                def emit(self, record):
+                    try:
+                        # Format the message
+                        msg = self.format(record)
+                        # Add to Streamlit logs
+                        self.log_callback(msg)
+                    except Exception:
+                        pass
+
+            # Create handler and attach to workflow logger
+            streamlit_handler = StreamlitLogHandler(add_log)
+            streamlit_handler.setLevel(logging.INFO)
+            workflow_logger = logging.getLogger("politician_trading.workflow")
+            workflow_logger.addHandler(streamlit_handler)
+
             # Initialize workflow
             workflow = PoliticianTradingWorkflow(workflow_config)
             add_log("✅ Workflow initialized")
@@ -457,6 +479,9 @@ if st.session_state.collection_running:
                         Go to **[📋 Action Logs](/8_📋_Action_Logs)** page to see detailed logs for all data collection runs.
                         """)
 
+                # Clean up logging handler
+                workflow_logger.removeHandler(streamlit_handler)
+
                 st.rerun()
 
             except Exception as e:
@@ -496,6 +521,10 @@ if st.session_state.collection_running:
                 add_log(f"📋 Full traceback saved to logs")
 
                 st.session_state.collection_running = False
+
+                # Clean up logging handler
+                workflow_logger.removeHandler(streamlit_handler)
+
                 st.rerun()
 
         except Exception as e:
