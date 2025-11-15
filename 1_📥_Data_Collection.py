@@ -245,7 +245,7 @@ if st.session_state.collection_running:
         try:
             import time
             from politician_trading.workflow import PoliticianTradingWorkflow
-            from politician_trading.config import SupabaseConfig, WorkflowConfig
+            from politician_trading.config import SupabaseConfig, WorkflowConfig, ScrapingConfig
             from politician_trading.database.database import SupabaseClient
 
             start_time = time.time()
@@ -267,13 +267,16 @@ if st.session_state.collection_running:
                 "url": supabase_config.url
             })
 
-            workflow_config = WorkflowConfig(
-                supabase=supabase_config,
-                enable_us_congress=us_congress,
-                enable_uk_parliament=uk_parliament,
+            # Create scraping config with enabled sources
+            scraping_config = ScrapingConfig(
+                enable_us_federal=us_congress,
                 enable_eu_parliament=eu_parliament,
                 enable_us_states=any([california, texas, new_york]),
-                enable_california=california,
+            )
+
+            workflow_config = WorkflowConfig(
+                supabase=supabase_config,
+                scraping=scraping_config
             )
 
             # Log enabled sources
