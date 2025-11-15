@@ -14,8 +14,16 @@ from urllib.parse import urljoin
 
 import aiohttp
 from bs4 import BeautifulSoup
-from pdf2image import convert_from_bytes
-import pytesseract
+
+# Optional OCR dependencies for PDF parsing
+try:
+    from pdf2image import convert_from_bytes
+    import pytesseract
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+    convert_from_bytes = None
+    pytesseract = None
 
 from ..config import ScrapingConfig
 from ..models import Politician, TradingDisclosure, TransactionType, DisclosureStatus, CapitalGain, AssetHolding
@@ -25,6 +33,8 @@ from ..parsers import (
     OwnerParser,
     DateParser,
     extract_ticker_from_text,
+    parse_asset_type,
+    ASSET_TYPE_CODES,
 )
 
 logger = logging.getLogger(__name__)
@@ -268,17 +278,19 @@ class CongressTradingScraper(BaseScraper):
         return transactions
 
     async def _parse_house_pdf(
-        self, pdf_url: str, pdf_content: bytes = None, session: aiohttp.ClientSession = None
+        self, pdf_url: str, pdf_content: bytes = None, session: aiohttp.ClientSession = None,
+        filing_metadata: Dict[str, Any] = None
     ) -> List[Dict[str, Any]]:
         """Parse a House disclosure PDF to extract transaction details
 
-        Uses OCR (pytesseract + pdf2image) to extract text from PDFs,
-        then pattern matching to identify transactions.
+        Uses pdfplumber for text extraction (faster than OCR),
+        then enhanced parsing to extract detailed transaction data.
 
         Args:
             pdf_url: URL of the PDF to parse
             pdf_content: Optional pre-downloaded PDF bytes
             session: Optional aiohttp session for downloading
+            filing_metadata: Optional metadata (filer_id, filing_date, etc.)
 
         Returns:
             List of transaction dictionaries with extracted data
@@ -306,22 +318,53 @@ class CongressTradingScraper(BaseScraper):
                             return []
                         pdf_content = await response.read()
 
-            # Convert PDF pages to images at 600 DPI for better OCR
-            logger.info(f"Converting PDF to images ({len(pdf_content)} bytes)")
-            pages = convert_from_bytes(pdf_content, dpi=600)
+            # Try pdfplumber first (fast, works for most PDFs)
+            try:
+                import pdfplumber
+                import io
 
-            # Extract text from each page
-            full_text = ""
-            for i, page in enumerate(pages):
-                logger.debug(f"OCR processing page {i + 1}/{len(pages)}")
-                text = pytesseract.image_to_string(page)
-                full_text += text + "\n\n"
+                full_text = ""
+                with pdfplumber.open(io.BytesIO(pdf_content)) as pdf:
+                    for page in pdf.pages:
+                        page_text = page.extract_text()
+                        if page_text:
+                            full_text += page_text + "\n"
 
-            logger.info(f"Extracted {len(full_text)} characters of text")
+                logger.info(f"Extracted {len(full_text)} characters via pdfplumber")
 
-            # Parse transactions from text
-            transactions = self._extract_transactions_from_text(full_text)
-            logger.info(f"Extracted {len(transactions)} transactions from PDF")
+                # Use enhanced parser
+                if filing_metadata is None:
+                    filing_metadata = {}
+
+                transactions = self._extract_transactions_section(full_text, filing_metadata)
+                logger.info(f"Extracted {len(transactions)} transactions using enhanced parser")
+
+            except Exception as pdfplumber_error:
+                # Fall back to OCR if pdfplumber fails
+                logger.warning(f"pdfplumber failed: {pdfplumber_error}")
+
+                if not OCR_AVAILABLE:
+                    logger.error("OCR dependencies (pdf2image, pytesseract) not available - cannot fall back to OCR")
+                    logger.info("To enable OCR fallback, install: pip install pdf2image pytesseract poppler-utils")
+                else:
+                    logger.info("Falling back to OCR")
+
+                    # Convert PDF pages to images at 600 DPI for better OCR
+                    logger.info(f"Converting PDF to images ({len(pdf_content)} bytes)")
+                    pages = convert_from_bytes(pdf_content, dpi=600)
+
+                    # Extract text from each page
+                    full_text = ""
+                    for i, page in enumerate(pages):
+                        logger.debug(f"OCR processing page {i + 1}/{len(pages)}")
+                        text = pytesseract.image_to_string(page)
+                        full_text += text + "\n\n"
+
+                    logger.info(f"Extracted {len(full_text)} characters via OCR")
+
+                    # Use enhanced parser
+                    transactions = self._extract_transactions_section(full_text, filing_metadata or {})
+                    logger.info(f"Extracted {len(transactions)} transactions from OCR text")
 
         except Exception as e:
             logger.error(f"Error parsing PDF {pdf_url}: {e}")
@@ -512,8 +555,18 @@ class CongressTradingScraper(BaseScraper):
                             logger.info(
                                 f"Parsing PDF {parsed_pdf_count + 1}/{max_pdfs_per_run or '∞'}: {metadata['politician_name']}"
                             )
+
+                            # Prepare filing metadata for enhanced parser
+                            filing_meta = {
+                                "filer_id": metadata.get("doc_id"),
+                                "filing_date": metadata.get("filing_date"),
+                                "doc_id": metadata.get("doc_id"),
+                            }
+
                             transactions_data = await self._parse_house_pdf(
-                                pdf_url=metadata["pdf_url"], session=session
+                                pdf_url=metadata["pdf_url"],
+                                session=session,
+                                filing_metadata=filing_meta
                             )
 
                             if transactions_data:
@@ -553,6 +606,16 @@ class CongressTradingScraper(BaseScraper):
                                     "doc_id": metadata["doc_id"],
                                     "filing_type": metadata["filing_type"],
                                 },
+                                # Enhanced fields from Phase 5 parser
+                                filer_id=txn.get("filer_id"),
+                                filing_date=txn.get("filing_date"),
+                                ticker_confidence_score=txn.get("ticker_confidence_score"),
+                                asset_owner=txn.get("asset_owner"),
+                                specific_owner_text=txn.get("specific_owner_text"),
+                                asset_type_code=txn.get("asset_type_code"),
+                                notification_date=txn.get("notification_date"),
+                                filing_status=txn.get("filing_status"),
+                                quantity=txn.get("quantity"),
                             )
                             disclosures.append(disclosure)
                     else:
@@ -794,10 +857,14 @@ class CongressTradingScraper(BaseScraper):
 
     def _extract_transactions_section(self, pdf_text: str, filing_metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
-        Extract Part VII: Transactions data from House disclosure PDF.
+        Extract transaction data from House disclosure PDF.
 
-        This is an enhanced version of _extract_transactions_from_text that uses
-        the new parsing utilities for better accuracy.
+        This enhanced parser handles the actual PTR format, which looks like:
+
+        Advanced Micro Devices, Inc. (AMD) P 01/08/2025 01/10/2025 $1,001 - $15,000
+        [ST]
+        Filing Status: New
+        Specific Owner: DG Trust
 
         Args:
             pdf_text: Full text extracted from PDF
@@ -809,95 +876,157 @@ class CongressTradingScraper(BaseScraper):
         transactions = []
         filing_metadata = filing_metadata or {}
 
-        # Look for Part VII section
-        part_vii_match = re.search(r'PART\s+VII[:\s]', pdf_text, re.IGNORECASE)
-        if not part_vii_match:
-            logger.debug("No Part VII section found in PDF")
-            # Fall back to searching entire document
-            search_text = pdf_text
-        else:
-            # Extract text after Part VII header
-            search_text = pdf_text[part_vii_match.end():]
-            # Stop at next major section (Part VIII or similar)
-            next_section = re.search(r'PART\s+(?:VIII|8)[:\s]', search_text, re.IGNORECASE)
-            if next_section:
-                search_text = search_text[:next_section.start()]
+        # Split text into lines for line-by-line parsing
+        lines = pdf_text.split('\n')
 
-        # Split into transaction blocks
-        sections = search_text.split("\n\n")
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
 
-        for section in sections:
-            line = section.replace("\r", "").replace("\n", " ")
-
-            # Extract transaction type
-            transaction_type = None
-            if re.search(r'\bP\b|\bPurchase\b', line, re.IGNORECASE):
-                transaction_type = "PURCHASE"
-            elif re.search(r'\bS\b|\bSale\b', line, re.IGNORECASE):
-                transaction_type = "SALE"
-            elif re.search(r'\bE\b|\bExchange\b', line, re.IGNORECASE):
-                transaction_type = "EXCHANGE"
-
-            if not transaction_type:
+            # Skip empty lines and headers
+            if not line or 'Transaction' in line or 'Owner' in line or 'Type' in line:
+                i += 1
                 continue
 
-            # Extract ticker (explicit ticker in parentheses)
-            explicit_ticker = extract_ticker_from_text(line)
+            # Look for transaction type indicator (P, S, E) with dates and amounts
+            # Pattern: Asset name (TICKER) TYPE DATE DATE $AMOUNT
+            trans_match = re.search(
+                r'(.+?)\s+([PSE])\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})\s+(\$[\d,]+ - \$[\d,]+|\$[\d,]+|Over \$[\d,]+)',
+                line
+            )
 
-            # Extract asset name (try to find company name before ticker or transaction type)
-            asset_name = None
-            if explicit_ticker:
-                # Find text before ticker
-                ticker_match = re.search(r'\(' + re.escape(explicit_ticker) + r'\)', line)
-                if ticker_match:
-                    before_ticker = line[:ticker_match.start()].strip()
-                    # Get last few words as asset name
-                    words = before_ticker.split()
-                    if words:
-                        asset_name = " ".join(words[-5:])
+            if not trans_match:
+                i += 1
+                continue
 
-            # If no explicit ticker, try to resolve from asset name
+            # Parse the main transaction line
+            asset_part = trans_match.group(1).strip()
+            trans_type_code = trans_match.group(2)
+            transaction_date_str = trans_match.group(3)
+            notification_date_str = trans_match.group(4)
+            amount_str = trans_match.group(5)
+
+            # Map transaction type
+            transaction_type = {
+                'P': 'PURCHASE',
+                'S': 'SALE',
+                'E': 'EXCHANGE'
+            }.get(trans_type_code, 'UNKNOWN')
+
+            # Extract asset name from asset_part
+            asset_name = asset_part.strip()
+
+            # Parse dates
+            transaction_date = DateParser.parse(transaction_date_str)
+            notification_date = DateParser.parse(notification_date_str)
+
+            # Parse value range
+            value_data = ValueRangeParser.parse(amount_str)
+
+            # Initialize fields
+            explicit_ticker = None
+            asset_type_code = None
+            asset_type_desc = None
+            specific_owner = None
+            filing_status = None
+
+            # The actual structure is:
+            # Line i-2 (or earlier): S          O : DG Trust  (optional owner)
+            # Line i-1 (or earlier): F      S     : New       (filing status)
+            # Line i:                Transaction line         (current line)
+            # Line i+1:              (TICKER) [TYPE]          (ticker and asset type)
+
+            # Check NEXT line for ticker and asset type (most reliable)
+            if i + 1 < len(lines):
+                next_line = lines[i + 1].strip()
+
+                # Look for ticker in parentheses like "(AMZN) [ST]"
+                ticker_from_next_line = extract_ticker_from_text(next_line)
+                if ticker_from_next_line:
+                    explicit_ticker = ticker_from_next_line
+
+                # Asset type code like [ST], [MF], etc.
+                code_match = re.search(r'\[([A-Z0-9]{2,3})\]', next_line)
+                if code_match:
+                    asset_type_code = code_match.group(1)
+                    asset_type_desc = ASSET_TYPE_CODES.get(asset_type_code)
+
+            # Check previous 4 lines for owner and filing status
+            for j in range(max(0, i - 4), i):
+                prev_line = lines[j].strip()
+
+                # Specific Owner pattern: "S          O : DG Trust"
+                if not specific_owner:
+                    owner_match = re.search(r'S\s+O\s*:\s*(.+)', prev_line, re.IGNORECASE)
+                    if owner_match:
+                        owner_text = owner_match.group(1).strip()
+                        # Remove any trailing junk like "ID Owner Asset Transaction"
+                        owner_text = re.sub(r'\s*(ID|Owner|Asset|Transaction|Date|Type|Gains|Cap\.|Notification|Amount).*$', '', owner_text, flags=re.IGNORECASE)
+                        if owner_text and len(owner_text) > 2:  # Must have substance
+                            specific_owner = owner_text
+
+                # Filing Status pattern: "F      S     : New"
+                if not filing_status:
+                    status_match = re.search(r'F\s+S\s*:\s*(.+)', prev_line, re.IGNORECASE)
+                    if status_match:
+                        filing_status = status_match.group(1).strip()
+
+            # Determine asset owner
+            if specific_owner:
+                # Check if it's a trust or specific ownership
+                owner_text = specific_owner.lower()
+                if 'trust' in owner_text or 'sp' in owner_text:
+                    asset_owner = "SPOUSE"
+                elif 'joint' in owner_text or 'jt' in owner_text:
+                    asset_owner = "JOINT"
+                elif 'dependent' in owner_text or 'dep' in owner_text or 'dc' in owner_text:
+                    asset_owner = "DEPENDENT"
+                else:
+                    asset_owner = "SELF"
+            else:
+                asset_owner = "SELF"
+
+            # Resolve ticker if not explicit
             ticker = explicit_ticker
             ticker_confidence = 1.0 if explicit_ticker else 0.0
 
             if not ticker and asset_name:
                 ticker, ticker_confidence = self.ticker_resolver.resolve(asset_name)
 
-            # Parse value range
-            value_data = ValueRangeParser.parse(line)
+            # Build transaction record
+            transaction = {
+                "ticker": ticker,
+                "ticker_confidence_score": ticker_confidence,
+                "asset_name": asset_name,
+                "asset_type_code": asset_type_code,
+                "asset_type": asset_type_desc,
+                "transaction_type": transaction_type,
+                "transaction_date": transaction_date,
+                "notification_date": notification_date,
+                "asset_owner": asset_owner,
+                "specific_owner_text": specific_owner,
 
-            # Parse owner
-            owner = OwnerParser.parse(line)
+                # Value information
+                "value_low": value_data["value_low"],
+                "value_high": value_data["value_high"],
+                "is_range": value_data["is_range"],
 
-            # Parse transaction date
-            transaction_date = DateParser.parse(line)
+                # Filing metadata
+                "filer_id": filing_metadata.get("filer_id"),
+                "filing_date": filing_metadata.get("filing_date"),
+                "filing_status": filing_status,
 
-            # Only add if we have minimum required data
-            if ticker or asset_name:
-                transaction = {
-                    "ticker": ticker,
-                    "ticker_confidence_score": ticker_confidence,
-                    "asset_name": asset_name or ticker or "Unknown",
-                    "transaction_type": transaction_type,
-                    "transaction_date": transaction_date,
-                    "asset_owner": owner,
+                # Raw data for debugging
+                "raw_text": line[:500],
+                "validation_flags": {},
+            }
 
-                    # Value information
-                    "value_low": value_data["value_low"],
-                    "value_high": value_data["value_high"],
-                    "is_range": value_data["is_range"],
+            transactions.append(transaction)
+            logger.debug(f"Extracted transaction: {asset_name} ({ticker}) - {transaction_type} - {amount_str}")
 
-                    # Filing metadata
-                    "filer_id": filing_metadata.get("filer_id"),
-                    "filing_date": filing_metadata.get("filing_date"),
+            i += 1
 
-                    # Raw data for debugging
-                    "raw_text": line[:500],
-                    "validation_flags": {},
-                }
-                transactions.append(transaction)
-
-        logger.info(f"Extracted {len(transactions)} enhanced transactions from Part VII")
+        logger.info(f"Extracted {len(transactions)} enhanced transactions from PDF")
         return transactions
 
     def _extract_capital_gains_section(self, pdf_text: str, filing_metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
