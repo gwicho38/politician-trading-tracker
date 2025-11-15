@@ -54,6 +54,10 @@ if "collection_running" not in st.session_state:
     st.session_state.collection_running = False
 if "collection_results" not in st.session_state:
     st.session_state.collection_results = None
+if "collection_logs" not in st.session_state:
+    st.session_state.collection_logs = []
+if "collection_error" not in st.session_state:
+    st.session_state.collection_error = None
 
 # ============================================================================
 # SECTION 1: DATABASE STATUS
@@ -122,6 +126,11 @@ col1, col2 = st.columns([1, 4])
 
 with col1:
     if st.button("🚀 Start Collection", disabled=st.session_state.collection_running, use_container_width=True):
+            # Clear previous logs and errors
+            st.session_state.collection_logs = []
+            st.session_state.collection_error = None
+            st.session_state.collection_results = None
+
             # Log action start
             user_id = st.session_state.get("user_email", "unknown")
             action_id = start_action(
@@ -156,12 +165,58 @@ with col1:
             st.session_state.collection_running = True
             st.rerun()
 
-    with col2:
-        if st.session_state.collection_running:
-            st.info("📊 Collection in progress... This may take several minutes.")
-
-    # Run collection
+with col2:
     if st.session_state.collection_running:
+        st.info("📊 Collection in progress... This may take several minutes.")
+
+# ============================================================================
+# SECTION: DISPLAY PERSISTENT LOGS AND ERRORS
+# ============================================================================
+# Show logs from last collection (persists after rerun)
+if st.session_state.collection_logs and not st.session_state.collection_running:
+    st.markdown("---")
+    st.markdown("### 📝 Last Collection Log")
+
+    with st.expander("📋 View Full Log", expanded=st.session_state.collection_error is not None):
+        st.code("\n".join(st.session_state.collection_logs), language="text")
+
+        # Show download button for logs
+        log_text = "\n".join(st.session_state.collection_logs)
+        st.download_button(
+            label="📥 Download Log",
+            data=log_text,
+            file_name=f"collection_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            mime="text/plain"
+        )
+
+# Show error from last collection if it exists
+if st.session_state.collection_error and not st.session_state.collection_running:
+    error_info = st.session_state.collection_error
+
+    st.error(f"""
+    **❌ Last Collection Failed**
+
+    **Error Type:** `{error_info['type']}`
+
+    **Error Message:** {error_info['message']}
+    """)
+
+    with st.expander("📋 Full Error Traceback", expanded=True):
+        st.code(error_info['traceback'], language="python")
+
+    # Add link to action logs
+    action_id = error_info.get('action_id')
+    if action_id:
+        st.info(f"""
+        🔍 **View complete error logs:**
+
+        Go to **[📋 Action Logs](/8_📋_Action_Logs)** page and filter by:
+        - Action ID: `{action_id}`
+        - Status: `failed`
+        """)
+
+# Run collection
+if st.session_state.collection_running:
         st.markdown("---")
         st.markdown("### 🚀 Collection Progress")
 
@@ -194,12 +249,12 @@ with col1:
             from politician_trading.database.database import SupabaseClient
 
             start_time = time.time()
-            logs = []
 
             def add_log(message):
                 timestamp = time.strftime("%H:%M:%S")
-                logs.append(f"[{timestamp}] {message}")
-                log_output.code("\n".join(logs[-20:]))  # Show last 20 logs
+                log_entry = f"[{timestamp}] {message}"
+                st.session_state.collection_logs.append(log_entry)
+                log_output.code("\n".join(st.session_state.collection_logs[-30:]))  # Show last 30 logs
 
             add_log("🔧 Initializing workflow...")
             status_badge.info("⏳ Initializing")
@@ -411,6 +466,14 @@ with col1:
                     "traceback": error_details
                 })
 
+                # Store error in session state BEFORE rerun
+                st.session_state.collection_error = {
+                    "message": str(e),
+                    "type": type(e).__name__,
+                    "traceback": error_details,
+                    "action_id": st.session_state.get("action_id")
+                }
+
                 # Fail action logging
                 action_id = st.session_state.get("action_id")
                 if action_id:
@@ -426,37 +489,8 @@ with col1:
                 progress_bar.progress(100)
                 status_badge.error("❌ Failed")
                 add_log(f"❌ Collection failed: {str(e)}")
-
-                with results_container:
-                    st.error(f"""
-                    **Error during collection:**
-
-                    {str(e)}
-                    """)
-
-                    with st.expander("📋 Full Error Details"):
-                        st.code(error_details, language="python")
-
-                    # Add link to action logs for error case
-                    st.markdown("---")
-                    st.markdown("#### 📋 View Error Logs")
-
-                    action_id = st.session_state.get("action_id")
-                    if action_id:
-                        st.warning(f"""
-                        🔍 **View complete error logs:**
-
-                        Go to **[📋 Action Logs](/8_📋_Action_Logs)** page and filter by:
-                        - Action ID: `{action_id}`
-                        - Status: `failed`
-                        - Time: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`
-                        """)
-                    else:
-                        st.info("""
-                        🔍 **View error logs:**
-
-                        Go to **[📋 Action Logs](/8_📋_Action_Logs)** page to see detailed error logs.
-                        """)
+                add_log(f"📋 Error type: {type(e).__name__}")
+                add_log(f"📋 Full traceback saved to logs")
 
                 st.session_state.collection_running = False
                 st.rerun()
@@ -465,14 +499,24 @@ with col1:
             import traceback
             error_details = traceback.format_exc()
 
-            st.error(f"""
-            **Failed to initialize collection:**
+            logger.error("Failed to initialize collection", error=e, metadata={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "traceback": error_details
+            })
 
-            {str(e)}
-            """)
+            # Store error in session state BEFORE rerun
+            st.session_state.collection_error = {
+                "message": str(e),
+                "type": type(e).__name__,
+                "traceback": error_details,
+                "action_id": st.session_state.get("action_id")
+            }
 
-            with st.expander("📋 Full Error Details"):
-                st.code(error_details, language="python")
+            # Log the error
+            timestamp = time.strftime("%H:%M:%S")
+            st.session_state.collection_logs.append(f"[{timestamp}] ❌ Initialization failed: {str(e)}")
+            st.session_state.collection_logs.append(f"[{timestamp}] 📋 Error type: {type(e).__name__}")
 
             st.session_state.collection_running = False
             st.rerun()
