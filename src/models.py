@@ -160,6 +160,17 @@ class TradingDisclosure:
     status: DisclosureStatus = DisclosureStatus.PENDING
     processing_notes: str = ""
 
+    # Enhanced fields from Phase 5 parser (Issue #16)
+    filer_id: Optional[str] = None  # House disclosure document ID
+    filing_date: Optional[str] = None  # Date the disclosure was filed
+    ticker_confidence_score: Optional[Decimal] = None  # 0.0-1.0 confidence in ticker resolution
+    asset_owner: Optional[str] = None  # SELF, SPOUSE, JOINT, DEPENDENT
+    specific_owner_text: Optional[str] = None  # Specific owner text from disclosure (e.g., "DG Trust")
+    asset_type_code: Optional[str] = None  # House disclosure asset type code ([ST], [MF], etc.)
+    notification_date: Optional[datetime] = None  # Date transaction was notified
+    filing_status: Optional[str] = None  # New, Amendment, etc.
+    quantity: Optional[Decimal] = None  # Quantity of shares/units if specified
+
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 

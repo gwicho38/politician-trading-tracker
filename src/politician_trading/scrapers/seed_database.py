@@ -36,7 +36,7 @@ except ImportError:
     # python-dotenv not installed, try loading from .streamlit/secrets.toml
     pass
 
-from .models import Politician, TradingDisclosure
+from models import Politician, TradingDisclosure
 from .scrapers_free_sources import FreeDataFetcher
 
 # Configure logging
@@ -361,6 +361,34 @@ def upsert_trading_disclosures(
                 "raw_data": disclosure.raw_data,
                 "status": "processed",
             }
+
+            # Add enhanced fields from Phase 5 parser (if available)
+            if hasattr(disclosure, "filer_id") and disclosure.filer_id:
+                disclosure_data["filer_id"] = disclosure.filer_id
+
+            if hasattr(disclosure, "filing_date") and disclosure.filing_date:
+                disclosure_data["filing_date"] = disclosure.filing_date
+
+            if hasattr(disclosure, "ticker_confidence_score") and disclosure.ticker_confidence_score is not None:
+                disclosure_data["ticker_confidence_score"] = float(disclosure.ticker_confidence_score)
+
+            if hasattr(disclosure, "asset_owner") and disclosure.asset_owner:
+                disclosure_data["asset_owner"] = disclosure.asset_owner
+
+            if hasattr(disclosure, "asset_type_code") and disclosure.asset_type_code:
+                disclosure_data["asset_type_code"] = disclosure.asset_type_code
+
+            if hasattr(disclosure, "notification_date") and disclosure.notification_date:
+                disclosure_data["notification_date"] = disclosure.notification_date.isoformat()
+
+            if hasattr(disclosure, "filing_status") and disclosure.filing_status:
+                disclosure_data["filing_status"] = disclosure.filing_status
+
+            if hasattr(disclosure, "quantity") and disclosure.quantity is not None:
+                disclosure_data["quantity"] = float(disclosure.quantity)
+
+            if hasattr(disclosure, "specific_owner_text") and disclosure.specific_owner_text:
+                disclosure_data["specific_owner_text"] = disclosure.specific_owner_text
 
             # Check for existing disclosure (using unique constraint)
             existing = (
