@@ -648,11 +648,39 @@ try:
     config = SupabaseConfig.from_env()
     db = SupabaseClient(config)
 
+    # Add pagination controls
+    col1, col2, col3 = st.columns([2, 2, 1])
+    with col1:
+        page_size = st.selectbox(
+            "Disclosures per page",
+            options=[100, 500, 1000, 5000],
+            index=0,
+            help="Number of disclosures to display"
+        )
+    with col2:
+        # Get total count for pagination
+        count_response = db.client.table("trading_disclosures").select("id", count="exact").execute()
+        total_count = count_response.count if hasattr(count_response, 'count') else 0
+        max_pages = (total_count // page_size) + (1 if total_count % page_size > 0 else 0)
+
+        page_number = st.number_input(
+            "Page number",
+            min_value=1,
+            max_value=max(1, max_pages),
+            value=1,
+            help=f"Total {total_count:,} disclosures across {max_pages:,} pages"
+        )
+    with col3:
+        st.metric("Total", f"{total_count:,}")
+
+    # Calculate offset
+    offset = (page_number - 1) * page_size
+
     # Fetch recent disclosures with politician information
     # Using a join to get politician names
     query = db.client.table("trading_disclosures").select(
         "*, politicians(first_name, last_name, full_name, role, party, state_or_country)"
-    ).order("transaction_date", desc=True).limit(100)
+    ).order("transaction_date", desc=True).limit(page_size).offset(offset)
     response = query.execute()
 
     logger.info("Recent disclosures loaded", metadata={
@@ -799,28 +827,32 @@ try:
             "columns": list(display_df.columns)
         })
 
-        # Calculate ticker statistics
-        missing_tickers = len([t for t in df["asset_ticker"] if not t or t == ""])
-        with_tickers = len(df) - missing_tickers
-        ticker_percentage = (with_tickers / len(df) * 100) if len(df) > 0 else 0
+        # Calculate GLOBAL ticker statistics (not just current page)
+        # Query for disclosures with tickers
+        with_tickers_response = db.client.table("trading_disclosures").select("id", count="exact").neq("asset_ticker", "").not_.is_("asset_ticker", "null").execute()
+        global_with_tickers = with_tickers_response.count if hasattr(with_tickers_response, 'count') else 0
 
-        # Show ticker metrics
-        st.markdown("#### 📊 Ticker Statistics")
+        # Calculate from total
+        global_missing_tickers = total_count - global_with_tickers
+        global_ticker_percentage = (global_with_tickers / total_count * 100) if total_count > 0 else 0
+
+        # Show ticker metrics (GLOBAL)
+        st.markdown("#### 📊 Ticker Statistics (All Disclosures)")
         col1, col2, col3 = st.columns(3)
 
         with col1:
             st.metric(
                 "With Tickers (Actionable)",
-                with_tickers,
-                delta=f"{ticker_percentage:.1f}%",
+                f"{global_with_tickers:,}",
+                delta=f"{global_ticker_percentage:.1f}%",
                 help="Individual stocks with ticker symbols - ready for trading signals"
             )
 
         with col2:
             st.metric(
                 "Without Tickers",
-                missing_tickers,
-                delta=f"{(100-ticker_percentage):.1f}%",
+                f"{global_missing_tickers:,}",
+                delta=f"{(100-global_ticker_percentage):.1f}%",
                 delta_color="inverse",
                 help="Mutual funds, ETFs, bonds, and other assets without tickers"
             )
@@ -828,7 +860,7 @@ try:
         with col3:
             st.metric(
                 "Total Disclosures",
-                len(df),
+                f"{total_count:,}",
                 help="All trading disclosures in the database"
             )
 
