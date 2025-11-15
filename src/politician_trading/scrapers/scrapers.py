@@ -36,16 +36,27 @@ from ..parsers import (
     parse_asset_type,
     ASSET_TYPE_CODES,
 )
+from ..utils.circuit_breaker import get_circuit_breaker, CircuitBreakerError
 
 logger = logging.getLogger(__name__)
 
 
 class BaseScraper:
-    """Base class for all scrapers"""
+    """Base class for all scrapers with circuit breaker support"""
 
-    def __init__(self, config: ScrapingConfig):
+    def __init__(self, config: ScrapingConfig, circuit_breaker_name: Optional[str] = None):
         self.config = config
         self.session: Optional[aiohttp.ClientSession] = None
+
+        # Initialize circuit breaker for this scraper
+        self.circuit_breaker_name = circuit_breaker_name or self.__class__.__name__
+        self.circuit_breaker = get_circuit_breaker(
+            name=self.circuit_breaker_name,
+            failure_threshold=config.max_retries + 2,  # Allow slightly more than max_retries
+            recovery_timeout=120,  # 2 minutes before trying again
+            expected_exception=Exception
+        )
+        logger.debug(f"Initialized circuit breaker for {self.circuit_breaker_name}")
 
     async def __aenter__(self):
         """Async context manager entry"""
@@ -61,7 +72,19 @@ class BaseScraper:
             await self.session.close()
 
     async def fetch_page(self, url: str, **kwargs) -> Optional[str]:
-        """Fetch a web page with error handling and rate limiting"""
+        """Fetch a web page with error handling, rate limiting, and circuit breaker"""
+        try:
+            # Use circuit breaker to protect against cascading failures
+            return await self.circuit_breaker.call(self._fetch_page_impl, url, **kwargs)
+        except CircuitBreakerError as e:
+            logger.error(f"Circuit breaker open for {self.circuit_breaker_name}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error fetching {url}: {e}")
+            return None
+
+    async def _fetch_page_impl(self, url: str, **kwargs) -> Optional[str]:
+        """Internal implementation of page fetching with retry logic"""
         for attempt in range(self.config.max_retries):
             try:
                 await asyncio.sleep(self.config.request_delay)
@@ -69,17 +92,34 @@ class BaseScraper:
                 async with self.session.get(url, **kwargs) as response:
                     if response.status == 200:
                         return await response.text()
+                    elif response.status == 429:  # Rate limited
+                        logger.warning(f"Rate limited (429) for {url}")
+                        await asyncio.sleep(self.config.request_delay * 2)
+                    elif response.status >= 500:
+                        # Server errors - likely temporary
+                        logger.warning(f"Server error {response.status} for {url}")
+                        if attempt < self.config.max_retries - 1:
+                            await asyncio.sleep(self.config.request_delay * (attempt + 1))
                     else:
-                        logger.warning(f"HTTP {response.status} for {url}")
-                        if response.status == 429:  # Rate limited
-                            await asyncio.sleep(self.config.request_delay * 2)
+                        # Client errors (4xx) - don't retry
+                        logger.warning(f"Client error {response.status} for {url}")
+                        return None
 
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout (attempt {attempt + 1}) for {url}")
+                if attempt < self.config.max_retries - 1:
+                    await asyncio.sleep(self.config.request_delay * (attempt + 1))
+            except aiohttp.ClientError as e:
+                logger.error(f"Client error (attempt {attempt + 1}) for {url}: {e}")
+                if attempt < self.config.max_retries - 1:
+                    await asyncio.sleep(self.config.request_delay * (attempt + 1))
             except Exception as e:
-                logger.error(f"Attempt {attempt + 1} failed for {url}: {e}")
+                logger.error(f"Unexpected error (attempt {attempt + 1}) for {url}: {e}")
                 if attempt < self.config.max_retries - 1:
                     await asyncio.sleep(self.config.request_delay * (attempt + 1))
 
-        return None
+        # All retries exhausted
+        raise Exception(f"Failed to fetch {url} after {self.config.max_retries} attempts")
 
     def parse_amount_range(
         self, amount_text: str
@@ -128,7 +168,7 @@ class CongressTradingScraper(BaseScraper):
     """Scraper for US Congress trading data"""
 
     def __init__(self, config: ScrapingConfig):
-        super().__init__(config)
+        super().__init__(config, circuit_breaker_name="US_Congress")
         self.ticker_resolver = TickerResolver()
 
     def _parse_amount_from_pdf_text(
