@@ -7,7 +7,7 @@ improving system resilience and reducing unnecessary load on target servers.
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 from typing import Callable, Any, Optional
 from functools import wraps
@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 class CircuitState(Enum):
     """Circuit breaker states"""
+
     CLOSED = "closed"  # Normal operation
     OPEN = "open"  # Circuit tripped, blocking calls
     HALF_OPEN = "half_open"  # Testing if service recovered
@@ -24,6 +25,7 @@ class CircuitState(Enum):
 
 class CircuitBreakerError(Exception):
     """Raised when circuit breaker is open"""
+
     pass
 
 
@@ -48,7 +50,7 @@ class CircuitBreaker:
         failure_threshold: int = 5,
         recovery_timeout: int = 60,
         expected_exception: type = Exception,
-        name: str = "CircuitBreaker"
+        name: str = "CircuitBreaker",
     ):
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
@@ -146,6 +148,7 @@ class CircuitBreaker:
 
     def __call__(self, func: Callable) -> Callable:
         """Decorator interface for circuit breaker"""
+
         @wraps(func)
         async def wrapper(*args, **kwargs):
             return await self.call(func, *args, **kwargs)
@@ -159,7 +162,9 @@ class CircuitBreaker:
             "state": self.state.value,
             "failure_count": self.failure_count,
             "failure_threshold": self.failure_threshold,
-            "last_failure_time": self.last_failure_time.isoformat() if self.last_failure_time else None,
+            "last_failure_time": (
+                self.last_failure_time.isoformat() if self.last_failure_time else None
+            ),
             "recovery_timeout": self.recovery_timeout,
         }
 
@@ -184,7 +189,7 @@ class CircuitBreakerRegistry:
         name: str,
         failure_threshold: int = 5,
         recovery_timeout: int = 60,
-        expected_exception: type = Exception
+        expected_exception: type = Exception,
     ) -> CircuitBreaker:
         """Get existing circuit breaker or create new one"""
         if name not in self.breakers:
@@ -192,7 +197,7 @@ class CircuitBreakerRegistry:
                 failure_threshold=failure_threshold,
                 recovery_timeout=recovery_timeout,
                 expected_exception=expected_exception,
-                name=name
+                name=name,
             )
         return self.breakers[name]
 
@@ -214,7 +219,7 @@ def get_circuit_breaker(
     name: str,
     failure_threshold: int = 5,
     recovery_timeout: int = 60,
-    expected_exception: type = Exception
+    expected_exception: type = Exception,
 ) -> CircuitBreaker:
     """
     Get or create a circuit breaker from the global registry
@@ -232,7 +237,7 @@ def get_circuit_breaker(
         name=name,
         failure_threshold=failure_threshold,
         recovery_timeout=recovery_timeout,
-        expected_exception=expected_exception
+        expected_exception=expected_exception,
     )
 
 

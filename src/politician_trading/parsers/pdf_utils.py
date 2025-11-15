@@ -115,7 +115,7 @@ class TickerResolver:
         # Remove common suffixes
         for suffix in [" inc", " corp", " corporation", " llc", " ltd", " company", " co"]:
             if normalized.endswith(suffix):
-                normalized = normalized[:-len(suffix)].strip()
+                normalized = normalized[: -len(suffix)].strip()
 
         if normalized in self._common_tickers:
             return self._common_tickers[normalized], 1.0
@@ -131,7 +131,7 @@ class TickerResolver:
             normalized,
             self._common_tickers.keys(),
             scorer=fuzz.ratio,
-            score_cutoff=75  # Only return if >75% match
+            score_cutoff=75,  # Only return if >75% match
         )
 
         if result:
@@ -152,7 +152,7 @@ class TickerResolver:
             info = ticker.info
 
             # If we got valid info, it's probably right
-            if info and 'shortName' in info:
+            if info and "shortName" in info:
                 logger.debug(f"Yahoo Finance resolved '{asset_name}' to {normalized}")
                 return normalized, 0.65
 
@@ -168,15 +168,15 @@ class ValueRangeParser:
     # Common range patterns in House disclosures
     RANGE_PATTERNS = [
         # "$1,001 - $15,000"
-        r'\$?([\d,]+)\s*-\s*\$?([\d,]+)',
+        r"\$?([\d,]+)\s*-\s*\$?([\d,]+)",
         # "$1,001-$15,000"
-        r'\$?([\d,]+)-\$?([\d,]+)',
+        r"\$?([\d,]+)-\$?([\d,]+)",
         # "$1,001 to $15,000"
-        r'\$?([\d,]+)\s+to\s+\$?([\d,]+)',
+        r"\$?([\d,]+)\s+to\s+\$?([\d,]+)",
         # "Over $50,000,000"
-        r'[Oo]ver\s+\$?([\d,]+)',
+        r"[Oo]ver\s+\$?([\d,]+)",
         # "$15,000 or less"
-        r'\$?([\d,]+)\s+or\s+less',
+        r"\$?([\d,]+)\s+or\s+less",
     ]
 
     @staticmethod
@@ -201,7 +201,7 @@ class ValueRangeParser:
                 "value_high": None,
                 "is_range": False,
                 "midpoint": None,
-                "original_text": value_text
+                "original_text": value_text,
             }
 
         cleaned = value_text.replace(",", "").strip()
@@ -222,7 +222,7 @@ class ValueRangeParser:
                             "value_high": high,
                             "is_range": True,
                             "midpoint": (low + high) / 2,
-                            "original_text": value_text
+                            "original_text": value_text,
                         }
                     except (ValueError, ArithmeticError) as e:
                         logger.warning(f"Failed to parse range '{value_text}': {e}")
@@ -238,7 +238,7 @@ class ValueRangeParser:
                                 "value_high": None,
                                 "is_range": False,
                                 "midpoint": value,
-                                "original_text": value_text
+                                "original_text": value_text,
                             }
                         else:  # "or less"
                             return {
@@ -246,7 +246,7 @@ class ValueRangeParser:
                                 "value_high": value,
                                 "is_range": False,
                                 "midpoint": value / 2,
-                                "original_text": value_text
+                                "original_text": value_text,
                             }
                     except (ValueError, ArithmeticError) as e:
                         logger.warning(f"Failed to parse value '{value_text}': {e}")
@@ -255,7 +255,7 @@ class ValueRangeParser:
         # If no pattern matched, try single number
         try:
             # Remove $ and commas, try to parse as single number
-            number_match = re.search(r'([\d,]+(?:\.\d+)?)', cleaned)
+            number_match = re.search(r"([\d,]+(?:\.\d+)?)", cleaned)
             if number_match:
                 value = Decimal(number_match.group(1).replace(",", ""))
                 return {
@@ -263,7 +263,7 @@ class ValueRangeParser:
                     "value_high": value,
                     "is_range": False,
                     "midpoint": value,
-                    "original_text": value_text
+                    "original_text": value_text,
                 }
         except (ValueError, ArithmeticError) as e:
             logger.warning(f"Failed to parse as single value '{value_text}': {e}")
@@ -274,7 +274,7 @@ class ValueRangeParser:
             "value_high": None,
             "is_range": False,
             "midpoint": None,
-            "original_text": value_text
+            "original_text": value_text,
         }
 
 
@@ -331,14 +331,14 @@ class DateParser:
 
     # Common date formats in House disclosures
     DATE_FORMATS = [
-        "%m/%d/%Y",      # 11/15/2024
-        "%m-%d-%Y",      # 11-15-2024
-        "%m/%d/%y",      # 11/15/24
-        "%m-%d-%y",      # 11-15-24
-        "%Y-%m-%d",      # 2024-11-15 (ISO)
-        "%B %d, %Y",     # November 15, 2024
-        "%b %d, %Y",     # Nov 15, 2024
-        "%m/%d/%Y %H:%M", # 11/15/2024 14:30
+        "%m/%d/%Y",  # 11/15/2024
+        "%m-%d-%Y",  # 11-15-2024
+        "%m/%d/%y",  # 11/15/24
+        "%m-%d-%y",  # 11-15-24
+        "%Y-%m-%d",  # 2024-11-15 (ISO)
+        "%B %d, %Y",  # November 15, 2024
+        "%b %d, %Y",  # Nov 15, 2024
+        "%m/%d/%Y %H:%M",  # 11/15/2024 14:30
     ]
 
     @staticmethod
@@ -394,22 +394,22 @@ def extract_ticker_from_text(text: str) -> Optional[str]:
         return None
 
     # Pattern 1: Parentheses
-    match = re.search(r'\(([A-Z]{1,5})\)', text)
+    match = re.search(r"\(([A-Z]{1,5})\)", text)
     if match:
         return match.group(1)
 
     # Pattern 2: Brackets
-    match = re.search(r'\[([A-Z]{1,5})\]', text)
+    match = re.search(r"\[([A-Z]{1,5})\]", text)
     if match:
         return match.group(1)
 
     # Pattern 3: "Ticker:" or "Symbol:"
-    match = re.search(r'(?:Ticker|Symbol):\s*([A-Z]{1,5})', text, re.IGNORECASE)
+    match = re.search(r"(?:Ticker|Symbol):\s*([A-Z]{1,5})", text, re.IGNORECASE)
     if match:
         return match.group(1)
 
     # Pattern 4: Standalone uppercase 1-5 letters at end
-    match = re.search(r'\b([A-Z]{1,5})\s*$', text)
+    match = re.search(r"\b([A-Z]{1,5})\s*$", text)
     if match:
         potential = match.group(1)
         # Filter out common false positives

@@ -25,7 +25,7 @@ except (ImportError, KeyError):
 
 # Import circuit breaker utilities
 try:
-    from .circuit_breaker import (
+    from .circuit_breaker import (  # noqa: F401
         CircuitBreaker,
         CircuitBreakerError,
         CircuitBreakerRegistry,
@@ -34,31 +34,37 @@ try:
         get_all_circuit_breakers,
         reset_all_circuit_breakers,
     )
-    __all__.extend([
-        "CircuitBreaker",
-        "CircuitBreakerError",
-        "CircuitBreakerRegistry",
-        "CircuitState",
-        "get_circuit_breaker",
-        "get_all_circuit_breakers",
-        "reset_all_circuit_breakers",
-    ])
+
+    __all__.extend(
+        [
+            "CircuitBreaker",
+            "CircuitBreakerError",
+            "CircuitBreakerRegistry",
+            "CircuitState",
+            "get_circuit_breaker",
+            "get_all_circuit_breakers",
+            "reset_all_circuit_breakers",
+        ]
+    )
 except (ImportError, KeyError):
     pass
 
 # Import ticker validation utilities
 try:
-    from .ticker_validator import (
+    from .ticker_validator import (  # noqa: F401
         TickerValidator,
         validate_ticker,
         bulk_validate_tickers,
         get_ticker_suggestions,
     )
-    __all__.extend([
-        "TickerValidator",
-        "validate_ticker",
-        "bulk_validate_tickers",
-        "get_ticker_suggestions",
-    ])
+
+    __all__.extend(
+        [
+            "TickerValidator",
+            "validate_ticker",
+            "bulk_validate_tickers",
+            "get_ticker_suggestions",
+        ]
+    )
 except (ImportError, KeyError):
     pass
