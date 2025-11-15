@@ -16,6 +16,7 @@ import yfinance as yf
 # Optional fuzzy matching dependency
 try:
     from rapidfuzz import fuzz, process
+
     RAPIDFUZZ_AVAILABLE = True
 except ImportError:
     RAPIDFUZZ_AVAILABLE = False
@@ -93,7 +94,7 @@ def parse_asset_type(text: str) -> tuple[Optional[str], Optional[str]]:
         return None, None
 
     # Look for pattern [XX] where XX is 2-3 uppercase letters/digits
-    match = re.search(r'\[([A-Z0-9]{2,3})\]', text)
+    match = re.search(r"\[([A-Z0-9]{2,3})\]", text)
     if match:
         code = match.group(1)
         description = ASSET_TYPE_CODES.get(code)
@@ -484,7 +485,7 @@ def extract_ticker_from_text(text: str) -> Optional[str]:
         return None
 
     # Pattern 1: Parentheses - this is the most reliable for tickers
-    match = re.search(r'\(([A-Z]{1,5})\)', text)
+    match = re.search(r"\(([A-Z]{1,5})\)", text)
     if match:
         potential = match.group(1)
         # Filter out asset type codes that might be in parens
@@ -492,16 +493,19 @@ def extract_ticker_from_text(text: str) -> Optional[str]:
             return potential
 
     # Pattern 2: "Ticker:" or "Symbol:"
-    match = re.search(r'(?:Ticker|Symbol):\s*([A-Z]{1,5})', text, re.IGNORECASE)
+    match = re.search(r"(?:Ticker|Symbol):\s*([A-Z]{1,5})", text, re.IGNORECASE)
     if match:
         return match.group(1)
 
     # Pattern 3: Standalone uppercase 1-5 letters at end
-    match = re.search(r'\b([A-Z]{1,5})\s*$', text)
+    match = re.search(r"\b([A-Z]{1,5})\s*$", text)
     if match:
         potential = match.group(1)
         # Filter out common false positives AND asset type codes
-        if potential not in ["INC", "LLC", "LTD", "CORP", "CO", "LP"] and potential not in ASSET_TYPE_CODES:
+        if (
+            potential not in ["INC", "LLC", "LTD", "CORP", "CO", "LP"]
+            and potential not in ASSET_TYPE_CODES
+        ):
             return potential
 
     return None
