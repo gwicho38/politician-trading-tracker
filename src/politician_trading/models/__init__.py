@@ -20,6 +20,8 @@ from models import (
     DisclosureStatus,
     DataSource,
     DataPullJob,
+    CapitalGain,
+    AssetHolding,
 )
 
 __all__ = [
@@ -30,4 +32,6 @@ __all__ = [
     "DisclosureStatus",
     "DataSource",
     "DataPullJob",
+    "CapitalGain",
+    "AssetHolding",
 ]
