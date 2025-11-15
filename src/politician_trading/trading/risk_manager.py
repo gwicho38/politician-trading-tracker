@@ -248,16 +248,18 @@ class RiskManager:
             Dictionary of risk metrics
         """
         total_exposure = sum(pos.market_value for pos in positions if pos.is_open)
+        portfolio_value_float = float(portfolio.portfolio_value) if portfolio.portfolio_value else 0
+
         exposure_pct = (
-            (float(total_exposure) / float(portfolio.portfolio_value)) * 100
-            if portfolio.portfolio_value > 0
+            (float(total_exposure) / portfolio_value_float) * 100
+            if portfolio_value_float > 0
             else 0
         )
 
         total_unrealized_pl = sum(pos.unrealized_pl for pos in positions if pos.is_open)
         unrealized_pl_pct = (
-            (float(total_unrealized_pl) / float(portfolio.portfolio_value)) * 100
-            if portfolio.portfolio_value > 0
+            (float(total_unrealized_pl) / portfolio_value_float) * 100
+            if portfolio_value_float > 0
             else 0
         )
 
@@ -266,8 +268,8 @@ class RiskManager:
             [pos.market_value for pos in positions if pos.is_open], default=Decimal(0)
         )
         largest_position_pct = (
-            (float(largest_position_value) / float(portfolio.portfolio_value)) * 100
-            if portfolio.portfolio_value > 0
+            (float(largest_position_value) / portfolio_value_float) * 100
+            if portfolio_value_float > 0
             else 0
         )
 
