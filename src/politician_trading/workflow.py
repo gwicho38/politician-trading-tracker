@@ -244,6 +244,10 @@ class PoliticianTradingWorkflow:
                         )
                         politician_id = await self.db.upsert_politician(new_politician)
                         disclosure.politician_id = politician_id
+
+                        # Add newly created politician to matcher cache to prevent duplicates
+                        new_politician.id = politician_id
+                        matcher.add_politician(new_politician)
                     else:
                         disclosure.politician_id = politician.id
 
@@ -479,6 +483,10 @@ class PoliticianTradingWorkflow:
                                 politician_id = await self.db.upsert_politician(uk_politician)
                                 disclosure.politician_id = politician_id
                                 logger.info(f"Created new UK MP: {politician_name}")
+
+                                # Add newly created politician to matcher cache to prevent duplicates
+                                uk_politician.id = politician_id
+                                matcher.add_politician(uk_politician)
                             else:
                                 disclosure.politician_id = politician.id
 
@@ -779,6 +787,10 @@ class PoliticianTradingWorkflow:
                             politician_id = await self.db.upsert_politician(state_politician)
                             disclosure.politician_id = politician_id
                             logger.info(f"Created new US state politician: {politician_name}")
+
+                            # Add newly created politician to matcher cache to prevent duplicates
+                            state_politician.id = politician_id
+                            matcher.add_politician(state_politician)
                         else:
                             disclosure.politician_id = politician.id
 
