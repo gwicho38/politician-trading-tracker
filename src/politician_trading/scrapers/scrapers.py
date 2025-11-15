@@ -18,7 +18,14 @@ from pdf2image import convert_from_bytes
 import pytesseract
 
 from ..config import ScrapingConfig
-from ..models import Politician, TradingDisclosure, TransactionType, DisclosureStatus
+from ..models import Politician, TradingDisclosure, TransactionType, DisclosureStatus, CapitalGain, AssetHolding
+from ..parsers import (
+    TickerResolver,
+    ValueRangeParser,
+    OwnerParser,
+    DateParser,
+    extract_ticker_from_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +116,10 @@ class BaseScraper:
 
 class CongressTradingScraper(BaseScraper):
     """Scraper for US Congress trading data"""
+
+    def __init__(self, config: ScrapingConfig):
+        super().__init__(config)
+        self.ticker_resolver = TickerResolver()
 
     def _parse_amount_from_pdf_text(
         self, text: str
@@ -780,6 +791,304 @@ class CongressTradingScraper(BaseScraper):
             logger.error(f"Error parsing Senate results: {e}")
 
         return disclosures
+
+    def _extract_transactions_section(self, pdf_text: str, filing_metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        """
+        Extract Part VII: Transactions data from House disclosure PDF.
+
+        This is an enhanced version of _extract_transactions_from_text that uses
+        the new parsing utilities for better accuracy.
+
+        Args:
+            pdf_text: Full text extracted from PDF
+            filing_metadata: Optional metadata (filer_id, filing_date, etc.)
+
+        Returns:
+            List of transaction dictionaries with enhanced fields
+        """
+        transactions = []
+        filing_metadata = filing_metadata or {}
+
+        # Look for Part VII section
+        part_vii_match = re.search(r'PART\s+VII[:\s]', pdf_text, re.IGNORECASE)
+        if not part_vii_match:
+            logger.debug("No Part VII section found in PDF")
+            # Fall back to searching entire document
+            search_text = pdf_text
+        else:
+            # Extract text after Part VII header
+            search_text = pdf_text[part_vii_match.end():]
+            # Stop at next major section (Part VIII or similar)
+            next_section = re.search(r'PART\s+(?:VIII|8)[:\s]', search_text, re.IGNORECASE)
+            if next_section:
+                search_text = search_text[:next_section.start()]
+
+        # Split into transaction blocks
+        sections = search_text.split("\n\n")
+
+        for section in sections:
+            line = section.replace("\r", "").replace("\n", " ")
+
+            # Extract transaction type
+            transaction_type = None
+            if re.search(r'\bP\b|\bPurchase\b', line, re.IGNORECASE):
+                transaction_type = "PURCHASE"
+            elif re.search(r'\bS\b|\bSale\b', line, re.IGNORECASE):
+                transaction_type = "SALE"
+            elif re.search(r'\bE\b|\bExchange\b', line, re.IGNORECASE):
+                transaction_type = "EXCHANGE"
+
+            if not transaction_type:
+                continue
+
+            # Extract ticker (explicit ticker in parentheses)
+            explicit_ticker = extract_ticker_from_text(line)
+
+            # Extract asset name (try to find company name before ticker or transaction type)
+            asset_name = None
+            if explicit_ticker:
+                # Find text before ticker
+                ticker_match = re.search(r'\(' + re.escape(explicit_ticker) + r'\)', line)
+                if ticker_match:
+                    before_ticker = line[:ticker_match.start()].strip()
+                    # Get last few words as asset name
+                    words = before_ticker.split()
+                    if words:
+                        asset_name = " ".join(words[-5:])
+
+            # If no explicit ticker, try to resolve from asset name
+            ticker = explicit_ticker
+            ticker_confidence = 1.0 if explicit_ticker else 0.0
+
+            if not ticker and asset_name:
+                ticker, ticker_confidence = self.ticker_resolver.resolve(asset_name)
+
+            # Parse value range
+            value_data = ValueRangeParser.parse(line)
+
+            # Parse owner
+            owner = OwnerParser.parse(line)
+
+            # Parse transaction date
+            transaction_date = DateParser.parse(line)
+
+            # Only add if we have minimum required data
+            if ticker or asset_name:
+                transaction = {
+                    "ticker": ticker,
+                    "ticker_confidence_score": ticker_confidence,
+                    "asset_name": asset_name or ticker or "Unknown",
+                    "transaction_type": transaction_type,
+                    "transaction_date": transaction_date,
+                    "asset_owner": owner,
+
+                    # Value information
+                    "value_low": value_data["value_low"],
+                    "value_high": value_data["value_high"],
+                    "is_range": value_data["is_range"],
+
+                    # Filing metadata
+                    "filer_id": filing_metadata.get("filer_id"),
+                    "filing_date": filing_metadata.get("filing_date"),
+
+                    # Raw data for debugging
+                    "raw_text": line[:500],
+                    "validation_flags": {},
+                }
+                transactions.append(transaction)
+
+        logger.info(f"Extracted {len(transactions)} enhanced transactions from Part VII")
+        return transactions
+
+    def _extract_capital_gains_section(self, pdf_text: str, filing_metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        """
+        Extract capital gains data from House disclosure PDF.
+
+        Args:
+            pdf_text: Full text extracted from PDF
+            filing_metadata: Optional metadata
+
+        Returns:
+            List of capital gain dictionaries
+        """
+        capital_gains = []
+        filing_metadata = filing_metadata or {}
+
+        # Look for capital gains section (often in Part III or separate schedule)
+        cg_patterns = [
+            r'CAPITAL\s+GAINS',
+            r'PART\s+III[:\s]',
+            r'SCHEDULE\s+[A-Z].*GAINS',
+        ]
+
+        cg_match = None
+        for pattern in cg_patterns:
+            cg_match = re.search(pattern, pdf_text, re.IGNORECASE)
+            if cg_match:
+                break
+
+        if not cg_match:
+            logger.debug("No capital gains section found in PDF")
+            return capital_gains
+
+        # Extract relevant section
+        search_text = pdf_text[cg_match.end():]
+        # Stop at next major section
+        next_section = re.search(r'PART\s+(?:IV|V|4|5)[:\s]', search_text, re.IGNORECASE)
+        if next_section:
+            search_text = search_text[:next_section.start()]
+
+        # Parse each line looking for gain entries
+        lines = search_text.split("\n")
+
+        for line in lines:
+            # Look for patterns indicating a capital gain entry
+            # Typically: Asset name, date acquired, date sold, gain type, amount
+
+            # Extract asset name
+            asset_name = None
+            words = line.split()
+            if len(words) >= 3:
+                # Heuristic: first few words are asset name
+                asset_name = " ".join(words[:4])
+
+            # Extract dates
+            date_pattern = r'\b(\d{1,2})/(\d{1,2})/(\d{4})\b'
+            dates = re.findall(date_pattern, line)
+            date_acquired = None
+            date_sold = None
+            if len(dates) >= 2:
+                try:
+                    date_acquired = datetime(int(dates[0][2]), int(dates[0][0]), int(dates[0][1]))
+                    date_sold = datetime(int(dates[1][2]), int(dates[1][0]), int(dates[1][1]))
+                except (ValueError, IndexError):
+                    pass
+
+            # Extract gain type (short-term vs long-term)
+            gain_type = None
+            if re.search(r'SHORT[- ]TERM', line, re.IGNORECASE):
+                gain_type = "SHORT_TERM"
+            elif re.search(r'LONG[- ]TERM', line, re.IGNORECASE):
+                gain_type = "LONG_TERM"
+
+            # Extract gain amount
+            value_data = ValueRangeParser.parse(line)
+            gain_amount = value_data["midpoint"]
+
+            # Extract ticker if present
+            ticker = extract_ticker_from_text(line)
+
+            # Only add if we have meaningful data
+            if asset_name and (date_sold or gain_amount):
+                capital_gain = {
+                    "asset_name": asset_name,
+                    "asset_ticker": ticker,
+                    "date_acquired": date_acquired,
+                    "date_sold": date_sold,
+                    "gain_type": gain_type,
+                    "gain_amount": gain_amount,
+                    "asset_owner": OwnerParser.parse(line),
+                    "raw_data": {"raw_text": line[:500]},
+                }
+                capital_gains.append(capital_gain)
+
+        logger.info(f"Extracted {len(capital_gains)} capital gains")
+        return capital_gains
+
+    def _extract_asset_holdings_section(self, pdf_text: str, filing_metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        """
+        Extract Part V: Assets and Unearned Income data from House disclosure PDF.
+
+        Args:
+            pdf_text: Full text extracted from PDF
+            filing_metadata: Optional metadata
+
+        Returns:
+            List of asset holding dictionaries
+        """
+        holdings = []
+        filing_metadata = filing_metadata or {}
+
+        # Look for Part V section
+        part_v_match = re.search(r'PART\s+V[:\s]|PART\s+5[:\s]', pdf_text, re.IGNORECASE)
+        if not part_v_match:
+            logger.debug("No Part V section found in PDF")
+            return holdings
+
+        # Extract relevant section
+        search_text = pdf_text[part_v_match.end():]
+        # Stop at next major section (Part VI)
+        next_section = re.search(r'PART\s+(?:VI|6)[:\s]', search_text, re.IGNORECASE)
+        if next_section:
+            search_text = search_text[:next_section.start()]
+
+        # Split into asset blocks
+        sections = search_text.split("\n\n")
+
+        for section in sections:
+            line = section.replace("\r", "").replace("\n", " ")
+
+            # Extract asset name (usually first significant words)
+            words = line.split()
+            if len(words) < 2:
+                continue
+
+            asset_name = " ".join(words[:6])  # Take first few words
+
+            # Extract asset type code (e.g., [ST], [BA], [OT])
+            asset_type = None
+            type_match = re.search(r'\[([A-Z]{2,3})\]', line)
+            if type_match:
+                asset_type = type_match.group(1)
+
+            # Extract ticker
+            ticker = extract_ticker_from_text(line)
+
+            # If no explicit ticker, try to resolve
+            ticker_confidence = 1.0 if ticker else 0.0
+            if not ticker:
+                ticker, ticker_confidence = self.ticker_resolver.resolve(asset_name)
+
+            # Parse value range
+            value_data = ValueRangeParser.parse(line)
+
+            # Parse owner
+            owner = OwnerParser.parse(line)
+
+            # Extract income information
+            # Look for income type indicators
+            income_type = None
+            if re.search(r'DIVIDEND|DIV', line, re.IGNORECASE):
+                income_type = "Dividends"
+            elif re.search(r'INTEREST|INT', line, re.IGNORECASE):
+                income_type = "Interest"
+            elif re.search(r'RENT', line, re.IGNORECASE):
+                income_type = "Rent"
+            elif re.search(r'CAPITAL GAIN', line, re.IGNORECASE):
+                income_type = "Capital Gains"
+
+            # Only add if we have an asset name
+            if asset_name and asset_name.strip():
+                holding = {
+                    "asset_name": asset_name.strip(),
+                    "asset_type": asset_type,
+                    "asset_ticker": ticker,
+                    "owner": owner,
+                    "value_low": value_data["value_low"],
+                    "value_high": value_data["value_high"],
+                    "value_category": value_data["original_text"] if value_data["is_range"] else None,
+                    "income_type": income_type,
+                    "filing_date": filing_metadata.get("filing_date"),
+                    "filing_doc_id": filing_metadata.get("doc_id"),
+                    "raw_data": {
+                        "raw_text": line[:500],
+                        "ticker_confidence_score": ticker_confidence,
+                    },
+                }
+                holdings.append(holding)
+
+        logger.info(f"Extracted {len(holdings)} asset holdings from Part V")
+        return holdings
 
     def _parse_date(self, date_str: str) -> Optional[datetime]:
         """Parse various date formats from disclosure sites"""

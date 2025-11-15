@@ -561,3 +561,79 @@ class Position:
 
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
+
+
+# =============================================================================
+# Enhanced House Disclosure Models (Issue #16)
+# =============================================================================
+
+
+@dataclass
+class CapitalGain:
+    """Capital gain reported in House financial disclosure"""
+
+    id: Optional[str] = None
+    politician_id: str = ""
+    disclosure_id: Optional[str] = None
+
+    # Asset information
+    asset_name: str = ""
+    asset_ticker: Optional[str] = None
+
+    # Transaction dates
+    date_acquired: Optional[datetime] = None
+    date_sold: Optional[datetime] = None
+
+    # Gain information
+    gain_type: Optional[str] = None  # SHORT_TERM or LONG_TERM
+    gain_amount: Optional[Decimal] = None
+
+    # Owner attribution
+    asset_owner: str = "SELF"  # SELF, SPOUSE, JOINT, DEPENDENT
+
+    # Additional context
+    comments: str = ""
+    raw_data: Dict[str, Any] = field(default_factory=dict)
+
+    # Timestamps
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
+class AssetHolding:
+    """Asset holding from Part V of House financial disclosure"""
+
+    id: Optional[str] = None
+    politician_id: str = ""
+
+    # Filing information
+    filing_date: Optional[datetime] = None
+    filing_doc_id: Optional[str] = None
+
+    # Asset information
+    asset_name: str = ""
+    asset_type: Optional[str] = None  # [OT], [BA], [ST], [MF], etc.
+    asset_ticker: Optional[str] = None
+    asset_description: Optional[str] = None
+
+    # Owner attribution
+    owner: str = "SELF"  # SELF, SPOUSE, JOINT, DEPENDENT
+
+    # Valuation
+    value_low: Optional[Decimal] = None
+    value_high: Optional[Decimal] = None
+    value_category: Optional[str] = None  # e.g., "$1,001-$15,000"
+
+    # Income information
+    income_type: Optional[str] = None  # Dividends, Interest, Rent, etc.
+    current_year_income: Optional[Decimal] = None
+    preceding_year_income: Optional[Decimal] = None
+
+    # Additional context
+    comments: str = ""
+    raw_data: Dict[str, Any] = field(default_factory=dict)
+
+    # Timestamps
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)
