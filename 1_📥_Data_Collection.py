@@ -679,6 +679,7 @@ try:
 
         # Format for display - include more useful columns
         display_cols = [
+            "created_at",
             "transaction_date",
             "disclosure_date",
             "politician_name",
@@ -696,6 +697,12 @@ try:
         display_df = df[[col for col in display_cols if col in df.columns]].copy()
 
         # Format dates - use ISO8601 format for parsing Supabase timestamps
+        if "created_at" in display_df.columns:
+            display_df["created_at"] = pd.to_datetime(
+                display_df["created_at"],
+                format='ISO8601'
+            ).dt.strftime("%Y-%m-%d %H:%M")
+
         if "transaction_date" in display_df.columns:
             display_df["transaction_date"] = pd.to_datetime(
                 display_df["transaction_date"],
@@ -722,6 +729,7 @@ try:
 
         # Rename columns for display
         column_rename = {
+            "created_at": "Processed",
             "transaction_date": "Trans. Date",
             "disclosure_date": "Disc. Date",
             "politician_name": "Politician",
@@ -801,6 +809,12 @@ try:
             filtered_display_df = filtered_df[[col for col in display_cols if col in filtered_df.columns]].copy()
 
             # Format dates - use ISO8601 format for parsing Supabase timestamps
+            if "created_at" in filtered_display_df.columns:
+                filtered_display_df["created_at"] = pd.to_datetime(
+                    filtered_display_df["created_at"],
+                    format='ISO8601'
+                ).dt.strftime("%Y-%m-%d %H:%M")
+
             if "transaction_date" in filtered_display_df.columns:
                 filtered_display_df["transaction_date"] = pd.to_datetime(
                     filtered_display_df["transaction_date"],
