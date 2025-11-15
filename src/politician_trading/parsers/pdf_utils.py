@@ -12,9 +12,94 @@ from typing import Optional, Tuple, Dict, Any
 from datetime import datetime
 
 import yfinance as yf
-from rapidfuzz import fuzz, process
+
+# Optional fuzzy matching dependency
+try:
+    from rapidfuzz import fuzz, process
+    RAPIDFUZZ_AVAILABLE = True
+except ImportError:
+    RAPIDFUZZ_AVAILABLE = False
+    fuzz = None
+    process = None
 
 logger = logging.getLogger(__name__)
+
+
+# Asset type codes from House disclosure system
+# https://fd.house.gov/reference/asset-type-codes.aspx
+ASSET_TYPE_CODES = {
+    "4K": "401K and Other Non-Federal Retirement Accounts",
+    "5C": "529 College Savings Plan",
+    "5F": "529 Portfolio",
+    "5P": "529 Prepaid Tuition Plan",
+    "AB": "Asset-Backed Securities",
+    "BA": "Bank Accounts, Money Market Accounts and CDs",
+    "BK": "Brokerage Accounts",
+    "CO": "Collectibles",
+    "CS": "Corporate Securities (Bonds and Notes)",
+    "CT": "Cryptocurrency",
+    "DB": "Defined Benefit Pension",
+    "DO": "Debts Owed to the Filer",
+    "DS": "Delaware Statutory Trust",
+    "EF": "Exchange Traded Funds (ETF)",
+    "EQ": "Excepted/Qualified Blind Trust",
+    "ET": "Exchange Traded Notes",
+    "FA": "Farms",
+    "FE": "Foreign Exchange Position (Currency)",
+    "FN": "Fixed Annuity",
+    "FU": "Futures",
+    "GS": "Government Securities and Agency Debt",
+    "HE": "Hedge Funds & Private Equity Funds (EIF)",
+    "HN": "Hedge Funds & Private Equity Funds (non-EIF)",
+    "IC": "Investment Club",
+    "IH": "IRA (Held in Cash)",
+    "IP": "Intellectual Property & Royalties",
+    "IR": "IRA",
+    "MA": "Managed Accounts (e.g., SMA and UMA)",
+    "MF": "Mutual Funds",
+    "MO": "Mineral/Oil/Solar Energy Rights",
+    "OI": "Ownership Interest (Holding Investments)",
+    "OL": "Ownership Interest (Engaged in a Trade or Business)",
+    "OP": "Options",
+    "OT": "Other",
+    "PE": "Pensions",
+    "PM": "Precious Metals",
+    "PS": "Stock (Not Publicly Traded)",
+    "RE": "Real Estate Invest. Trust (REIT)",
+    "RF": "REIT (EIF)",
+    "RN": "REIT (non-EIF)",
+    "RP": "Real Property",
+    "RS": "Restricted Stock Units (RSUs)",
+    "SA": "Stock Appreciation Right",
+    "ST": "Stocks (including ADRs)",
+    "TR": "Trust",
+    "VA": "Variable Annuity",
+    "VI": "Variable Insurance",
+    "WU": "Whole/Universal Insurance",
+}
+
+
+def parse_asset_type(text: str) -> tuple[Optional[str], Optional[str]]:
+    """
+    Parse asset type code from text.
+
+    Args:
+        text: Text that may contain asset type code like [ST], [MF], etc.
+
+    Returns:
+        Tuple of (code, description) or (None, None) if not found
+    """
+    if not text:
+        return None, None
+
+    # Look for pattern [XX] where XX is 2-3 uppercase letters/digits
+    match = re.search(r'\[([A-Z0-9]{2,3})\]', text)
+    if match:
+        code = match.group(1)
+        description = ASSET_TYPE_CODES.get(code)
+        return code, description
+
+    return None, None
 
 
 class TickerResolver:
@@ -124,6 +209,10 @@ class TickerResolver:
 
     def _fuzzy_match(self, asset_name: str) -> Tuple[Optional[str], float]:
         """Fuzzy match against common tickers"""
+        if not RAPIDFUZZ_AVAILABLE:
+            logger.debug("rapidfuzz not available - skipping fuzzy matching")
+            return None, 0.0
+
         normalized = asset_name.lower().strip()
 
         # Use rapidfuzz to find best match
@@ -380,9 +469,10 @@ def extract_ticker_from_text(text: str) -> Optional[str]:
 
     Looks for patterns like:
     - (AAPL)
-    - [MSFT]
     - Ticker: GOOGL
     - Symbol: TSLA
+
+    NOTE: Does NOT match brackets [XX] because those are asset type codes!
 
     Args:
         text: Text that may contain ticker
@@ -393,27 +483,25 @@ def extract_ticker_from_text(text: str) -> Optional[str]:
     if not text:
         return None
 
-    # Pattern 1: Parentheses
+    # Pattern 1: Parentheses - this is the most reliable for tickers
     match = re.search(r'\(([A-Z]{1,5})\)', text)
     if match:
-        return match.group(1)
+        potential = match.group(1)
+        # Filter out asset type codes that might be in parens
+        if potential not in ASSET_TYPE_CODES:
+            return potential
 
-    # Pattern 2: Brackets
-    match = re.search(r'\[([A-Z]{1,5})\]', text)
-    if match:
-        return match.group(1)
-
-    # Pattern 3: "Ticker:" or "Symbol:"
+    # Pattern 2: "Ticker:" or "Symbol:"
     match = re.search(r'(?:Ticker|Symbol):\s*([A-Z]{1,5})', text, re.IGNORECASE)
     if match:
         return match.group(1)
 
-    # Pattern 4: Standalone uppercase 1-5 letters at end
+    # Pattern 3: Standalone uppercase 1-5 letters at end
     match = re.search(r'\b([A-Z]{1,5})\s*$', text)
     if match:
         potential = match.group(1)
-        # Filter out common false positives
-        if potential not in ["INC", "LLC", "LTD", "CORP", "CO", "LP"]:
+        # Filter out common false positives AND asset type codes
+        if potential not in ["INC", "LLC", "LTD", "CORP", "CO", "LP"] and potential not in ASSET_TYPE_CODES:
             return potential
 
     return None
