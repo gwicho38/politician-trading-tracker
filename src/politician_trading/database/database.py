@@ -391,7 +391,7 @@ class PoliticianTradingDB:
         """Convert dictionary to TradingDisclosure"""
         from decimal import Decimal
 
-        from .models import DisclosureStatus, TransactionType
+        from politician_trading.models import DisclosureStatus, TransactionType
 
         return TradingDisclosure(
             id=data.get("id"),
