@@ -291,8 +291,8 @@ class RiskManager:
             "losing_positions": losing_positions,
             "win_rate": win_rate,
             "cash_pct": (
-                (float(portfolio.cash) / float(portfolio.portfolio_value)) * 100
-                if portfolio.portfolio_value > 0
+                (float(portfolio.cash) / portfolio_value_float) * 100
+                if portfolio_value_float > 0
                 else 0
             ),
         }
