@@ -463,12 +463,8 @@ class TestDisclosureValidator:
         validator = DisclosureValidator()
 
         # Validate some transactions
-        validator.validate_transaction(
-            {"transaction_type": "PURCHASE", "asset_name": "Test"}
-        )
-        validator.validate_transaction(
-            {}  # Invalid - missing required fields
-        )
+        validator.validate_transaction({"transaction_type": "PURCHASE", "asset_name": "Test"})
+        validator.validate_transaction({})  # Invalid - missing required fields
 
         stats = validator.get_validation_summary()
 

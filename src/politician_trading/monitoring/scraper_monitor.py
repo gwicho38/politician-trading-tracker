@@ -7,9 +7,9 @@ error tracking, and alerting for failures.
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 import json
 
@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 class HealthStatus(Enum):
     """Scraper health status levels"""
+
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     FAILING = "failing"
@@ -28,6 +29,7 @@ class HealthStatus(Enum):
 @dataclass
 class ScraperMetrics:
     """Metrics for a single scraper"""
+
     scraper_name: str
     last_run_time: Optional[datetime] = None
     last_success_time: Optional[datetime] = None
@@ -66,8 +68,7 @@ class ScraperMetrics:
             # Exponential moving average
             alpha = 0.3
             self.average_run_duration_seconds = (
-                alpha * duration_seconds +
-                (1 - alpha) * self.average_run_duration_seconds
+                alpha * duration_seconds + (1 - alpha) * self.average_run_duration_seconds
             )
 
     def update_failure(self, error_message: str, duration_seconds: Optional[float] = None):
@@ -125,8 +126,12 @@ class ScraperMetrics:
             "scraper_name": self.scraper_name,
             "health_status": self.get_health_status().value,
             "last_run_time": self.last_run_time.isoformat() if self.last_run_time else None,
-            "last_success_time": self.last_success_time.isoformat() if self.last_success_time else None,
-            "last_failure_time": self.last_failure_time.isoformat() if self.last_failure_time else None,
+            "last_success_time": (
+                self.last_success_time.isoformat() if self.last_success_time else None
+            ),
+            "last_failure_time": (
+                self.last_failure_time.isoformat() if self.last_failure_time else None
+            ),
             "total_runs": self.total_runs,
             "successful_runs": self.successful_runs,
             "failed_runs": self.failed_runs,
@@ -163,6 +168,7 @@ class ScraperMonitor:
         if enable_external_alerts:
             try:
                 from .alerting import get_alert_manager, AlertSeverity
+
                 self.alert_manager = get_alert_manager()
                 self.AlertSeverity = AlertSeverity
                 logger.info("External alerting enabled")
@@ -190,10 +196,7 @@ class ScraperMonitor:
         self._clear_alerts(scraper_name)
 
     def record_failure(
-        self,
-        scraper_name: str,
-        error_message: str,
-        duration_seconds: Optional[float] = None
+        self, scraper_name: str, error_message: str, duration_seconds: Optional[float] = None
     ):
         """Record failed scraper run"""
         metrics = self.get_or_create_metrics(scraper_name)
@@ -207,12 +210,7 @@ class ScraperMonitor:
         # Check if we should trigger an alert
         self._check_and_trigger_alert(scraper_name, metrics)
 
-    def update_circuit_breaker_state(
-        self,
-        scraper_name: str,
-        state: str,
-        failure_count: int
-    ):
+    def update_circuit_breaker_state(self, scraper_name: str, state: str, failure_count: int):
         """Update circuit breaker state for a scraper"""
         metrics = self.get_or_create_metrics(scraper_name)
         metrics.circuit_breaker_state = state
@@ -220,19 +218,22 @@ class ScraperMonitor:
 
         if state == "open":
             logger.warning(
-                f"Circuit breaker OPEN for '{scraper_name}' "
-                f"after {failure_count} failures"
+                f"Circuit breaker OPEN for '{scraper_name}' " f"after {failure_count} failures"
             )
             self._trigger_alert(
                 scraper_name,
                 "circuit_breaker_open",
-                f"Circuit breaker opened after {failure_count} failures"
+                f"Circuit breaker opened after {failure_count} failures",
             )
 
     def get_scraper_health(self, scraper_name: str) -> Dict[str, Any]:
         """Get health status for a specific scraper"""
         if scraper_name not in self.scrapers:
-            return {"scraper_name": scraper_name, "status": "unknown", "message": "No metrics available"}
+            return {
+                "scraper_name": scraper_name,
+                "status": "unknown",
+                "message": "No metrics available",
+            }
 
         metrics = self.scrapers[scraper_name]
         return {
@@ -269,10 +270,24 @@ class ScraperMonitor:
             "scrapers": scraper_health,
             "summary": {
                 "total_scrapers": len(self.scrapers),
-                "healthy": sum(1 for m in self.scrapers.values() if m.get_health_status() == HealthStatus.HEALTHY),
-                "degraded": sum(1 for m in self.scrapers.values() if m.get_health_status() == HealthStatus.DEGRADED),
-                "failing": sum(1 for m in self.scrapers.values() if m.get_health_status() == HealthStatus.FAILING),
-                "down": sum(1 for m in self.scrapers.values() if m.get_health_status() == HealthStatus.DOWN),
+                "healthy": sum(
+                    1
+                    for m in self.scrapers.values()
+                    if m.get_health_status() == HealthStatus.HEALTHY
+                ),
+                "degraded": sum(
+                    1
+                    for m in self.scrapers.values()
+                    if m.get_health_status() == HealthStatus.DEGRADED
+                ),
+                "failing": sum(
+                    1
+                    for m in self.scrapers.values()
+                    if m.get_health_status() == HealthStatus.FAILING
+                ),
+                "down": sum(
+                    1 for m in self.scrapers.values() if m.get_health_status() == HealthStatus.DOWN
+                ),
                 "total_runs": total_runs,
                 "total_successes": total_successes,
                 "total_records_scraped": total_records,
@@ -295,7 +310,7 @@ class ScraperMonitor:
             self._trigger_alert(
                 scraper_name,
                 "consecutive_failures",
-                f"{metrics.consecutive_failures} consecutive failures. Last error: {metrics.last_error_message}"
+                f"{metrics.consecutive_failures} consecutive failures. Last error: {metrics.last_error_message}",
             )
 
         # Alert on low success rate
@@ -305,26 +320,30 @@ class ScraperMonitor:
                 self._trigger_alert(
                     scraper_name,
                     "low_success_rate",
-                    f"Success rate: {success_rate:.1%} (threshold: {self.alert_thresholds['max_failure_rate']:.1%})"
+                    f"Success rate: {success_rate:.1%} (threshold: {self.alert_thresholds['max_failure_rate']:.1%})",
                 )
 
         # Alert on staleness
         if metrics.last_success_time:
-            hours_since_success = (datetime.now() - metrics.last_success_time).total_seconds() / 3600
+            hours_since_success = (
+                datetime.now() - metrics.last_success_time
+            ).total_seconds() / 3600
             if hours_since_success > self.alert_thresholds["max_age_hours"]:
                 self._trigger_alert(
                     scraper_name,
                     "stale_data",
-                    f"No successful run in {hours_since_success:.1f} hours"
+                    f"No successful run in {hours_since_success:.1f} hours",
                 )
 
     def _trigger_alert(self, scraper_name: str, alert_type: str, message: str):
         """Trigger an alert and send via configured channels"""
         # Check if similar alert already exists
         for alert in self.alerts:
-            if (alert["scraper_name"] == scraper_name and
-                alert["alert_type"] == alert_type and
-                (datetime.now() - alert["timestamp"]).total_seconds() < 3600):  # Within last hour
+            if (
+                alert["scraper_name"] == scraper_name
+                and alert["alert_type"] == alert_type
+                and (datetime.now() - alert["timestamp"]).total_seconds() < 3600
+            ):  # Within last hour
                 # Don't create duplicate alert
                 return
 
@@ -342,7 +361,7 @@ class ScraperMonitor:
         logger.warning(f"ALERT [{severity}] {scraper_name}: {message}")
 
         # Send external alerts if enabled
-        if self.enable_external_alerts and hasattr(self, 'alert_manager'):
+        if self.enable_external_alerts and hasattr(self, "alert_manager"):
             try:
                 # Map severity string to AlertSeverity enum
                 severity_map = {
@@ -369,7 +388,7 @@ class ScraperMonitor:
                         message=message,
                         severity=alert_severity,
                         scraper_name=scraper_name,
-                        metadata={"alert_type": alert_type}
+                        metadata={"alert_type": alert_type},
                     )
                 )
             except Exception as e:
@@ -400,12 +419,21 @@ class ScraperMonitor:
             # Prometheus exposition format
             lines = []
             for name, metrics_dict in data["scrapers"].items():
-                safe_name = name.replace("-", "_").replace(" ", "_")
-                lines.append(f"scraper_total_runs{{scraper=\"{name}\"}} {metrics_dict['total_runs']}")
-                lines.append(f"scraper_successful_runs{{scraper=\"{name}\"}} {metrics_dict['successful_runs']}")
-                lines.append(f"scraper_failed_runs{{scraper=\"{name}\"}} {metrics_dict['failed_runs']}")
-                lines.append(f"scraper_records_total{{scraper=\"{name}\"}} {metrics_dict['records_scraped_total']}")
-                lines.append(f"scraper_success_rate{{scraper=\"{name}\"}} {metrics_dict['success_rate']}")
+                lines.append(
+                    f"scraper_total_runs{{scraper=\"{name}\"}} {metrics_dict['total_runs']}"
+                )
+                lines.append(
+                    f"scraper_successful_runs{{scraper=\"{name}\"}} {metrics_dict['successful_runs']}"
+                )
+                lines.append(
+                    f"scraper_failed_runs{{scraper=\"{name}\"}} {metrics_dict['failed_runs']}"
+                )
+                lines.append(
+                    f"scraper_records_total{{scraper=\"{name}\"}} {metrics_dict['records_scraped_total']}"
+                )
+                lines.append(
+                    f"scraper_success_rate{{scraper=\"{name}\"}} {metrics_dict['success_rate']}"
+                )
             return "\n".join(lines)
         else:
             raise ValueError(f"Unsupported export format: {format}")
@@ -425,7 +453,9 @@ def record_scraper_success(scraper_name: str, records_scraped: int, duration_sec
     _monitor.record_success(scraper_name, records_scraped, duration_seconds)
 
 
-def record_scraper_failure(scraper_name: str, error_message: str, duration_seconds: Optional[float] = None):
+def record_scraper_failure(
+    scraper_name: str, error_message: str, duration_seconds: Optional[float] = None
+):
     """Record failed scraper run to global monitor"""
     _monitor.record_failure(scraper_name, error_message, duration_seconds)
 

@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 class AlertSeverity(Enum):
     """Alert severity levels"""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -33,6 +34,7 @@ class AlertSeverity(Enum):
 @dataclass
 class Alert:
     """Alert message structure"""
+
     title: str
     message: str
     severity: AlertSeverity
@@ -102,7 +104,9 @@ class EmailAlertChannel(AlertChannel):
         self.smtp_user = smtp_user or os.getenv("SMTP_USER")
         self.smtp_password = smtp_password or os.getenv("SMTP_PASSWORD")
         self.from_email = from_email or os.getenv("ALERT_FROM_EMAIL", self.smtp_user)
-        self.to_emails = to_emails or (os.getenv("ALERT_TO_EMAILS", "").split(",") if os.getenv("ALERT_TO_EMAILS") else [])
+        self.to_emails = to_emails or (
+            os.getenv("ALERT_TO_EMAILS", "").split(",") if os.getenv("ALERT_TO_EMAILS") else []
+        )
         self.use_tls = use_tls
 
         # Disable if credentials not configured
@@ -130,11 +134,7 @@ class EmailAlertChannel(AlertChannel):
             msg.attach(MIMEText(html_content, "html"))
 
             # Send email (in thread pool to avoid blocking)
-            await asyncio.get_event_loop().run_in_executor(
-                None,
-                self._send_smtp,
-                msg
-            )
+            await asyncio.get_event_loop().run_in_executor(None, self._send_smtp, msg)
 
             logger.info(f"Sent email alert for {alert.scraper_name}")
             return True
@@ -273,26 +273,18 @@ class SlackAlertChannel(AlertChannel):
                     "title": f"{emoji} {alert.title}",
                     "text": alert.message,
                     "fields": [
-                        {
-                            "title": "Scraper",
-                            "value": alert.scraper_name,
-                            "short": True
-                        },
-                        {
-                            "title": "Severity",
-                            "value": alert.severity.value.upper(),
-                            "short": True
-                        },
+                        {"title": "Scraper", "value": alert.scraper_name, "short": True},
+                        {"title": "Severity", "value": alert.severity.value.upper(), "short": True},
                         {
                             "title": "Time",
-                            "value": alert.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC'),
-                            "short": False
-                        }
+                            "value": alert.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                            "short": False,
+                        },
                     ],
                     "footer": "Politician Trading Tracker",
-                    "ts": int(alert.timestamp.timestamp())
+                    "ts": int(alert.timestamp.timestamp()),
                 }
-            ]
+            ],
         }
 
         if self.channel:
@@ -342,12 +334,12 @@ class DiscordAlertChannel(AlertChannel):
     def _format_discord_message(self, alert: Alert) -> Dict[str, Any]:
         """Format alert as Discord message"""
         severity_colors = {
-            AlertSeverity.LOW: 0x28a745,
-            AlertSeverity.MEDIUM: 0xffc107,
-            AlertSeverity.HIGH: 0xfd7e14,
-            AlertSeverity.CRITICAL: 0xdc3545,
+            AlertSeverity.LOW: 0x28A745,
+            AlertSeverity.MEDIUM: 0xFFC107,
+            AlertSeverity.HIGH: 0xFD7E14,
+            AlertSeverity.CRITICAL: 0xDC3545,
         }
-        color = severity_colors.get(alert.severity, 0x6c757d)
+        color = severity_colors.get(alert.severity, 0x6C757D)
 
         return {
             "username": self.username,
@@ -357,28 +349,18 @@ class DiscordAlertChannel(AlertChannel):
                     "description": alert.message,
                     "color": color,
                     "fields": [
-                        {
-                            "name": "Scraper",
-                            "value": alert.scraper_name,
-                            "inline": True
-                        },
-                        {
-                            "name": "Severity",
-                            "value": alert.severity.value.upper(),
-                            "inline": True
-                        },
+                        {"name": "Scraper", "value": alert.scraper_name, "inline": True},
+                        {"name": "Severity", "value": alert.severity.value.upper(), "inline": True},
                         {
                             "name": "Time",
-                            "value": alert.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC'),
-                            "inline": False
-                        }
+                            "value": alert.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                            "inline": False,
+                        },
                     ],
-                    "footer": {
-                        "text": "Politician Trading Tracker"
-                    },
-                    "timestamp": alert.timestamp.isoformat()
+                    "footer": {"text": "Politician Trading Tracker"},
+                    "timestamp": alert.timestamp.isoformat(),
                 }
-            ]
+            ],
         }
 
 
@@ -409,9 +391,7 @@ class WebhookAlertChannel(AlertChannel):
 
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    self.webhook_url,
-                    json=payload,
-                    headers=self.headers
+                    self.webhook_url, json=payload, headers=self.headers
                 ) as response:
                     if response.status in [200, 201, 202, 204]:
                         logger.info(f"Sent webhook alert for {alert.scraper_name}")
@@ -482,7 +462,7 @@ class AlertManager:
         message: str,
         severity: AlertSeverity,
         scraper_name: str,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, bool]:
         """
         Send alert through all configured channels
@@ -503,7 +483,7 @@ class AlertManager:
             severity=severity,
             scraper_name=scraper_name,
             timestamp=datetime.utcnow(),
-            metadata=metadata
+            metadata=metadata,
         )
 
         results = {}
@@ -543,7 +523,7 @@ async def send_alert(
     message: str,
     severity: AlertSeverity = AlertSeverity.MEDIUM,
     scraper_name: str = "System",
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, bool]:
     """
     Send alert through all configured channels
@@ -563,5 +543,5 @@ async def send_alert(
         message=message,
         severity=severity,
         scraper_name=scraper_name,
-        metadata=metadata
+        metadata=metadata,
     )

@@ -6,9 +6,9 @@ identifying potential issues in parsed disclosure data.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,9 @@ class DisclosureValidator:
         if date_acquired and date_sold:
             if isinstance(date_acquired, datetime) and isinstance(date_sold, datetime):
                 if date_sold < date_acquired:
-                    errors.append(f"date_sold ({date_sold}) is before date_acquired ({date_acquired})")
+                    errors.append(
+                        f"date_sold ({date_sold}) is before date_acquired ({date_acquired})"
+                    )
 
         # Validate gain type matches holding period
         if date_acquired and date_sold and capital_gain.get("gain_type"):
@@ -126,9 +128,13 @@ class DisclosureValidator:
                 gain_type = capital_gain.get("gain_type")
 
                 if gain_type == "LONG_TERM" and holding_period <= 365:
-                    warnings.append(f"Marked LONG_TERM but holding period is {holding_period} days (<= 365)")
+                    warnings.append(
+                        f"Marked LONG_TERM but holding period is {holding_period} days (<= 365)"
+                    )
                 elif gain_type == "SHORT_TERM" and holding_period > 365:
-                    warnings.append(f"Marked SHORT_TERM but holding period is {holding_period} days (> 365)")
+                    warnings.append(
+                        f"Marked SHORT_TERM but holding period is {holding_period} days (> 365)"
+                    )
 
         quality_score = self._calculate_quality_score(capital_gain, warnings, errors)
 
@@ -306,9 +312,7 @@ class DisclosureValidator:
                 # Filing should be within reasonable time (e.g., 45 days)
                 days_diff = (filing_date - transaction_date).days
                 if days_diff > 60:
-                    warnings.append(
-                        f"Filing is {days_diff} days after transaction (>60 days)"
-                    )
+                    warnings.append(f"Filing is {days_diff} days after transaction (>60 days)")
 
         # Check if dates are not in the future
         now = datetime.now()
@@ -322,9 +326,7 @@ class DisclosureValidator:
 
         return warnings
 
-    def _validate_value_range(
-        self, transaction: Dict[str, Any]
-    ) -> tuple[List[str], List[str]]:
+    def _validate_value_range(self, transaction: Dict[str, Any]) -> tuple[List[str], List[str]]:
         """Validate value ranges are reasonable"""
         warnings = []
         errors = []
@@ -336,9 +338,7 @@ class DisclosureValidator:
             if isinstance(value_low, Decimal) and isinstance(value_high, Decimal):
                 # Check that high >= low
                 if value_high < value_low:
-                    errors.append(
-                        f"value_high ({value_high}) is less than value_low ({value_low})"
-                    )
+                    errors.append(f"value_high ({value_high}) is less than value_low ({value_low})")
 
                 # Check for unreasonably high values
                 if value_high > self.MAX_REASONABLE_TRANSACTION_VALUE:

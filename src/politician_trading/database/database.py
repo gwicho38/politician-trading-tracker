@@ -363,8 +363,12 @@ class PoliticianTradingDB:
         return {
             "id": disclosure.id,
             "politician_id": disclosure.politician_id,
-            "transaction_date": disclosure.transaction_date.isoformat() if disclosure.transaction_date else None,
-            "disclosure_date": disclosure.disclosure_date.isoformat() if disclosure.disclosure_date else None,
+            "transaction_date": (
+                disclosure.transaction_date.isoformat() if disclosure.transaction_date else None
+            ),
+            "disclosure_date": (
+                disclosure.disclosure_date.isoformat() if disclosure.disclosure_date else None
+            ),
             "transaction_type": (
                 disclosure.transaction_type.value if disclosure.transaction_type else None
             ),
@@ -383,8 +387,16 @@ class PoliticianTradingDB:
             "raw_data": disclosure.raw_data,
             "status": disclosure.status.value if disclosure.status else None,
             "processing_notes": disclosure.processing_notes,
-            "created_at": disclosure.created_at.isoformat() if disclosure.created_at else datetime.utcnow().isoformat(),
-            "updated_at": disclosure.updated_at.isoformat() if disclosure.updated_at else datetime.utcnow().isoformat(),
+            "created_at": (
+                disclosure.created_at.isoformat()
+                if disclosure.created_at
+                else datetime.utcnow().isoformat()
+            ),
+            "updated_at": (
+                disclosure.updated_at.isoformat()
+                if disclosure.updated_at
+                else datetime.utcnow().isoformat()
+            ),
         }
 
     def _dict_to_disclosure(self, data: Dict[str, Any]) -> TradingDisclosure:
