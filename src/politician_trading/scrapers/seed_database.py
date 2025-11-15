@@ -369,8 +369,13 @@ def upsert_trading_disclosures(
             if hasattr(disclosure, "filing_date") and disclosure.filing_date:
                 disclosure_data["filing_date"] = disclosure.filing_date
 
-            if hasattr(disclosure, "ticker_confidence_score") and disclosure.ticker_confidence_score is not None:
-                disclosure_data["ticker_confidence_score"] = float(disclosure.ticker_confidence_score)
+            if (
+                hasattr(disclosure, "ticker_confidence_score")
+                and disclosure.ticker_confidence_score is not None
+            ):
+                disclosure_data["ticker_confidence_score"] = float(
+                    disclosure.ticker_confidence_score
+                )
 
             if hasattr(disclosure, "asset_owner") and disclosure.asset_owner:
                 disclosure_data["asset_owner"] = disclosure.asset_owner
