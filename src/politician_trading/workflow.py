@@ -212,6 +212,14 @@ class PoliticianTradingWorkflow:
                         job.records_failed += 1
                         continue
 
+                    # Skip disclosures with no transaction date (required field)
+                    if not disclosure.transaction_date:
+                        logger.warning(
+                            f"Skipping disclosure with missing transaction_date for {politician_name}"
+                        )
+                        job.records_failed += 1
+                        continue
+
                     politician = matcher.find_politician(politician_name)
 
                     if not politician:
