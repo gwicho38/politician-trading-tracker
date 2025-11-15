@@ -518,18 +518,6 @@ class CongressTradingScraper(BaseScraper):
                                 f"  Error parsing PDF for {metadata['politician_name']}: {e}"
                             )
 
-                    # Create politician object (minimal info from index)
-                    politician = Politician(
-                        first_name=metadata["first_name"],
-                        last_name=metadata["last_name"],
-                        full_name=metadata["politician_name"],
-                        role="House",
-                        party="",  # Not available in index file
-                        state_or_country=(
-                            metadata["state_district"][:2] if metadata["state_district"] else ""
-                        ),
-                    )
-
                     # Create TradingDisclosure object for each transaction found
                     # If no transactions, create one disclosure with the metadata
                     if transactions_data:
@@ -551,7 +539,6 @@ class CongressTradingScraper(BaseScraper):
                                 status=DisclosureStatus.PENDING,
                                 raw_data={
                                     "politician_name": metadata["politician_name"],
-                                    "politician": politician,
                                     "doc_id": metadata["doc_id"],
                                     "filing_type": metadata["filing_type"],
                                 },
@@ -577,7 +564,6 @@ class CongressTradingScraper(BaseScraper):
                             ),
                             raw_data={
                                 "politician_name": metadata["politician_name"],
-                                "politician": politician,
                                 "doc_id": metadata["doc_id"],
                                 "filing_type": metadata["filing_type"],
                             },
