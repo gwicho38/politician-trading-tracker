@@ -11,7 +11,14 @@ from decimal import Decimal
 from typing import Optional, Tuple, Dict, Any
 from datetime import datetime
 
-import yfinance as yf
+# Optional yfinance dependency for ticker lookups
+try:
+    import yfinance as yf
+
+    YFINANCE_AVAILABLE = True
+except ImportError:
+    YFINANCE_AVAILABLE = False
+    yf = None
 
 # Optional fuzzy matching dependency
 try:
@@ -113,23 +120,35 @@ class TickerResolver:
     def _load_common_tickers(self) -> Dict[str, str]:
         """Load common company name -> ticker mappings"""
         # Common mappings to avoid API calls
+        # Include both full names and shortened versions for better matching
         return {
             "apple inc": "AAPL",
+            "apple": "AAPL",
             "microsoft corporation": "MSFT",
+            "microsoft": "MSFT",
             "amazon.com inc": "AMZN",
+            "amazon.com": "AMZN",
+            "amazon": "AMZN",
             "alphabet inc": "GOOGL",
+            "alphabet": "GOOGL",
             "meta platforms inc": "META",
+            "meta platforms": "META",
+            "meta": "META",
             "tesla inc": "TSLA",
+            "tesla": "TSLA",
             "nvidia corporation": "NVDA",
+            "nvidia": "NVDA",
             "berkshire hathaway": "BRK.B",
             "jpmorgan chase": "JPM",
             "johnson & johnson": "JNJ",
             "visa inc": "V",
+            "visa": "V",
             "procter & gamble": "PG",
             "unitedhealth group": "UNH",
             "home depot": "HD",
             "mastercard": "MA",
             "pfizer inc": "PFE",
+            "pfizer": "PFE",
             "coca-cola": "KO",
             "pepsico": "PEP",
             "walmart": "WMT",
@@ -137,7 +156,9 @@ class TickerResolver:
             "adobe": "ADBE",
             "salesforce": "CRM",
             "cisco systems": "CSCO",
+            "cisco": "CSCO",
             "intel corporation": "INTC",
+            "intel": "INTC",
             "verizon": "VZ",
             "at&t": "T",
             "bank of america": "BAC",
@@ -147,6 +168,7 @@ class TickerResolver:
             "citigroup": "C",
             "american express": "AXP",
             "3m company": "MMM",
+            "3m": "MMM",
             "caterpillar": "CAT",
             "boeing": "BA",
             "general electric": "GE",
@@ -198,10 +220,16 @@ class TickerResolver:
     def _exact_match(self, asset_name: str) -> Tuple[Optional[str], float]:
         """Check for exact match in common tickers"""
         normalized = asset_name.lower().strip()
-        # Remove common suffixes
+
+        # First try exact match before removing suffixes
+        if normalized in self._common_tickers:
+            return self._common_tickers[normalized], 1.0
+
+        # Remove common suffixes and try again
         for suffix in [" inc", " corp", " corporation", " llc", " ltd", " company", " co"]:
             if normalized.endswith(suffix):
                 normalized = normalized[: -len(suffix)].strip()
+                break
 
         if normalized in self._common_tickers:
             return self._common_tickers[normalized], 1.0
@@ -216,7 +244,34 @@ class TickerResolver:
 
         normalized = asset_name.lower().strip()
 
-        # Use rapidfuzz to find best match
+        # Try fuzzy match with original name first
+        result = process.extractOne(
+            normalized,
+            self._common_tickers.keys(),
+            scorer=fuzz.ratio,
+            score_cutoff=75,  # Only return if >75% match
+        )
+
+        if result:
+            matched_name, score, _ = result
+            confidence = score / 100.0  # Convert to 0-1 scale
+            return self._common_tickers[matched_name], confidence
+
+        # If no match, try again after removing common suffixes
+        for suffix in [
+            " incorporated",
+            " corporation",
+            " inc",
+            " corp",
+            " llc",
+            " ltd",
+            " company",
+            " co",
+        ]:
+            if normalized.endswith(suffix):
+                normalized = normalized[: -len(suffix)].strip()
+                break
+
         result = process.extractOne(
             normalized,
             self._common_tickers.keys(),
@@ -233,6 +288,10 @@ class TickerResolver:
 
     def _yfinance_lookup(self, asset_name: str) -> Tuple[Optional[str], float]:
         """Attempt to resolve via Yahoo Finance (slow)"""
+        if not YFINANCE_AVAILABLE:
+            logger.debug("yfinance not available - skipping Yahoo Finance lookup")
+            return None, 0.0
+
         try:
             # Try searching - this is an approximation
             # yfinance doesn't have a great search API, so we'll try the name as ticker first
