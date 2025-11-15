@@ -172,11 +172,11 @@ try:
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.metric("Portfolio Value", f"${account_info['portfolio_value']:,.2f}")
+        st.metric("Portfolio Value", f"${float(account_info['portfolio_value']):,.2f}")
     with col2:
-        st.metric("Cash", f"${account_info['cash']:,.2f}")
+        st.metric("Cash", f"${float(account_info['cash']):,.2f}")
     with col3:
-        st.metric("Buying Power", f"${account_info['buying_power']:,.2f}")
+        st.metric("Buying Power", f"${float(account_info['buying_power']):,.2f}")
     with col4:
         st.metric("Account Status", account_info['status'].upper())
 
