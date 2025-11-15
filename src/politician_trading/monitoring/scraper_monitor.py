@@ -5,6 +5,7 @@ This module provides comprehensive monitoring of scraper performance,
 error tracking, and alerting for failures.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
@@ -148,7 +149,7 @@ class ScraperMonitor:
     for scraper failures and degraded performance.
     """
 
-    def __init__(self):
+    def __init__(self, enable_external_alerts: bool = True):
         self.scrapers: Dict[str, ScraperMetrics] = {}
         self.alerts: List[Dict[str, Any]] = []
         self.alert_thresholds = {
@@ -156,6 +157,18 @@ class ScraperMonitor:
             "max_failure_rate": 0.5,
             "max_age_hours": 24,
         }
+        self.enable_external_alerts = enable_external_alerts
+
+        # Import alerting here to avoid circular imports
+        if enable_external_alerts:
+            try:
+                from .alerting import get_alert_manager, AlertSeverity
+                self.alert_manager = get_alert_manager()
+                self.AlertSeverity = AlertSeverity
+                logger.info("External alerting enabled")
+            except ImportError:
+                logger.warning("Alerting module not available - external alerts disabled")
+                self.enable_external_alerts = False
 
     def get_or_create_metrics(self, scraper_name: str) -> ScraperMetrics:
         """Get existing metrics or create new ones"""
@@ -306,7 +319,7 @@ class ScraperMonitor:
                 )
 
     def _trigger_alert(self, scraper_name: str, alert_type: str, message: str):
-        """Trigger an alert"""
+        """Trigger an alert and send via configured channels"""
         # Check if similar alert already exists
         for alert in self.alerts:
             if (alert["scraper_name"] == scraper_name and
@@ -315,23 +328,52 @@ class ScraperMonitor:
                 # Don't create duplicate alert
                 return
 
+        severity = self._get_alert_severity(alert_type)
+
         alert = {
             "scraper_name": scraper_name,
             "alert_type": alert_type,
             "message": message,
             "timestamp": datetime.now(),
-            "severity": self._get_alert_severity(alert_type),
+            "severity": severity,
         }
 
         self.alerts.append(alert)
-        logger.warning(f"ALERT [{alert['severity']}] {scraper_name}: {message}")
+        logger.warning(f"ALERT [{severity}] {scraper_name}: {message}")
 
-        # In production, this would send notifications via:
-        # - Email
-        # - Slack/Discord
-        # - PagerDuty
-        # - SMS
-        # - etc.
+        # Send external alerts if enabled
+        if self.enable_external_alerts and hasattr(self, 'alert_manager'):
+            try:
+                # Map severity string to AlertSeverity enum
+                severity_map = {
+                    "low": self.AlertSeverity.LOW,
+                    "medium": self.AlertSeverity.MEDIUM,
+                    "high": self.AlertSeverity.HIGH,
+                    "critical": self.AlertSeverity.CRITICAL,
+                }
+                alert_severity = severity_map.get(severity, self.AlertSeverity.MEDIUM)
+
+                # Create title based on alert type
+                title_map = {
+                    "consecutive_failures": f"Scraper Failing: {scraper_name}",
+                    "low_success_rate": f"Low Success Rate: {scraper_name}",
+                    "stale_data": f"Stale Data: {scraper_name}",
+                    "circuit_breaker_open": f"Circuit Breaker Open: {scraper_name}",
+                }
+                title = title_map.get(alert_type, f"Alert: {scraper_name}")
+
+                # Send alert asynchronously (fire and forget)
+                asyncio.create_task(
+                    self.alert_manager.send_alert(
+                        title=title,
+                        message=message,
+                        severity=alert_severity,
+                        scraper_name=scraper_name,
+                        metadata={"alert_type": alert_type}
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Failed to send external alert: {e}")
 
     def _clear_alerts(self, scraper_name: str):
         """Clear alerts for a scraper after successful run"""

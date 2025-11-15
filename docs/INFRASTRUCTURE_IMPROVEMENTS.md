@@ -152,11 +152,95 @@ print(f"Overall Status: {health['overall_status']}")
 
 ---
 
-### 4. Comprehensive Documentation ✅
+### 4. Automated Multi-Channel Alerting ✅
+
+**Files Created**:
+- `src/politician_trading/monitoring/alerting.py` (NEW)
+- `docs/ALERTING_CONFIGURATION.md` (NEW)
+- `scripts/test_alerting.py` (NEW)
+
+**Files Modified**:
+- `src/politician_trading/monitoring/scraper_monitor.py` (MODIFIED)
+- `src/politician_trading/monitoring/__init__.py` (MODIFIED)
+- `.env.example` (MODIFIED)
+
+**Features**:
+
+**Multi-Channel Support**:
+- Email (SMTP) - Works with Gmail, AWS SES, SendGrid, etc.
+- Slack (Webhooks) - Rich formatted messages with color coding
+- Discord (Webhooks) - Embedded messages with severity indicators
+- Generic Webhooks - For custom monitoring systems
+
+**Alert Types**:
+- Consecutive Failures - Triggers after 3+ failures
+- Low Success Rate - Triggers if success rate < 50%
+- Stale Data - Triggers if no successful run in 24+ hours
+- Circuit Breaker Open - Triggers when circuit breaker trips
+
+**Smart Features**:
+- Automatic duplicate suppression (1 hour window)
+- Severity-based routing and formatting
+- Async delivery to all channels simultaneously
+- HTML and plain text email formats
+- Color-coded alerts by severity
+- Configurable thresholds
+
+**Benefits**:
+- Immediate notification of scraper failures
+- Reduced mean time to detection (MTTD)
+- Multi-channel redundancy
+- Beautiful, actionable alerts
+- Zero-configuration integration with monitoring
+
+**Usage**:
+```python
+# Alerts are sent automatically when issues are detected
+from politician_trading.monitoring import record_scraper_failure
+
+record_scraper_failure("MyScraper", "Connection timeout")
+# Alert automatically sent if thresholds exceeded
+
+# Or send custom alerts
+from politician_trading.monitoring import send_alert, AlertSeverity
+
+await send_alert(
+    title="Custom Alert",
+    message="Something important happened",
+    severity=AlertSeverity.HIGH,
+    scraper_name="MyScraper"
+)
+```
+
+**Configuration**:
+```bash
+# Email
+SMTP_HOST=smtp.gmail.com
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+ALERT_TO_EMAILS=admin@example.com
+
+# Slack
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+
+# Discord
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR/WEBHOOK/URL
+```
+
+**Testing**:
+```bash
+# Test all configured alert channels
+python scripts/test_alerting.py
+```
+
+---
+
+### 5. Comprehensive Documentation ✅
 
 **Files Created**:
 - `docs/SCRAPER_IMPLEMENTATION_GUIDE.md` (NEW)
 - `docs/STATE_SCRAPER_ROADMAP.md` (NEW)
+- `docs/ALERTING_CONFIGURATION.md` (NEW)
 - `docs/INFRASTRUCTURE_IMPROVEMENTS.md` (THIS FILE)
 
 **Content**:
