@@ -836,6 +836,10 @@ try:
         global_missing_tickers = total_count - global_with_tickers
         global_ticker_percentage = (global_with_tickers / total_count * 100) if total_count > 0 else 0
 
+        # Also calculate LOCAL (current page) ticker statistics for display messages
+        missing_tickers = len([t for t in df["asset_ticker"] if not t or t == ""])
+        with_tickers = len(df) - missing_tickers
+
         # Show ticker metrics (GLOBAL)
         st.markdown("#### 📊 Ticker Statistics (All Disclosures)")
         col1, col2, col3 = st.columns(3)
@@ -952,7 +956,8 @@ try:
 
 except Exception as e:
     st.error(f"❌ Database connection error: {str(e)}")
-    logger.error(f"Failed to load recent disclosures: {str(e)}", exc_info=True)
+    import traceback
+    logger.error(f"Failed to load recent disclosures: {str(e)}", error=e, metadata={"traceback": traceback.format_exc()})
 
     # Show connection help
     with st.expander("🔍 Troubleshooting"):
