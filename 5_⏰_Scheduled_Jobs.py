@@ -82,7 +82,7 @@ except Exception as e:
 # Check if scheduler is running
 if not scheduler.is_running():
     st.error("⚠️ Scheduler is not running. Jobs will not execute.")
-    if st.button("Restart Scheduler"):
+    if st.button("Restart Scheduler", key="restart_scheduler"):
         st.rerun()
 else:
     st.success("✅ Scheduler is running")
@@ -290,13 +290,13 @@ with tab1:
 with tab2:
     st.markdown("### Add New Scheduled Job")
 
-    job_type = st.radio("Select job type:", ["Data Collection", "Ticker Backfill", "Custom"])
+    job_type = st.radio("Select job type:", ["Data Collection", "Ticker Backfill", "Custom"], key="new_job_type")
 
     if job_type in ["Data Collection", "Ticker Backfill"]:
         # Predefined jobs
         st.markdown("#### Configure Schedule")
 
-        schedule_type = st.radio("Schedule type:", ["Interval", "Cron (Time-based)"])
+        schedule_type = st.radio("Schedule type:", ["Interval", "Cron (Time-based)"], key="new_schedule_type")
 
         job_id = None
         job_name = None
@@ -341,16 +341,16 @@ with tab2:
             st.markdown("#### Interval Settings")
             col1, col2, col3 = st.columns(3)
             with col1:
-                hours = st.number_input("Hours", min_value=0, max_value=168, value=24 if job_type == "Data Collection" else 168)
+                hours = st.number_input("Hours", min_value=0, max_value=168, value=24 if job_type == "Data Collection" else 168, key=f"interval_hours_{job_type.replace(' ', '_')}")
             with col2:
-                minutes = st.number_input("Minutes", min_value=0, max_value=59, value=0)
+                minutes = st.number_input("Minutes", min_value=0, max_value=59, value=0, key=f"interval_minutes_{job_type.replace(' ', '_')}")
             with col3:
-                seconds = st.number_input("Seconds", min_value=0, max_value=59, value=0)
+                seconds = st.number_input("Seconds", min_value=0, max_value=59, value=0, key=f"interval_seconds_{job_type.replace(' ', '_')}")
 
             if hours == 0 and minutes == 0 and seconds == 0:
                 st.warning("⚠️ Please specify a non-zero interval")
             else:
-                if st.button("➕ Add Interval Job", type="primary"):
+                if st.button("➕ Add Interval Job", type="primary", key=f"add_interval_job_{job_type.replace(' ', '_')}"):
                     logger.info(f"Button clicked: Add Interval Job", metadata={
                         "job_type": job_type,
                         "job_id": job_id,
@@ -431,12 +431,13 @@ with tab2:
 
             col1, col2 = st.columns(2)
             with col1:
-                hour = st.number_input("Hour (0-23)", min_value=0, max_value=23, value=2)
-                minute = st.number_input("Minute (0-59)", min_value=0, max_value=59, value=0)
+                hour = st.number_input("Hour (0-23)", min_value=0, max_value=23, value=2, key=f"cron_hour_{job_type.replace(' ', '_')}")
+                minute = st.number_input("Minute (0-59)", min_value=0, max_value=59, value=0, key=f"cron_minute_{job_type.replace(' ', '_')}")
             with col2:
                 day_of_week = st.selectbox(
                     "Day of Week (optional)",
                     ["Every day", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+                    key=f"cron_dow_{job_type.replace(' ', '_')}"
                 )
 
             day_of_week_map = {
@@ -457,7 +458,7 @@ with tab2:
 
             st.info(f"📅 Schedule: {schedule_preview}")
 
-            if st.button("➕ Add Cron Job", type="primary"):
+            if st.button("➕ Add Cron Job", type="primary", key=f"add_cron_job_{job_type.replace(' ', '_')}"):
                 # Update session state if data collection
                 if job_type == "Data Collection":
                     st.session_state.scheduled_us_congress = us_congress
@@ -501,14 +502,14 @@ with tab3:
         # Filter options
         col1, col2 = st.columns([1, 3])
         with col1:
-            filter_job = st.selectbox("Filter by job:", ["All"] + [job["id"] for job in jobs])
+            filter_job = st.selectbox("Filter by job:", ["All"] + [job["id"] for job in jobs], key="history_filter_job")
 
         # Apply filter
         if filter_job != "All":
             history = [h for h in history if h["job_id"] == filter_job]
 
         # Display history with logs
-        for execution in history[:50]:  # Show last 50
+        for idx, execution in enumerate(history[:50]):  # Show last 50
             timestamp = execution["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
             status = execution["status"]
             status_emoji = "✅" if status == "success" else "❌"
@@ -549,13 +550,13 @@ with tab3:
                     log_text = "\n".join(logs)
                     st.code(log_text, language="log", line_numbers=True)
 
-                    # Option to download logs
+                    # Option to download logs - use idx to ensure unique keys
                     st.download_button(
                         label="📥 Download Logs",
                         data=log_text,
                         file_name=f"{execution['job_id']}_{timestamp.replace(' ', '_').replace(':', '-')}.log",
                         mime="text/plain",
-                        key=f"download_{execution['job_id']}_{timestamp}"
+                        key=f"download_logs_{idx}"
                     )
                 else:
                     st.info("No logs captured for this execution (this job may have run before log tracking was enabled)")
@@ -580,16 +581,16 @@ with tab4:
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        if st.button("🔄 Refresh Page"):
+        if st.button("🔄 Refresh Page", key="settings_refresh_page"):
             st.rerun()
 
     with col2:
-        if st.button("📄 View Logs"):
+        if st.button("📄 View Logs", key="settings_view_logs"):
             st.info("Check logs/latest.log for detailed execution logs")
             st.code("tail -f logs/latest.log | jq 'select(.logger | contains(\"scheduled\"))'", language="bash")
 
     with col3:
-        if st.button("❌ Clear All Jobs"):
+        if st.button("❌ Clear All Jobs", key="settings_clear_all_jobs"):
             if st.warning("This will remove ALL scheduled jobs. Are you sure?"):
                 for job in jobs:
                     scheduler.remove_job(job['id'])

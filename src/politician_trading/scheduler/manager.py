@@ -325,13 +325,17 @@ class SchedulerManager:
         self.scheduler.start()
         logger.info("Scheduler started successfully")
 
-        # Load jobs from database into scheduler
-        if self.db_client:
-            self._load_jobs_from_database()
-
-        # Run job recovery/catch-up for missed jobs
-        if self.db_client:
-            self._recover_missed_jobs()
+        # COMMENTED OUT: In-app job loading was causing slowness
+        # The DB-defined jobs remain in the database but are not loaded into APScheduler
+        # Users can still manually add jobs via the UI if needed
+        #
+        # # Load jobs from database into scheduler
+        # if self.db_client:
+        #     self._load_jobs_from_database()
+        #
+        # # Run job recovery/catch-up for missed jobs
+        # if self.db_client:
+        #     self._recover_missed_jobs()
 
         # Ensure scheduler shuts down gracefully
         atexit.register(self._shutdown)
