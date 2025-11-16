@@ -231,7 +231,50 @@ class JobHistory:
     def get_history(
         self, job_id: Optional[str] = None, limit: Optional[int] = None
     ) -> List[Dict[str, Any]]:
-        """Get execution history, optionally filtered by job_id and limited"""
+        """Get execution history from database, optionally filtered by job_id and limited"""
+        # If database is available, query it directly for complete history
+        if self.db_client:
+            try:
+                query = self.db_client.client.table("job_executions").select("*")
+
+                if job_id:
+                    query = query.eq("job_id", job_id)
+
+                query = query.order("started_at", desc=True)
+
+                if limit:
+                    query = query.limit(limit)
+                else:
+                    query = query.limit(100)  # Default limit to prevent huge queries
+
+                response = query.execute()
+
+                if response.data:
+                    history = []
+                    for record in response.data:
+                        execution = {
+                            "job_id": record["job_id"],
+                            "timestamp": datetime.fromisoformat(
+                                record["started_at"].replace("Z", "+00:00")
+                            ),
+                            "status": record["status"],
+                            "error": record.get("error_message"),
+                            "logs": record.get("logs", "").split("\n") if record.get("logs") else [],
+                            "duration_seconds": (
+                                float(record["duration_seconds"])
+                                if record.get("duration_seconds")
+                                else None
+                            ),
+                            "db_id": record["id"],
+                        }
+                        history.append(execution)
+                    return history
+
+            except Exception as e:
+                logger.error(f"Failed to get history from database: {e}")
+                # Fall through to in-memory backup
+
+        # Fallback to in-memory history
         with self._lock:
             if job_id:
                 history = [e for e in self.executions if e["job_id"] == job_id]
@@ -775,28 +818,113 @@ class SchedulerManager:
             return False
 
     def get_jobs(self) -> List[Dict[str, Any]]:
-        """Get all scheduled jobs with metadata"""
-        if not self.scheduler:
+        """Get all scheduled jobs from database (not from APScheduler)"""
+        if not self.db_client:
+            # Fallback to APScheduler jobs if no database
+            if not self.scheduler:
+                return []
+
+            jobs = []
+            for job in self.scheduler.get_jobs():
+                metadata = self._job_metadata.get(job.id, {})
+                last_execution = self.job_history.get_last_execution(job.id)
+
+                job_info = {
+                    "id": job.id,
+                    "name": job.name or metadata.get("name", job.id),
+                    "description": metadata.get("description", ""),
+                    "type": metadata.get("type", "unknown"),
+                    "schedule": metadata.get("schedule", str(job.trigger)),
+                    "next_run": job.next_run_time,
+                    "is_paused": job.next_run_time is None,
+                    "last_execution": last_execution,
+                }
+                jobs.append(job_info)
+            return jobs
+
+        # Query database for all scheduled jobs
+        try:
+            response = (
+                self.db_client.client.table("scheduled_jobs")
+                .select("*")
+                .execute()
+            )
+
+            jobs = []
+            for db_job in response.data:
+                # Get last execution from database
+                last_execution = None
+                try:
+                    exec_response = (
+                        self.db_client.client.table("job_executions")
+                        .select("*")
+                        .eq("job_id", db_job["job_id"])
+                        .order("started_at", desc=True)
+                        .limit(1)
+                        .execute()
+                    )
+
+                    if exec_response.data:
+                        exec_data = exec_response.data[0]
+                        last_execution = {
+                            "timestamp": datetime.fromisoformat(
+                                exec_data["started_at"].replace("Z", "+00:00")
+                            ),
+                            "status": exec_data["status"],
+                            "error": exec_data.get("error_message"),
+                            "logs": exec_data.get("logs", "").split("\n") if exec_data.get("logs") else [],
+                            "duration_seconds": (
+                                float(exec_data["duration_seconds"])
+                                if exec_data.get("duration_seconds")
+                                else None
+                            ),
+                        }
+                except Exception as e:
+                    logger.debug(f"Could not fetch last execution for job {db_job['job_id']}: {e}")
+
+                # Format schedule display
+                schedule_display = db_job["schedule_value"]
+                if db_job["schedule_type"] == "interval":
+                    seconds = int(db_job["schedule_value"])
+                    hours = seconds // 3600
+                    minutes = (seconds % 3600) // 60
+                    secs = seconds % 60
+                    parts = []
+                    if hours:
+                        parts.append(f"{hours}h")
+                    if minutes:
+                        parts.append(f"{minutes}m")
+                    if secs:
+                        parts.append(f"{secs}s")
+                    schedule_display = " ".join(parts) if parts else f"{seconds}s"
+
+                # Parse next run time
+                next_run = None
+                if db_job.get("next_scheduled_run"):
+                    try:
+                        next_run = datetime.fromisoformat(
+                            db_job["next_scheduled_run"].replace("Z", "+00:00")
+                        )
+                    except:
+                        pass
+
+                job_info = {
+                    "id": db_job["job_id"],
+                    "name": db_job["job_name"],
+                    "description": db_job.get("metadata", {}).get("description", ""),
+                    "type": db_job["schedule_type"],
+                    "schedule": schedule_display,
+                    "next_run": next_run,
+                    "is_paused": not db_job["enabled"],
+                    "last_execution": last_execution,
+                }
+                jobs.append(job_info)
+
+            return jobs
+
+        except Exception as e:
+            logger.error(f"Failed to get jobs from database: {e}")
             return []
-
-        jobs = []
-        for job in self.scheduler.get_jobs():
-            metadata = self._job_metadata.get(job.id, {})
-            last_execution = self.job_history.get_last_execution(job.id)
-
-            job_info = {
-                "id": job.id,
-                "name": job.name or metadata.get("name", job.id),
-                "description": metadata.get("description", ""),
-                "type": metadata.get("type", "unknown"),
-                "schedule": metadata.get("schedule", str(job.trigger)),
-                "next_run": job.next_run_time,
-                "is_paused": job.next_run_time is None,
-                "last_execution": last_execution,
-            }
-            jobs.append(job_info)
-
-        return jobs
 
     def get_job_info(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Get detailed information about a specific job"""
