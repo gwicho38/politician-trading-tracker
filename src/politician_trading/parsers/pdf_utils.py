@@ -11,11 +11,19 @@ from decimal import Decimal
 from typing import Optional, Tuple, Dict, Any
 from datetime import datetime
 
-import yfinance as yf
+# Optional yfinance dependency for ticker lookups
+try:
+    import yfinance as yf
+
+    YFINANCE_AVAILABLE = True
+except ImportError:
+    YFINANCE_AVAILABLE = False
+    yf = None
 
 # Optional fuzzy matching dependency
 try:
     from rapidfuzz import fuzz, process
+
     RAPIDFUZZ_AVAILABLE = True
 except ImportError:
     RAPIDFUZZ_AVAILABLE = False
@@ -93,7 +101,7 @@ def parse_asset_type(text: str) -> tuple[Optional[str], Optional[str]]:
         return None, None
 
     # Look for pattern [XX] where XX is 2-3 uppercase letters/digits
-    match = re.search(r'\[([A-Z0-9]{2,3})\]', text)
+    match = re.search(r"\[([A-Z0-9]{2,3})\]", text)
     if match:
         code = match.group(1)
         description = ASSET_TYPE_CODES.get(code)
@@ -112,23 +120,35 @@ class TickerResolver:
     def _load_common_tickers(self) -> Dict[str, str]:
         """Load common company name -> ticker mappings"""
         # Common mappings to avoid API calls
+        # Include both full names and shortened versions for better matching
         return {
             "apple inc": "AAPL",
+            "apple": "AAPL",
             "microsoft corporation": "MSFT",
+            "microsoft": "MSFT",
             "amazon.com inc": "AMZN",
+            "amazon.com": "AMZN",
+            "amazon": "AMZN",
             "alphabet inc": "GOOGL",
+            "alphabet": "GOOGL",
             "meta platforms inc": "META",
+            "meta platforms": "META",
+            "meta": "META",
             "tesla inc": "TSLA",
+            "tesla": "TSLA",
             "nvidia corporation": "NVDA",
+            "nvidia": "NVDA",
             "berkshire hathaway": "BRK.B",
             "jpmorgan chase": "JPM",
             "johnson & johnson": "JNJ",
             "visa inc": "V",
+            "visa": "V",
             "procter & gamble": "PG",
             "unitedhealth group": "UNH",
             "home depot": "HD",
             "mastercard": "MA",
             "pfizer inc": "PFE",
+            "pfizer": "PFE",
             "coca-cola": "KO",
             "pepsico": "PEP",
             "walmart": "WMT",
@@ -136,7 +156,9 @@ class TickerResolver:
             "adobe": "ADBE",
             "salesforce": "CRM",
             "cisco systems": "CSCO",
+            "cisco": "CSCO",
             "intel corporation": "INTC",
+            "intel": "INTC",
             "verizon": "VZ",
             "at&t": "T",
             "bank of america": "BAC",
@@ -146,6 +168,7 @@ class TickerResolver:
             "citigroup": "C",
             "american express": "AXP",
             "3m company": "MMM",
+            "3m": "MMM",
             "caterpillar": "CAT",
             "boeing": "BA",
             "general electric": "GE",
@@ -197,10 +220,16 @@ class TickerResolver:
     def _exact_match(self, asset_name: str) -> Tuple[Optional[str], float]:
         """Check for exact match in common tickers"""
         normalized = asset_name.lower().strip()
-        # Remove common suffixes
+
+        # First try exact match before removing suffixes
+        if normalized in self._common_tickers:
+            return self._common_tickers[normalized], 1.0
+
+        # Remove common suffixes and try again
         for suffix in [" inc", " corp", " corporation", " llc", " ltd", " company", " co"]:
             if normalized.endswith(suffix):
-                normalized = normalized[:-len(suffix)].strip()
+                normalized = normalized[: -len(suffix)].strip()
+                break
 
         if normalized in self._common_tickers:
             return self._common_tickers[normalized], 1.0
@@ -215,12 +244,39 @@ class TickerResolver:
 
         normalized = asset_name.lower().strip()
 
-        # Use rapidfuzz to find best match
+        # Try fuzzy match with original name first
         result = process.extractOne(
             normalized,
             self._common_tickers.keys(),
             scorer=fuzz.ratio,
-            score_cutoff=75  # Only return if >75% match
+            score_cutoff=75,  # Only return if >75% match
+        )
+
+        if result:
+            matched_name, score, _ = result
+            confidence = score / 100.0  # Convert to 0-1 scale
+            return self._common_tickers[matched_name], confidence
+
+        # If no match, try again after removing common suffixes
+        for suffix in [
+            " incorporated",
+            " corporation",
+            " inc",
+            " corp",
+            " llc",
+            " ltd",
+            " company",
+            " co",
+        ]:
+            if normalized.endswith(suffix):
+                normalized = normalized[: -len(suffix)].strip()
+                break
+
+        result = process.extractOne(
+            normalized,
+            self._common_tickers.keys(),
+            scorer=fuzz.ratio,
+            score_cutoff=75,  # Only return if >75% match
         )
 
         if result:
@@ -232,6 +288,10 @@ class TickerResolver:
 
     def _yfinance_lookup(self, asset_name: str) -> Tuple[Optional[str], float]:
         """Attempt to resolve via Yahoo Finance (slow)"""
+        if not YFINANCE_AVAILABLE:
+            logger.debug("yfinance not available - skipping Yahoo Finance lookup")
+            return None, 0.0
+
         try:
             # Try searching - this is an approximation
             # yfinance doesn't have a great search API, so we'll try the name as ticker first
@@ -241,7 +301,7 @@ class TickerResolver:
             info = ticker.info
 
             # If we got valid info, it's probably right
-            if info and 'shortName' in info:
+            if info and "shortName" in info:
                 logger.debug(f"Yahoo Finance resolved '{asset_name}' to {normalized}")
                 return normalized, 0.65
 
@@ -257,15 +317,15 @@ class ValueRangeParser:
     # Common range patterns in House disclosures
     RANGE_PATTERNS = [
         # "$1,001 - $15,000"
-        r'\$?([\d,]+)\s*-\s*\$?([\d,]+)',
+        r"\$?([\d,]+)\s*-\s*\$?([\d,]+)",
         # "$1,001-$15,000"
-        r'\$?([\d,]+)-\$?([\d,]+)',
+        r"\$?([\d,]+)-\$?([\d,]+)",
         # "$1,001 to $15,000"
-        r'\$?([\d,]+)\s+to\s+\$?([\d,]+)',
+        r"\$?([\d,]+)\s+to\s+\$?([\d,]+)",
         # "Over $50,000,000"
-        r'[Oo]ver\s+\$?([\d,]+)',
+        r"[Oo]ver\s+\$?([\d,]+)",
         # "$15,000 or less"
-        r'\$?([\d,]+)\s+or\s+less',
+        r"\$?([\d,]+)\s+or\s+less",
     ]
 
     @staticmethod
@@ -290,7 +350,7 @@ class ValueRangeParser:
                 "value_high": None,
                 "is_range": False,
                 "midpoint": None,
-                "original_text": value_text
+                "original_text": value_text,
             }
 
         cleaned = value_text.replace(",", "").strip()
@@ -311,7 +371,7 @@ class ValueRangeParser:
                             "value_high": high,
                             "is_range": True,
                             "midpoint": (low + high) / 2,
-                            "original_text": value_text
+                            "original_text": value_text,
                         }
                     except (ValueError, ArithmeticError) as e:
                         logger.warning(f"Failed to parse range '{value_text}': {e}")
@@ -327,7 +387,7 @@ class ValueRangeParser:
                                 "value_high": None,
                                 "is_range": False,
                                 "midpoint": value,
-                                "original_text": value_text
+                                "original_text": value_text,
                             }
                         else:  # "or less"
                             return {
@@ -335,7 +395,7 @@ class ValueRangeParser:
                                 "value_high": value,
                                 "is_range": False,
                                 "midpoint": value / 2,
-                                "original_text": value_text
+                                "original_text": value_text,
                             }
                     except (ValueError, ArithmeticError) as e:
                         logger.warning(f"Failed to parse value '{value_text}': {e}")
@@ -344,7 +404,7 @@ class ValueRangeParser:
         # If no pattern matched, try single number
         try:
             # Remove $ and commas, try to parse as single number
-            number_match = re.search(r'([\d,]+(?:\.\d+)?)', cleaned)
+            number_match = re.search(r"([\d,]+(?:\.\d+)?)", cleaned)
             if number_match:
                 value = Decimal(number_match.group(1).replace(",", ""))
                 return {
@@ -352,7 +412,7 @@ class ValueRangeParser:
                     "value_high": value,
                     "is_range": False,
                     "midpoint": value,
-                    "original_text": value_text
+                    "original_text": value_text,
                 }
         except (ValueError, ArithmeticError) as e:
             logger.warning(f"Failed to parse as single value '{value_text}': {e}")
@@ -363,7 +423,7 @@ class ValueRangeParser:
             "value_high": None,
             "is_range": False,
             "midpoint": None,
-            "original_text": value_text
+            "original_text": value_text,
         }
 
 
@@ -420,14 +480,14 @@ class DateParser:
 
     # Common date formats in House disclosures
     DATE_FORMATS = [
-        "%m/%d/%Y",      # 11/15/2024
-        "%m-%d-%Y",      # 11-15-2024
-        "%m/%d/%y",      # 11/15/24
-        "%m-%d-%y",      # 11-15-24
-        "%Y-%m-%d",      # 2024-11-15 (ISO)
-        "%B %d, %Y",     # November 15, 2024
-        "%b %d, %Y",     # Nov 15, 2024
-        "%m/%d/%Y %H:%M", # 11/15/2024 14:30
+        "%m/%d/%Y",  # 11/15/2024
+        "%m-%d-%Y",  # 11-15-2024
+        "%m/%d/%y",  # 11/15/24
+        "%m-%d-%y",  # 11-15-24
+        "%Y-%m-%d",  # 2024-11-15 (ISO)
+        "%B %d, %Y",  # November 15, 2024
+        "%b %d, %Y",  # Nov 15, 2024
+        "%m/%d/%Y %H:%M",  # 11/15/2024 14:30
     ]
 
     @staticmethod
@@ -484,7 +544,7 @@ def extract_ticker_from_text(text: str) -> Optional[str]:
         return None
 
     # Pattern 1: Parentheses - this is the most reliable for tickers
-    match = re.search(r'\(([A-Z]{1,5})\)', text)
+    match = re.search(r"\(([A-Z]{1,5})\)", text)
     if match:
         potential = match.group(1)
         # Filter out asset type codes that might be in parens
@@ -492,16 +552,19 @@ def extract_ticker_from_text(text: str) -> Optional[str]:
             return potential
 
     # Pattern 2: "Ticker:" or "Symbol:"
-    match = re.search(r'(?:Ticker|Symbol):\s*([A-Z]{1,5})', text, re.IGNORECASE)
+    match = re.search(r"(?:Ticker|Symbol):\s*([A-Z]{1,5})", text, re.IGNORECASE)
     if match:
         return match.group(1)
 
     # Pattern 3: Standalone uppercase 1-5 letters at end
-    match = re.search(r'\b([A-Z]{1,5})\s*$', text)
+    match = re.search(r"\b([A-Z]{1,5})\s*$", text)
     if match:
         potential = match.group(1)
         # Filter out common false positives AND asset type codes
-        if potential not in ["INC", "LLC", "LTD", "CORP", "CO", "LP"] and potential not in ASSET_TYPE_CODES:
+        if (
+            potential not in ["INC", "LLC", "LTD", "CORP", "CO", "LP"]
+            and potential not in ASSET_TYPE_CODES
+        ):
             return potential
 
     return None

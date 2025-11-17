@@ -19,6 +19,7 @@ from bs4 import BeautifulSoup
 try:
     from pdf2image import convert_from_bytes
     import pytesseract
+
     OCR_AVAILABLE = True
 except ImportError:
     OCR_AVAILABLE = False
@@ -26,26 +27,36 @@ except ImportError:
     pytesseract = None
 
 from ..config import ScrapingConfig
-from ..models import Politician, TradingDisclosure, TransactionType, DisclosureStatus, CapitalGain, AssetHolding
+from ..models import Politician, TradingDisclosure, TransactionType, DisclosureStatus
 from ..parsers import (
     TickerResolver,
     ValueRangeParser,
     OwnerParser,
     DateParser,
     extract_ticker_from_text,
-    parse_asset_type,
     ASSET_TYPE_CODES,
 )
+from ..utils.circuit_breaker import get_circuit_breaker, CircuitBreakerError
 
 logger = logging.getLogger(__name__)
 
 
 class BaseScraper:
-    """Base class for all scrapers"""
+    """Base class for all scrapers with circuit breaker support"""
 
-    def __init__(self, config: ScrapingConfig):
+    def __init__(self, config: ScrapingConfig, circuit_breaker_name: Optional[str] = None):
         self.config = config
         self.session: Optional[aiohttp.ClientSession] = None
+
+        # Initialize circuit breaker for this scraper
+        self.circuit_breaker_name = circuit_breaker_name or self.__class__.__name__
+        self.circuit_breaker = get_circuit_breaker(
+            name=self.circuit_breaker_name,
+            failure_threshold=config.max_retries + 2,  # Allow slightly more than max_retries
+            recovery_timeout=120,  # 2 minutes before trying again
+            expected_exception=Exception,
+        )
+        logger.debug(f"Initialized circuit breaker for {self.circuit_breaker_name}")
 
     async def __aenter__(self):
         """Async context manager entry"""
@@ -61,7 +72,19 @@ class BaseScraper:
             await self.session.close()
 
     async def fetch_page(self, url: str, **kwargs) -> Optional[str]:
-        """Fetch a web page with error handling and rate limiting"""
+        """Fetch a web page with error handling, rate limiting, and circuit breaker"""
+        try:
+            # Use circuit breaker to protect against cascading failures
+            return await self.circuit_breaker.call(self._fetch_page_impl, url, **kwargs)
+        except CircuitBreakerError as e:
+            logger.error(f"Circuit breaker open for {self.circuit_breaker_name}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error fetching {url}: {e}")
+            return None
+
+    async def _fetch_page_impl(self, url: str, **kwargs) -> Optional[str]:
+        """Internal implementation of page fetching with retry logic"""
         for attempt in range(self.config.max_retries):
             try:
                 await asyncio.sleep(self.config.request_delay)
@@ -69,17 +92,34 @@ class BaseScraper:
                 async with self.session.get(url, **kwargs) as response:
                     if response.status == 200:
                         return await response.text()
+                    elif response.status == 429:  # Rate limited
+                        logger.warning(f"Rate limited (429) for {url}")
+                        await asyncio.sleep(self.config.request_delay * 2)
+                    elif response.status >= 500:
+                        # Server errors - likely temporary
+                        logger.warning(f"Server error {response.status} for {url}")
+                        if attempt < self.config.max_retries - 1:
+                            await asyncio.sleep(self.config.request_delay * (attempt + 1))
                     else:
-                        logger.warning(f"HTTP {response.status} for {url}")
-                        if response.status == 429:  # Rate limited
-                            await asyncio.sleep(self.config.request_delay * 2)
+                        # Client errors (4xx) - don't retry
+                        logger.warning(f"Client error {response.status} for {url}")
+                        return None
 
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout (attempt {attempt + 1}) for {url}")
+                if attempt < self.config.max_retries - 1:
+                    await asyncio.sleep(self.config.request_delay * (attempt + 1))
+            except aiohttp.ClientError as e:
+                logger.error(f"Client error (attempt {attempt + 1}) for {url}: {e}")
+                if attempt < self.config.max_retries - 1:
+                    await asyncio.sleep(self.config.request_delay * (attempt + 1))
             except Exception as e:
-                logger.error(f"Attempt {attempt + 1} failed for {url}: {e}")
+                logger.error(f"Unexpected error (attempt {attempt + 1}) for {url}: {e}")
                 if attempt < self.config.max_retries - 1:
                     await asyncio.sleep(self.config.request_delay * (attempt + 1))
 
-        return None
+        # All retries exhausted
+        raise Exception(f"Failed to fetch {url} after {self.config.max_retries} attempts")
 
     def parse_amount_range(
         self, amount_text: str
@@ -128,7 +168,7 @@ class CongressTradingScraper(BaseScraper):
     """Scraper for US Congress trading data"""
 
     def __init__(self, config: ScrapingConfig):
-        super().__init__(config)
+        super().__init__(config, circuit_breaker_name="US_Congress")
         self.ticker_resolver = TickerResolver()
 
     def _parse_amount_from_pdf_text(
@@ -278,8 +318,11 @@ class CongressTradingScraper(BaseScraper):
         return transactions
 
     async def _parse_house_pdf(
-        self, pdf_url: str, pdf_content: bytes = None, session: aiohttp.ClientSession = None,
-        filing_metadata: Dict[str, Any] = None
+        self,
+        pdf_url: str,
+        pdf_content: bytes = None,
+        session: aiohttp.ClientSession = None,
+        filing_metadata: Dict[str, Any] = None,
     ) -> List[Dict[str, Any]]:
         """Parse a House disclosure PDF to extract transaction details
 
@@ -344,8 +387,12 @@ class CongressTradingScraper(BaseScraper):
                 logger.warning(f"pdfplumber failed: {pdfplumber_error}")
 
                 if not OCR_AVAILABLE:
-                    logger.error("OCR dependencies (pdf2image, pytesseract) not available - cannot fall back to OCR")
-                    logger.info("To enable OCR fallback, install: pip install pdf2image pytesseract poppler-utils")
+                    logger.error(
+                        "OCR dependencies (pdf2image, pytesseract) not available - cannot fall back to OCR"
+                    )
+                    logger.info(
+                        "To enable OCR fallback, install: pip install pdf2image pytesseract poppler-utils"
+                    )
                 else:
                     logger.info("Falling back to OCR")
 
@@ -363,7 +410,9 @@ class CongressTradingScraper(BaseScraper):
                     logger.info(f"Extracted {len(full_text)} characters via OCR")
 
                     # Use enhanced parser
-                    transactions = self._extract_transactions_section(full_text, filing_metadata or {})
+                    transactions = self._extract_transactions_section(
+                        full_text, filing_metadata or {}
+                    )
                     logger.info(f"Extracted {len(transactions)} transactions from OCR text")
 
         except Exception as e:
@@ -566,7 +615,7 @@ class CongressTradingScraper(BaseScraper):
                             transactions_data = await self._parse_house_pdf(
                                 pdf_url=metadata["pdf_url"],
                                 session=session,
-                                filing_metadata=filing_meta
+                                filing_metadata=filing_meta,
                             )
 
                             if transactions_data:
@@ -855,7 +904,9 @@ class CongressTradingScraper(BaseScraper):
 
         return disclosures
 
-    def _extract_transactions_section(self, pdf_text: str, filing_metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    def _extract_transactions_section(
+        self, pdf_text: str, filing_metadata: Dict[str, Any] = None
+    ) -> List[Dict[str, Any]]:
         """
         Extract transaction data from House disclosure PDF.
 
@@ -877,22 +928,22 @@ class CongressTradingScraper(BaseScraper):
         filing_metadata = filing_metadata or {}
 
         # Split text into lines for line-by-line parsing
-        lines = pdf_text.split('\n')
+        lines = pdf_text.split("\n")
 
         i = 0
         while i < len(lines):
             line = lines[i].strip()
 
             # Skip empty lines and headers
-            if not line or 'Transaction' in line or 'Owner' in line or 'Type' in line:
+            if not line or "Transaction" in line or "Owner" in line or "Type" in line:
                 i += 1
                 continue
 
             # Look for transaction type indicator (P, S, E) with dates and amounts
             # Pattern: Asset name (TICKER) TYPE DATE DATE $AMOUNT
             trans_match = re.search(
-                r'(.+?)\s+([PSE])\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})\s+(\$[\d,]+ - \$[\d,]+|\$[\d,]+|Over \$[\d,]+)',
-                line
+                r"(.+?)\s+([PSE])\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})\s+(\$[\d,]+ - \$[\d,]+|\$[\d,]+|Over \$[\d,]+)",
+                line,
             )
 
             if not trans_match:
@@ -907,11 +958,9 @@ class CongressTradingScraper(BaseScraper):
             amount_str = trans_match.group(5)
 
             # Map transaction type
-            transaction_type = {
-                'P': 'PURCHASE',
-                'S': 'SALE',
-                'E': 'EXCHANGE'
-            }.get(trans_type_code, 'UNKNOWN')
+            transaction_type = {"P": "PURCHASE", "S": "SALE", "E": "EXCHANGE"}.get(
+                trans_type_code, "UNKNOWN"
+            )
 
             # Extract asset name from asset_part
             asset_name = asset_part.strip()
@@ -946,7 +995,7 @@ class CongressTradingScraper(BaseScraper):
                     explicit_ticker = ticker_from_next_line
 
                 # Asset type code like [ST], [MF], etc.
-                code_match = re.search(r'\[([A-Z0-9]{2,3})\]', next_line)
+                code_match = re.search(r"\[([A-Z0-9]{2,3})\]", next_line)
                 if code_match:
                     asset_type_code = code_match.group(1)
                     asset_type_desc = ASSET_TYPE_CODES.get(asset_type_code)
@@ -957,17 +1006,22 @@ class CongressTradingScraper(BaseScraper):
 
                 # Specific Owner pattern: "S          O : DG Trust"
                 if not specific_owner:
-                    owner_match = re.search(r'S\s+O\s*:\s*(.+)', prev_line, re.IGNORECASE)
+                    owner_match = re.search(r"S\s+O\s*:\s*(.+)", prev_line, re.IGNORECASE)
                     if owner_match:
                         owner_text = owner_match.group(1).strip()
                         # Remove any trailing junk like "ID Owner Asset Transaction"
-                        owner_text = re.sub(r'\s*(ID|Owner|Asset|Transaction|Date|Type|Gains|Cap\.|Notification|Amount).*$', '', owner_text, flags=re.IGNORECASE)
+                        owner_text = re.sub(
+                            r"\s*(ID|Owner|Asset|Transaction|Date|Type|Gains|Cap\.|Notification|Amount).*$",
+                            "",
+                            owner_text,
+                            flags=re.IGNORECASE,
+                        )
                         if owner_text and len(owner_text) > 2:  # Must have substance
                             specific_owner = owner_text
 
                 # Filing Status pattern: "F      S     : New"
                 if not filing_status:
-                    status_match = re.search(r'F\s+S\s*:\s*(.+)', prev_line, re.IGNORECASE)
+                    status_match = re.search(r"F\s+S\s*:\s*(.+)", prev_line, re.IGNORECASE)
                     if status_match:
                         filing_status = status_match.group(1).strip()
 
@@ -975,11 +1029,11 @@ class CongressTradingScraper(BaseScraper):
             if specific_owner:
                 # Check if it's a trust or specific ownership
                 owner_text = specific_owner.lower()
-                if 'trust' in owner_text or 'sp' in owner_text:
+                if "trust" in owner_text or "sp" in owner_text:
                     asset_owner = "SPOUSE"
-                elif 'joint' in owner_text or 'jt' in owner_text:
+                elif "joint" in owner_text or "jt" in owner_text:
                     asset_owner = "JOINT"
-                elif 'dependent' in owner_text or 'dep' in owner_text or 'dc' in owner_text:
+                elif "dependent" in owner_text or "dep" in owner_text or "dc" in owner_text:
                     asset_owner = "DEPENDENT"
                 else:
                     asset_owner = "SELF"
@@ -1005,31 +1059,32 @@ class CongressTradingScraper(BaseScraper):
                 "notification_date": notification_date,
                 "asset_owner": asset_owner,
                 "specific_owner_text": specific_owner,
-
                 # Value information
                 "value_low": value_data["value_low"],
                 "value_high": value_data["value_high"],
                 "is_range": value_data["is_range"],
-
                 # Filing metadata
                 "filer_id": filing_metadata.get("filer_id"),
                 "filing_date": filing_metadata.get("filing_date"),
                 "filing_status": filing_status,
-
                 # Raw data for debugging
                 "raw_text": line[:500],
                 "validation_flags": {},
             }
 
             transactions.append(transaction)
-            logger.debug(f"Extracted transaction: {asset_name} ({ticker}) - {transaction_type} - {amount_str}")
+            logger.debug(
+                f"Extracted transaction: {asset_name} ({ticker}) - {transaction_type} - {amount_str}"
+            )
 
             i += 1
 
         logger.info(f"Extracted {len(transactions)} enhanced transactions from PDF")
         return transactions
 
-    def _extract_capital_gains_section(self, pdf_text: str, filing_metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    def _extract_capital_gains_section(
+        self, pdf_text: str, filing_metadata: Dict[str, Any] = None
+    ) -> List[Dict[str, Any]]:
         """
         Extract capital gains data from House disclosure PDF.
 
@@ -1045,9 +1100,9 @@ class CongressTradingScraper(BaseScraper):
 
         # Look for capital gains section (often in Part III or separate schedule)
         cg_patterns = [
-            r'CAPITAL\s+GAINS',
-            r'PART\s+III[:\s]',
-            r'SCHEDULE\s+[A-Z].*GAINS',
+            r"CAPITAL\s+GAINS",
+            r"PART\s+III[:\s]",
+            r"SCHEDULE\s+[A-Z].*GAINS",
         ]
 
         cg_match = None
@@ -1061,11 +1116,11 @@ class CongressTradingScraper(BaseScraper):
             return capital_gains
 
         # Extract relevant section
-        search_text = pdf_text[cg_match.end():]
+        search_text = pdf_text[cg_match.end() :]
         # Stop at next major section
-        next_section = re.search(r'PART\s+(?:IV|V|4|5)[:\s]', search_text, re.IGNORECASE)
+        next_section = re.search(r"PART\s+(?:IV|V|4|5)[:\s]", search_text, re.IGNORECASE)
         if next_section:
-            search_text = search_text[:next_section.start()]
+            search_text = search_text[: next_section.start()]
 
         # Parse each line looking for gain entries
         lines = search_text.split("\n")
@@ -1082,7 +1137,7 @@ class CongressTradingScraper(BaseScraper):
                 asset_name = " ".join(words[:4])
 
             # Extract dates
-            date_pattern = r'\b(\d{1,2})/(\d{1,2})/(\d{4})\b'
+            date_pattern = r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b"
             dates = re.findall(date_pattern, line)
             date_acquired = None
             date_sold = None
@@ -1095,9 +1150,9 @@ class CongressTradingScraper(BaseScraper):
 
             # Extract gain type (short-term vs long-term)
             gain_type = None
-            if re.search(r'SHORT[- ]TERM', line, re.IGNORECASE):
+            if re.search(r"SHORT[- ]TERM", line, re.IGNORECASE):
                 gain_type = "SHORT_TERM"
-            elif re.search(r'LONG[- ]TERM', line, re.IGNORECASE):
+            elif re.search(r"LONG[- ]TERM", line, re.IGNORECASE):
                 gain_type = "LONG_TERM"
 
             # Extract gain amount
@@ -1124,7 +1179,9 @@ class CongressTradingScraper(BaseScraper):
         logger.info(f"Extracted {len(capital_gains)} capital gains")
         return capital_gains
 
-    def _extract_asset_holdings_section(self, pdf_text: str, filing_metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    def _extract_asset_holdings_section(
+        self, pdf_text: str, filing_metadata: Dict[str, Any] = None
+    ) -> List[Dict[str, Any]]:
         """
         Extract Part V: Assets and Unearned Income data from House disclosure PDF.
 
@@ -1139,17 +1196,17 @@ class CongressTradingScraper(BaseScraper):
         filing_metadata = filing_metadata or {}
 
         # Look for Part V section
-        part_v_match = re.search(r'PART\s+V[:\s]|PART\s+5[:\s]', pdf_text, re.IGNORECASE)
+        part_v_match = re.search(r"PART\s+V[:\s]|PART\s+5[:\s]", pdf_text, re.IGNORECASE)
         if not part_v_match:
             logger.debug("No Part V section found in PDF")
             return holdings
 
         # Extract relevant section
-        search_text = pdf_text[part_v_match.end():]
+        search_text = pdf_text[part_v_match.end() :]
         # Stop at next major section (Part VI)
-        next_section = re.search(r'PART\s+(?:VI|6)[:\s]', search_text, re.IGNORECASE)
+        next_section = re.search(r"PART\s+(?:VI|6)[:\s]", search_text, re.IGNORECASE)
         if next_section:
-            search_text = search_text[:next_section.start()]
+            search_text = search_text[: next_section.start()]
 
         # Split into asset blocks
         sections = search_text.split("\n\n")
@@ -1166,7 +1223,7 @@ class CongressTradingScraper(BaseScraper):
 
             # Extract asset type code (e.g., [ST], [BA], [OT])
             asset_type = None
-            type_match = re.search(r'\[([A-Z]{2,3})\]', line)
+            type_match = re.search(r"\[([A-Z]{2,3})\]", line)
             if type_match:
                 asset_type = type_match.group(1)
 
@@ -1187,13 +1244,13 @@ class CongressTradingScraper(BaseScraper):
             # Extract income information
             # Look for income type indicators
             income_type = None
-            if re.search(r'DIVIDEND|DIV', line, re.IGNORECASE):
+            if re.search(r"DIVIDEND|DIV", line, re.IGNORECASE):
                 income_type = "Dividends"
-            elif re.search(r'INTEREST|INT', line, re.IGNORECASE):
+            elif re.search(r"INTEREST|INT", line, re.IGNORECASE):
                 income_type = "Interest"
-            elif re.search(r'RENT', line, re.IGNORECASE):
+            elif re.search(r"RENT", line, re.IGNORECASE):
                 income_type = "Rent"
-            elif re.search(r'CAPITAL GAIN', line, re.IGNORECASE):
+            elif re.search(r"CAPITAL GAIN", line, re.IGNORECASE):
                 income_type = "Capital Gains"
 
             # Only add if we have an asset name
@@ -1205,7 +1262,9 @@ class CongressTradingScraper(BaseScraper):
                     "owner": owner,
                     "value_low": value_data["value_low"],
                     "value_high": value_data["value_high"],
-                    "value_category": value_data["original_text"] if value_data["is_range"] else None,
+                    "value_category": (
+                        value_data["original_text"] if value_data["is_range"] else None
+                    ),
                     "income_type": income_type,
                     "filing_date": filing_metadata.get("filing_date"),
                     "filing_doc_id": filing_metadata.get("doc_id"),
