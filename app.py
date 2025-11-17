@@ -105,6 +105,10 @@ pages = [
 # Render shopping cart indicator in sidebar
 render_shopping_cart_sidebar()
 
+# Show admin badge if user is admin
+from admin_utils import show_admin_badge
+show_admin_badge()
+
 # Add trading mode toggle in sidebar
 with st.sidebar:
     st.markdown("---")

@@ -5,6 +5,7 @@ Integrates st-paywall with Stripe for subscription management
 import streamlit as st
 from typing import Optional, Literal
 import logging
+from admin_utils import is_admin
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,10 @@ class PaywallConfig:
     @staticmethod
     def get_user_tier() -> str:
         """Get current user's subscription tier"""
+        # Admin override - admins get full enterprise access
+        if is_admin():
+            return "enterprise"
+
         if not st.session_state.get("user_subscribed", False):
             return "free"
 
@@ -105,6 +110,10 @@ class PaywallConfig:
     @staticmethod
     def has_feature(feature: str) -> bool:
         """Check if current user has access to a specific feature"""
+        # Admin override - admins have access to all features
+        if is_admin():
+            return True
+
         tier = PaywallConfig.get_user_tier()
         limits = PaywallConfig.get_tier_limits(tier)
 
@@ -126,6 +135,10 @@ class PaywallConfig:
         Returns:
             tuple[bool, str]: (is_allowed, error_message)
         """
+        # Admin override - admins have no rate limits
+        if is_admin():
+            return True, ""
+
         tier = PaywallConfig.get_user_tier()
         limits = PaywallConfig.get_tier_limits(tier)
 

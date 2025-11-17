@@ -10,6 +10,7 @@ import os
 from cryptography.fernet import Fernet
 import base64
 import hashlib
+from admin_utils import is_admin
 
 
 class UserAPIKeysManager:
@@ -355,6 +356,10 @@ class UserAPIKeysManager:
         Returns:
             True if user has active paid subscription, False otherwise
         """
+        # Admin override - admins always have live trading access
+        if is_admin(user_email):
+            return True
+
         user_keys = self.get_user_keys(user_email)
 
         if not user_keys:
