@@ -181,7 +181,7 @@ class PoliticianTradingWorkflow:
                 # Set max_pdfs_per_run to control rate (e.g., 50-100 PDFs per run)
                 house_disclosures = await congress_scraper.scrape_house_disclosures(
                     parse_pdfs=True,
-                    max_pdfs_per_run=50  # Rate limit: parse 50 PDFs per collection run
+                    max_pdfs_per_run=50,  # Rate limit: parse 50 PDFs per collection run
                 )
                 senate_disclosures = await congress_scraper.scrape_senate_disclosures()
                 all_disclosures.extend(house_disclosures)
