@@ -34,20 +34,18 @@ load_all_secrets()
 
 # Require authentication first
 from auth_utils_enhanced import require_authentication
+from admin_utils import require_admin, show_admin_badge
 
 user_email = require_authentication()
 
-# Admin email whitelist
-ADMIN_EMAILS = ["luis.e.fernandezdelavara@gmail.com"]
-
-# Check if user is admin
-if user_email not in ADMIN_EMAILS:
-    st.error("🚫 Access Denied")
-    st.warning("This page is restricted to administrators only.")
-    st.stop()
+# Check if user is admin (will stop if not)
+require_admin()
 
 # Admin access granted
 st.success(f"✅ Admin Access Granted: {user_email}")
+
+# Show admin badge in sidebar
+show_admin_badge()
 
 # Add auto-refresh
 from autorefresh_config import add_refresh_controls, setup_autorefresh
