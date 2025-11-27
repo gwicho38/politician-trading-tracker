@@ -101,7 +101,7 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-### 4. Comprehensive Documentation (`CONSTANTS_GUIDE.md`)
+### 4. Comprehensive Documentation (`docs/development/CONSTANTS_GUIDE.md`)
 
 **450+ line guide** covering:
 
@@ -177,7 +177,7 @@ This PR adds **9 new files** with **1,653 lines**:
 
 **New Files:**
 1. `.pre-commit-config.yaml` (66 lines) - Hook configuration
-2. `CONSTANTS_GUIDE.md` (513 lines) - Usage documentation
+2. `docs/development/CONSTANTS_GUIDE.md` (513 lines) - Usage documentation
 3. `scripts/lint_hardcoded_strings.py` (382 lines) - Custom linter
 4. `src/politician_trading/constants/__init__.py` (57 lines) - Module exports
 5. `src/politician_trading/constants/database.py` (178 lines) - DB constants
@@ -257,7 +257,7 @@ Summary: 1346 violations in 46 files
 
 ## 📖 Documentation
 
-See `CONSTANTS_GUIDE.md` for:
+See `docs/development/CONSTANTS_GUIDE.md` for:
 - Complete usage examples
 - Best practices
 - Migration guide
