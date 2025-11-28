@@ -39,3 +39,27 @@ def show_user_info():
 
             # Logout button
             st.button("🚪 Log out", on_click=st.logout, use_container_width=True)
+
+
+def is_authenticated() -> bool:
+    """
+    Check if the user is currently authenticated.
+    Returns True if logged in, False otherwise.
+    Does not block page execution.
+    """
+    return st.user.is_logged_in
+
+
+def optional_authentication():
+    """
+    Show authentication UI but don't require it.
+    Users can browse in read-only mode without logging in.
+    Shows login option in sidebar for unauthenticated users.
+    """
+    if st.user.is_logged_in:
+        show_user_info()
+    else:
+        with st.sidebar:
+            st.info("👀 Browsing as guest")
+            st.caption("Log in to access all features")
+            st.button("🔑 Log in with Google", on_click=st.login, use_container_width=True)

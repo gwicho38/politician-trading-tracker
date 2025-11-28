@@ -38,10 +38,9 @@ st.set_page_config(page_title="Data Collection", page_icon="📥", layout="wide"
 # Load secrets on page load
 load_all_secrets()
 
-# Require authentication
-from auth_utils import require_authentication, show_user_info
-require_authentication()
-show_user_info()
+# Optional authentication - allow read-only browsing without login
+from auth_utils import optional_authentication, is_authenticated
+optional_authentication()
 
 logger.info("Data Collection page loaded")
 
@@ -121,11 +120,15 @@ with col2:
         help="Number of retry attempts for failed scrapes"
     )
 
-# Start collection button
+# Start collection button - requires authentication
 col1, col2 = st.columns([1, 4])
 
 with col1:
-    if st.button("🚀 Start Collection", disabled=st.session_state.collection_running, use_container_width=True):
+    # Check if user is authenticated before showing collection button
+    if not is_authenticated():
+        st.button("🚀 Start Collection", disabled=True, use_container_width=True, help="Login required to run collection")
+        st.caption("🔒 Login to run collection")
+    elif st.button("🚀 Start Collection", disabled=st.session_state.collection_running, use_container_width=True):
             # Clear previous logs and errors
             st.session_state.collection_logs = []
             st.session_state.collection_error = None
@@ -559,10 +562,13 @@ if st.session_state.collection_running:
 st.markdown("---")
 st.markdown("## 📊 Recent Disclosures")
 
-# Add ticker backfill button
+# Add ticker backfill button - requires authentication
 col1, col2 = st.columns([3, 1])
 with col2:
-    if st.button("🔄 Backfill Missing Tickers", help="Extract and populate missing ticker symbols from asset names"):
+    # Check if user is authenticated for backfill operation
+    if not is_authenticated():
+        st.button("🔄 Backfill Tickers", disabled=True, help="Login required")
+    elif st.button("🔄 Backfill Missing Tickers", help="Extract and populate missing ticker symbols from asset names"):
         # Start action logging
         user_id = st.session_state.get("user_email", "unknown")
         backfill_action_id = start_action(
