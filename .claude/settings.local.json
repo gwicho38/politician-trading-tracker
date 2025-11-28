@@ -1,12 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(PYTHONPATH=/Users/lefv/repos/politician-trading-tracker:$PYTHONPATH uv run python:*)",
-      "Bash(find:*)",
-      "Bash(mkdir:*)",
-      "Bash(git mv:*)",
-      "Bash(mv:*)",
-      "Bash(tree:*)"
+      "Bash(uv run ruff check:*)",
+      "Bash(uv run:*)"
     ],
     "deny": [],
     "ask": []

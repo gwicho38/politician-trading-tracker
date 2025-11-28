@@ -145,6 +145,7 @@ ignore = ["E501"]  # Ignore line too long - handled by black formatter
 [tool.ruff.lint.per-file-ignores]
 # Ignore E402 (module level import not at top of file) in files that manipulate sys.path
 "src/politician_trading/models/__init__.py" = ["E402"]
+"src/*_*.py" = ["E402"]
 "tests/**/*.py" = ["E402"]
 # Ignore F401 (unused import) for optional dependency checks in try/except blocks
 "tests/integration/test_*.py" = ["F401"]

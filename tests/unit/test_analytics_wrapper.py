@@ -3,8 +3,14 @@ Unit tests for analytics_wrapper module
 """
 
 import json
+import sys
 import tempfile
 from pathlib import Path
+
+# Add src to path
+src_path = Path(__file__).parent.parent.parent / "src"
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
 
 from analytics_wrapper import sanitize_for_json
 

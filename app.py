@@ -4,14 +4,14 @@ Uses st.Page navigation for cleaner sidebar experience
 """
 
 import streamlit as st
-from streamlit_hotkeys_integration import register_hotkeys
-from sidebar_config import apply_sidebar_styling
+from src.streamlit_hotkeys_integration import register_hotkeys
+from src.sidebar_config import apply_sidebar_styling
 
 # Enable analytics tracking
-from analytics_wrapper import safe_track, ANALYTICS_AVAILABLE
+from src.analytics_wrapper import safe_track, ANALYTICS_AVAILABLE
 
 # Initialize shopping cart
-from shopping_cart import render_shopping_cart_sidebar
+from src.shopping_cart import render_shopping_cart_sidebar
 
 # Page configuration
 st.set_page_config(
@@ -35,68 +35,68 @@ register_hotkeys()
 # Define all pages with icons
 pages = [
     st.Page(
-        "1_📥_Data_Collection.py",
+        "src/1_📥_Data_Collection.py",
         title="Data Collection",
         icon="📥",
         default=True
     ),
     st.Page(
-        "2_🎯_Trading_Signals.py",
+        "src/2_🎯_Trading_Signals.py",
         title="Trading Signals",
         icon="🎯"
     ),
     st.Page(
-        "3_💼_Trading_Operations.py",
+        "src/3_💼_Trading_Operations.py",
         title="Trading Operations",
         icon="💼"
     ),
     st.Page(
-        "4_📈_Portfolio.py",
+        "src/4_📈_Portfolio.py",
         title="Portfolio",
         icon="📈"
     ),
     st.Page(
-        "4.5_📋_Orders.py",
+        "src/4.5_📋_Orders.py",
         title="Orders",
         icon="📋"
     ),
     st.Page(
-        "5_⏰_Scheduled_Jobs.py",
+        "src/5_⏰_Scheduled_Jobs.py",
         title="Scheduled Jobs",
         icon="⏰"
     ),
     st.Page(
-        "6_⚙️_Settings.py",
+        "src/6_⚙️_Settings.py",
         title="Settings",
         icon="⚙️"
     ),
     st.Page(
-        "9_🛒_Cart.py",
+        "src/9_🛒_Cart.py",
         title="Shopping Cart",
         icon="🛒"
     ),
     st.Page(
-        "7_🔧_Database_Setup.py",
+        "src/7_🔧_Database_Setup.py",
         title="Database Setup",
         icon="🔧"
     ),
     st.Page(
-        "8_📋_Action_Logs.py",
+        "src/8_📋_Action_Logs.py",
         title="Action Logs",
         icon="📋"
     ),
     st.Page(
-        "10_💳_Subscription.py",
+        "src/10_💳_Subscription.py",
         title="Subscription",
         icon="💳"
     ),
     st.Page(
-        "11_🔐_Admin.py",
+        "src/11_🔐_Admin.py",
         title="Admin",
         icon="🔐"
     ),
     st.Page(
-        "99_🧪_Auth_Test.py",
+        "src/99_🧪_Auth_Test.py",
         title="Auth Test",
         icon="🧪"
     ),
@@ -106,7 +106,7 @@ pages = [
 render_shopping_cart_sidebar()
 
 # Show admin badge if user is admin
-from admin_utils import show_admin_badge
+from src.admin_utils import show_admin_badge
 show_admin_badge()
 
 # Add trading mode toggle in sidebar
@@ -162,8 +162,8 @@ with st.sidebar:
         if st.button("💰 Live", use_container_width=True, type="primary" if current_mode == "live" else "secondary"):
             # Check if user has live access
             try:
-                from user_api_keys import get_user_api_keys_manager
-                from auth_utils import require_authentication
+                from src.user_api_keys import get_user_api_keys_manager
+                from src.auth_utils import require_authentication
 
                 if st.user.is_logged_in:
                     keys_manager = get_user_api_keys_manager()
