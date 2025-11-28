@@ -104,3 +104,4 @@ analytics.json
 .streamlit/secrets.toml
 .streamlit/secrets.toml.cloud
 .credentials/
+.claude/settings.local.json
