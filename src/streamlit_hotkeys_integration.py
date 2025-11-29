@@ -73,21 +73,21 @@ def register_hotkeys() -> None:
             palette = get_command_palette()
             palette._show_shortcuts()
         elif pressed("data"):
-            st.switch_page("1_📥_Data_Collection.py")
+            st.switch_page("src/1_📥_Data_Collection.py")
         elif pressed("signals"):
-            st.switch_page("2_🎯_Trading_Signals.py")
+            st.switch_page("src/2_🎯_Trading_Signals.py")
         elif pressed("operations"):
-            st.switch_page("3_💼_Trading_Operations.py")
+            st.switch_page("src/3_💼_Trading_Operations.py")
         elif pressed("portfolio"):
-            st.switch_page("4_📈_Portfolio.py")
+            st.switch_page("src/4_📈_Portfolio.py")
         elif pressed("jobs"):
-            st.switch_page("5_⏰_Scheduled_Jobs.py")
+            st.switch_page("src/5_⏰_Scheduled_Jobs.py")
         elif pressed("settings"):
-            st.switch_page("6_⚙️_Settings.py")
+            st.switch_page("src/6_⚙️_Settings.py")
         elif pressed("logs"):
-            st.switch_page("8_📋_Action_Logs.py")
+            st.switch_page("src/8_📋_Action_Logs.py")
         elif pressed("auth"):
-            st.switch_page("99_🧪_Auth_Test.py")
+            st.switch_page("src/99_🧪_Auth_Test.py")
 
         # Render command palette if open
         if st.session_state.get("palette_open", False):

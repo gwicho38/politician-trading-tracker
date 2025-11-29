@@ -19,7 +19,7 @@ class CommandPalette:
         # Page navigation commands
         self.add_command(
             "Data Collection",
-            lambda: st.switch_page("1_📥_Data_Collection.py"),
+            lambda: st.switch_page("src/1_📥_Data_Collection.py"),
             category="Navigation",
             keywords=["data", "collection", "fetch", "scrape", "download"],
             icon="📥"
@@ -27,7 +27,7 @@ class CommandPalette:
 
         self.add_command(
             "Trading Signals",
-            lambda: st.switch_page("2_🎯_Trading_Signals.py"),
+            lambda: st.switch_page("src/2_🎯_Trading_Signals.py"),
             category="Navigation",
             keywords=["signals", "trading", "buy", "sell", "recommendations"],
             icon="🎯"
@@ -35,7 +35,7 @@ class CommandPalette:
 
         self.add_command(
             "Trading Operations",
-            lambda: st.switch_page("3_💼_Trading_Operations.py"),
+            lambda: st.switch_page("src/3_💼_Trading_Operations.py"),
             category="Navigation",
             keywords=["operations", "trade", "execute", "orders"],
             icon="💼"
@@ -43,7 +43,7 @@ class CommandPalette:
 
         self.add_command(
             "Portfolio",
-            lambda: st.switch_page("4_📈_Portfolio.py"),
+            lambda: st.switch_page("src/4_📈_Portfolio.py"),
             category="Navigation",
             keywords=["portfolio", "holdings", "positions", "performance"],
             icon="📈"
@@ -51,7 +51,7 @@ class CommandPalette:
 
         self.add_command(
             "Scheduled Jobs",
-            lambda: st.switch_page("5_⏰_Scheduled_Jobs.py"),
+            lambda: st.switch_page("src/5_⏰_Scheduled_Jobs.py"),
             category="Navigation",
             keywords=["jobs", "scheduled", "automation", "cron", "tasks"],
             icon="⏰"
@@ -59,7 +59,7 @@ class CommandPalette:
 
         self.add_command(
             "Settings",
-            lambda: st.switch_page("6_⚙️_Settings.py"),
+            lambda: st.switch_page("src/6_⚙️_Settings.py"),
             category="Navigation",
             keywords=["settings", "config", "configuration", "preferences"],
             icon="⚙️"
@@ -67,7 +67,7 @@ class CommandPalette:
 
         self.add_command(
             "Database Setup",
-            lambda: st.switch_page("7_🔧_Database_Setup.py"),
+            lambda: st.switch_page("src/7_🔧_Database_Setup.py"),
             category="Navigation",
             keywords=["database", "setup", "schema", "tables", "migration"],
             icon="🔧"
@@ -75,7 +75,7 @@ class CommandPalette:
 
         self.add_command(
             "Action Logs",
-            lambda: st.switch_page("8_📋_Action_Logs.py"),
+            lambda: st.switch_page("src/8_📋_Action_Logs.py"),
             category="Navigation",
             keywords=["logs", "actions", "history", "audit", "events"],
             icon="📋"
@@ -83,7 +83,7 @@ class CommandPalette:
 
         self.add_command(
             "Subscription",
-            lambda: st.switch_page("10_💳_Subscription.py"),
+            lambda: st.switch_page("src/10_💳_Subscription.py"),
             category="Navigation",
             keywords=["subscription", "billing", "plan", "upgrade", "pricing"],
             icon="💳"
@@ -91,7 +91,7 @@ class CommandPalette:
 
         self.add_command(
             "Admin",
-            lambda: st.switch_page("11_🔐_Admin.py"),
+            lambda: st.switch_page("src/11_🔐_Admin.py"),
             category="Navigation",
             keywords=["admin", "analytics", "supabase", "system", "diagnostics"],
             icon="🔐"
@@ -99,7 +99,7 @@ class CommandPalette:
 
         self.add_command(
             "Auth Test",
-            lambda: st.switch_page("99_🧪_Auth_Test.py"),
+            lambda: st.switch_page("src/99_🧪_Auth_Test.py"),
             category="Navigation",
             keywords=["auth", "authentication", "test", "login", "session"],
             icon="🧪"

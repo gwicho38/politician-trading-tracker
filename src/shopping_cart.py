@@ -175,7 +175,7 @@ def render_shopping_cart_sidebar():
         col1, col2 = st.sidebar.columns(2)
         with col1:
             if st.button("🚀 Execute", key="sidebar_execute", use_container_width=True):
-                st.switch_page("3_💼_Trading_Operations.py")
+                st.switch_page("src/3_💼_Trading_Operations.py")
         with col2:
             if st.button("🗑️ Clear", key="sidebar_clear", use_container_width=True):
                 ShoppingCart.clear()
@@ -264,7 +264,7 @@ def render_shopping_cart():
     with col1:
         if st.button("✅ Execute All Trades", key="execute_all", use_container_width=True, type="primary"):
             st.session_state["execute_cart"] = True
-            st.switch_page("3_💼_Trading_Operations.py")
+            st.switch_page("src/3_💼_Trading_Operations.py")
 
     with col2:
         if st.button("🗑️ Clear Cart", key="clear_cart", use_container_width=True):
