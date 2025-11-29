@@ -1,0 +1,21 @@
+name: Keep Streamlit Alive
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'  # Every 4 hours
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Streamlit App
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" "https://politician-trading-tracker.streamlit.app")
+          echo "Response code: $response"
+          if [ "$response" -ge 200 ] && [ "$response" -lt 400 ]; then
+            echo "App is alive!"
+          else
+            echo "App returned unexpected status: $response"
+            exit 1
+          fi
