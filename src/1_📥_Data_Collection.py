@@ -3,9 +3,8 @@ Data Collection Page - Collect politician trading disclosures
 """
 
 import streamlit as st
-import streamlit_antd_components as sac
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
 import sys
 from pathlib import Path
@@ -521,7 +520,7 @@ if st.session_state.collection_running:
                 status_badge.error("❌ Failed")
                 add_log(f"❌ Collection failed: {str(e)}")
                 add_log(f"📋 Error type: {type(e).__name__}")
-                add_log(f"📋 Full traceback saved to logs")
+                add_log("📋 Full traceback saved to logs")
 
                 st.session_state.collection_running = False
 
@@ -683,6 +682,14 @@ try:
     config = SupabaseConfig.from_env()
     db = SupabaseClient(config)
 
+    # Filter option - placed BEFORE query so we can filter at database level
+    # Default to True to prioritize showing actionable disclosures with tickers
+    show_ticker_only = st.checkbox(
+        "🎯 Show only actionable stocks (with tickers)",
+        value=True,
+        help="Focus on the individual stocks that have ticker symbols - these generate trading signals. Uncheck to see all disclosures including mutual funds, ETFs, and bonds."
+    )
+
     # Add pagination controls
     col1, col2, col3 = st.columns([2, 2, 1])
     with col1:
@@ -693,8 +700,11 @@ try:
             help="Number of disclosures to display"
         )
     with col2:
-        # Get total count for pagination
-        count_response = db.client.table("trading_disclosures").select("id", count="exact").execute()
+        # Get total count for pagination (filtered or unfiltered)
+        if show_ticker_only:
+            count_response = db.client.table("trading_disclosures").select("id", count="exact").neq("asset_ticker", "").not_.is_("asset_ticker", "null").execute()
+        else:
+            count_response = db.client.table("trading_disclosures").select("id", count="exact").execute()
         total_count = count_response.count if hasattr(count_response, 'count') else 0
         max_pages = (total_count // page_size) + (1 if total_count % page_size > 0 else 0)
 
@@ -715,7 +725,13 @@ try:
     # Using a join to get politician names
     query = db.client.table("trading_disclosures").select(
         "*, politicians(first_name, last_name, full_name, role, party, state_or_country)"
-    ).order("transaction_date", desc=True).limit(page_size).offset(offset)
+    )
+
+    # Apply ticker filter at database level if enabled
+    if show_ticker_only:
+        query = query.neq("asset_ticker", "").not_.is_("asset_ticker", "null")
+
+    query = query.order("transaction_date", desc=True).limit(page_size).offset(offset)
     response = query.execute()
 
     logger.info("Recent disclosures loaded", metadata={
@@ -862,20 +878,24 @@ try:
             "columns": list(display_df.columns)
         })
 
-        # Calculate GLOBAL ticker statistics (not just current page)
+        # Calculate GLOBAL ticker statistics (always unfiltered for context)
+        # Query for total disclosures (unfiltered)
+        total_all_response = db.client.table("trading_disclosures").select("id", count="exact").execute()
+        total_all_disclosures = total_all_response.count if hasattr(total_all_response, 'count') else 0
+
         # Query for disclosures with tickers
         with_tickers_response = db.client.table("trading_disclosures").select("id", count="exact").neq("asset_ticker", "").not_.is_("asset_ticker", "null").execute()
         global_with_tickers = with_tickers_response.count if hasattr(with_tickers_response, 'count') else 0
 
-        # Calculate from total
-        global_missing_tickers = total_count - global_with_tickers
-        global_ticker_percentage = (global_with_tickers / total_count * 100) if total_count > 0 else 0
+        # Calculate missing from total (unfiltered)
+        global_missing_tickers = total_all_disclosures - global_with_tickers
+        global_ticker_percentage = (global_with_tickers / total_all_disclosures * 100) if total_all_disclosures > 0 else 0
 
         # Also calculate LOCAL (current page) ticker statistics for display messages
         missing_tickers = len([t for t in df["asset_ticker"] if not t or t == ""])
-        with_tickers = len(df) - missing_tickers
+        with_tickers_on_page = len(df) - missing_tickers
 
-        # Show ticker metrics (GLOBAL)
+        # Show ticker metrics (GLOBAL - always shows full database stats for context)
         st.markdown("#### 📊 Ticker Statistics (All Disclosures)")
         col1, col2, col3 = st.columns(3)
 
@@ -899,84 +919,31 @@ try:
         with col3:
             st.metric(
                 "Total Disclosures",
-                f"{total_count:,}",
+                f"{total_all_disclosures:,}",
                 help="All trading disclosures in the database"
             )
 
-        # Filter options
-        col1, col2 = st.columns([3, 1])
-
-        with col1:
-            show_ticker_only = st.checkbox(
-                "🎯 Show only actionable stocks (with tickers)",
-                value=False,
-                help="Focus on the individual stocks that have ticker symbols - these generate trading signals"
-            )
-
-        with col2:
-            if missing_tickers > 0:
-                st.info(f"ℹ️ {missing_tickers} without tickers")
-
-        # Apply filter if enabled
+        # Show filter status message
         if show_ticker_only:
-            # Filter to only show rows with tickers (before renaming columns)
-            ticker_mask = df["asset_ticker"].notna() & (df["asset_ticker"] != "") & (df["asset_ticker"] != "N/A")
-            filtered_df = df[ticker_mask].copy()
-
-            # Reapply display formatting to filtered data
-            filtered_display_df = filtered_df[[col for col in display_cols if col in filtered_df.columns]].copy()
-
-            # Format dates - use ISO8601 format for parsing Supabase timestamps
-            if "created_at" in filtered_display_df.columns:
-                filtered_display_df["created_at"] = pd.to_datetime(
-                    filtered_display_df["created_at"],
-                    format='ISO8601'
-                ).dt.strftime("%Y-%m-%d %H:%M")
-
-            if "transaction_date" in filtered_display_df.columns:
-                filtered_display_df["transaction_date"] = pd.to_datetime(
-                    filtered_display_df["transaction_date"],
-                    format='ISO8601'
-                ).dt.strftime("%Y-%m-%d")
-
-            if "disclosure_date" in filtered_display_df.columns:
-                filtered_display_df["disclosure_date"] = pd.to_datetime(
-                    filtered_display_df["disclosure_date"],
-                    format='ISO8601'
-                ).dt.strftime("%Y-%m-%d")
-
-            # Format asset type
-            if "asset_type" in filtered_display_df.columns:
-                filtered_display_df["asset_type"] = filtered_display_df["asset_type"].fillna("Unknown").replace("", "Unknown")
-
-            # Truncate source URL
-            if "source_url" in filtered_display_df.columns:
-                filtered_display_df["source_url"] = filtered_display_df["source_url"].apply(lambda x: (str(x)[:50] + "...") if x and len(str(x)) > 50 else (x if x else "N/A"))
-
-            # Rename columns
-            filtered_display_df.columns = [column_rename.get(col, col) for col in filtered_display_df.columns]
-
-            display_df = filtered_display_df
-
-            st.success(f"✅ Showing {len(display_df)} actionable stocks with tickers")
+            st.success(f"✅ Showing {len(display_df)} actionable stocks with tickers (filtered at database level)")
             logger.info("Filtered to ticker-only view", metadata={
                 "filtered_count": len(display_df),
-                "original_count": len(df)
+                "filter_enabled": True
             })
         else:
-            # Show warning about missing tickers
+            # Show info about missing tickers on current page
             if missing_tickers > 0:
                 st.info(f"""
-                ℹ️ **{missing_tickers} disclosures don't have tickers** (mostly mutual funds, ETFs, bonds)
+                ℹ️ **{missing_tickers} disclosures on this page don't have tickers** (mostly mutual funds, ETFs, bonds)
 
-                💡 **Tip**: Toggle "Show only actionable stocks" above to focus on the {with_tickers} individual stocks that can generate trading signals.
+                💡 **Tip**: Toggle "Show only actionable stocks" above to focus on the {global_with_tickers:,} individual stocks that can generate trading signals.
                 """)
-                logger.info("Missing tickers detected", metadata={
+                logger.info("Missing tickers on page", metadata={
                     "missing_count": missing_tickers,
-                    "total_count": len(df)
+                    "page_count": len(df)
                 })
 
-        st.dataframe(display_df, width="stretch")
+        st.dataframe(display_df, use_container_width=True)
 
         # Export option
         csv = display_df.to_csv(index=False)
