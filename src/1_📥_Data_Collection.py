@@ -818,9 +818,20 @@ try:
             "amount_range_min",
             "amount_range_max",
             "status",
-            "source_url"
+            "source_url",
+            "source_document_id"
         ]
         display_df = df[[col for col in display_cols if col in df.columns]].copy()
+
+        # Create a clickable PDF link column if source_url exists
+        if "source_url" in display_df.columns:
+            def create_pdf_link(url):
+                if url and isinstance(url, str) and url.strip():
+                    # Check if it's a PDF URL
+                    if ".pdf" in url.lower():
+                        return url
+                return None
+            display_df["pdf_link"] = display_df["source_url"].apply(create_pdf_link)
 
         # Format dates - use ISO8601 format for parsing Supabase timestamps
         if "created_at" in display_df.columns:
@@ -849,9 +860,10 @@ try:
         if "asset_type" in display_df.columns:
             display_df["asset_type"] = display_df["asset_type"].fillna("Unknown").replace("", "Unknown")
 
-        # Truncate source URL for display
+        # Drop the truncated source_url column since we now have pdf_link
+        # Keep the document ID for reference
         if "source_url" in display_df.columns:
-            display_df["source_url"] = display_df["source_url"].apply(lambda x: (str(x)[:50] + "...") if x and len(str(x)) > 50 else (x if x else "N/A"))
+            display_df = display_df.drop(columns=["source_url"])
 
         # Rename columns for display
         column_rename = {
@@ -868,7 +880,8 @@ try:
             "amount_range_min": "Min Amount",
             "amount_range_max": "Max Amount",
             "status": "Status",
-            "source_url": "Source"
+            "source_document_id": "Doc ID",
+            "pdf_link": "PDF"
         }
 
         display_df.columns = [column_rename.get(col, col) for col in display_df.columns]
@@ -943,7 +956,21 @@ try:
                     "page_count": len(df)
                 })
 
-        st.dataframe(display_df, use_container_width=True)
+        # Configure column display with clickable PDF links
+        column_config = {}
+        if "PDF" in display_df.columns:
+            column_config["PDF"] = st.column_config.LinkColumn(
+                "PDF",
+                help="Click to open the source PDF disclosure document",
+                display_text="View PDF",
+                width="small"
+            )
+
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            column_config=column_config
+        )
 
         # Export option
         csv = display_df.to_csv(index=False)
