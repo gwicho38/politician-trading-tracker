@@ -837,23 +837,42 @@ try:
             df["politician_state"] = "N/A"
             logger.warning("No politician information in query results")
 
-        # Extract filing type and source from raw_data JSONB
-        if "raw_data" in df.columns:
-            def extract_filing_type(raw):
-                if isinstance(raw, dict):
-                    return raw.get("filing_type", "")
-                return ""
+        # Extract filing type and source from raw_data JSONB or infer from source_url
+        def extract_filing_type(row):
+            raw = row.get("raw_data")
+            if isinstance(raw, dict):
+                # Check various possible field names
+                ft = raw.get("filing_type") or raw.get("type") or ""
+                if ft:
+                    return ft
+            return ""
 
-            def extract_source(raw):
-                if isinstance(raw, dict):
-                    return raw.get("source", "")
-                return ""
+        def extract_source(row):
+            raw = row.get("raw_data")
+            source_url = row.get("source_url", "") or ""
 
-            df["filing_type"] = df["raw_data"].apply(extract_filing_type)
-            df["source"] = df["raw_data"].apply(extract_source)
-        else:
-            df["filing_type"] = ""
-            df["source"] = ""
+            # First check raw_data for explicit source
+            if isinstance(raw, dict):
+                src = raw.get("source", "")
+                if src:
+                    return src
+
+            # Infer source from source_url
+            if "efdsearch.senate.gov" in source_url:
+                return "us_senate"
+            elif "disclosures-clerk.house.gov" in source_url:
+                return "us_house"
+            elif "quiverquant.com" in source_url:
+                return "quiverquant"
+            elif "europarl.europa.eu" in source_url:
+                return "eu_parliament"
+            elif "bundestag.de" in source_url:
+                return "german_bundestag"
+
+            return ""
+
+        df["filing_type"] = df.apply(extract_filing_type, axis=1)
+        df["data_source"] = df.apply(extract_source, axis=1)
 
         # Debug: Log sample of raw data
         if len(df) > 0:
@@ -863,41 +882,27 @@ try:
                 "asset_name": sample.get("asset_name"),
                 "asset_type": sample.get("asset_type"),
                 "filing_type": sample.get("filing_type"),
-                "source": sample.get("source"),
+                "data_source": sample.get("data_source"),
                 "columns": list(df.columns)
             })
 
         # Format for display - include more useful columns
         display_cols = [
-            "created_at",
             "transaction_date",
             "disclosure_date",
             "politician_name",
             "politician_party",
             "politician_state",
+            "data_source",
             "filing_type",
-            "source",
             "asset_ticker",
             "asset_name",
-            "asset_type",
             "transaction_type",
             "amount_range_min",
             "amount_range_max",
-            "status",
             "source_url",
-            "source_document_id"
         ]
         display_df = df[[col for col in display_cols if col in df.columns]].copy()
-
-        # Create a clickable PDF link column if source_url exists
-        if "source_url" in display_df.columns:
-            def create_pdf_link(url):
-                if url and isinstance(url, str) and url.strip():
-                    # Return the full URL without truncation
-                    if ".pdf" in url.lower():
-                        return url
-                return None
-            display_df["pdf_link"] = display_df["source_url"].apply(create_pdf_link)
 
         # Format dates - use ISO8601 format for parsing Supabase timestamps
         if "created_at" in display_df.columns:
@@ -926,30 +931,21 @@ try:
         if "asset_type" in display_df.columns:
             display_df["asset_type"] = display_df["asset_type"].fillna("Unknown").replace("", "Unknown")
 
-        # Drop the truncated source_url column since we now have pdf_link
-        # Keep the document ID for reference
-        if "source_url" in display_df.columns:
-            display_df = display_df.drop(columns=["source_url"])
-
         # Rename columns for display
         column_rename = {
-            "created_at": "Processed",
             "transaction_date": "Trans. Date",
             "disclosure_date": "Disc. Date",
             "politician_name": "Politician",
             "politician_party": "Party",
-            "politician_state": "State/Country",
+            "politician_state": "State",
+            "data_source": "Source",
             "filing_type": "Filing",
-            "source": "Source",
             "asset_ticker": "Ticker",
             "asset_name": "Asset",
-            "asset_type": "Asset Type",
             "transaction_type": "Type",
             "amount_range_min": "Min $",
             "amount_range_max": "Max $",
-            "status": "Status",
-            "source_document_id": "Doc ID",
-            "pdf_link": "PDF"
+            "source_url": "Link"
         }
 
         display_df.columns = [column_rename.get(col, col) for col in display_df.columns]
@@ -1024,20 +1020,21 @@ try:
                     "page_count": len(df)
                 })
 
-        # Configure column display with clickable PDF links
+        # Configure column display with clickable links
         column_config = {}
-        if "PDF" in display_df.columns:
-            column_config["PDF"] = st.column_config.LinkColumn(
-                "PDF",
-                help="Click to open the source PDF disclosure document",
-                display_text="View PDF",
+        if "Link" in display_df.columns:
+            column_config["Link"] = st.column_config.LinkColumn(
+                "Link",
+                help="Click to view the source disclosure document",
+                display_text="View",
                 width="small"
             )
 
         st.dataframe(
             display_df,
             use_container_width=True,
-            column_config=column_config
+            column_config=column_config,
+            hide_index=True
         )
 
         # Export option
