@@ -682,13 +682,45 @@ try:
     config = SupabaseConfig.from_env()
     db = SupabaseClient(config)
 
-    # Filter option - placed BEFORE query so we can filter at database level
-    # Default to True to prioritize showing actionable disclosures with tickers
-    show_ticker_only = st.checkbox(
-        "🎯 Show only actionable stocks (with tickers)",
-        value=True,
-        help="Focus on the individual stocks that have ticker symbols - these generate trading signals. Uncheck to see all disclosures including mutual funds, ETFs, and bonds."
-    )
+    # Filter options row
+    st.markdown("#### Filter Options")
+    filter_col1, filter_col2, filter_col3 = st.columns([2, 2, 2])
+
+    with filter_col1:
+        # Filter by ticker - default to True to prioritize showing actionable disclosures
+        show_ticker_only = st.checkbox(
+            "🎯 Show only actionable stocks (with tickers)",
+            value=True,
+            help="Focus on the individual stocks that have ticker symbols - these generate trading signals."
+        )
+
+    with filter_col2:
+        # Filing type filter - P = PTR (stock trades), A = Annual, etc.
+        filing_type_options = {
+            "All Types": None,
+            "P - Periodic Transaction Report (PTR)": "P",
+            "A - Annual Financial Disclosure": "A",
+            "O - Original/Initial Report": "O",
+            "T - Termination Report": "T",
+            "N - New Member Report": "N",
+        }
+        selected_filing_type = st.selectbox(
+            "📄 Filing Type",
+            options=list(filing_type_options.keys()),
+            index=0,
+            help="Filter by disclosure filing type. PTR (P) contains stock trades reported within 45 days."
+        )
+        filing_type_filter = filing_type_options[selected_filing_type]
+
+    with filter_col3:
+        # Source filter
+        source_options = ["All Sources", "us_house", "us_senate", "quiverquant"]
+        selected_source = st.selectbox(
+            "🏛️ Source",
+            options=source_options,
+            index=0,
+            help="Filter by data source"
+        )
 
     # Add pagination controls
     col1, col2, col3 = st.columns([2, 2, 1])
@@ -700,11 +732,24 @@ try:
             help="Number of disclosures to display"
         )
     with col2:
-        # Get total count for pagination (filtered or unfiltered)
-        if show_ticker_only:
-            count_response = db.client.table("trading_disclosures").select("id", count="exact").neq("asset_ticker", "").not_.is_("asset_ticker", "null").execute()
-        else:
-            count_response = db.client.table("trading_disclosures").select("id", count="exact").execute()
+        # Build count query with all filters applied
+        def build_filtered_query(base_query):
+            """Apply all filters to a query."""
+            q = base_query
+            if show_ticker_only:
+                q = q.neq("asset_ticker", "").not_.is_("asset_ticker", "null")
+            if filing_type_filter:
+                # Filter by filing_type in raw_data JSONB
+                q = q.eq("raw_data->>filing_type", filing_type_filter)
+            if selected_source != "All Sources":
+                # Filter by source in raw_data JSONB
+                q = q.eq("raw_data->>source", selected_source)
+            return q
+
+        # Get total count for pagination with filters applied
+        count_query = db.client.table("trading_disclosures").select("id", count="exact")
+        count_query = build_filtered_query(count_query)
+        count_response = count_query.execute()
         total_count = count_response.count if hasattr(count_response, 'count') else 0
         max_pages = (total_count // page_size) + (1 if total_count % page_size > 0 else 0)
 
@@ -716,7 +761,7 @@ try:
             help=f"Total {total_count:,} disclosures across {max_pages:,} pages"
         )
     with col3:
-        st.metric("Total", f"{total_count:,}")
+        st.metric("Filtered", f"{total_count:,}")
 
     # Calculate offset
     offset = (page_number - 1) * page_size
@@ -727,9 +772,8 @@ try:
         "*, politicians(first_name, last_name, full_name, role, party, state_or_country)"
     )
 
-    # Apply ticker filter at database level if enabled
-    if show_ticker_only:
-        query = query.neq("asset_ticker", "").not_.is_("asset_ticker", "null")
+    # Apply all filters at database level
+    query = build_filtered_query(query)
 
     query = query.order("transaction_date", desc=True).limit(page_size).offset(offset)
     response = query.execute()
@@ -793,6 +837,24 @@ try:
             df["politician_state"] = "N/A"
             logger.warning("No politician information in query results")
 
+        # Extract filing type and source from raw_data JSONB
+        if "raw_data" in df.columns:
+            def extract_filing_type(raw):
+                if isinstance(raw, dict):
+                    return raw.get("filing_type", "")
+                return ""
+
+            def extract_source(raw):
+                if isinstance(raw, dict):
+                    return raw.get("source", "")
+                return ""
+
+            df["filing_type"] = df["raw_data"].apply(extract_filing_type)
+            df["source"] = df["raw_data"].apply(extract_source)
+        else:
+            df["filing_type"] = ""
+            df["source"] = ""
+
         # Debug: Log sample of raw data
         if len(df) > 0:
             sample = df.iloc[0]
@@ -800,6 +862,8 @@ try:
                 "asset_ticker": sample.get("asset_ticker"),
                 "asset_name": sample.get("asset_name"),
                 "asset_type": sample.get("asset_type"),
+                "filing_type": sample.get("filing_type"),
+                "source": sample.get("source"),
                 "columns": list(df.columns)
             })
 
@@ -811,6 +875,8 @@ try:
             "politician_name",
             "politician_party",
             "politician_state",
+            "filing_type",
+            "source",
             "asset_ticker",
             "asset_name",
             "asset_type",
@@ -827,7 +893,7 @@ try:
         if "source_url" in display_df.columns:
             def create_pdf_link(url):
                 if url and isinstance(url, str) and url.strip():
-                    # Check if it's a PDF URL
+                    # Return the full URL without truncation
                     if ".pdf" in url.lower():
                         return url
                 return None
@@ -873,12 +939,14 @@ try:
             "politician_name": "Politician",
             "politician_party": "Party",
             "politician_state": "State/Country",
+            "filing_type": "Filing",
+            "source": "Source",
             "asset_ticker": "Ticker",
             "asset_name": "Asset",
             "asset_type": "Asset Type",
             "transaction_type": "Type",
-            "amount_range_min": "Min Amount",
-            "amount_range_max": "Max Amount",
+            "amount_range_min": "Min $",
+            "amount_range_max": "Max $",
             "status": "Status",
             "source_document_id": "Doc ID",
             "pdf_link": "PDF"
