@@ -306,6 +306,12 @@ class QuiverQuantSource(BaseSource):
                 elif not asset_name and len(text) > 6 and not text.isupper():
                     asset_name = text
 
+            # Validate parsed data before returning
+            if not self._validate_parsed_disclosure(
+                politician_name, ticker, asset_name, transaction_date
+            ):
+                return None
+
             # Create disclosure if we have minimum required fields
             if politician_name and (transaction_date or ticker):
                 return {
@@ -324,6 +330,46 @@ class QuiverQuantSource(BaseSource):
             self.logger.debug(f"Error parsing trade row: {e}")
 
         return None
+
+    def _validate_parsed_disclosure(
+        self,
+        politician_name: str,
+        ticker: str,
+        asset_name: str,
+        transaction_date: str,
+    ) -> bool:
+        """
+        Validate that parsed disclosure data is not misaligned.
+
+        Returns False if data appears to be parsed incorrectly.
+        """
+        # Check for obviously misaligned data
+        invalid_tickers = {"STOCK", "PURCHASE", "SALE", "BUY", "SELL", "N/A", "UNKNOWN"}
+        if ticker and ticker.upper() in invalid_tickers:
+            self.logger.warning(f"Invalid ticker detected: {ticker} - skipping record")
+            return False
+
+        # Check if asset_name contains percentage (likely price change in wrong field)
+        if asset_name and "%" in asset_name:
+            self.logger.warning(f"Percentage in asset_name detected: {asset_name} - skipping record")
+            return False
+
+        # Check if politician_name looks like an asset name (contains Inc, Corp, etc.)
+        asset_indicators = ["INC", "CORP", "LTD", "LLC", "FUND", "ETF", "CLASS"]
+        if politician_name:
+            upper_name = politician_name.upper()
+            if any(ind in upper_name for ind in asset_indicators):
+                self.logger.warning(
+                    f"Asset name in politician_name field: {politician_name} - skipping record"
+                )
+                return False
+
+        # Check if politician_name is missing or too short
+        if not politician_name or len(politician_name) < 3:
+            self.logger.warning("Missing or too short politician_name - skipping record")
+            return False
+
+        return True
 
     def _looks_like_date(self, text: str) -> bool:
         """Check if text looks like a date"""
