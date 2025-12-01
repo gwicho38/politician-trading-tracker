@@ -36,6 +36,9 @@ class Tables:
     USER_API_KEYS = "user_api_keys"
     USER_SESSIONS = "user_sessions"
 
+    # Statistics tables
+    STORAGE_STATISTICS = "storage_statistics"
+
 
 class Columns:
     """Database column names organized by logical grouping."""

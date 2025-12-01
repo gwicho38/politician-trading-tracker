@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "generated_at": "2025-11-25T20:20:35.463397Z",
+  "generated_at": "2025-11-30T19:45:14.881048Z",
   "commands": {
     "politician_trading_tracker": {
       "name": "politician_trading_tracker",
@@ -10,13 +10,77 @@
       "created_at": "2025-10-31T09:46:06.193910Z",
       "updated_at": "2025-10-31T09:46:06.193928Z"
     },
-    "ingestion": {
-      "name": "ingestion",
-      "description": "Jupyter notebook: ingestion",
+    "03_third_party_aggregators": {
+      "name": "03_third_party_aggregators",
+      "description": "Jupyter notebook: 03_third_party_aggregators",
       "group": "workflow",
       "version": "1.0",
-      "created_at": "2025-11-24T20:11:17.194451Z",
-      "updated_at": "2025-11-24T20:11:17.194451Z"
+      "created_at": "2025-11-30T20:33:38.823826Z",
+      "updated_at": "2025-11-30T20:29:12.287019Z"
+    },
+    "01_us_house": {
+      "name": "01_us_house",
+      "description": "Jupyter notebook: 01_us_house",
+      "group": "workflow",
+      "version": "1.0",
+      "created_at": "2025-11-30T20:33:38.819170Z",
+      "updated_at": "2025-11-30T20:27:57.331447Z"
+    },
+    "00_orchestrator": {
+      "name": "00_orchestrator",
+      "description": "Jupyter notebook: 00_orchestrator",
+      "group": "workflow",
+      "version": "1.0",
+      "created_at": "2025-11-30T20:32:26.999859Z",
+      "updated_at": "2025-11-30T20:32:09.666148Z"
+    },
+    "07_eu_member_states": {
+      "name": "07_eu_member_states",
+      "description": "Jupyter notebook: 07_eu_member_states",
+      "group": "workflow",
+      "version": "1.0",
+      "created_at": "2025-11-30T20:33:38.833948Z",
+      "updated_at": "2025-11-30T20:30:18.685552Z"
+    },
+    "05_uk_parliament": {
+      "name": "05_uk_parliament",
+      "description": "Jupyter notebook: 05_uk_parliament",
+      "group": "workflow",
+      "version": "1.0",
+      "created_at": "2025-11-30T20:33:38.829261Z",
+      "updated_at": "2025-11-30T20:30:17.449493Z"
+    },
+    "ingest": {
+      "name": "ingest",
+      "description": "Jupyter notebook: ingest",
+      "group": "workflow",
+      "version": "1.0",
+      "created_at": "2025-11-28T17:56:17.912728Z",
+      "updated_at": "2025-11-28T17:56:17.912728Z"
+    },
+    "06_eu_parliament": {
+      "name": "06_eu_parliament",
+      "description": "Jupyter notebook: 06_eu_parliament",
+      "group": "workflow",
+      "version": "1.0",
+      "created_at": "2025-11-30T20:33:38.831744Z",
+      "updated_at": "2025-11-30T20:30:17.906847Z"
+    },
+    "02_us_senate": {
+      "name": "02_us_senate",
+      "description": "Jupyter notebook: 02_us_senate",
+      "group": "workflow",
+      "version": "1.0",
+      "created_at": "2025-11-30T20:33:38.821648Z",
+      "updated_at": "2025-11-30T20:29:10.664904Z"
+    },
+    "04_us_states": {
+      "name": "04_us_states",
+      "description": "Jupyter notebook: 04_us_states",
+      "group": "workflow",
+      "version": "1.0",
+      "created_at": "2025-11-30T20:33:38.826736Z",
+      "updated_at": "2025-11-30T20:29:13.071898Z"
     }
   }
 }
