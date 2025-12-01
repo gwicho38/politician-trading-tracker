@@ -66,6 +66,33 @@ class EnvKeys:
     STRIPE_PUBLISHABLE_KEY = "STRIPE_PUBLISHABLE_KEY"
     STRIPE_WEBHOOK_SECRET = "STRIPE_WEBHOOK_SECRET"
 
+    # Admin configuration
+    ADMIN_EMAILS = "ADMIN_EMAILS"
+
+    # Email/SMTP alerting configuration
+    SMTP_HOST = "SMTP_HOST"
+    SMTP_PORT = "SMTP_PORT"
+    SMTP_USER = "SMTP_USER"
+    SMTP_PASSWORD = "SMTP_PASSWORD"
+    ALERT_FROM_EMAIL = "ALERT_FROM_EMAIL"
+    ALERT_TO_EMAILS = "ALERT_TO_EMAILS"
+
+    # Slack alerting configuration
+    SLACK_WEBHOOK_URL = "SLACK_WEBHOOK_URL"
+    SLACK_CHANNEL = "SLACK_CHANNEL"
+
+    # Discord alerting configuration
+    DISCORD_WEBHOOK_URL = "DISCORD_WEBHOOK_URL"
+
+    # Generic webhook alerting
+    ALERT_WEBHOOK_URL = "ALERT_WEBHOOK_URL"
+
+    # Session configuration
+    COOKIE_SECRET = "cookie_secret"
+
+    # System paths (for debugging)
+    PYTHONPATH = "PYTHONPATH"
+
 
 class EnvDefaults:
     """

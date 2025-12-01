@@ -4,14 +4,14 @@ Uses st.Page navigation for cleaner sidebar experience
 """
 
 import streamlit as st
-from src.streamlit_hotkeys_integration import register_hotkeys
-from src.sidebar_config import apply_sidebar_styling
 
 # Enable analytics tracking
-from src.analytics_wrapper import safe_track, ANALYTICS_AVAILABLE
+from src.analytics_wrapper import ANALYTICS_AVAILABLE, safe_track
 
 # Initialize shopping cart
 from src.shopping_cart import render_shopping_cart_sidebar
+from src.sidebar_config import apply_sidebar_styling
+from src.streamlit_hotkeys_integration import register_hotkeys
 
 # Page configuration
 st.set_page_config(
@@ -107,6 +107,7 @@ render_shopping_cart_sidebar()
 
 # Show admin badge if user is admin
 from src.admin_utils import show_admin_badge
+
 show_admin_badge()
 
 # Add trading mode toggle in sidebar
@@ -162,10 +163,10 @@ with st.sidebar:
         if st.button("💰 Live", use_container_width=True, type="primary" if current_mode == "live" else "secondary"):
             # Check if user has live access
             try:
-                from src.user_api_keys import get_user_api_keys_manager
                 from src.auth_utils import require_authentication
+                from src.user_api_keys import get_user_api_keys_manager
 
-                if st.user.is_logged_in:
+                if st.user.is_logged_in and isinstance(st.user.email, str):
                     keys_manager = get_user_api_keys_manager()
                     user_keys = keys_manager.get_user_keys(st.user.email)
 
