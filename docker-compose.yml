@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  ptt-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ptt-streamlit
+    restart: unless-stopped
+    ports:
+      - "8502:8501"
+    environment:
+      # Supabase Configuration
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      # Trading APIs
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+      - ALPACA_PAPER=${ALPACA_PAPER:-true}
+      - ALPACA_BASE_URL=${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
+      # Feature Flags
+      - ENABLE_US_CONGRESS=${ENABLE_US_CONGRESS:-true}
+      - ENABLE_UK_PARLIAMENT=${ENABLE_UK_PARLIAMENT:-false}
+      - ENABLE_EU_PARLIAMENT=${ENABLE_EU_PARLIAMENT:-false}
+      - ENABLE_US_STATE=${ENABLE_US_STATE:-false}
+      - ENABLE_CALIFORNIA=${ENABLE_CALIFORNIA:-false}
+      - ENABLE_MONITORING=${ENABLE_MONITORING:-true}
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Streamlit settings
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+    volumes:
+      - ./logs:/app/logs
+      - ./.streamlit:/app/.streamlit:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - ptt-network
+
+networks:
+  ptt-network:
+    driver: bridge

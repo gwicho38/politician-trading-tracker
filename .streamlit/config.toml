@@ -42,8 +42,8 @@ chartCategoricalColors = ["#0ea5e9", "#059669", "#fbbf24"]  # Chart colors (sky 
 [theme.sidebar]
 backgroundColor = "#f0f0ec"                  # Sidebar background
 secondaryBackgroundColor = "#ecebe3"         # Sidebar secondary background
-# headingFontSizes = ["1.6rem", "1.4rem", "1.2rem"]  # Sidebar heading sizes
-# dataframeHeaderBackgroundColor = "#e4e4e0" # DataFrame header in sidebar
+widgetBackgroundColor = "#ffffff"            # Widget background in sidebar
+widgetBorderColor = "#d3d2ca"                # Widget border in sidebar
 
 # =============================================================================
 # COMMENTED OUT OPTIONS - Uncomment and modify as needed
@@ -167,7 +167,7 @@ showSidebarNavigation = true             # Show default navigation UI
 # # - Open Sans: Clean, neutral sans-serif
 
 # # Border & Shape Options
-dataframeBorderColor = "#d0d0d0"         # DataFrame borders
+# dataframeBorderColor = "#d0d0d0"         # DataFrame borders (removed in newer Streamlit)
 # # linkUnderline = true                     # Underline links
 
 # # Custom Font Faces (requires enableStaticServing = true)
