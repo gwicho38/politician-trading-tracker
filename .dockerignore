@@ -1,0 +1,72 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test and coverage
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+.mypy_cache/
+
+# Logs
+logs/
+*.log
+
+# Local development
+.env.local
+.env.development
+*.bak
+
+# Documentation
+docs/
+
+# Sample PDFs (large files)
+sample_pdfs/
+
+# Notebooks (not needed for production)
+notebooks/
+.mcli/
+
+# Cache
+.cache/
+.ruff_cache/
+
+# macOS
+.DS_Store
+
+# Test artifacts
+tests/

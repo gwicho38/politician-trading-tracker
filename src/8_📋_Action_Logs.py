@@ -3,7 +3,6 @@ Action Logs Page - View and analyze system action logs
 """
 
 import streamlit as st
-import streamlit_antd_components as sac
 import pandas as pd
 from datetime import datetime, timedelta
 import sys
@@ -68,14 +67,10 @@ if enabled:
 action_logger = get_action_logger()
 
 # Tabs for different views
-tab = sac.tabs([
-    sac.TabsItem(label='Recent Actions', icon='list-ul'),
-    sac.TabsItem(label='Statistics', icon='bar-chart'),
-    sac.TabsItem(label='Failed Actions', icon='exclamation-triangle'),
-], align='center', return_index=False, size='large')
+tab1, tab2, tab3 = st.tabs(["Recent Actions", "Statistics", "Failed Actions"])
 
-if tab == 'Recent Actions':
-    sac.divider(label='Recent System Actions', align='center', color='blue')
+with tab1:
+    st.markdown("---")
 
     # Filters
     col1, col2, col3, col4 = st.columns(4)
@@ -210,8 +205,8 @@ if tab == 'Recent Actions':
         logger.error(f"Failed to load action logs: {e}")
         st.error(f"Failed to load action logs: {str(e)}")
 
-elif tab == 'Statistics':
-    sac.divider(label='Action Statistics', align='center', color='green')
+with tab2:
+    st.markdown("---")
 
     try:
         # Get summary statistics
@@ -309,8 +304,8 @@ elif tab == 'Statistics':
         logger.error(f"Failed to load statistics: {e}")
         st.error(f"Failed to load statistics: {str(e)}")
 
-elif tab == 'Failed Actions':
-    sac.divider(label='Failed Actions', align='center', color='red')
+with tab3:
+    st.markdown("---")
 
     try:
         # Fetch only failed actions
