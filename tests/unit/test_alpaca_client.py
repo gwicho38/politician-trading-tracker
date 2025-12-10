@@ -143,3 +143,78 @@ class TestAlpacaClientUUIDSerialization:
         deserialized = json.loads(json_str)
         assert deserialized["alpaca_order_id"] == str(mock_order.id)
         assert deserialized["alpaca_client_order_id"] == str(mock_order.client_order_id)
+
+
+class TestClosePosition:
+    """Test close_position functionality"""
+
+    @patch("politician_trading.trading.alpaca_client.TradingClient")
+    def test_close_position_success(self, mock_trading_client):
+        """Test that close_position returns True on success"""
+        # Setup mock - close_position doesn't return anything on success
+        mock_trading_client.return_value.close_position.return_value = None
+
+        # Create client
+        client = AlpacaTradingClient(api_key="test_key", secret_key="test_secret", paper=True)
+
+        # Close position
+        result = client.close_position("AAPL")
+
+        # Verify
+        assert result is True
+        mock_trading_client.return_value.close_position.assert_called_once_with("AAPL")
+
+    @patch("politician_trading.trading.alpaca_client.TradingClient")
+    def test_close_position_failure(self, mock_trading_client):
+        """Test that close_position returns False on failure"""
+        # Setup mock to raise an exception
+        mock_trading_client.return_value.close_position.side_effect = Exception("Position not found")
+
+        # Create client
+        client = AlpacaTradingClient(api_key="test_key", secret_key="test_secret", paper=True)
+
+        # Close position
+        result = client.close_position("INVALID")
+
+        # Verify
+        assert result is False
+
+    @patch("politician_trading.trading.alpaca_client.TradingClient")
+    def test_close_partial_position(self, mock_trading_client):
+        """Test closing partial position places a sell order"""
+        # Setup mock for get_open_position
+        mock_position = Mock()
+        mock_position.qty = "100"  # Long position
+        mock_trading_client.return_value.get_open_position.return_value = mock_position
+
+        # Setup mock for submit_order
+        mock_order = Mock()
+        mock_order.id = uuid4()
+        mock_order.client_order_id = uuid4()
+        mock_order.symbol = "AAPL"
+        mock_order.qty = "50"
+        mock_order.filled_qty = "0"
+        mock_order.type = "market"
+        mock_order.side = Mock(value="sell")
+        mock_order.status = "new"
+        mock_order.limit_price = None
+        mock_order.stop_price = None
+        mock_order.trail_percent = None
+        mock_order.filled_avg_price = None
+        mock_order.submitted_at = datetime.utcnow()
+        mock_order.filled_at = None
+        mock_order.canceled_at = None
+        mock_order.expired_at = None
+        mock_trading_client.return_value.submit_order.return_value = mock_order
+
+        # Create client
+        client = AlpacaTradingClient(api_key="test_key", secret_key="test_secret", paper=True)
+
+        # Close partial position
+        result = client.close_position("AAPL", quantity=50)
+
+        # Verify
+        assert result is True
+        mock_trading_client.return_value.get_open_position.assert_called_once_with("AAPL")
+        # Should have placed a sell order for 50 shares
+        mock_trading_client.return_value.submit_order.assert_called_once()
