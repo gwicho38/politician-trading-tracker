@@ -5,9 +5,7 @@ Portfolio Page - Monitor positions, performance, and risk metrics
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 from datetime import datetime
-import os
 import sys
 from pathlib import Path
 
@@ -353,14 +351,14 @@ Expected Endpoint: {alpaca_client.base_url}
                     num = float(val.replace("%", ""))
                     color = 'green' if num > 0 else 'red' if num < 0 else 'black'
                     return f'color: {color}'
-                except:
+                except (ValueError, AttributeError):
                     return ''
             elif "$" in val:
                 try:
                     num = float(val.replace("$", "").replace(",", ""))
                     color = 'green' if num > 0 else 'red' if num < 0 else 'black'
                     return f'color: {color}'
-                except:
+                except (ValueError, AttributeError):
                     return ''
             return ''
 
@@ -416,18 +414,40 @@ Expected Endpoint: {alpaca_client.base_url}
                         delta_color=pl_color
                     )
 
-                # Close position button
-                if st.button(f"Close Position", key=f"close_{pos.ticker}"):
-                    if st.button(f"⚠️ Confirm close {pos.ticker}", key=f"confirm_close_{pos.ticker}"):
-                        try:
-                            success = alpaca_client.close_position(pos.ticker)
-                            if success:
-                                st.success(f"✅ Closed position in {pos.ticker}")
-                                st.rerun()
-                            else:
-                                st.error(f"❌ Failed to close position in {pos.ticker}")
-                        except Exception as e:
-                            st.error(f"Error: {str(e)}")
+                # Close position button with confirmation
+                close_key = f"close_confirm_{pos.ticker}"
+
+                # Initialize confirmation state if not exists
+                if close_key not in st.session_state:
+                    st.session_state[close_key] = False
+
+                col_close1, col_close2 = st.columns([1, 1])
+
+                with col_close1:
+                    if not st.session_state[close_key]:
+                        if st.button("🔴 Close Position", key=f"close_{pos.ticker}", use_container_width=True):
+                            st.session_state[close_key] = True
+                            st.rerun()
+                    else:
+                        if st.button("❌ Cancel", key=f"cancel_close_{pos.ticker}", use_container_width=True):
+                            st.session_state[close_key] = False
+                            st.rerun()
+
+                with col_close2:
+                    if st.session_state[close_key]:
+                        if st.button(f"⚠️ CONFIRM CLOSE {pos.ticker}", key=f"confirm_close_{pos.ticker}", type="primary", use_container_width=True):
+                            try:
+                                with st.spinner(f"Closing position in {pos.ticker}..."):
+                                    success = alpaca_client.close_position(pos.ticker)
+                                if success:
+                                    st.session_state[close_key] = False
+                                    st.success(f"✅ Closed position in {pos.ticker}")
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Failed to close position in {pos.ticker}")
+                            except Exception as e:
+                                st.error(f"Error: {str(e)}")
+                                st.session_state[close_key] = False
 
         # Export positions
         st.markdown("---")
