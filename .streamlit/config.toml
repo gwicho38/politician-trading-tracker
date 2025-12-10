@@ -31,8 +31,7 @@ codeFontSize = "0.875rem"                    # Code font size (14px)
 showWidgetBorder = true                      # Show borders around widgets
 baseRadius = "1rem"                          # Base corner radius (16px)
 buttonRadius = "2rem"                        # Button corner radius (32px - very rounded)
-# Button sizing and spacing
-buttonBasePadding = "0.75rem 1.5rem"        # Bigger buttons with more padding
+# Button sizing and spacing (buttonBasePadding removed - not valid in newer Streamlit)
 
 # Sidebar
 showSidebarBorder = true                     # Show sidebar border
@@ -42,8 +41,6 @@ chartCategoricalColors = ["#0ea5e9", "#059669", "#fbbf24"]  # Chart colors (sky 
 [theme.sidebar]
 backgroundColor = "#f0f0ec"                  # Sidebar background
 secondaryBackgroundColor = "#ecebe3"         # Sidebar secondary background
-widgetBackgroundColor = "#ffffff"            # Widget background in sidebar
-widgetBorderColor = "#d3d2ca"                # Widget border in sidebar
 
 # =============================================================================
 # COMMENTED OUT OPTIONS - Uncomment and modify as needed
