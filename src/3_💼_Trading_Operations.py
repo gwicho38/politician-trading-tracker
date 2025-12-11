@@ -599,31 +599,51 @@ with st.expander("Place Manual Order"):
 st.markdown("---")
 st.markdown("### 📋 Recent Orders")
 
+# Fetch orders directly from Alpaca API (shows ALL orders including those placed outside this app)
 try:
-    mode = "live" if is_live else "paper"
+    alpaca_orders = alpaca_client.get_orders(status="all", limit=50)
 
-    query = db.client.table("trading_orders").select("*")
-    query = query.eq("trading_mode", mode)
-    query = query.order("created_at", desc=True)
-    query = query.limit(50)
+    if alpaca_orders:
+        orders_data = []
+        for order in alpaca_orders:
+            orders_data.append({
+                "Ticker": order.ticker,
+                "Side": order.side.upper(),
+                "Qty": order.quantity,
+                "Type": order.order_type.value,
+                "Status": order.status.value,
+                "Filled": order.filled_quantity or 0,
+                "Avg Price": f"${order.filled_avg_price:.2f}" if order.filled_avg_price else "-",
+                "Time": order.submitted_at.strftime("%Y-%m-%d %H:%M") if order.submitted_at else "N/A",
+            })
 
-    response = query.execute()
-    orders = response.data
+        orders_df = pd.DataFrame(orders_data)
+        st.dataframe(orders_df, width="stretch")
 
-    if orders:
-        df = pd.DataFrame(orders)
-
-        display_cols = ["ticker", "side", "quantity", "order_type", "status", "filled_quantity", "created_at"]
-        display_df = df[[col for col in display_cols if col in df.columns]].copy()
-
-        if "created_at" in display_df.columns:
-            display_df["created_at"] = pd.to_datetime(display_df["created_at"]).dt.strftime("%Y-%m-%d %H:%M")
-
-        display_df.columns = ["Ticker", "Side", "Qty", "Type", "Status", "Filled", "Time"]
-
-        st.dataframe(display_df, width="stretch")
+        st.caption(f"📡 Showing {len(alpaca_orders)} orders from Alpaca API ({trading_mode} account)")
     else:
-        st.info("No orders found for this trading mode")
+        st.info("No orders found in your Alpaca account")
 
 except Exception as e:
-    st.error(f"Error loading orders: {str(e)}")
+    st.error(f"Error loading orders from Alpaca: {str(e)}")
+    # Fallback to database if Alpaca fails
+    try:
+        mode = "live" if is_live else "paper"
+        query = db.client.table("trading_orders").select("*")
+        query = query.eq("trading_mode", mode)
+        query = query.order("created_at", desc=True)
+        query = query.limit(50)
+        response = query.execute()
+        orders = response.data
+
+        if orders:
+            st.info("Showing cached orders from database:")
+            df = pd.DataFrame(orders)
+            display_cols = ["ticker", "side", "quantity", "order_type", "status", "filled_quantity", "created_at"]
+            display_df = df[[col for col in display_cols if col in df.columns]].copy()
+            if "created_at" in display_df.columns:
+                display_df["created_at"] = pd.to_datetime(display_df["created_at"]).dt.strftime("%Y-%m-%d %H:%M")
+            display_df.columns = ["Ticker", "Side", "Qty", "Type", "Status", "Filled", "Time"]
+            st.dataframe(display_df, width="stretch")
+    except Exception as db_err:
+        st.error(f"Error loading orders from database: {str(db_err)}")
