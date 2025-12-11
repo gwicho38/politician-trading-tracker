@@ -36,6 +36,7 @@ load_all_secrets()
 
 # Require authentication
 from auth_utils import require_authentication, show_user_info
+from politician_trading.constants.urls import ConfigDefaults
 require_authentication()
 show_user_info()
 
@@ -57,9 +58,9 @@ with col1:
     lookback_days = st.number_input(
         "Look back period (days)",
         min_value=7,
-        max_value=365,
-        value=30,
-        help="Analyze disclosures from the last N days"
+        max_value=ConfigDefaults.MAX_LOOKBACK_DAYS,
+        value=ConfigDefaults.DEFAULT_LOOKBACK_DAYS,
+        help="Analyze disclosures from the last N days (up to 5 years)"
     )
 
 with col2:

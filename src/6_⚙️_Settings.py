@@ -32,6 +32,7 @@ load_all_secrets()
 
 # Require authentication
 from auth_utils import require_authentication, show_user_info
+from politician_trading.constants.urls import ConfigDefaults
 require_authentication()
 show_user_info()
 
@@ -589,9 +590,9 @@ with col1:
     signal_lookback = st.number_input(
         "Default lookback period (days)",
         min_value=7,
-        max_value=365,
-        value=int(os.getenv("SIGNAL_LOOKBACK_DAYS", "30")),
-        help="Default period to analyze for signals"
+        max_value=ConfigDefaults.MAX_LOOKBACK_DAYS,
+        value=int(os.getenv("SIGNAL_LOOKBACK_DAYS", str(ConfigDefaults.DEFAULT_LOOKBACK_DAYS))),
+        help="Default period to analyze for signals (up to 5 years)"
     )
 
     signal_confidence = st.slider(

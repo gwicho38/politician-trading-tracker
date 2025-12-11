@@ -208,4 +208,5 @@ class ConfigDefaults:
 
     # Time periods (days)
     DEFAULT_LOOKBACK_DAYS = 30
+    MAX_LOOKBACK_DAYS = 1825  # 5 years
     RETENTION_DAYS = 365

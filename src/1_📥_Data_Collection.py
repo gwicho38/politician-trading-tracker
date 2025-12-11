@@ -39,6 +39,7 @@ load_all_secrets()
 
 # Optional authentication - allow read-only browsing without login
 from auth_utils import optional_authentication, is_authenticated
+from politician_trading.constants.urls import ConfigDefaults
 optional_authentication()
 
 logger.info("Data Collection page loaded")
@@ -105,9 +106,9 @@ with col1:
     lookback_days = st.number_input(
             "Look back period (days)",
             min_value=1,
-            max_value=365,
-            value=30,
-            help="How many days of historical data to collect"
+            max_value=ConfigDefaults.MAX_LOOKBACK_DAYS,
+            value=ConfigDefaults.DEFAULT_LOOKBACK_DAYS,
+            help="How many days of historical data to collect (up to 5 years)"
         )
 
 with col2:
