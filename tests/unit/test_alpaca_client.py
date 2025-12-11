@@ -218,3 +218,54 @@ class TestClosePosition:
         mock_trading_client.return_value.get_open_position.assert_called_once_with("AAPL")
         # Should have placed a sell order for 50 shares
         mock_trading_client.return_value.submit_order.assert_called_once()
+
+    @patch("politician_trading.trading.alpaca_client.TradingClient")
+    def test_get_orders_returns_recent_close_order(self, mock_trading_client):
+        """Test that get_orders can retrieve orders placed after close_position.
+
+        This tests the fix for the bug where closing a position from the Portfolio
+        page didn't show in Recent Orders - the fix requires fetching orders from
+        Alpaca API after closing to save them to the database.
+        """
+        from datetime import timezone
+
+        # Setup mock order that simulates a close position sell order
+        mock_order = Mock()
+        mock_order.id = uuid4()
+        mock_order.client_order_id = str(uuid4())
+        mock_order.symbol = "AAPL"
+        mock_order.qty = "100"
+        mock_order.filled_qty = "100"
+        mock_order.type = "market"
+        mock_order.side = Mock(value="sell")
+        mock_order.status = "filled"
+        mock_order.limit_price = None
+        mock_order.stop_price = None
+        mock_order.trail_percent = None
+        mock_order.filled_avg_price = "150.00"
+        mock_order.submitted_at = datetime.now(timezone.utc)
+        mock_order.filled_at = datetime.now(timezone.utc)
+        mock_order.canceled_at = None
+        mock_order.expired_at = None
+
+        # Mock get_orders to return the close order
+        mock_trading_client.return_value.get_orders.return_value = [mock_order]
+
+        # Create client
+        client = AlpacaTradingClient(api_key="test_key", secret_key="test_secret", paper=True)
+
+        # Get orders
+        orders = client.get_orders(status="all", limit=10)
+
+        # Verify we can retrieve the order
+        assert len(orders) == 1
+        order = orders[0]
+        assert order.ticker == "AAPL"
+        assert order.side == "sell"
+        assert order.quantity == 100
+        assert order.filled_quantity == 100
+        assert order.status.value == "filled"
+        assert order.filled_avg_price == 150.00
+
+        # Verify alpaca_order_id is a string (critical for database storage)
+        assert isinstance(order.alpaca_order_id, str)

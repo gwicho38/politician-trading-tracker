@@ -440,6 +440,41 @@ Expected Endpoint: {alpaca_client.base_url}
                                 with st.spinner(f"Closing position in {pos.ticker}..."):
                                     success = alpaca_client.close_position(pos.ticker)
                                 if success:
+                                    # Save close order to database
+                                    try:
+                                        from politician_trading.database.database import SupabaseClient
+                                        from politician_trading.config import SupabaseConfig
+                                        from datetime import timezone
+
+                                        db_config = SupabaseConfig.from_env()
+                                        db = SupabaseClient(db_config)
+
+                                        # Fetch the most recent order for this ticker from Alpaca
+                                        recent_orders = alpaca_client.get_orders(status="all", limit=10)
+                                        close_order = next(
+                                            (o for o in recent_orders if o.ticker == pos.ticker),
+                                            None
+                                        )
+
+                                        if close_order:
+                                            order_data = {
+                                                "ticker": close_order.ticker,
+                                                "order_type": close_order.order_type.value,
+                                                "side": close_order.side,
+                                                "quantity": close_order.quantity,
+                                                "limit_price": float(close_order.limit_price) if close_order.limit_price else None,
+                                                "filled_quantity": close_order.filled_quantity,
+                                                "filled_avg_price": float(close_order.filled_avg_price) if close_order.filled_avg_price else None,
+                                                "status": close_order.status.value,
+                                                "trading_mode": "live" if is_live else "paper",
+                                                "alpaca_order_id": close_order.alpaca_order_id,
+                                                "submitted_at": close_order.submitted_at.isoformat() if close_order.submitted_at else datetime.now(timezone.utc).isoformat(),
+                                            }
+                                            db.client.table("trading_orders").insert(order_data).execute()
+                                    except Exception as db_err:
+                                        # Log but don't fail the close operation
+                                        st.warning(f"Position closed but failed to save order to database: {db_err}")
+
                                     st.session_state[close_key] = False
                                     st.success(f"✅ Closed position in {pos.ticker}")
                                     st.rerun()
