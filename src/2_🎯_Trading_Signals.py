@@ -34,11 +34,10 @@ st.set_page_config(page_title="Trading Signals", page_icon="🎯", layout="wide"
 # Load secrets on page load
 load_all_secrets()
 
-# Require authentication
-from auth_utils import require_authentication, show_user_info
+# Optional authentication - allow public viewing of signals
+from auth_utils import optional_authentication, is_authenticated
 from politician_trading.constants.urls import ConfigDefaults
-require_authentication()
-show_user_info()
+optional_authentication()
 
 st.title("🎯 AI-Powered Trading Signals")
 st.markdown("Generate buy/sell/hold recommendations based on politician trading activity")
@@ -80,8 +79,11 @@ with col3:
         help="Include real-time market data for better analysis"
     )
 
-# Generate signals
-if st.button("🎯 Generate Signals", width="stretch"):
+# Generate signals (requires login)
+if not is_authenticated():
+    st.info("🔒 **Log in to generate new signals.** You can view existing signals below.")
+    st.button("🎯 Generate Signals", width="stretch", disabled=True)
+elif st.button("🎯 Generate Signals", width="stretch"):
     with st.spinner("Generating AI-powered signals... This may take a minute."):
         try:
             from politician_trading.signals.signal_generator import SignalGenerator
@@ -367,30 +369,33 @@ try:
                             if signal.get('take_profit'):
                                 st.metric("Take Profit", f"${signal['take_profit']:.2f}")
 
-                    # Add to cart button
+                    # Add to cart button (requires login)
                     st.markdown("---")
-                    col1, col2 = st.columns([3, 1])
-                    with col1:
-                        quantity = st.number_input(
-                            "Quantity",
-                            min_value=1,
-                            value=10,
-                            key=f"qty_input_{signal['ticker']}_{idx}"
-                        )
-                    with col2:
-                        if add_to_cart_button(
-                            ticker=signal['ticker'],
-                            asset_name=signal.get('asset_name', signal['ticker']),
-                            signal_type=signal['signal_type'],
-                            default_quantity=quantity,
-                            signal_id=signal.get('id'),
-                            confidence_score=signal['confidence_score'],
-                            target_price=signal.get('target_price'),
-                            stop_loss=signal.get('stop_loss'),
-                            take_profit=signal.get('take_profit'),
-                            key=f"add_cart_{signal['ticker']}_{idx}"
-                        ):
-                            st.rerun()
+                    if is_authenticated():
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            quantity = st.number_input(
+                                "Quantity",
+                                min_value=1,
+                                value=10,
+                                key=f"qty_input_{signal['ticker']}_{idx}"
+                            )
+                        with col2:
+                            if add_to_cart_button(
+                                ticker=signal['ticker'],
+                                asset_name=signal.get('asset_name', signal['ticker']),
+                                signal_type=signal['signal_type'],
+                                default_quantity=quantity,
+                                signal_id=signal.get('id'),
+                                confidence_score=signal['confidence_score'],
+                                target_price=signal.get('target_price'),
+                                stop_loss=signal.get('stop_loss'),
+                                take_profit=signal.get('take_profit'),
+                                key=f"add_cart_{signal['ticker']}_{idx}"
+                            ):
+                                st.rerun()
+                    else:
+                        st.caption("🔒 Log in to add signals to cart")
 
             # Export
             st.markdown("---")
