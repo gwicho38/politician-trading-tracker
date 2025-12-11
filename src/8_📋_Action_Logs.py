@@ -36,10 +36,9 @@ st.set_page_config(page_title="Action Logs", page_icon="📋", layout="wide")
 # Load secrets on page load
 load_all_secrets()
 
-# Require authentication
-from auth_utils import require_authentication, show_user_info
-require_authentication()
-show_user_info()
+# Optional authentication - logs are public for transparency
+from auth_utils import optional_authentication
+optional_authentication()
 
 logger.info("Action Logs page loaded")
 

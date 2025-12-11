@@ -42,10 +42,9 @@ st.set_page_config(
 # Load secrets
 load_all_secrets()
 
-# Require authentication
-from auth_utils import require_authentication, show_user_info
-require_authentication()
-show_user_info()
+# Optional authentication - job status is public for transparency
+from auth_utils import optional_authentication, is_authenticated
+optional_authentication()
 
 # Page header
 st.title("⏰ Scheduled Jobs Management")
@@ -82,8 +81,11 @@ except Exception as e:
 # Check if scheduler is running
 if not scheduler.is_running():
     st.error("⚠️ Scheduler is not running. Jobs will not execute.")
-    if st.button("Restart Scheduler", key="restart_scheduler"):
-        st.rerun()
+    if is_authenticated():
+        if st.button("Restart Scheduler", key="restart_scheduler"):
+            st.rerun()
+    else:
+        st.caption("🔒 Log in to restart scheduler")
 else:
     st.success("✅ Scheduler is running")
 
