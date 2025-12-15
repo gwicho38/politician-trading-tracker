@@ -105,3 +105,6 @@ analytics.json
 .streamlit/secrets.toml.cloud
 .credentials/
 .claude/settings.local.json
+
+# Sample PDFs for testing
+sample_pdfs/
