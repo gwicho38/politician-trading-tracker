@@ -15,6 +15,8 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from politician_trading.config import ScrapingConfig
 from politician_trading.scrapers.scrapers import CongressTradingScraper
 
+import pytest
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -23,6 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.asyncio
 async def test_house_scraper_metadata_only():
     """Test 1: Metadata-only scraping (fast)"""
     print("=" * 70)
@@ -68,6 +71,7 @@ async def test_house_scraper_metadata_only():
     return len(disclosures) > 0
 
 
+@pytest.mark.asyncio
 async def test_house_scraper_with_pdf_parsing():
     """Test 2: With PDF parsing (limited to 2 PDFs)"""
     print("\n" + "=" * 70)

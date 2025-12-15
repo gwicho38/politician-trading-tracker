@@ -12,7 +12,10 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from politician_trading.sources import get_source
 
+import pytest
 
+
+@pytest.mark.asyncio
 async def test_us_senate_source():
     """Test the US Senate source"""
 

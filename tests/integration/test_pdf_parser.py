@@ -12,7 +12,10 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from politician_trading.transformers.pdf_parser import SenatePDFParser
 
+import pytest
 
+
+@pytest.mark.asyncio
 async def test_pdf_parser():
     """Test parsing a Senate PTR PDF"""
 
