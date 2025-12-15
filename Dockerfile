@@ -31,7 +31,8 @@ COPY . .
 RUN pip install uv
 
 # Install Python dependencies (non-editable to avoid setuptools issues)
-RUN uv pip install --system ".[streamlit-extras]"
+# Note: NOT installing [streamlit-extras] to avoid JS component conflicts
+RUN uv pip install --system .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

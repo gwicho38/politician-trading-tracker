@@ -11,6 +11,10 @@ from politician_trading.config import ScrapingConfig
 from politician_trading.parsers import DisclosureValidator
 
 
+import pytest
+
+
+@pytest.mark.asyncio
 async def test_enhanced_parsing_with_sample_pdf():
     """
     Test enhanced parsing with a real House disclosure PDF.

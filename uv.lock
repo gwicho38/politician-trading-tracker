@@ -4083,10 +4083,6 @@ dependencies = [
     { name = "stqdm" },
     { name = "streamlit", version = "1.50.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "streamlit", version = "1.51.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "streamlit-antd-components" },
-    { name = "streamlit-elements" },
-    { name = "streamlit-shadcn-ui" },
-    { name = "streamlit-tags" },
     { name = "stripe" },
     { name = "supabase" },
     { name = "ta-lib" },
@@ -4171,12 +4167,8 @@ requires-dist = [
     { name = "stqdm", specifier = ">=0.0.5" },
     { name = "streamlit", specifier = ">=1.31.0" },
     { name = "streamlit-analytics", marker = "extra == 'streamlit-extras'", specifier = ">=0.4.1" },
-    { name = "streamlit-antd-components", specifier = ">=0.3.2" },
     { name = "streamlit-autorefresh", marker = "extra == 'streamlit-extras'", specifier = ">=1.0.1" },
-    { name = "streamlit-elements", specifier = ">=0.1.0" },
     { name = "streamlit-extras", marker = "extra == 'streamlit-extras'", specifier = ">=0.6.0" },
-    { name = "streamlit-shadcn-ui", specifier = ">=0.1.19" },
-    { name = "streamlit-tags", specifier = ">=1.2.8" },
     { name = "stripe", specifier = ">=11.0.0" },
     { name = "supabase", specifier = ">=2.18.1" },
     { name = "ta-lib", specifier = ">=0.4.28" },
@@ -6226,18 +6218,6 @@ wheels = [
 ]
 
 [[package]]
-name = "streamlit-antd-components"
-version = "0.3.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "streamlit", version = "1.50.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "streamlit", version = "1.51.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/dc/1ed6266b606e3b494b9af3e2c310ea6cbe2e967aa18873d03c5b267b4c81/streamlit_antd_components-0.3.2-py3-none-any.whl", hash = "sha256:5ae28496127202ed266ea167649436a15f3d548a4805ee5d992c6fc0fe103fd6", size = 2805502, upload-time = "2024-01-19T07:11:42.614Z" },
-]
-
-[[package]]
 name = "streamlit-autorefresh"
 version = "1.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -6288,19 +6268,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/67/39/765f93dc09cabb8d4762714bf3a0d25892671450eda2c48e4dbdb2292d6b/streamlit_card-1.0.2.tar.gz", hash = "sha256:8001cd5edd8a6e2db36ee81f37dc645f08f78c21a2ba968403176c68b4f33cb1", size = 672326, upload-time = "2024-05-10T14:04:03.571Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/05/22/1d81bd6b2552c67f50a19501c00c7ee08022eacffb21c6900929359f7ce5/streamlit_card-1.0.2-py3-none-any.whl", hash = "sha256:f5d01ce57d6481eb3ba44e504146f56a7b82907d6700f0c19266ed6381a9c58f", size = 680848, upload-time = "2024-05-10T14:04:00.723Z" },
-]
-
-[[package]]
-name = "streamlit-elements"
-version = "0.1.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "streamlit", version = "1.50.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "streamlit", version = "1.51.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/8d/53/6ecfba409b61cdf246d4138bd9c1bef4b79a03fbeeee513ab0c7d43f18cb/streamlit-elements-0.1.0.tar.gz", hash = "sha256:5f9f116f22df3ce4a8636b1dee7c2fd3dc3cb0c66267fd28c3e0314aa1d303a7", size = 6649428, upload-time = "2022-04-25T18:32:53.523Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/1f/0d/eecce69faeb4aec152f4036afe8a0f4f67b0af4fe0ff709243591ad2533d/streamlit_elements-0.1.0-py3-none-any.whl", hash = "sha256:593c4b88c399c55879aa76f7f42970f30106f66acaa4baada6338ae5571790df", size = 7833353, upload-time = "2022-04-25T18:32:49.447Z" },
 ]
 
 [[package]]
@@ -6390,33 +6357,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/88/25/d153babd6d8dff72ee2e56976862ec7fdd7856ec7da2cb6ffd4b3b12f336/streamlit_keyup-0.3.0.tar.gz", hash = "sha256:8595a14892423243669e5d50e982853ffb7eb201b65952a48676133ab9bbc937", size = 7387, upload-time = "2025-01-02T14:48:40.245Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/14/ed/facce225c0d360b9bfa053c827029312e1b255e84d79320bda3539417b50/streamlit_keyup-0.3.0-py3-none-any.whl", hash = "sha256:ec7221617b1c832526db52859196c417578d6b4285942fbd10a0b2ff313899b3", size = 7493, upload-time = "2025-01-02T14:48:35.414Z" },
-]
-
-[[package]]
-name = "streamlit-shadcn-ui"
-version = "0.1.19"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "streamlit", version = "1.50.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "streamlit", version = "1.51.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "streamlit-extras" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/98/44/988e29d4853d0420e7c378393218a92bd897dbb399a7380102f44d821535/streamlit_shadcn_ui-0.1.19.tar.gz", hash = "sha256:70023d343c74a9542180092769ba26841a9248cdfe1a13b2415bfc6710f9b1bd", size = 330491, upload-time = "2025-10-17T18:49:49.827Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/37/25/1f5d992affc461a72f339876fbd3a1cde6b96aa3df08405bd3bd758f1f35/streamlit_shadcn_ui-0.1.19-py3-none-any.whl", hash = "sha256:73466ba1cc690794d41f5b67fd271c27ed8f78c6a3437d9df90a5409816299ec", size = 360639, upload-time = "2025-10-17T18:49:47.512Z" },
-]
-
-[[package]]
-name = "streamlit-tags"
-version = "1.2.8"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "streamlit", version = "1.50.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "streamlit", version = "1.51.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/c8/c9/047d5e24f3ca5d31ed8c0ced4ed2e6ac20db5514c7fc814583b0c495e6ee/streamlit_tags-1.2.8.tar.gz", hash = "sha256:9ea46b21f206dc73164e59e3c800a96c863c90af57afde20115f001a6d986583", size = 561247, upload-time = "2021-07-16T17:41:57.503Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/19/56/75000c009c3cdbb960783580dd3b51e1483b3cfa8f2967669fccd4cff894/streamlit_tags-1.2.8-py3-none-any.whl", hash = "sha256:c71b10666f3fce67d8e0b3c089aa50dc48830d310223fb88005b08f157586f95", size = 2678564, upload-time = "2021-07-16T17:41:55.38Z" },
 ]
 
 [[package]]
