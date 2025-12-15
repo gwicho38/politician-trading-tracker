@@ -96,10 +96,10 @@ class ScrapingConfig:
     enable_third_party: bool = True
 
     # Legacy properties for backward compatibility
-    us_congress_sources: list = None
-    eu_sources: list = None
+    us_congress_sources: Optional[list] = None
+    eu_sources: Optional[list] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Maintain backward compatibility
         if self.us_congress_sources is None:
             self.us_congress_sources = [
@@ -113,8 +113,8 @@ class ScrapingConfig:
                 "https://www.europarl.europa.eu/meps/en/declarations",
             ]
 
-    def get_active_sources(self):
-        """Get all active data sources based on configuration"""
+    def get_active_sources(self) -> list:
+        """Get all active data sources based on configuration."""
         from .data_sources import ALL_DATA_SOURCES
 
         active_sources = []
