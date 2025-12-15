@@ -149,17 +149,37 @@ ignore = ["E501"]  # Ignore line too long - handled by black formatter
 
 [tool.mypy]
 python_version = "3.9"
-warn_return_any = false
+warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = false
+warn_redundant_casts = true
+warn_unused_ignores = true
+# Require type annotations on function definitions
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+# Allow some flexibility for third-party libs
 ignore_missing_imports = true
-# Allow more permissive type checking
+allow_untyped_calls = false
+# Strict optional handling
+no_implicit_optional = true
+strict_optional = true
+# Keep these disabled for gradual adoption
+disable_error_code = ["import-untyped"]
+
+# Per-module overrides for gradual strictness adoption
+[[tool.mypy.overrides]]
+module = [
+    "politician_trading.scrapers.*",
+    "politician_trading.workflow",
+    "politician_trading.scheduler.*",
+]
+# These modules need cleanup before strict mode
+disallow_untyped_defs = false
 allow_untyped_calls = true
-allow_untyped_defs = true
-no_implicit_optional = false
-strict_optional = false
-# Disable strict checks that cause many false positives
-disable_error_code = ["no-any-return", "assignment", "union-attr", "index", "attr-defined", "arg-type", "return-value", "operator", "misc", "call-overload", "type-var", "var-annotated", "annotation-unchecked", "valid-type", "import-untyped"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+# Tests can be more lenient
+disallow_untyped_defs = false
 
 [build-system]
 requires = ["setuptools>=65.0.0", "wheel>=0.40.0"]

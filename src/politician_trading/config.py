@@ -11,29 +11,69 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+class ConfigurationError(Exception):
+    """Raised when required configuration is missing."""
+    pass
+
+
 @dataclass
 class SupabaseConfig:
-    """Supabase database configuration"""
+    """Supabase database configuration.
+
+    Attributes:
+        url: Supabase project URL (from SUPABASE_URL env var)
+        key: Supabase anon/public key (from SUPABASE_ANON_KEY env var)
+        service_role_key: Optional service role key for admin operations
+
+    Required environment variables:
+        - SUPABASE_URL: Your Supabase project URL
+        - SUPABASE_ANON_KEY: Your Supabase anonymous/public key
+
+    Optional environment variables:
+        - SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY: Service role key
+    """
 
     url: str
     key: str
     service_role_key: Optional[str] = None
 
     @classmethod
-    def from_env(cls) -> "SupabaseConfig":
-        """Load configuration from environment or use provided values"""
-        # Your provided Supabase details
-        url = os.getenv("SUPABASE_URL", "https://uljsqvwkomdrlnofmlad.supabase.co")
-        key = os.getenv(
-            "SUPABASE_ANON_KEY",
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVsanNxdndrb21kcmxub2ZtbGFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY4MDIyNDQsImV4cCI6MjA3MjM3ODI0NH0.QCpfcEpxGX_5Wn8ljf_J2KWjJLGdF8zRsV_7OatxmHI",
-        )
+    def from_env(cls, require_credentials: bool = True) -> "SupabaseConfig":
+        """Load configuration from environment variables.
+
+        Args:
+            require_credentials: If True, raises ConfigurationError when
+                required env vars are missing. If False, returns None values.
+
+        Returns:
+            SupabaseConfig instance
+
+        Raises:
+            ConfigurationError: When required env vars are missing and
+                require_credentials is True
+        """
+        url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_ANON_KEY")
+
+        if require_credentials:
+            missing = []
+            if not url:
+                missing.append("SUPABASE_URL")
+            if not key:
+                missing.append("SUPABASE_ANON_KEY")
+
+            if missing:
+                raise ConfigurationError(
+                    f"Missing required environment variables: {', '.join(missing)}. "
+                    "Please set these in your .env file or environment."
+                )
+
         # Check for service role key (supports both naming conventions)
         service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv(
             "SUPABASE_SERVICE_KEY"
         )
 
-        return cls(url=url, key=key, service_role_key=service_role_key)
+        return cls(url=url or "", key=key or "", service_role_key=service_role_key)
 
 
 @dataclass
@@ -100,7 +140,23 @@ class ScrapingConfig:
 
 @dataclass
 class WorkflowConfig:
-    """Overall workflow configuration"""
+    """Overall workflow configuration.
+
+    Combines Supabase and scraping configuration into a single config object.
+
+    Attributes:
+        supabase: Database configuration
+        scraping: Web scraping configuration
+        cron_schedule: Cron expression for scheduled runs (reference only)
+        retention_days: How long to keep data
+
+    Example:
+        # Standard usage - requires env vars
+        config = WorkflowConfig.default()
+
+        # For testing/development - doesn't require env vars
+        config = WorkflowConfig.for_testing()
+    """
 
     supabase: SupabaseConfig
     scraping: ScrapingConfig
@@ -113,8 +169,20 @@ class WorkflowConfig:
 
     @classmethod
     def default(cls) -> "WorkflowConfig":
-        """Create default configuration"""
+        """Create default configuration from environment.
+
+        Raises:
+            ConfigurationError: If required environment variables are missing
+        """
         return cls(supabase=SupabaseConfig.from_env(), scraping=ScrapingConfig())
+
+    @classmethod
+    def for_testing(cls) -> "WorkflowConfig":
+        """Create configuration for testing without requiring env vars."""
+        return cls(
+            supabase=SupabaseConfig.from_env(require_credentials=False),
+            scraping=ScrapingConfig()
+        )
 
     def to_serializable_dict(self) -> dict:
         """Convert to a JSON-serializable dictionary"""

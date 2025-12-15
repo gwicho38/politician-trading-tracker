@@ -1,5 +1,46 @@
 """
-Main workflow orchestrator for politician trading data collection
+Main workflow orchestrator for politician trading data collection.
+
+This module coordinates the entire data collection pipeline, running multiple
+scrapers in sequence and aggregating their results. It's the primary entry
+point for scheduled and manual data collection runs.
+
+Key Classes:
+    PoliticianTradingWorkflow: Orchestrates the full collection pipeline
+
+Workflow Stages:
+    1. Initialize database connection and verify schema
+    2. Load existing politicians for name matching
+    3. Run US Congress collection (House + Senate)
+    4. Run EU Parliament collection
+    5. Run UK Parliament collection
+    6. Run US state-level collections
+    7. Run third-party data source collections
+    8. Aggregate results and update job status
+
+Entry Points:
+    run_politician_trading_collection(): Async function for full collection
+    check_politician_trading_status(): Quick health check
+    PoliticianTradingWorkflow: Class for more control over execution
+
+Example:
+    # Simple usage
+    from politician_trading.workflow import run_politician_trading_collection
+    results = await run_politician_trading_collection()
+    print(f"Collected {results['summary']['total_new_disclosures']} new disclosures")
+
+    # Advanced usage with custom config
+    from politician_trading.workflow import PoliticianTradingWorkflow
+    from politician_trading.config import WorkflowConfig
+
+    config = WorkflowConfig.default()
+    workflow = PoliticianTradingWorkflow(config)
+    results = await workflow.run_full_collection()
+
+Note:
+    - Each collection stage is independent and failures don't stop the pipeline
+    - Results include detailed per-source statistics
+    - Job tracking records are created in the database for monitoring
 """
 
 import logging
@@ -13,12 +54,15 @@ from .models import DataPullJob, Politician, PoliticianRole
 from .scrapers import (
     CongressTradingScraper,
     EUParliamentScraper,
+    HouseDisclosureScraper,
     PoliticianMatcher,
     QuiverQuantScraper,
     run_california_workflow,
     run_eu_member_states_workflow,
+    run_house_etl_pipeline,
     run_uk_parliament_workflow,
     run_us_states_workflow,
+    upload_parsed_disclosures_to_supabase,
 )
 
 logger = logging.getLogger(__name__)
@@ -149,7 +193,14 @@ class PoliticianTradingWorkflow:
             self.politicians = []
 
     async def _collect_us_congress_data(self) -> Dict[str, Any]:
-        """Collect US Congress trading data"""
+        """Collect US Congress trading data using the improved HouseDisclosureScraper.
+
+        This method uses the refactored ETL pipeline from HouseDisclosureScraper which:
+        - Correctly handles PTR URL patterns (/ptr-pdfs/ vs /financial-pdfs/)
+        - Uses pdfplumber for better PDF parsing
+        - Provides detailed upload statistics
+        - Handles null character sanitization
+        """
         job_id = await self.db.create_data_pull_job(
             "us_congress", self.config.to_serializable_dict()
         )
@@ -167,71 +218,101 @@ class PoliticianTradingWorkflow:
         )
 
         try:
-            logger.info("Starting US Congress data collection")
+            logger.info("Starting US Congress data collection with HouseDisclosureScraper")
 
-            # Initialize scrapers
+            # Get current year for House disclosures
+            current_year = datetime.utcnow().year
+
+            # Configuration for House ETL pipeline
+            max_pdfs = getattr(self.config.scraping, "max_pdfs_per_run", 50)
+            filing_type = getattr(self.config.scraping, "filing_type_filter", "P")
+
+            # Run the improved House ETL pipeline
+            logger.info(f"Running House ETL pipeline for {current_year} (max {max_pdfs} PDFs, type={filing_type})")
+            all_disclosures, parsed_disclosures = await run_house_etl_pipeline(
+                year=current_year,
+                config=self.config.scraping,
+                max_pdfs=max_pdfs,
+                filing_type_filter=filing_type,
+            )
+
+            job.records_found = len(all_disclosures)
+            logger.info(f"Found {len(all_disclosures)} disclosures, parsed {len(parsed_disclosures)} PDFs")
+
+            # Upload parsed disclosures to Supabase using the improved upload function
+            if parsed_disclosures:
+                from supabase import create_client
+                from .config import SupabaseConfig
+
+                supabase_config = SupabaseConfig.from_env()
+                supabase_client = create_client(supabase_config.url, supabase_config.service_role_key)
+
+                upload_stats = upload_parsed_disclosures_to_supabase(
+                    supabase_client=supabase_client,
+                    parsed_disclosures=parsed_disclosures,
+                    skip_duplicates=True,
+                )
+
+                # Update job stats from upload
+                job.records_new = upload_stats.disclosures_inserted
+                job.records_updated = 0  # Upload function doesn't update, just skips
+                job.records_failed = upload_stats.disclosures_failed
+                job.records_processed = (
+                    upload_stats.disclosures_inserted
+                    + upload_stats.disclosures_skipped
+                    + upload_stats.disclosures_failed
+                )
+
+                job_result["new_disclosures"] = upload_stats.disclosures_inserted
+                job_result["updated_disclosures"] = 0
+                job_result["errors"].extend(upload_stats.errors)
+
+                logger.info(
+                    f"House upload stats: {upload_stats.disclosures_inserted} inserted, "
+                    f"{upload_stats.disclosures_skipped} skipped, "
+                    f"{upload_stats.disclosures_failed} failed"
+                )
+
+            # Also collect Senate and QuiverQuant data using existing scrapers
             congress_scraper = CongressTradingScraper(self.config.scraping)
             quiver_scraper = QuiverQuantScraper(self.config.scraping)
 
-            all_disclosures = []
+            additional_disclosures = []
 
-            # Scrape official sources
+            # Scrape Senate disclosures (still use old scraper for Senate)
             async with congress_scraper:
-                # Enable PDF parsing to extract actual transactions (Phase 6)
-                # Set max_pdfs_per_run to control rate (e.g., 50-100 PDFs per run)
-                house_disclosures = await congress_scraper.scrape_house_disclosures(
-                    parse_pdfs=True,
-                    max_pdfs_per_run=50,  # Rate limit: parse 50 PDFs per collection run
-                )
                 senate_disclosures = await congress_scraper.scrape_senate_disclosures()
-                all_disclosures.extend(house_disclosures)
-                all_disclosures.extend(senate_disclosures)
+                additional_disclosures.extend(senate_disclosures)
 
-            # Scrape backup sources
+            # Scrape backup sources (QuiverQuant)
             async with quiver_scraper:
                 quiver_trades = await quiver_scraper.scrape_congress_trades()
                 for trade_data in quiver_trades:
                     disclosure = quiver_scraper.parse_quiver_trade(trade_data)
                     if disclosure:
-                        all_disclosures.append(disclosure)
+                        additional_disclosures.append(disclosure)
 
-            job.records_found = len(all_disclosures)
-
-            # Process disclosures
+            # Process additional disclosures using existing logic
             matcher = PoliticianMatcher(self.politicians)
 
-            for disclosure in all_disclosures:
+            for disclosure in additional_disclosures:
                 try:
-                    # Find matching politician
                     politician_name = disclosure.raw_data.get("politician_name", "")
                     if not politician_name or politician_name.strip() == "":
-                        logger.warning("Skipping disclosure with empty politician name")
                         job.records_failed += 1
                         continue
 
-                    # Filter out obviously invalid politician names
                     if self._is_invalid_politician_name(politician_name):
-                        logger.warning(
-                            f"Skipping disclosure with invalid politician name: {politician_name}"
-                        )
                         job.records_failed += 1
                         continue
 
-                    # Skip disclosures with no transaction date (required field)
                     if not disclosure.transaction_date:
-                        logger.warning(
-                            f"Skipping disclosure with missing transaction_date for {politician_name}"
-                        )
                         job.records_failed += 1
                         continue
 
                     politician = matcher.find_politician(politician_name)
 
                     if not politician:
-                        # Create new politician with real name from scraper
-                        logger.info(f"Creating new politician for: {politician_name}")
-
-                        # Parse real name into first/last components
                         name_parts = politician_name.strip().split()
                         if len(name_parts) >= 2:
                             first_name = name_parts[0]
@@ -240,23 +321,20 @@ class PoliticianTradingWorkflow:
                             first_name = politician_name.strip()
                             last_name = ""
 
-                        # Create politician with real name - use generic role for now
                         new_politician = Politician(
                             first_name=first_name,
                             last_name=last_name,
                             full_name=politician_name.strip(),
-                            role=PoliticianRole.US_HOUSE_REP,  # Default role
+                            role=PoliticianRole.US_SENATOR,
                         )
                         politician_id = await self.db.upsert_politician(new_politician)
                         disclosure.politician_id = politician_id
 
-                        # Add newly created politician to matcher cache to prevent duplicates
                         new_politician.id = politician_id
                         matcher.add_politician(new_politician)
                     else:
                         disclosure.politician_id = politician.id
 
-                    # Check if disclosure already exists
                     existing = await self.db.find_disclosure_by_transaction(
                         disclosure.politician_id,
                         disclosure.transaction_date,
@@ -265,7 +343,6 @@ class PoliticianTradingWorkflow:
                     )
 
                     if existing:
-                        # Update existing record
                         disclosure.id = existing.id
                         if await self.db.update_disclosure(disclosure):
                             job.records_updated += 1
@@ -273,7 +350,6 @@ class PoliticianTradingWorkflow:
                         else:
                             job.records_failed += 1
                     else:
-                        # Extract ticker if missing
                         if not disclosure.asset_ticker and disclosure.asset_name:
                             from politician_trading.utils.ticker_utils import (
                                 extract_ticker_from_asset_name,
@@ -282,11 +358,7 @@ class PoliticianTradingWorkflow:
                             extracted_ticker = extract_ticker_from_asset_name(disclosure.asset_name)
                             if extracted_ticker:
                                 disclosure.asset_ticker = extracted_ticker
-                                logger.info(
-                                    f"Extracted ticker '{extracted_ticker}' from '{disclosure.asset_name}'"
-                                )
 
-                        # Insert new record
                         disclosure_id = await self.db.insert_disclosure(disclosure)
                         if disclosure_id:
                             job.records_new += 1

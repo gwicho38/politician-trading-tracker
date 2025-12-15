@@ -1,5 +1,45 @@
 """
-Signal generation engine for politician trading tracker
+Signal generation engine for politician trading tracker.
+
+This module generates buy/sell/hold trading signals based on politician
+trading activity. It combines ML models with rule-based heuristics to
+predict which stocks may perform well based on insider knowledge patterns.
+
+Key Classes:
+    SignalGenerator: Main signal generation engine
+    FeatureEngineer: Extracts features from trading data (in features.py)
+
+Signal Generation Process:
+    1. Aggregate recent politician trades by ticker
+    2. Extract features (politician count, buy/sell ratio, volume, etc.)
+    3. Fetch market data for context (price, volume, sector)
+    4. Run ML model to generate confidence scores
+    5. Apply rules-based filters (min politicians, min volume)
+    6. Output TradingSignal objects with type, confidence, and targets
+
+Signal Types:
+    - STRONG_BUY: High confidence buy signal
+    - BUY: Moderate confidence buy signal
+    - HOLD: No clear direction
+    - SELL: Moderate confidence sell signal
+    - STRONG_SELL: High confidence sell signal
+
+Example:
+    from politician_trading.signals import SignalGenerator
+
+    generator = SignalGenerator()
+    signals = await generator.generate_signals(
+        lookback_days=30,
+        min_confidence=0.6
+    )
+
+    for signal in signals:
+        print(f"{signal.ticker}: {signal.signal_type} ({signal.confidence:.2f})")
+
+Note:
+    - Signals are informational only and not financial advice
+    - Model accuracy depends on training data quality
+    - Market data fetched from Yahoo Finance (yfinance)
 """
 
 from datetime import datetime, timedelta, timezone
