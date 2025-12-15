@@ -16,6 +16,8 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
@@ -34,6 +36,21 @@ except Exception as e:
 
 from politician_trading.config import SupabaseConfig
 from politician_trading.database.database import SupabaseClient
+
+
+@pytest.fixture(scope="module")
+def db_client():
+    """Fixture to provide database client, skip if credentials unavailable."""
+    try:
+        config = SupabaseConfig.from_env()
+        if not config.url or not config.key:
+            pytest.skip("Supabase credentials not configured")
+        client = SupabaseClient(config)
+        print(f"✅ Database connection successful!")
+        return client
+    except Exception as e:
+        pytest.skip(f"Database connection failed: {e}")
+
 
 def test_schema_exists(db_client):
     """Test 1: Verify scheduled_jobs table exists"""
@@ -341,8 +358,11 @@ def test_max_failure_limit(db_client):
         traceback.print_exc()
         return False
 
+@pytest.fixture(scope="module", autouse=True)
 def cleanup_test_data(db_client):
-    """Clean up test data"""
+    """Clean up test data after all tests run"""
+    yield  # Run tests first
+    # Cleanup after tests
     print("\n" + "=" * 80)
     print("CLEANUP: Removing Test Data")
     print("=" * 80)
@@ -350,65 +370,5 @@ def cleanup_test_data(db_client):
     try:
         db_client.client.table("scheduled_jobs").delete().eq("job_id", "test_overdue_job").execute()
         print("✅ Test job removed")
-        return True
     except Exception as e:
         print(f"⚠️  Could not remove test job: {e}")
-        return False
-
-def main():
-    """Run all tests"""
-    print("\n")
-    print("╔" + "=" * 78 + "╗")
-    print("║" + " " * 22 + "JOB RECOVERY TEST SUITE" + " " * 33 + "║")
-    print("╚" + "=" * 78 + "╝")
-
-    # Initialize database
-    try:
-        config = SupabaseConfig.from_env()
-        db_client = SupabaseClient(config)
-        print("✅ Database connection established")
-    except Exception as e:
-        print(f"❌ Failed to connect to database: {e}")
-        sys.exit(1)
-
-    # Run tests
-    results = {}
-
-    results['schema'] = test_schema_exists(db_client)
-    results['initial_data'] = test_initial_data(db_client)
-    results['status_view'] = test_job_status_view(db_client)
-    results['overdue_detection'] = test_overdue_job_detection(db_client)
-    results['update_function'] = test_update_job_function(db_client)
-    results['max_failures'] = test_max_failure_limit(db_client)
-
-    # Cleanup
-    cleanup_test_data(db_client)
-
-    # Summary
-    print("\n" + "=" * 80)
-    print("TEST SUMMARY")
-    print("=" * 80)
-
-    passed = sum(1 for v in results.values() if v)
-    total = len(results)
-
-    for test_name, result in results.items():
-        status = "✅ PASS" if result else "❌ FAIL"
-        print(f"{status} - {test_name}")
-
-    print(f"\n{passed}/{total} tests passed")
-
-    if passed == total:
-        print("\n🎉 ALL TESTS PASSED!")
-        print("\n✅ Your job recovery system is working correctly!")
-        print("\nNext steps:")
-        print("1. The system will automatically catch up missed jobs on app startup")
-        print("2. Jobs will be retried up to max_consecutive_failures times")
-        print("3. Check the Scheduled Jobs page to see job status")
-        print("4. Query: SELECT * FROM scheduled_jobs_status; to monitor jobs")
-    else:
-        print(f"\n⚠️  {total - passed} test(s) failed - review output above")
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()

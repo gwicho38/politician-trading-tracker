@@ -183,7 +183,7 @@ async def test_enhanced_parsing_with_sample_pdf():
         success = False
 
     # Check 6: Quality scores are good
-    avg_quality = sum(validator.validate_transaction(t)['quality_score'] for t in transactions) / len(transactions)
+    avg_quality = sum(validator.validate_transaction(t)['quality_score'] for t in transactions) / len(transactions) if transactions else 0
     if avg_quality >= 0.7:
         checks.append(f"✅ Average quality score: {avg_quality:.2f} (≥0.7)")
     else:
