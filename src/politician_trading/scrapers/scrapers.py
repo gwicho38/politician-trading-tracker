@@ -1,5 +1,38 @@
 """
-Web scrapers for politician trading data
+Web scrapers for collecting politician trading disclosure data.
+
+This module contains scrapers for various data sources including US Congress,
+EU Parliament, UK Parliament, and state-level disclosures. All scrapers
+inherit from BaseScraper and implement async data collection.
+
+Key Classes:
+    BaseScraper: Abstract base class for all scrapers
+    HouseDisclosureScraper: Scrapes US House financial disclosures
+    CongressTradingScraper: Scrapes Congress.gov trading data
+    EUParliamentScraper: Scrapes EU Parliament declarations
+    QuiverQuantScraper: Scrapes QuiverQuant API data
+    PoliticianMatcher: Fuzzy matches politician names to database records
+
+Data Flow:
+    1. Scraper fetches raw HTML/PDF from source
+    2. Parser extracts structured data
+    3. Matcher links to existing politicians
+    4. Results returned as TradingDisclosure objects
+
+Example:
+    from politician_trading.scrapers import HouseDisclosureScraper
+    from politician_trading.config import ScrapingConfig
+
+    config = ScrapingConfig()
+    scraper = HouseDisclosureScraper(config)
+
+    async with scraper:
+        disclosures = await scraper.scrape_recent()
+
+Note:
+    - All scrapers respect rate limits configured in ScrapingConfig
+    - PDF parsing requires optional OCR dependencies (pdf2image, pytesseract)
+    - Network errors are logged and don't stop the collection process
 """
 
 import asyncio

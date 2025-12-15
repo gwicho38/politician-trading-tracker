@@ -1,5 +1,35 @@
 """
-Database client and schema management for politician trading data
+Database client and schema management for politician trading data.
+
+This module provides the main interface for interacting with the Supabase database.
+It handles all CRUD operations for politicians, disclosures, jobs, and related data.
+
+Key Classes:
+    PoliticianTradingDB: Main database client for all operations
+
+Key Operations:
+    - Schema management (ensure_schema)
+    - Politician CRUD (upsert_politician, get_politicians)
+    - Disclosure CRUD (upsert_disclosure, get_disclosures)
+    - Job tracking (create_job, update_job)
+    - Data source management
+
+Example:
+    from politician_trading.config import WorkflowConfig
+    from politician_trading.database import PoliticianTradingDB
+
+    config = WorkflowConfig.default()
+    db = PoliticianTradingDB(config)
+
+    # Ensure schema exists
+    await db.ensure_schema()
+
+    # Query disclosures
+    disclosures = await db.get_recent_disclosures(limit=100)
+
+Note:
+    This module uses Supabase as the backend. All operations are async-compatible
+    but the Supabase client itself may not be fully async in all cases.
 """
 
 from datetime import datetime
