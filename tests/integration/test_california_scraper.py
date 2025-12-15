@@ -20,11 +20,12 @@ except ImportError:
     HAS_BS4 = False
 
 if HAS_BS4:
-    from mcli.workflow.politician_trading.config import WorkflowConfig
-    from mcli.workflow.politician_trading.scrapers_california import CaliforniaNetFileScraper
+    from politician_trading.config import WorkflowConfig
+    from politician_trading.scrapers.scrapers_california import CaliforniaNetFileScraper
 
 
 @pytest.mark.skipif(not HAS_BS4, reason="bs4 module not installed")
+@pytest.mark.asyncio
 async def test_california_name_extraction():
     """Test if the enhanced California scraper extracts real politician names"""
     print("🧪 Testing Enhanced California NetFile Scraper")

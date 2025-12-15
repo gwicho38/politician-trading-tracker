@@ -12,8 +12,8 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
-from .config import WorkflowConfig
-from .database import PoliticianTradingDB
+from ..config import WorkflowConfig
+from ..database import PoliticianTradingDB
 
 logger = logging.getLogger(__name__)
 console = Console()

@@ -16,19 +16,20 @@ except ImportError:
     HAS_POSTGREST = False
 
 if HAS_POSTGREST:
-    from mcli.workflow.politician_trading.config import (
+    from politician_trading.config import (
         ScrapingConfig,
         SupabaseConfig,
         WorkflowConfig,
     )
-    from mcli.workflow.politician_trading.models import (
+    from politician_trading.models import (
         Politician,
         PoliticianRole,
         TradingDisclosure,
         TransactionType,
     )
-    from mcli.workflow.politician_trading.monitoring import PoliticianTradingMonitor
-    from mcli.workflow.politician_trading.workflow import PoliticianTradingWorkflow
+    # PoliticianTradingMonitor is in scrapers/monitoring.py
+    from politician_trading.scrapers.monitoring import PoliticianTradingMonitor
+    from politician_trading.workflow import PoliticianTradingWorkflow
 
 
 @pytest.mark.skipif(not HAS_POSTGREST, reason="postgrest module not installed")
@@ -45,7 +46,7 @@ class TestPoliticianTradingIntegration:
             ),
         )
 
-    @patch("mcli.workflow.politician_trading.database.create_client")
+    @patch("politician_trading.database.create_client")
     def test_workflow_initialization(self, mock_create_client):
         """Test workflow initialization"""
         mock_client = Mock()
@@ -58,7 +59,7 @@ class TestPoliticianTradingIntegration:
         assert workflow.politicians == []
 
     @pytest.mark.asyncio
-    @patch("mcli.workflow.politician_trading.database.create_client")
+    @patch("politician_trading.database.create_client")
     async def test_workflow_status_check(self, mock_create_client):
         """Test workflow status checking"""
         mock_client = Mock()
@@ -88,7 +89,7 @@ class TestPoliticianTradingIntegration:
         assert "timestamp" in status
 
     @pytest.mark.asyncio
-    @patch("mcli.workflow.politician_trading.database.create_client")
+    @patch("politician_trading.database.create_client")
     async def test_monitoring_health_check(self, mock_create_client):
         """Test monitoring health check"""
         mock_client = Mock()
@@ -110,10 +111,10 @@ class TestPoliticianTradingIntegration:
         assert "recent_jobs" in health
 
     @pytest.mark.asyncio
-    @patch("mcli.workflow.politician_trading.scrapers.CongressTradingScraper")
-    @patch("mcli.workflow.politician_trading.scrapers.QuiverQuantScraper")
-    @patch("mcli.workflow.politician_trading.scrapers.EUParliamentScraper")
-    @patch("mcli.workflow.politician_trading.database.create_client")
+    @patch("politician_trading.scrapers.CongressTradingScraper")
+    @patch("politician_trading.scrapers.QuiverQuantScraper")
+    @patch("politician_trading.scrapers.EUParliamentScraper")
+    @patch("politician_trading.database.create_client")
     async def test_full_collection_workflow(
         self, mock_create_client, mock_eu_scraper, mock_quiver_scraper, mock_congress_scraper
     ):
@@ -252,7 +253,7 @@ class TestScrapingIntegration:
 
     def test_amount_range_parsing(self):
         """Test amount range parsing functionality"""
-        from mcli.workflow.politician_trading.scrapers import BaseScraper
+        from politician_trading.scrapers.scrapers import BaseScraper
 
         scraper = BaseScraper(self.config)
 
@@ -276,7 +277,7 @@ class TestScrapingIntegration:
     @patch("aiohttp.ClientSession")
     async def test_base_scraper_fetch(self, mock_session_class):
         """Test base scraper fetch functionality"""
-        from mcli.workflow.politician_trading.scrapers import BaseScraper
+        from politician_trading.scrapers.scrapers import BaseScraper
 
         # Mock session and response
         mock_response = AsyncMock()
@@ -298,7 +299,7 @@ class TestScrapingIntegration:
 
     def test_politician_matcher(self):
         """Test politician matching functionality"""
-        from mcli.workflow.politician_trading.scrapers import PoliticianMatcher
+        from politician_trading.scrapers import PoliticianMatcher
 
         politicians = [
             Politician(
@@ -339,8 +340,8 @@ class TestScrapingIntegration:
 @pytest.mark.asyncio
 async def test_standalone_functions():
     """Test standalone workflow functions"""
-    from mcli.workflow.politician_trading.monitoring import run_health_check, run_stats_report
-    from mcli.workflow.politician_trading.workflow import (
+    from politician_trading.monitoring import run_health_check, run_stats_report
+    from politician_trading.workflow import (
         check_politician_trading_status,
         run_politician_trading_collection,
     )

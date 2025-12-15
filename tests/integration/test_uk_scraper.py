@@ -20,11 +20,12 @@ except ImportError:
     HAS_BS4 = False
 
 if HAS_BS4:
-    from mcli.workflow.politician_trading.config import WorkflowConfig
-    from mcli.workflow.politician_trading.scrapers_uk import UKParliamentScraper
+    from politician_trading.config import WorkflowConfig
+    from politician_trading.scrapers.scrapers_uk import UKParliamentScraper
 
 
 @pytest.mark.skipif(not HAS_BS4, reason="bs4 module not installed")
+@pytest.mark.asyncio
 async def test_uk_name_extraction():
     """Test if the enhanced UK Parliament scraper extracts real MP names"""
     print("🧪 Testing Enhanced UK Parliament Scraper")
