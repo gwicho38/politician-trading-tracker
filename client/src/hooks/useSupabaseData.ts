@@ -98,7 +98,7 @@ export const useTrades = (limit = 10, jurisdictionId?: string) => {
         .from('trades')
         .select(`
           *,
-          politician:politicians(*)
+          politicians(*)
         `)
         .order('filing_date', { ascending: false })
         .limit(limit);
