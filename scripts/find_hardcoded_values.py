@@ -103,8 +103,8 @@ KNOWN_URLS = {
     "https://www.parliament.uk/mps-lords-and-offices/standards-and-financial-interests/",
     "https://raw.githubusercontent.com/timothycarambat/senate-stock-watcher-data/master",
     "https://stocknear.com/politicians",
-    "http://localhost:8501",
-    "https://share.streamlit.io",
+    "http://localhost:9090",  # React dev server
+    # "https://share.streamlit.io",  # Removed - now using React UI
     "https://test.example.com",
     "https://xxxxx.supabase.co",
     "https://xxxxx.supabase.co (enter to update)",

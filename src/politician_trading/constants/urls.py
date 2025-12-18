@@ -135,8 +135,8 @@ class WebUrls:
     STOCKNEAR = "https://stocknear.com/politicians"
 
     # Local development
-    LOCALHOST = "http://localhost:8501"
-    STREAMLIT_SHARING = "https://share.streamlit.io"
+    LOCALHOST = "http://localhost:5173"  # React dev server
+    # STREAMLIT_SHARING = "https://share.streamlit.io"  # Removed - now using React UI
 
     # Test/placeholder URLs
     TEST_EXAMPLE = "https://test.example.com"
