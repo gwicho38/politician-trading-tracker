@@ -64,18 +64,25 @@ const Orders = () => {
 
     setLoading(true);
     try {
-      // Call the orders API
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(`${supabaseUrl}/functions/v1/orders/get-orders?trading_mode=${tradingMode}&status=${statusFilter}&limit=${limit}`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
+      // Call the orders Edge Function with proper auth
+      const { data, error } = await supabase.functions.invoke('orders', {
+        body: {
+          action: 'get-orders',
+          trading_mode: tradingMode,
+          status: statusFilter,
+          limit: limit
+        }
+      });
 
-      if (data.success) {
+      if (error) {
+        console.error('Orders error:', error);
+        throw new Error(error.message || 'Failed to fetch orders');
+      }
+
+      if (data?.success) {
         setOrders(data.orders || []);
       } else {
-        throw new Error(data.error || 'Failed to fetch orders');
+        throw new Error(data?.error || 'Failed to fetch orders');
       }
     } catch (error) {
       console.error('Error loading orders:', error);
