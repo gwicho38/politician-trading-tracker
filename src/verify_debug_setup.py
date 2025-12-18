@@ -48,7 +48,7 @@ def check_modules():
     print("📍 Required Modules Check")
     
     required_modules = [
-        "streamlit",
+        # "streamlit",  # Removed - now using React UI
         "supabase",
         "python-dotenv",
         "pytest",

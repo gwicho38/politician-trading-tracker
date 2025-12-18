@@ -1,10 +1,19 @@
 # Politician Trading Tracker
 
-Comprehensive politician trading disclosure tracker with scrapers for multiple jurisdictions including US Congress, EU Parliament, UK Parliament, US states, and more.
+🚀 **React + Supabase** politician trading disclosure tracker with comprehensive scrapers for US Congress, EU Parliament, UK Parliament, US states, and more.
 
 ## Overview
 
-This project provides a unified framework for collecting, processing, and analyzing financial disclosures and trading activities of politicians worldwide. It includes scrapers for official government sources, data normalization, database storage, and ML preprocessing capabilities.
+This project provides a modern web application for collecting, processing, and analyzing financial disclosures and trading activities of politicians worldwide. It features:
+
+- **Modern React UI** with TypeScript and Tailwind CSS
+- **Supabase Backend** with PostgreSQL database and Edge Functions
+- **Comprehensive Scrapers** for official government sources
+- **Real-time Trading Signals** with ML-powered analysis
+- **User Authentication** and subscription management
+- **Admin Dashboard** for data management
+
+**Architecture:** React SPA → Supabase Edge Functions → PostgreSQL Database
 
 ## Features
 
@@ -47,36 +56,62 @@ This project provides a unified framework for collecting, processing, and analyz
 - Error tracking and alerting
 - Job status tracking
 
-## Installation
+## Quick Start
 
 ```bash
 # Clone the repository
 git clone https://github.com/gwicho38/politician-trading-tracker.git
 cd politician-trading-tracker
 
-# Install with pip
-pip install -e .
+# One-command setup (installs all dependencies)
+make setup
 
-# Or with development dependencies
-pip install -e ".[dev]"
+# Start development servers
+make dev
+
+# Open http://localhost:5173 in your browser
+```
+
+## Installation
+
+### Option 1: Makefile (Recommended)
+
+```bash
+make setup          # Install all dependencies
+make dev           # Start development servers
+make build         # Build for production
+make test          # Run all tests
+```
+
+### Option 2: Manual Setup
+
+```bash
+# Install Python dependencies
+uv sync --dev
+
+# Install React dependencies
+cd submodules/capital-trades && npm install
 
 # Set up environment variables
 cp .env.example .env
-# Edit .env with your configuration
+cp submodules/capital-trades/.env.production.example submodules/capital-trades/.env.production
+# Edit both .env files with your configuration
 ```
 
 ## Configuration
 
-Create a `.env` file with the following variables:
+### Python Backend (.env)
 
 ```bash
 # Supabase Configuration
-SUPABASE_URL=your_supabase_url
-SUPABASE_ANON_KEY=your_supabase_key
-SUPABASE_SERVICE_KEY=your_service_key
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_KEY=your_supabase_service_key
 
 # API Keys (optional for enhanced data)
 QUIVER_API_KEY=your_quiver_key
+ALPACA_API_KEY=your_alpaca_key
+ALPACA_SECRET_KEY=your_alpaca_secret
 
 # Scraping Configuration
 SCRAPING_DELAY=1.0
@@ -84,24 +119,56 @@ MAX_RETRIES=3
 TIMEOUT=30
 ```
 
+### React Frontend (submodules/capital-trades/.env.production)
+
+```bash
+# Supabase Configuration
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+
+# Application Configuration
+VITE_APP_TITLE="Politician Trading Tracker"
+VITE_APP_VERSION="1.0.0"
+VITE_APP_ENVIRONMENT="production"
+
+# Feature Flags
+VITE_ENABLE_LIVE_TRADING=false
+VITE_ENABLE_DEBUG_MODE=false
+```
+
 ## Usage
+
+### Web Application
+
+Start the development server and open http://localhost:5173:
+
+```bash
+make dev
+```
+
+**Available Pages:**
+- **Dashboard** - Overview of trading activity and signals
+- **Trading Signals** - ML-powered trading recommendations
+- **Portfolio** - Track your investments
+- **Orders** - Manage trading orders
+- **Admin** - Data management and system monitoring
 
 ### Command Line Interface
 
 ```bash
 # Run full collection workflow
-politician-trading collect
+uv run politician-trading collect
 
 # Seed database with sample data
-politician-trading-seed
+uv run politician-trading-seed
 
 # Check status
-politician-trading status
+uv run politician-trading status
 
 # Run specific scraper
-politician-trading scrape --source us-congress
-politician-trading scrape --source uk-parliament
-politician-trading scrape --source california
+uv run politician-trading scrape --source us-congress
+uv run politician-trading scrape --source uk-parliament
+uv run politician-trading scrape --source california
 ```
 
 ### Python API
@@ -142,37 +209,93 @@ async with uk_scraper:
     uk_disclosures = await uk_scraper.scrape_mp_interests()
 ```
 
+## Deployment
+
+### Production Deployment
+
+```bash
+# Build for production
+make build
+
+# Deploy React app (choose one method)
+./scripts/deploy_vercel.sh    # Vercel
+./scripts/deploy_netlify.sh   # Netlify
+./scripts/deploy_docker.sh    # Docker
+./scripts/deploy_manual.sh    # Manual
+
+# Deploy Supabase Edge Functions
+make deploy-backend
+```
+
+### Environment Setup
+
+1. **Supabase Project**: Create at https://supabase.com
+2. **Database Schema**: Run SQL in Supabase dashboard:
+   ```sql
+   -- Copy contents from supabase/sql/create_missing_tables.sql
+   ```
+3. **Edge Functions**: Deploy via Supabase CLI:
+   ```bash
+   supabase functions deploy trading-signals --project-ref YOUR_PROJECT_REF
+   supabase functions deploy orders --project-ref YOUR_PROJECT_REF
+   supabase functions deploy portfolio --project-ref YOUR_PROJECT_REF
+   ```
+
 ## Database Schema
 
 The project uses a normalized database schema with the following main tables:
 
-- `politicians` - Politician profile information
-- `trading_disclosures` - Individual trading/financial disclosures
-- `data_pull_jobs` - Job tracking for collection runs
+- `politician_trades` - Main trading data table
+- `user_sessions` - User authentication sessions
+- `action_logs` - Application action logging
+- `scheduled_jobs` - Job scheduling system
 
-See `supabase/sql/politician_trading_schema.sql` for the complete schema.
+See `supabase/sql/` for complete schema definitions.
 
 ## Development
 
 ### Setup Development Environment
 
 ```bash
-# Install development dependencies
-pip install -e ".[dev]"
+# One-command setup
+make setup
 
-# Install pre-commit hooks
-pre-commit install
+# Start development servers (React + Python)
+make dev
 
-# Run tests
-pytest
+# React app: http://localhost:9090 (or next available port)
+# Python API: Available via Supabase Edge Functions
+```
 
-# Run tests with coverage
-pytest --cov=src/politician_trading --cov-report=html
+### Development Workflow
 
-# Lint code
-black src/ tests/
-isort src/ tests/
-ruff check src/ tests/
+```bash
+# Run all tests
+make test
+
+# Run linting and formatting
+make lint
+make format
+
+# Build for production
+make build
+
+# Clean development artifacts
+make clean
+```
+
+### Code Quality
+
+```bash
+# Python linting and formatting
+uv run ruff check src/ tests/ scripts/
+uv run black src/ tests/ scripts/
+uv run isort src/ tests/ scripts/
+uv run mypy src/
+
+# React linting and formatting
+cd submodules/capital-trades && npm run lint
+cd submodules/capital-trades && npm run format
 ```
 
 ### Adding New Scrapers

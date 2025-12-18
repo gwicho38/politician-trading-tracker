@@ -66,15 +66,9 @@ dependencies = [
   "humanize>=4.9.0",
   # Scheduling
   "APScheduler==3.10.4",
-  # Streamlit UI
-  "streamlit>=1.31.0",
-  "plotly>=5.18.0",
-  "altair>=5.2.0",
-  "authlib>=1.6.5",
-  "stqdm>=0.0.5",
-  "st-supabase-connection>=2.1.0",
-  "st-paywall>=1.0.1",
-  "stripe>=11.0.0",
+   # React UI Dependencies (managed in submodules/capital-trades/package.json)
+   # All UI dependencies are now in the React app
+   "stripe>=11.0.0",
   "pdf2image>=1.17.0",
   "pytesseract>=0.3.13",
   "pdfplumber>=0.11.8",
@@ -104,12 +98,8 @@ dev = [
   "ruff>=0.1.0",
   "pre-commit>=3.6.0",
 ]
-# Streamlit deployment extras (not in main dependencies)
-streamlit-extras = [
-  "streamlit-extras>=0.6.0",
-  "streamlit-autorefresh>=1.0.1",
-  "streamlit-analytics>=0.4.1",
-]
+# React UI deployment extras (managed in submodules/capital-trades/package.json)
+# All UI deployment dependencies are now in the React app
 
 [tool.black]
 line-length = 100

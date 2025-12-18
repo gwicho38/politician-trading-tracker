@@ -6,13 +6,13 @@ Useful for debugging Streamlit Cloud deployment issues.
 
 import sys
 
-# Packages to check
+# Packages to check (Streamlit packages removed - now using React UI)
 REQUIRED_PACKAGES = {
-    "streamlit-hotkeys": "streamlit_hotkeys",
-    "streamlit-autorefresh": "streamlit_autorefresh",
-    "streamlit-analytics": "streamlit_analytics",
-    "streamlit-antd-components": "streamlit_antd_components",
-    "st-supabase-connection": "st_supabase_connection",
+    # "streamlit-hotkeys": "streamlit_hotkeys",
+    # "streamlit-autorefresh": "streamlit_autorefresh",
+    # "streamlit-analytics": "streamlit_analytics",
+    # "streamlit-antd-components": "streamlit_antd_components",
+    # "st-supabase-connection": "st_supabase_connection",
 }
 
 def check_package(package_name, import_name):

@@ -48,31 +48,8 @@ humanize>=4.9.0
 # Scheduling
 APScheduler==3.10.4
 
-# Streamlit UI
-streamlit>=1.31.0
-plotly>=5.18.0
-altair>=5.2.0
-# streamlit-authenticator removed - now using built-in Google OAuth
-authlib>=1.6.5
+# React UI Dependencies (managed in submodules/capital-trades/package.json)
+# All UI dependencies are now in the React app
 
-# UI Components
-streamlit-antd-components>=0.3.2
-streamlit-elements>=0.1.0
-streamlit-tags>=1.2.8
-streamlit-shadcn-ui>=0.1.19
-stqdm>=0.0.5
-st-supabase-connection>=2.1.0
-streamlit-extras>=0.6.0
-
-# Keyboard shortcuts support (from GitHub)
-git+https://github.com/viktor-shcherb/streamlit-hotkeys.git@main#egg=streamlit-hotkeys
-
-# Subscription/Payment
-st-paywall>=1.0.1
+# Subscription/Payment (keeping Stripe for backend)
 stripe>=11.0.0
-
-# Auto-refresh for live dashboards
-streamlit-autorefresh>=1.0.1
-
-# Analytics and monitoring
-streamlit-analytics>=0.4.1
