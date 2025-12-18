@@ -106,25 +106,45 @@ serve(async (req) => {
     )
 
     const url = new URL(req.url)
-    const path = url.pathname.split('/').pop()
+    let path = url.pathname.split('/').pop()
+
+    // Also check for action in request body (for supabase.functions.invoke)
+    let action = path
+    let bodyParams: any = {}
+    if (req.method === 'POST') {
+      try {
+        bodyParams = await req.clone().json()
+        if (bodyParams.action) {
+          action = bodyParams.action
+        }
+      } catch {
+        // Body parsing failed, use path
+      }
+    }
 
     log.info('Processing request', {
       requestId,
       path,
-      queryParams: Object.fromEntries(url.searchParams)
+      action,
+      queryParams: Object.fromEntries(url.searchParams),
+      bodyParams
     })
 
     let response: Response
 
-    switch (path) {
+    switch (action) {
       case 'get-orders':
-        response = await handleGetOrders(supabaseClient, req, requestId)
+        response = await handleGetOrders(supabaseClient, req, requestId, bodyParams)
         break
       case 'get-order-stats':
         response = await handleGetOrderStats(supabaseClient, req, requestId)
         break
+      case 'orders':
+        // Default action when called via supabase.functions.invoke('orders')
+        response = await handleGetOrders(supabaseClient, req, requestId, bodyParams)
+        break
       default:
-        log.warn('Invalid endpoint requested', { requestId, path })
+        log.warn('Invalid endpoint requested', { requestId, action })
         response = new Response(
           JSON.stringify({ error: 'Invalid endpoint' }),
           {
@@ -179,15 +199,16 @@ serve(async (req) => {
   }
 })
 
-async function handleGetOrders(supabaseClient: any, req: Request, requestId: string) {
+async function handleGetOrders(supabaseClient: any, req: Request, requestId: string, bodyParams: any = {}) {
   const handlerStartTime = Date.now()
 
   try {
     const url = new URL(req.url)
-    const limit = parseInt(url.searchParams.get('limit') || '100')
-    const offset = parseInt(url.searchParams.get('offset') || '0')
-    const statusFilter = url.searchParams.get('status')
-    const tradingMode = url.searchParams.get('trading_mode') || 'paper'
+    // Support both URL params and body params
+    const limit = parseInt(url.searchParams.get('limit') || bodyParams.limit || '100')
+    const offset = parseInt(url.searchParams.get('offset') || bodyParams.offset || '0')
+    const statusFilter = url.searchParams.get('status') || bodyParams.status
+    const tradingMode = url.searchParams.get('trading_mode') || bodyParams.trading_mode || 'paper'
 
     log.info('Fetching orders - handler started', {
       requestId,
@@ -223,47 +244,58 @@ async function handleGetOrders(supabaseClient: any, req: Request, requestId: str
       )
     }
 
-    let query = supabaseClient
-      .from('trading_orders')
-      .select('*')
-      .eq('trading_mode', tradingMode)
-      .order('submitted_at', { ascending: false })
-      .range(offset, offset + limit - 1)
+    // Get orders from database (handle case where table doesn't exist yet)
+    let orders: any[] = []
+    let count = 0
 
-    // Apply status filter if specified
-    if (statusFilter && statusFilter !== 'all') {
-      if (statusFilter === 'open') {
-        query = query.in('status', ['new', 'accepted', 'pending_new', 'partially_filled'])
-      } else if (statusFilter === 'closed') {
-        query = query.in('status', ['filled', 'canceled', 'rejected', 'expired'])
-      } else {
-        query = query.eq('status', statusFilter)
+    try {
+      let query = supabaseClient
+        .from('trading_orders')
+        .select('*')
+        .eq('trading_mode', tradingMode)
+        .order('submitted_at', { ascending: false })
+        .range(offset, offset + limit - 1)
+
+      // Apply status filter if specified
+      if (statusFilter && statusFilter !== 'all') {
+        if (statusFilter === 'open') {
+          query = query.in('status', ['new', 'accepted', 'pending_new', 'partially_filled'])
+        } else if (statusFilter === 'closed') {
+          query = query.in('status', ['filled', 'canceled', 'rejected', 'expired'])
+        } else {
+          query = query.eq('status', statusFilter)
+        }
       }
-    }
 
-    const { data: orders, error } = await query
+      const { data, error } = await query
 
-    if (error) {
-      throw new Error(`Failed to fetch orders: ${error.message}`)
-    }
-
-    // Get total count for pagination
-    let countQuery = supabaseClient
-      .from('trading_orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('trading_mode', tradingMode)
-
-    if (statusFilter && statusFilter !== 'all') {
-      if (statusFilter === 'open') {
-        countQuery = countQuery.in('status', ['new', 'accepted', 'pending_new', 'partially_filled'])
-      } else if (statusFilter === 'closed') {
-        countQuery = countQuery.in('status', ['filled', 'canceled', 'rejected', 'expired'])
+      if (error) {
+        log.warn('Could not fetch orders', { error: error.message })
       } else {
-        countQuery = countQuery.eq('status', statusFilter)
+        orders = data || []
       }
-    }
 
-    const { count } = await countQuery
+      // Get total count for pagination
+      let countQuery = supabaseClient
+        .from('trading_orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('trading_mode', tradingMode)
+
+      if (statusFilter && statusFilter !== 'all') {
+        if (statusFilter === 'open') {
+          countQuery = countQuery.in('status', ['new', 'accepted', 'pending_new', 'partially_filled'])
+        } else if (statusFilter === 'closed') {
+          countQuery = countQuery.in('status', ['filled', 'canceled', 'rejected', 'expired'])
+        } else {
+          countQuery = countQuery.eq('status', statusFilter)
+        }
+      }
+
+      const countResult = await countQuery
+      count = countResult.count || 0
+    } catch (e) {
+      log.warn('Exception fetching orders', { error: e.message })
+    }
 
     const responseData = {
       success: true,
