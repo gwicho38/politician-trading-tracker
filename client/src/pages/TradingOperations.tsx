@@ -96,20 +96,18 @@ const TradingOperations = () => {
 
   const loadAccountInfo = async () => {
     try {
-      // Load account information from Alpaca API
-      // For now, use mock data for paper trading
-      const mockAccountInfo: AlpacaAccount = {
-        portfolio_value: '10000.00',
-        cash: '8500.00',
-        buying_power: '8500.00',
-        status: 'ACTIVE'
-      };
+      // Call Alpaca account Edge Function
+      const { data, error } = await supabase.functions.invoke('alpaca-account');
 
-      // TODO: Replace with actual Alpaca API call
-      // const response = await fetch('/api/alpaca/account');
-      // const accountInfo = await response.json();
+      if (error) {
+        throw new Error(error.message || 'Failed to load account information');
+      }
 
-      setAccountInfo(mockAccountInfo);
+      if (data.success && data.account) {
+        setAccountInfo(data.account);
+      } else {
+        throw new Error(data.error || 'Invalid response from Alpaca API');
+      }
     } catch (error) {
       console.error('Error loading account info:', error);
       // Set default account info on error
@@ -117,7 +115,7 @@ const TradingOperations = () => {
         portfolio_value: '0.00',
         cash: '0.00',
         buying_power: '0.00',
-        status: 'INACTIVE'
+        status: 'ERROR'
       });
     }
   };
