@@ -66,22 +66,59 @@ const TradingOperations = () => {
 
   useEffect(() => {
     if (user) {
-      checkApiKeys();
-      loadCart();
-      loadRecentOrders();
+      loadData();
     } else {
       setLoading(false);
     }
   }, [user]);
 
-  const checkApiKeys = async () => {
+  const loadData = async () => {
     try {
-      // Check if user has API keys configured
-      // This would typically call an API endpoint to check user settings
-      // For now, we'll assume paper keys are available
-      setHasLiveAccess(false); // TODO: Check actual subscription status
+      await Promise.all([
+        checkApiKeys(),
+        loadAccountInfo(),
+        loadCart(),
+        loadRecentOrders()
+      ]);
     } catch (error) {
-      console.error('Error checking API keys:', error);
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkApiKeys = async () => {
+    // Check if user has API keys configured
+    // This would typically call an API endpoint to check user settings
+    // For now, we'll assume paper keys are available
+    setHasLiveAccess(false); // TODO: Check actual subscription status
+  };
+
+  const loadAccountInfo = async () => {
+    try {
+      // Load account information from Alpaca API
+      // For now, use mock data for paper trading
+      const mockAccountInfo: AlpacaAccount = {
+        portfolio_value: '10000.00',
+        cash: '8500.00',
+        buying_power: '8500.00',
+        status: 'ACTIVE'
+      };
+
+      // TODO: Replace with actual Alpaca API call
+      // const response = await fetch('/api/alpaca/account');
+      // const accountInfo = await response.json();
+
+      setAccountInfo(mockAccountInfo);
+    } catch (error) {
+      console.error('Error loading account info:', error);
+      // Set default account info on error
+      setAccountInfo({
+        portfolio_value: '0.00',
+        cash: '0.00',
+        buying_power: '0.00',
+        status: 'INACTIVE'
+      });
     }
   };
 
