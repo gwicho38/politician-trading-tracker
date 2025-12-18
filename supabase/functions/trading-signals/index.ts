@@ -118,13 +118,27 @@ serve(async (req) => {
 
     switch (path) {
       case 'get-signals':
-        response = await handleGetSignals(supabaseClient, req, requestId)
+        // Get-signals is public - create a new client without auth context
+        const publicClient = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+        )
+        response = await handleGetSignals(publicClient, req, requestId)
         break
       case 'generate-signals':
         response = await handleGenerateSignals(supabaseClient, req, requestId)
         break
       case 'get-signal-stats':
         response = await handleGetSignalStats(supabaseClient, req, requestId)
+        break
+      case 'test':
+        log.info('Test endpoint called', { requestId })
+        response = new Response(
+          JSON.stringify({ success: true, message: 'Trading signals function is working', timestamp: new Date().toISOString() }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        )
         break
       default:
         log.warn('Invalid endpoint requested', { requestId, path })
@@ -183,14 +197,13 @@ serve(async (req) => {
 })
 
 async function handleGetSignals(supabaseClient: any, req: Request, requestId: string) {
+  const handlerStartTime = Date.now()
   try {
     const url = new URL(req.url)
     const limit = parseInt(url.searchParams.get('limit') || '100')
     const offset = parseInt(url.searchParams.get('offset') || '0')
     const signalType = url.searchParams.get('signal_type')
     const minConfidence = parseFloat(url.searchParams.get('min_confidence') || '0')
-
-    const handlerStartTime = Date.now()
 
     log.info('Fetching trading signals - handler started', {
       requestId,
@@ -199,27 +212,45 @@ async function handleGetSignals(supabaseClient: any, req: Request, requestId: st
       request: sanitizeRequestForLogging(req)
     })
 
+    // First, let's check if the table exists and get a simple count
+    log.info('Checking table existence', { requestId })
+    const { count: tableCheck, error: tableError } = await supabaseClient
+      .from('trading_signals')
+      .select('*', { count: 'exact', head: true })
+
+    if (tableError) {
+      log.error('Table check failed', tableError, { requestId })
+      throw new Error(`Table check failed: ${tableError.message}`)
+    }
+
+    log.info('Table exists, count:', { requestId, count: tableCheck })
+
+    // Now try to get some data
     let query = supabaseClient
       .from('trading_signals')
       .select('*')
       .eq('is_active', true)
-      .order('confidence_score', { ascending: false })
-      .range(offset, offset + limit - 1)
+      .order('created_at', { ascending: false }) // Use created_at instead of confidence_score initially
+      .limit(limit)
 
-    if (signalType && signalType !== 'all') {
-      query = query.eq('signal_type', signalType)
-    }
+    // Remove filters that might cause issues
+    // if (signalType && signalType !== 'all') {
+    //   query = query.eq('signal_type', signalType)
+    // }
 
-    if (minConfidence > 0) {
-      query = query.gte('confidence_score', minConfidence)
-    }
+    // if (minConfidence > 0) {
+    //   query = query.gte('confidence_score', minConfidence)
+    // }
 
+    log.info('Executing query', { requestId })
     const { data: signals, error } = await query
 
     if (error) {
       log.error('Database query failed', error, { requestId })
       throw new Error(`Failed to fetch signals: ${error.message}`)
     }
+
+    log.info('Query successful', { requestId, signalCount: signals?.length || 0 })
 
     // Get total count for pagination
     const { count, error: countError } = await supabaseClient
