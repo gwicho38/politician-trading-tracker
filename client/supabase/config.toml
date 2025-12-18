@@ -1,0 +1,10 @@
+project_id = "uljsqvwkomdrlnofmlad"
+
+[functions.wallet-auth]
+verify_jwt = false
+
+[functions.run-full-sync]
+verify_jwt = false
+
+[functions.sync-webhook]
+verify_jwt = false

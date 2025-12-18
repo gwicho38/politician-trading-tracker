@@ -8,17 +8,21 @@ help:
 	@echo "🚀 Politician Trading Tracker - React + Supabase"
 	@echo ""
 	@echo "Available commands:"
-	@echo "  setup          - Initial project setup (install all dependencies)"
-	@echo "  dev            - Start development servers (React + Python)"
-	@echo "  build          - Build for production"
-	@echo "  test           - Run all tests"
-	@echo "  clean          - Clean build artifacts and caches"
-	@echo "  deploy         - Deploy to production"
-	@echo "  lint           - Run linting"
-	@echo "  format         - Format code"
+	@echo "  setup            - Initial project setup (install all dependencies)"
+	@echo "  dev              - Start both React + Python servers concurrently"
+	@echo "  dev-react        - Start React frontend only"
+	@echo "  dev-python       - Run Python workflow once"
+	@echo "  dev-python-watch - Run Python workflow continuously"
+	@echo "  build            - Build for production"
+	@echo "  test             - Run all tests"
+	@echo "  clean            - Clean build artifacts and caches"
+	@echo "  deploy           - Deploy to production"
+	@echo "  deploy-functions - Deploy Supabase Edge Functions"
+	@echo "  lint             - Run linting"
+	@echo "  format           - Format code"
 	@echo "  install-frontend - Install React dependencies"
 	@echo "  install-backend  - Install Python dependencies"
-	@echo "  install-all     - Install all dependencies"
+	@echo "  install-all      - Install all dependencies"
 	@echo ""
 	@echo "Quick start:"
 	@echo "  make setup && make dev"
@@ -36,16 +40,35 @@ install-backend:
 
 install-frontend:
 	@echo "⚛️ Installing React dependencies..."
-	cd submodules/capital-trades && npm install
+	cd client && npm install
 
-# Development
+# Development - Run both frontend and backend concurrently
 dev:
 	@echo "🚀 Starting development servers..."
 	@echo "React app: http://localhost:9090 (or next available port)"
-	@echo "Python API: Available via Supabase Edge Functions"
+	@echo "Python backend: Running workflow monitor"
 	@echo ""
-	@echo "Starting React development server..."
-	cd submodules/capital-trades && npm run dev
+	@echo "Press Ctrl+C to stop all servers"
+	@echo ""
+	@trap 'kill 0' EXIT; \
+	(cd client && npm run dev) & \
+	(uv run python -c "from politician_trading.workflow import PoliticianTradingWorkflow; from politician_trading.config import WorkflowConfig; w = PoliticianTradingWorkflow(WorkflowConfig.default()); import asyncio; asyncio.run(w.run_full_collection())" 2>&1 | while read line; do echo "[Python] $$line"; done) & \
+	wait
+
+# Development - React only
+dev-react:
+	@echo "⚛️ Starting React development server only..."
+	cd client && npm run dev
+
+# Development - Python workflow once
+dev-python:
+	@echo "🐍 Running Python workflow once..."
+	uv run python -c "from politician_trading.workflow import PoliticianTradingWorkflow; from politician_trading.config import WorkflowConfig; w = PoliticianTradingWorkflow(WorkflowConfig.default()); import asyncio; asyncio.run(w.run_full_collection())"
+
+# Development - Python workflow continuous
+dev-python-watch:
+	@echo "🐍 Starting Python workflow in watch mode..."
+	uv run python -m politician_trading.workflow
 
 # Building
 build: build-frontend build-backend
@@ -53,7 +76,7 @@ build: build-frontend build-backend
 
 build-frontend:
 	@echo "🔨 Building React app for production..."
-	cd submodules/capital-trades && npm run build
+	cd client && npm run build
 
 build-backend:
 	@echo "🔨 Building Python package..."
@@ -65,34 +88,34 @@ test: test-backend test-frontend
 
 test-backend:
 	@echo "🧪 Running Python tests..."
-	uv run pytest tests/ -v --cov=src/politician_trading --cov-report=term-missing
+	uv run pytest tests/ -v --cov=server/politician_trading --cov-report=term-missing
 
 test-frontend:
 	@echo "🧪 Running React tests..."
-	cd submodules/capital-trades && npm test -- --watchAll=false --passWithNoTests
+	cd client && npm test -- --watchAll=false --passWithNoTests
 
 # Code Quality
 lint: lint-backend lint-frontend
 
 lint-backend:
 	@echo "🔍 Linting Python code..."
-	uv run ruff check src/ tests/ scripts/
-	uv run mypy src/
+	uv run ruff check server/ tests/ scripts/
+	uv run mypy server/
 
 lint-frontend:
 	@echo "🔍 Linting React code..."
-	cd submodules/capital-trades && npm run lint
+	cd client && npm run lint
 
 format: format-backend format-frontend
 
 format-backend:
 	@echo "💅 Formatting Python code..."
-	uv run black src/ tests/ scripts/
-	uv run isort src/ tests/ scripts/
+	uv run black server/ tests/ scripts/
+	uv run isort server/ tests/ scripts/
 
 format-frontend:
 	@echo "💅 Formatting React code..."
-	cd submodules/capital-trades && npm run format
+	cd client && npm run format
 
 # Deployment
 deploy: deploy-frontend deploy-backend
@@ -108,11 +131,15 @@ deploy-frontend:
 	@echo ""
 	@echo "Example: ./scripts/deploy_vercel.sh"
 
-deploy-backend:
-	@echo "🚀 Deploying Supabase Edge Functions..."
-	supabase functions deploy trading-signals --project-ref uljsqvwkomdrlnofmlad
-	supabase functions deploy orders --project-ref uljsqvwkomdrlnofmlad
-	supabase functions deploy portfolio --project-ref uljsqvwkomdrlnofmlad
+deploy-backend: deploy-functions
+
+deploy-functions:
+	@echo "🚀 Deploying Supabase Edge Functions to main project..."
+	cd client && npx supabase functions deploy trading-signals --project-ref uljsqvwkomdrlnofmlad --no-verify-jwt
+	cd client && npx supabase functions deploy portfolio --project-ref uljsqvwkomdrlnofmlad --no-verify-jwt
+	cd client && npx supabase functions deploy politician-trading-collect --project-ref uljsqvwkomdrlnofmlad --no-verify-jwt
+	cd client && npx supabase functions deploy collect-us-house --project-ref uljsqvwkomdrlnofmlad --no-verify-jwt
+	@echo "✅ Edge Functions deployed to uljsqvwkomdrlnofmlad"
 
 # Database
 db-setup:
@@ -131,7 +158,7 @@ clean: clean-frontend clean-backend clean-builds
 
 clean-frontend:
 	@echo "🧹 Cleaning React build artifacts..."
-	cd submodules/capital-trades && rm -rf dist node_modules/.vite
+	cd client && rm -rf dist node_modules/.vite
 
 clean-backend:
 	@echo "🧹 Cleaning Python cache..."
@@ -145,19 +172,15 @@ clean-builds:
 	rm -rf dist/ build/ *.egg-info/
 	uv run pip cache purge
 
-# Development shortcuts
-dev-frontend:
-	@echo "⚛️ Starting React development server..."
-	cd submodules/capital-trades && npm run dev
+# Development shortcuts (aliases)
+dev-frontend: dev-react
 
-dev-backend:
-	@echo "🐍 Starting Python development server..."
-	uv run python -m politician_trading.workflow
+dev-backend: dev-python-watch
 
 # Production shortcuts
 prod-build: build
 	@echo "📦 Production build ready in:"
-	@echo "  - React: submodules/capital-trades/dist/"
+	@echo "  - React: client/dist/"
 	@echo "  - Python: dist/"
 
 prod-deploy: deploy
@@ -168,11 +191,11 @@ check: check-backend check-frontend
 
 check-backend:
 	@echo "🔍 Checking Python environment..."
-	uv run python src/verify_debug_setup.py
+	uv run python server/verify_debug_setup.py
 
 check-frontend:
 	@echo "🔍 Checking React environment..."
-	cd submodules/capital-trades && npm run build
+	cd client && npm run build
 
 # Monitoring
 monitor:
@@ -192,16 +215,16 @@ ci: lint test build
 update-deps:
 	@echo "📦 Updating dependencies..."
 	uv lock --upgrade
-	cd submodules/capital-trades && npm update
+	cd client && npm update
 
 version:
 	@echo "📋 Version information:"
 	@uv run python -c "import politician_trading; print('Python package:', politician_trading.__version__ if hasattr(politician_trading, '__version__') else 'unknown')"
-	@echo "React app: Check submodules/capital-trades/package.json"
+	@echo "React app: Check client/package.json"
 
 # Emergency cleanup
 nuke: clean
 	@echo "💥 Emergency cleanup - removing all dependencies..."
 	rm -rf .venv/
-	cd submodules/capital-trades && rm -rf node_modules/
+	cd client && rm -rf node_modules/
 	@echo "Run 'make setup' to reinstall everything"
