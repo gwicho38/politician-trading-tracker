@@ -83,40 +83,31 @@ const Portfolio = () => {
       // Test Alpaca connection
       setConnectionStatus('checking');
 
-      // Load portfolio data from API
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const portfolioResponse = await fetch(`${supabaseUrl}/functions/v1/portfolio/get-portfolio`);
-      if (portfolioResponse.ok) {
-        const portfolioData = await portfolioResponse.json();
-        if (portfolioData.success) {
-          setPositions(portfolioData.positions || []);
-          setConnectionStatus('connected');
-        } else {
-          setConnectionStatus('error');
-        }
+      // Load portfolio data from Edge Function
+      const { data: portfolioData, error: portfolioError } = await supabase.functions.invoke('portfolio', {
+        body: { action: 'get-portfolio' }
+      });
+
+      if (portfolioError) {
+        console.error('Portfolio error:', portfolioError);
+        setConnectionStatus('error');
+      } else if (portfolioData?.success) {
+        setPositions(portfolioData.positions || []);
+        setConnectionStatus('connected');
       } else {
         setConnectionStatus('error');
       }
-      if (positionsResponse.ok) {
-        const positionsData = await positionsResponse.json();
-        if (positionsData.success) {
-          setPositions(positionsData.positions || []);
-        } else {
-          setPositions([]);
-        }
-      } else {
-        setPositions([]);
-      }
 
-      // Load pending orders from API
-      const pendingResponse = await fetch(`${supabaseUrl}/functions/v1/orders/get-orders?trading_mode=${tradingMode}&status=open&limit=10`);
-      if (pendingResponse.ok) {
-        const pendingData = await pendingResponse.json();
-        if (pendingData.success) {
-          setPendingOrders(pendingData.orders || []);
-        } else {
-          setPendingOrders([]);
-        }
+      // Load pending orders from Edge Function
+      const { data: ordersData, error: ordersError } = await supabase.functions.invoke('orders', {
+        body: { action: 'get-orders', trading_mode: tradingMode, status: 'open', limit: 10 }
+      });
+
+      if (ordersError) {
+        console.error('Orders error:', ordersError);
+        setPendingOrders([]);
+      } else if (ordersData?.success) {
+        setPendingOrders(ordersData.orders || []);
       } else {
         setPendingOrders([]);
       }

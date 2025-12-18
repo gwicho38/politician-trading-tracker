@@ -106,27 +106,45 @@ serve(async (req) => {
     )
 
     const url = new URL(req.url)
-    const path = url.pathname.split('/').pop()
+    let path = url.pathname.split('/').pop()
+
+    // Also check for action in request body (for supabase.functions.invoke)
+    let action = path
+    if (req.method === 'POST') {
+      try {
+        const body = await req.clone().json()
+        if (body.action) {
+          action = body.action
+        }
+      } catch {
+        // Body parsing failed, use path
+      }
+    }
 
     log.info('Processing request', {
       requestId,
       path,
+      action,
       queryParams: Object.fromEntries(url.searchParams)
     })
 
     let response: Response
 
-    switch (path) {
+    switch (action) {
       case 'get-portfolio':
+      case 'portfolio':
+      case '':
+      case undefined:
+        // Default action - get portfolio
         response = await handleGetPortfolio(supabaseClient, req, requestId)
         break
       case 'get-account-info':
         response = await handleGetAccountInfo(supabaseClient, req, requestId)
         break
       default:
-        log.warn('Invalid endpoint requested', { requestId, path })
+        log.warn('Invalid endpoint requested', { requestId, path, action })
         response = new Response(
-          JSON.stringify({ error: 'Invalid endpoint' }),
+          JSON.stringify({ error: 'Invalid endpoint', debug: { path, action } }),
           {
             status: 404,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -220,20 +238,28 @@ async function handleGetPortfolio(supabaseClient: any, req: Request, requestId: 
       )
     }
 
-    // Get positions from database
-    const { data: positions, error } = await supabaseClient
-      .from('positions')
-      .select('*')
-      .eq('is_open', true)
-      .order('market_value', { ascending: false })
+    // Get positions from database (handle case where table doesn't exist yet)
+    let positions: any[] = []
+    try {
+      const { data, error } = await supabaseClient
+        .from('positions')
+        .select('*')
+        .eq('is_open', true)
+        .order('market_value', { ascending: false })
 
-    if (error) {
-      throw new Error(`Failed to fetch positions: ${error.message}`)
+      if (error) {
+        // Log error but don't fail - table might not exist yet
+        log.warn('Could not fetch positions', { error: error.message })
+      } else {
+        positions = data || []
+      }
+    } catch (e) {
+      log.warn('Exception fetching positions', { error: e.message })
     }
 
     const responseData = {
       success: true,
-      positions: positions || []
+      positions
     }
 
     log.info('Portfolio fetched successfully - handler completed', {
