@@ -49,19 +49,19 @@ const TradingSignals = () => {
 
   const fetchSignals = async () => {
     try {
-      // Call the Supabase Edge Function
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(`${supabaseUrl}/functions/v1/trading-signals/get-signals?limit=100`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
+      // Use Supabase client directly instead of Edge Function for public data
+      const { data: signals, error } = await supabase
+        .from('trading_signals')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(100);
 
-      if (data.success) {
-        setSignals(data.signals || []);
-      } else {
-        throw new Error(data.error || 'Failed to fetch signals');
+      if (error) {
+        throw new Error(`Database error: ${error.message}`);
       }
+
+      setSignals(signals || []);
     } catch (error) {
       console.error('Error fetching signals:', error);
       toast.error('Failed to load trading signals');
@@ -78,26 +78,18 @@ const TradingSignals = () => {
 
     setGenerating(true);
     try {
-      // Call the signal generation API
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(`${supabaseUrl}/functions/v1/trading-signals/generate-signals`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-        },
-        body: JSON.stringify({
+      // Call the signal generation Edge Function
+      const { data, error } = await supabase.functions.invoke('trading-signals/generate-signals', {
+        body: {
           lookbackDays,
           minConfidence,
           fetchMarketData
-        })
+        }
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (error) {
+        throw new Error(error.message || 'Failed to generate signals');
       }
-
-      const data = await response.json();
 
       if (data.success) {
         toast.success(`Generated ${data.signals?.length || 0} trading signals`);
