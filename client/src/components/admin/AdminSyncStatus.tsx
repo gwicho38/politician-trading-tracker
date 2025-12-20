@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { usePagination } from '@/hooks/usePagination';
+import { PaginationControls } from '@/components/PaginationControls';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -42,6 +44,7 @@ const syncTypeLabels: Record<string, string> = {
 const AdminSyncStatus = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const queryClient = useQueryClient();
+  const pagination = usePagination();
 
   const { data: syncLogs, isLoading } = useQuery({
     queryKey: ['sync-logs'],
@@ -50,13 +53,21 @@ const AdminSyncStatus = () => {
         .from('sync_logs')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(50);
-      
+        .limit(200);
+
       if (error) throw error;
       return data as SyncLog[];
     },
     refetchInterval: 10000,
   });
+
+  // Update pagination when logs change
+  useEffect(() => {
+    pagination.setTotalItems(syncLogs?.length || 0);
+  }, [syncLogs?.length]);
+
+  // Paginate logs
+  const paginatedLogs = syncLogs?.slice(pagination.startIndex, pagination.endIndex);
 
   const handleRunFullSync = async () => {
     setIsSyncing(true);
@@ -245,7 +256,7 @@ const AdminSyncStatus = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {syncLogs?.map((log) => {
+              {paginatedLogs?.map((log) => {
                 const config = statusConfig[log.status] || statusConfig.pending;
                 return (
                   <TableRow key={log.id}>
@@ -272,7 +283,7 @@ const AdminSyncStatus = () => {
                   </TableRow>
                 );
               })}
-              {(!syncLogs || syncLogs.length === 0) && (
+              {(!paginatedLogs || paginatedLogs.length === 0) && (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     No sync logs yet. Run a sync from your Python application.
@@ -281,6 +292,11 @@ const AdminSyncStatus = () => {
               )}
             </TableBody>
           </Table>
+
+          {/* Pagination Controls */}
+          {syncLogs && syncLogs.length > 0 && (
+            <PaginationControls pagination={pagination} itemLabel="sync logs" />
+          )}
         </CardContent>
       </Card>
     </div>

@@ -1,6 +1,9 @@
+import { useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { usePoliticians } from '@/hooks/useSupabaseData';
+import { usePagination } from '@/hooks/usePagination';
+import { PaginationControls } from '@/components/PaginationControls';
 import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
 
@@ -10,6 +13,22 @@ interface PoliticiansViewProps {
 
 const PoliticiansView = ({ jurisdictionId }: PoliticiansViewProps) => {
   const { data: politicians, isLoading, error } = usePoliticians(jurisdictionId);
+  const pagination = usePagination();
+
+  // Update total items when politicians data changes
+  useEffect(() => {
+    if (politicians) {
+      pagination.setTotalItems(politicians.length);
+    }
+  }, [politicians]);
+
+  // Reset to page 1 when jurisdiction changes
+  useEffect(() => {
+    pagination.setPage(1);
+  }, [jurisdictionId]);
+
+  // Get paginated politicians
+  const paginatedPoliticians = politicians?.slice(pagination.startIndex, pagination.endIndex);
 
   return (
     <div className="space-y-6">
@@ -35,7 +54,7 @@ const PoliticiansView = ({ jurisdictionId }: PoliticiansViewProps) => {
           </p>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {politicians?.map((politician, index) => (
+            {paginatedPoliticians?.map((politician, index) => (
               <div
                 key={politician.id}
                 className="group rounded-lg border border-border/50 p-4 transition-all duration-200 hover:bg-secondary/50"
@@ -43,14 +62,14 @@ const PoliticiansView = ({ jurisdictionId }: PoliticiansViewProps) => {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-sm font-bold text-muted-foreground">
-                      {politician.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                      {politician.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '??'}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-foreground">{politician.name}</span>
+                        <span className="font-medium text-foreground">{politician.name || 'Unknown'}</span>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {politician.chamber} • {politician.state || politician.jurisdiction_id}
+                        {politician.chamber || 'Unknown'} • {politician.state || politician.jurisdiction_id || 'Unknown'}
                       </p>
                     </div>
                   </div>
@@ -79,6 +98,11 @@ const PoliticiansView = ({ jurisdictionId }: PoliticiansViewProps) => {
               </div>
             ))}
           </div>
+        )}
+
+        {/* Pagination Controls */}
+        {politicians && politicians.length > 0 && (
+          <PaginationControls pagination={pagination} itemLabel="politicians" />
         )}
       </div>
     </div>

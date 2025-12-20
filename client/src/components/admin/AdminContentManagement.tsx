@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { usePagination } from '@/hooks/usePagination';
+import { PaginationControls } from '@/components/PaginationControls';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +26,23 @@ const AdminContentManagement = () => {
   const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
   const { toast } = useToast();
 
+  // Separate pagination for each tab
+  const politiciansPagination = usePagination();
+  const tradesPagination = usePagination();
+
+  // Update pagination when data changes
+  useEffect(() => {
+    politiciansPagination.setTotalItems(politicians.length);
+  }, [politicians.length]);
+
+  useEffect(() => {
+    tradesPagination.setTotalItems(trades.length);
+  }, [trades.length]);
+
+  // Paginate data
+  const paginatedPoliticians = politicians.slice(politiciansPagination.startIndex, politiciansPagination.endIndex);
+  const paginatedTrades = trades.slice(tradesPagination.startIndex, tradesPagination.endIndex);
+
   const fetchData = async () => {
     setIsLoading(true);
     try {
@@ -32,7 +51,7 @@ const AdminContentManagement = () => {
         supabase.from('trades').select(`
           *,
           politicians(name)
-        `).order('filing_date', { ascending: false }).limit(100),
+        `).order('filing_date', { ascending: false }).limit(500),
       ]);
 
       if (politiciansRes.error) throw politiciansRes.error;
@@ -202,6 +221,7 @@ const AdminContentManagement = () => {
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
                 </div>
               ) : (
+                <>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -215,7 +235,7 @@ const AdminContentManagement = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {politicians.map(politician => (
+                    {paginatedPoliticians.map(politician => (
                       <TableRow key={politician.id}>
                         <TableCell className="font-medium">{politician.name}</TableCell>
                         <TableCell>
@@ -246,7 +266,7 @@ const AdminContentManagement = () => {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {politicians.length === 0 && (
+                    {paginatedPoliticians.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                           No politicians found
@@ -255,6 +275,12 @@ const AdminContentManagement = () => {
                     )}
                   </TableBody>
                 </Table>
+
+                {/* Pagination Controls */}
+                {politicians.length > 0 && (
+                  <PaginationControls pagination={politiciansPagination} itemLabel="politicians" />
+                )}
+              </>
               )}
             </CardContent>
           </Card>
@@ -278,6 +304,7 @@ const AdminContentManagement = () => {
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
                 </div>
               ) : (
+                <>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -291,7 +318,7 @@ const AdminContentManagement = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {trades.map(trade => (
+                    {paginatedTrades.map(trade => (
                       <TableRow key={trade.id}>
                         <TableCell className="font-medium">
                           {trade.politician_name || 'Unknown'}
@@ -324,7 +351,7 @@ const AdminContentManagement = () => {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {trades.length === 0 && (
+                    {paginatedTrades.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                           No trades found
@@ -333,6 +360,12 @@ const AdminContentManagement = () => {
                     )}
                   </TableBody>
                 </Table>
+
+                {/* Pagination Controls */}
+                {trades.length > 0 && (
+                  <PaginationControls pagination={tradesPagination} itemLabel="trades" />
+                )}
+                </>
               )}
             </CardContent>
           </Card>

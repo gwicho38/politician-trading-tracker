@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { usePagination } from '@/hooks/usePagination';
+import { PaginationControls } from '@/components/PaginationControls';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -55,6 +57,17 @@ const Portfolio = () => {
   const [tradingMode, setTradingMode] = useState<'paper' | 'live'>('paper');
   const [hasLiveAccess, setHasLiveAccess] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'error'>('checking');
+
+  // Pagination for positions
+  const positionsPagination = usePagination();
+
+  // Update pagination when positions change
+  useEffect(() => {
+    positionsPagination.setTotalItems(positions.length);
+  }, [positions.length]);
+
+  // Paginate positions
+  const paginatedPositions = positions.slice(positionsPagination.startIndex, positionsPagination.endIndex);
 
   useEffect(() => {
     if (user) {
@@ -450,7 +463,7 @@ const Portfolio = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {positions.map((position) => (
+                        {paginatedPositions.map((position) => (
                           <tr key={position.id} className="border-b hover:bg-muted/50">
                             <td className="p-2 font-medium">{position.ticker}</td>
                             <td className="p-2">
@@ -479,12 +492,17 @@ const Portfolio = () => {
                       </tbody>
                     </table>
                   </div>
+
+                  {/* Pagination Controls */}
+                  {positions.length > 0 && (
+                    <PaginationControls pagination={positionsPagination} itemLabel="positions" />
+                  )}
                 </CardContent>
               </Card>
 
               {/* Position Details */}
               <div className="grid gap-4">
-                {positions.map((position) => (
+                {paginatedPositions.map((position) => (
                   <Card key={position.id}>
                     <CardHeader>
                       <CardTitle className="flex items-center justify-between">

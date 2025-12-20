@@ -1,6 +1,9 @@
+import { useEffect } from 'react';
 import { FileText, Loader2, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useTrades } from '@/hooks/useSupabaseData';
+import { usePagination } from '@/hooks/usePagination';
+import { PaginationControls } from '@/components/PaginationControls';
 import { formatCurrency } from '@/lib/mockData';
 import { format } from 'date-fns';
 
@@ -9,7 +12,8 @@ interface FilingsViewProps {
 }
 
 const FilingsView = ({ jurisdictionId }: FilingsViewProps) => {
-  const { data: trades, isLoading } = useTrades(50, jurisdictionId);
+  const { data: trades, isLoading } = useTrades(500, jurisdictionId);
+  const pagination = usePagination();
 
   // Group trades by filing date
   const filingsByDate = trades?.reduce((acc, trade) => {
@@ -21,9 +25,22 @@ const FilingsView = ({ jurisdictionId }: FilingsViewProps) => {
     return acc;
   }, {} as Record<string, typeof trades>);
 
-  const sortedDates = Object.keys(filingsByDate || {}).sort((a, b) => 
+  const sortedDates = Object.keys(filingsByDate || {}).sort((a, b) =>
     new Date(b).getTime() - new Date(a).getTime()
   );
+
+  // Update pagination when dates change
+  useEffect(() => {
+    pagination.setTotalItems(sortedDates.length);
+  }, [sortedDates.length]);
+
+  // Reset to page 1 when jurisdiction changes
+  useEffect(() => {
+    pagination.setPage(1);
+  }, [jurisdictionId]);
+
+  // Paginate the dates (not individual trades)
+  const paginatedDates = sortedDates.slice(pagination.startIndex, pagination.endIndex);
 
   return (
     <div className="space-y-6">
@@ -45,7 +62,7 @@ const FilingsView = ({ jurisdictionId }: FilingsViewProps) => {
           </p>
         ) : (
           <div className="space-y-6">
-            {sortedDates.map((date) => (
+            {paginatedDates.map((date) => (
               <div key={date} className="border-b border-border/50 pb-6 last:border-0 last:pb-0">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/20">
@@ -90,6 +107,11 @@ const FilingsView = ({ jurisdictionId }: FilingsViewProps) => {
               </div>
             ))}
           </div>
+        )}
+
+        {/* Pagination Controls */}
+        {sortedDates.length > 0 && (
+          <PaginationControls pagination={pagination} itemLabel="filing dates" />
         )}
       </div>
     </div>
