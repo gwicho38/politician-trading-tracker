@@ -581,18 +581,22 @@ async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: st
     const orderRecord = {
       user_id: user.id,
       alpaca_order_id: alpacaResponse.id,
+      alpaca_client_order_id: alpacaResponse.client_order_id || null,
       ticker: ticker.toUpperCase(),
       side: side,
       quantity: quantity,
       order_type: order_type,
       limit_price: limit_price || null,
-      status: alpacaResponse.status,
+      status: alpacaResponse.status || 'pending',
       trading_mode: alpacaPaper ? 'paper' : 'live',
       signal_id: signal_id || null,
       submitted_at: alpacaResponse.submitted_at || new Date().toISOString(),
-      filled_qty: alpacaResponse.filled_qty || 0,
-      filled_avg_price: alpacaResponse.filled_avg_price || null
+      filled_quantity: parseFloat(alpacaResponse.filled_qty) || 0,
+      filled_avg_price: parseFloat(alpacaResponse.filled_avg_price) || null,
+      broker: 'alpaca'
     }
+
+    log.info('Saving order to database', { requestId, orderRecord })
 
     const { data: savedOrder, error: saveError } = await supabaseClient
       .from('trading_orders')
@@ -601,8 +605,10 @@ async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: st
       .single()
 
     if (saveError) {
-      log.warn('Failed to save order to database', { requestId, error: saveError.message })
+      log.error('Failed to save order to database', { requestId, error: saveError.message, code: saveError.code })
       // Don't fail the request - order was placed successfully with Alpaca
+    } else {
+      log.info('Order saved to database', { requestId, savedOrderId: savedOrder?.id })
     }
 
     const duration = Date.now() - handlerStartTime
@@ -758,20 +764,25 @@ async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: s
         const orderRecord = {
           user_id: user.id,
           alpaca_order_id: alpacaResponse.id,
+          alpaca_client_order_id: alpacaResponse.client_order_id || null,
           ticker: ticker.toUpperCase(),
           side,
           quantity,
           order_type,
           limit_price: limit_price || null,
-          status: alpacaResponse.status,
+          status: alpacaResponse.status || 'pending',
           trading_mode: alpacaPaper ? 'paper' : 'live',
           signal_id: signal_id || null,
           submitted_at: alpacaResponse.submitted_at || new Date().toISOString(),
-          filled_qty: alpacaResponse.filled_qty || 0,
-          filled_avg_price: alpacaResponse.filled_avg_price || null
+          filled_quantity: parseFloat(alpacaResponse.filled_qty) || 0,
+          filled_avg_price: parseFloat(alpacaResponse.filled_avg_price) || null,
+          broker: 'alpaca'
         }
 
-        await supabaseClient.from('trading_orders').insert(orderRecord)
+        const { error: insertError } = await supabaseClient.from('trading_orders').insert(orderRecord)
+        if (insertError) {
+          log.warn('Failed to save order to database', { ticker, error: insertError.message })
+        }
 
         results.push({
           ticker: ticker.toUpperCase(),
