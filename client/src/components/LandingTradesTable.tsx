@@ -1,7 +1,28 @@
-import { useState } from 'react';
-import { ExternalLink, ArrowUpRight, ArrowDownRight, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import {
+  ExternalLink,
+  ArrowUpRight,
+  ArrowDownRight,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  X,
+  Filter,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -11,23 +32,120 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { useTradingDisclosures } from '@/hooks/useSupabaseData';
+import { useTradingDisclosures, SortField, SortDirection } from '@/hooks/useSupabaseData';
 import { getPartyColor, getPartyBg } from '@/lib/mockData';
 
 const ROWS_PER_PAGE = 15;
 
+// Transaction type options
+const TRANSACTION_TYPES = [
+  { value: '', label: 'All Types' },
+  { value: 'purchase', label: 'Purchase' },
+  { value: 'sale', label: 'Sale' },
+  { value: 'exchange', label: 'Exchange' },
+  { value: 'holding', label: 'Holding' },
+];
+
+// Party options
+const PARTY_OPTIONS = [
+  { value: '', label: 'All Parties' },
+  { value: 'D', label: 'Democrat' },
+  { value: 'R', label: 'Republican' },
+  { value: 'I', label: 'Independent' },
+];
+
+// Sortable column configuration
+interface SortableColumn {
+  field: SortField;
+  label: string;
+}
+
+const SORTABLE_COLUMNS: SortableColumn[] = [
+  { field: 'disclosure_date', label: 'Disclosed' },
+  { field: 'transaction_date', label: 'Transaction' },
+  { field: 'amount_range_max', label: 'Amount' },
+  { field: 'asset_ticker', label: 'Ticker' },
+  { field: 'transaction_type', label: 'Type' },
+];
+
 const LandingTradesTable = () => {
+  // Pagination
   const [page, setPage] = useState(0);
+
+  // Sorting
+  const [sortField, setSortField] = useState<SortField>('disclosure_date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [transactionType, setTransactionType] = useState('');
+  const [party, setParty] = useState('');
+
+  // Debounce search
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    // Simple debounce
+    setTimeout(() => {
+      setDebouncedSearch(value);
+      setPage(0); // Reset to first page on search
+    }, 300);
+  };
+
+  // Calculate offset
   const offset = page * ROWS_PER_PAGE;
 
+  // Fetch data with all filters
   const { data, isLoading } = useTradingDisclosures({
     limit: ROWS_PER_PAGE,
     offset,
+    searchQuery: debouncedSearch || undefined,
+    transactionType: transactionType || undefined,
+    party: party || undefined,
+    sortField,
+    sortDirection,
   });
 
   const disclosures = data?.disclosures || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / ROWS_PER_PAGE);
+
+  // Check if any filters are active
+  const hasActiveFilters = debouncedSearch || transactionType || party;
+
+  // Clear all filters
+  const clearFilters = () => {
+    setSearchQuery('');
+    setDebouncedSearch('');
+    setTransactionType('');
+    setParty('');
+    setPage(0);
+  };
+
+  // Handle sort click
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      // Toggle direction if same field
+      setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      // New field, default to descending
+      setSortField(field);
+      setSortDirection('desc');
+    }
+    setPage(0); // Reset to first page on sort
+  };
+
+  // Get sort icon for a column
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="h-3 w-3 ml-1 opacity-50" />;
+    }
+    return sortDirection === 'asc' ? (
+      <ArrowUp className="h-3 w-3 ml-1 text-primary" />
+    ) : (
+      <ArrowDown className="h-3 w-3 ml-1 text-primary" />
+    );
+  };
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-US', {
@@ -65,27 +183,123 @@ const LandingTradesTable = () => {
     <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl">
       {/* Header */}
       <div className="p-6 border-b border-border/50">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-foreground">
-              Politician Trading Disclosures
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Real-time tracking of congressional stock trades. Data sourced from{' '}
-              <a
-                href="https://www.capitoltrades.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline inline-flex items-center gap-1"
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-foreground">
+                Politician Trading Disclosures
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Real-time tracking of congressional stock trades. Data sourced from{' '}
+                <a
+                  href="https://www.capitoltrades.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  Capitol Trades
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </p>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {total.toLocaleString()} {hasActiveFilters ? 'matching' : 'total'} disclosures
+            </div>
+          </div>
+
+          {/* Search and Filters Row */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            {/* Search Input */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search ticker, asset name..."
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-9 bg-background/50"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => handleSearchChange('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Transaction Type Filter */}
+            <Select value={transactionType} onValueChange={(v) => { setTransactionType(v); setPage(0); }}>
+              <SelectTrigger className="w-[140px] bg-background/50">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                {TRANSACTION_TYPES.map((type) => (
+                  <SelectItem key={type.value} value={type.value || 'all'}>
+                    {type.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Party Filter */}
+            <Select value={party} onValueChange={(v) => { setParty(v === 'all' ? '' : v); setPage(0); }}>
+              <SelectTrigger className="w-[140px] bg-background/50">
+                <SelectValue placeholder="Party" />
+              </SelectTrigger>
+              <SelectContent>
+                {PARTY_OPTIONS.map((p) => (
+                  <SelectItem key={p.value} value={p.value || 'all'}>
+                    {p.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Clear Filters */}
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="gap-1 text-muted-foreground hover:text-foreground"
               >
-                Capitol Trades
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </p>
+                <X className="h-4 w-4" />
+                Clear
+              </Button>
+            )}
           </div>
-          <div className="text-sm text-muted-foreground">
-            {total.toLocaleString()} total disclosures
-          </div>
+
+          {/* Active Filters Display */}
+          {hasActiveFilters && (
+            <div className="flex flex-wrap gap-2 items-center">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              {debouncedSearch && (
+                <Badge variant="secondary" className="gap-1">
+                  Search: "{debouncedSearch}"
+                  <button onClick={() => handleSearchChange('')}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {transactionType && (
+                <Badge variant="secondary" className="gap-1">
+                  Type: {transactionType}
+                  <button onClick={() => { setTransactionType(''); setPage(0); }}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {party && (
+                <Badge variant="secondary" className="gap-1">
+                  Party: {party}
+                  <button onClick={() => { setParty(''); setPage(0); }}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -95,11 +309,51 @@ const LandingTradesTable = () => {
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="w-[180px]">Politician</TableHead>
-              <TableHead>Asset</TableHead>
-              <TableHead className="w-[100px]">Type</TableHead>
-              <TableHead className="w-[160px]">Amount</TableHead>
-              <TableHead className="w-[120px]">Transaction</TableHead>
-              <TableHead className="w-[120px]">Disclosed</TableHead>
+              <TableHead>
+                <button
+                  className="flex items-center hover:text-foreground transition-colors"
+                  onClick={() => handleSort('asset_ticker')}
+                >
+                  Asset
+                  {getSortIcon('asset_ticker')}
+                </button>
+              </TableHead>
+              <TableHead className="w-[100px]">
+                <button
+                  className="flex items-center hover:text-foreground transition-colors"
+                  onClick={() => handleSort('transaction_type')}
+                >
+                  Type
+                  {getSortIcon('transaction_type')}
+                </button>
+              </TableHead>
+              <TableHead className="w-[160px]">
+                <button
+                  className="flex items-center hover:text-foreground transition-colors"
+                  onClick={() => handleSort('amount_range_max')}
+                >
+                  Amount
+                  {getSortIcon('amount_range_max')}
+                </button>
+              </TableHead>
+              <TableHead className="w-[120px]">
+                <button
+                  className="flex items-center hover:text-foreground transition-colors"
+                  onClick={() => handleSort('transaction_date')}
+                >
+                  Transaction
+                  {getSortIcon('transaction_date')}
+                </button>
+              </TableHead>
+              <TableHead className="w-[120px]">
+                <button
+                  className="flex items-center hover:text-foreground transition-colors"
+                  onClick={() => handleSort('disclosure_date')}
+                >
+                  Disclosed
+                  {getSortIcon('disclosure_date')}
+                </button>
+              </TableHead>
               <TableHead className="w-[60px]">Source</TableHead>
             </TableRow>
           </TableHeader>
@@ -113,13 +367,15 @@ const LandingTradesTable = () => {
             ) : disclosures.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
-                  No trading disclosures found
+                  {hasActiveFilters
+                    ? 'No disclosures match your filters'
+                    : 'No trading disclosures found'}
                 </TableCell>
               </TableRow>
             ) : (
               disclosures.map((disclosure) => {
                 const politician = disclosure.politician;
-                const party = (politician?.party || 'Unknown') as 'D' | 'R' | 'I' | 'Other';
+                const partyValue = (politician?.party || 'Unknown') as 'D' | 'R' | 'I' | 'Other';
 
                 return (
                   <TableRow key={disclosure.id} className="group">
@@ -133,11 +389,11 @@ const LandingTradesTable = () => {
                           variant="outline"
                           className={cn(
                             "text-xs px-1.5 py-0",
-                            getPartyBg(party),
-                            getPartyColor(party)
+                            getPartyBg(partyValue),
+                            getPartyColor(partyValue)
                           )}
                         >
-                          {party}
+                          {partyValue}
                         </Badge>
                       </div>
                       <div className="text-xs text-muted-foreground">
@@ -225,7 +481,7 @@ const LandingTradesTable = () => {
               Previous
             </Button>
             <span className="text-sm text-muted-foreground px-2">
-              Page {page + 1} of {totalPages}
+              Page {page + 1} of {totalPages.toLocaleString()}
             </span>
             <Button
               variant="outline"
