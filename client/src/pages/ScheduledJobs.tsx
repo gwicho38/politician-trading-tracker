@@ -115,14 +115,13 @@ const ScheduledJobs = () => {
       const jobsWithExecutions: ScheduledJob[] = await Promise.all(
         (jobsData || []).map(async (job) => {
           // Fetch last execution for this job
-          // Using maybeSingle() to avoid 406 errors when no executions exist for this job
           const { data: execData } = await supabase
             .from('job_executions')
             .select('*')
             .eq('job_id', job.job_id)
             .order('started_at', { ascending: false })
             .limit(1)
-            .maybeSingle();
+            .single();
 
           return {
             id: job.job_id,

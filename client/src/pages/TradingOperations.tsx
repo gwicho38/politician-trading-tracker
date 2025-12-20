@@ -185,8 +185,9 @@ const TradingOperations = () => {
     }
 
     try {
-      // Place manual order via API
+      // Place manual order via Edge Function
       const orderData = {
+        action: 'place-order',
         ticker: manualTicker,
         quantity: manualQuantity,
         side: manualSide,
@@ -195,13 +196,24 @@ const TradingOperations = () => {
         trading_mode: tradingMode
       };
 
-      // This would call an Edge Function to place the order
-      toast.success('Order placed successfully!');
-      setManualConfirm(false);
-      loadRecentOrders(); // Refresh orders
+      const { data, error } = await supabase.functions.invoke('portfolio', {
+        body: orderData
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to place order');
+      }
+
+      if (data?.success) {
+        toast.success(`Order placed: ${data.order.side.toUpperCase()} ${data.order.quantity} ${data.order.ticker}`);
+        setManualConfirm(false);
+        loadRecentOrders(); // Refresh orders
+      } else {
+        throw new Error(data?.error || 'Failed to place order');
+      }
     } catch (error) {
       console.error('Error placing order:', error);
-      toast.error('Failed to place order');
+      toast.error(error instanceof Error ? error.message : 'Failed to place order');
     }
   };
 

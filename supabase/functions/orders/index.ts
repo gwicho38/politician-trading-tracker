@@ -145,6 +145,9 @@ serve(async (req) => {
       case 'place-orders':
         response = await handlePlaceOrders(supabaseClient, req, requestId, bodyParams)
         break
+      case 'sync-orders':
+        response = await handleSyncOrders(supabaseClient, req, requestId, bodyParams)
+        break
       case 'orders':
         // Default action when called via supabase.functions.invoke('orders')
         response = await handleGetOrders(supabaseClient, req, requestId, bodyParams)
@@ -831,6 +834,187 @@ async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: s
 
   } catch (error) {
     log.error('Error placing multiple orders', error, { requestId, duration: Date.now() - handlerStartTime })
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+}
+
+// =============================================================================
+// SYNC ORDERS FROM ALPACA
+// =============================================================================
+
+async function handleSyncOrders(supabaseClient: any, req: Request, requestId: string, bodyParams: any = {}) {
+  const handlerStartTime = Date.now()
+
+  try {
+    // Validate authentication
+    const authHeader = req.headers.get('authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Get user from JWT
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    )
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid authentication' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    log.info('Syncing orders from Alpaca', { requestId, userId: user.id })
+
+    // Get Alpaca API credentials
+    const alpacaApiKey = Deno.env.get('ALPACA_API_KEY')
+    const alpacaSecretKey = Deno.env.get('ALPACA_SECRET_KEY')
+    const alpacaPaper = Deno.env.get('ALPACA_PAPER') === 'true'
+    const alpacaBaseUrl = Deno.env.get('ALPACA_BASE_URL') || (alpacaPaper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets')
+
+    if (!alpacaApiKey || !alpacaSecretKey) {
+      return new Response(
+        JSON.stringify({ error: 'Alpaca API credentials not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Fetch orders from Alpaca
+    const status = bodyParams.status || 'all' // all, open, closed
+    const limit = bodyParams.limit || 100
+    const alpacaUrl = `${alpacaBaseUrl}/v2/orders?status=${status}&limit=${limit}`
+
+    log.info('Fetching orders from Alpaca', { requestId, url: alpacaUrl })
+
+    const response = await fetch(alpacaUrl, {
+      method: 'GET',
+      headers: {
+        'APCA-API-KEY-ID': alpacaApiKey,
+        'APCA-API-SECRET-KEY': alpacaSecretKey,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      log.error('Alpaca API error', { requestId, status: response.status, error: errorText })
+      return new Response(
+        JSON.stringify({ error: `Alpaca API error: ${response.status}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const alpacaOrders = await response.json()
+    log.info('Fetched orders from Alpaca', { requestId, count: alpacaOrders.length })
+
+    // Sync each order to database
+    let synced = 0
+    let skipped = 0
+    let errors = 0
+
+    for (const order of alpacaOrders) {
+      try {
+        // Check if order already exists
+        const { data: existing } = await supabaseClient
+          .from('trading_orders')
+          .select('id')
+          .eq('alpaca_order_id', order.id)
+          .maybeSingle()
+
+        if (existing) {
+          // Update existing order
+          const { error: updateError } = await supabaseClient
+            .from('trading_orders')
+            .update({
+              status: order.status,
+              filled_quantity: parseFloat(order.filled_qty) || 0,
+              filled_avg_price: parseFloat(order.filled_avg_price) || null,
+              filled_at: order.filled_at || null,
+              canceled_at: order.canceled_at || null,
+              expired_at: order.expired_at || null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('alpaca_order_id', order.id)
+
+          if (updateError) {
+            log.warn('Failed to update order', { orderId: order.id, error: updateError.message })
+            errors++
+          } else {
+            skipped++ // Updated existing
+          }
+        } else {
+          // Insert new order
+          const orderRecord = {
+            user_id: user.id,
+            alpaca_order_id: order.id,
+            alpaca_client_order_id: order.client_order_id || null,
+            ticker: order.symbol,
+            side: order.side,
+            quantity: parseFloat(order.qty) || 0,
+            order_type: order.type,
+            limit_price: parseFloat(order.limit_price) || null,
+            stop_price: parseFloat(order.stop_price) || null,
+            status: order.status,
+            trading_mode: alpacaPaper ? 'paper' : 'live',
+            submitted_at: order.submitted_at || null,
+            filled_quantity: parseFloat(order.filled_qty) || 0,
+            filled_avg_price: parseFloat(order.filled_avg_price) || null,
+            filled_at: order.filled_at || null,
+            canceled_at: order.canceled_at || null,
+            expired_at: order.expired_at || null,
+            broker: 'alpaca'
+          }
+
+          const { error: insertError } = await supabaseClient
+            .from('trading_orders')
+            .insert(orderRecord)
+
+          if (insertError) {
+            log.error('Failed to insert order', { orderId: order.id, error: insertError.message, code: insertError.code })
+            errors++
+          } else {
+            synced++
+          }
+        }
+      } catch (orderError) {
+        log.error('Error processing order', { orderId: order.id, error: orderError.message })
+        errors++
+      }
+    }
+
+    const duration = Date.now() - handlerStartTime
+
+    log.info('Orders sync completed', {
+      requestId,
+      total: alpacaOrders.length,
+      synced,
+      skipped,
+      errors,
+      duration
+    })
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: `Synced ${synced} new orders, updated ${skipped}, ${errors} errors`,
+        summary: {
+          total: alpacaOrders.length,
+          synced,
+          updated: skipped,
+          errors
+        }
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+
+  } catch (error) {
+    log.error('Error syncing orders', error, { requestId, duration: Date.now() - handlerStartTime })
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
