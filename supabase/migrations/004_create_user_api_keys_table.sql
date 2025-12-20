@@ -44,6 +44,28 @@ CREATE TABLE IF NOT EXISTS user_api_keys (
     last_used_at TIMESTAMPTZ
 );
 
+-- Add missing columns if table already exists with older schema
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS user_name VARCHAR(255);
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS paper_api_key TEXT;
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS paper_secret_key TEXT;
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS paper_validated_at TIMESTAMPTZ;
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS live_api_key TEXT;
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS live_secret_key TEXT;
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS live_validated_at TIMESTAMPTZ;
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS supabase_url TEXT;
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS supabase_anon_key TEXT;
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS supabase_service_role_key TEXT;
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS supabase_validated_at TIMESTAMPTZ;
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS quiverquant_api_key TEXT;
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS quiverquant_validated_at TIMESTAMPTZ;
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS subscription_tier VARCHAR(20) DEFAULT 'free';
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(20) DEFAULT 'active';
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(255);
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(255);
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_user_api_keys_email ON user_api_keys(user_email);
 CREATE INDEX IF NOT EXISTS idx_user_api_keys_subscription ON user_api_keys(subscription_tier, subscription_status);
@@ -56,6 +78,11 @@ CREATE TRIGGER update_user_api_keys_updated_at
 
 -- RLS (Row Level Security) policies
 ALTER TABLE user_api_keys ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist (for idempotent migration)
+DROP POLICY IF EXISTS "Users can view their own API keys" ON user_api_keys;
+DROP POLICY IF EXISTS "Users can insert their own API keys" ON user_api_keys;
+DROP POLICY IF EXISTS "Users can update their own API keys" ON user_api_keys;
 
 -- Users can only see and modify their own API keys
 CREATE POLICY "Users can view their own API keys" ON user_api_keys

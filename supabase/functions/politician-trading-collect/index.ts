@@ -16,15 +16,64 @@ interface ScrapingConfig {
 class PoliticianTradingCollector {
   private supabase: any
   private config: ScrapingConfig
-  
+  private politicianCache: Map<string, string> = new Map() // name -> id cache
+
   constructor(supabaseClient: any) {
     this.supabase = supabaseClient
     this.config = {
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-      timeout: 30000,
-      maxRetries: 3,
-      requestDelay: 1000
+      timeout: 60000, // Increased from 30s to 60s
+      maxRetries: 2,  // Reduced retries to fail faster
+      requestDelay: 2000
     }
+  }
+
+  // Get or create a politician and return their UUID
+  async getOrCreatePolitician(name: string, role: string = 'Unknown', party: string = 'Unknown'): Promise<string | null> {
+    // Check cache first
+    const cacheKey = `${name}:${role}`
+    if (this.politicianCache.has(cacheKey)) {
+      return this.politicianCache.get(cacheKey)!
+    }
+
+    // Parse name into first/last
+    const parts = name.trim().split(' ')
+    const firstName = parts[0] || 'Unknown'
+    const lastName = parts.slice(1).join(' ') || 'Unknown'
+
+    // Try to find existing politician
+    const { data: existing } = await this.supabase
+      .from('politicians')
+      .select('id')
+      .eq('full_name', name)
+      .maybeSingle()
+
+    if (existing) {
+      this.politicianCache.set(cacheKey, existing.id)
+      return existing.id
+    }
+
+    // Create new politician
+    const { data: newPolitician, error } = await this.supabase
+      .from('politicians')
+      .insert({
+        first_name: firstName,
+        last_name: lastName,
+        full_name: name,
+        role: role,
+        party: party,
+        is_active: true
+      })
+      .select('id')
+      .single()
+
+    if (error) {
+      console.error(`Failed to create politician ${name}:`, error.message)
+      return null
+    }
+
+    this.politicianCache.set(cacheKey, newPolitician.id)
+    return newPolitician.id
   }
 
   async fetchWithRetry(url: string, options: RequestInit = {}): Promise<Response | null> {
@@ -71,31 +120,41 @@ class PoliticianTradingCollector {
     console.log("Collecting US House financial disclosures...")
     const baseUrl = "https://disclosures-clerk.house.gov"
     const searchUrl = `${baseUrl}/FinancialDisclosure`
-    
+
     const response = await this.fetchWithRetry(searchUrl)
-    
+
     if (!response) {
-      throw new Error("Failed to fetch US House disclosures")
+      console.warn("Failed to fetch US House disclosures, skipping...")
+      return { source: "us_house", disclosures_found: 0, disclosures: [] }
     }
 
     const html = await response.text()
     const disclosures = []
-    
+
+    // Get or create a placeholder politician for House members
+    const politicianId = await this.getOrCreatePolitician("House Member (Placeholder)", "Representative", "Unknown")
+    if (!politicianId) {
+      console.warn("Could not create House placeholder politician")
+      return { source: "us_house", disclosures_found: 0, disclosures: [] }
+    }
+
     // Look for disclosure links in the HTML
     const linkMatches = html.match(/href="([^"]*disclosure[^"]*)"/gi) || []
-    
-    for (const linkMatch of linkMatches.slice(0, 10)) { // Limit to 10 for demo
+
+    for (const linkMatch of linkMatches.slice(0, 5)) { // Limit to 5
       const href = linkMatch.match(/href="([^"]*)"/)
       if (href && href[1]) {
         const fullUrl = href[1].startsWith('http') ? href[1] : `${baseUrl}${href[1]}`
         disclosures.push({
           source_url: fullUrl,
-          politician_name: "House Member",
+          politician_id: politicianId,
           transaction_date: new Date().toISOString(),
+          disclosure_date: new Date().toISOString(),
           asset_name: "Unknown Asset",
           transaction_type: "purchase",
           amount_range_min: 1000,
           amount_range_max: 15000,
+          status: 'pending',
           raw_data: {
             source: "us_house",
             url: fullUrl
@@ -115,31 +174,41 @@ class PoliticianTradingCollector {
     console.log("Collecting US Senate financial disclosures...")
     const baseUrl = "https://efdsearch.senate.gov"
     const searchUrl = `${baseUrl}/search/`
-    
+
     const response = await this.fetchWithRetry(searchUrl)
-    
+
     if (!response) {
-      throw new Error("Failed to fetch US Senate disclosures")
+      console.warn("Failed to fetch US Senate disclosures, skipping...")
+      return { source: "us_senate", disclosures_found: 0, disclosures: [] }
     }
 
     const html = await response.text()
     const disclosures = []
-    
+
+    // Get or create a placeholder politician for Senate members
+    const politicianId = await this.getOrCreatePolitician("Senate Member (Placeholder)", "Senate", "Unknown")
+    if (!politicianId) {
+      console.warn("Could not create Senate placeholder politician")
+      return { source: "us_senate", disclosures_found: 0, disclosures: [] }
+    }
+
     // Basic parsing for Senate data
     const linkMatches = html.match(/href="([^"]*report[^"]*)"/gi) || []
-    
-    for (const linkMatch of linkMatches.slice(0, 10)) {
+
+    for (const linkMatch of linkMatches.slice(0, 5)) {
       const href = linkMatch.match(/href="([^"]*)"/)
       if (href && href[1]) {
         const fullUrl = href[1].startsWith('http') ? href[1] : `${baseUrl}${href[1]}`
         disclosures.push({
           source_url: fullUrl,
-          politician_name: "Senate Member",
+          politician_id: politicianId,
           transaction_date: new Date().toISOString(),
+          disclosure_date: new Date().toISOString(),
           asset_name: "Unknown Asset",
           transaction_type: "sale",
           amount_range_min: 15001,
           amount_range_max: 50000,
+          status: 'pending',
           raw_data: {
             source: "us_senate",
             url: fullUrl
@@ -149,7 +218,7 @@ class PoliticianTradingCollector {
     }
 
     return {
-      source: "us_senate", 
+      source: "us_senate",
       disclosures_found: disclosures.length,
       disclosures: disclosures
     }
@@ -158,31 +227,41 @@ class PoliticianTradingCollector {
   async collectQuiverQuantData() {
     console.log("Collecting QuiverQuant congress trading data...")
     const url = "https://www.quiverquant.com/congresstrading/"
-    
+
     const response = await this.fetchWithRetry(url)
-    
+
     if (!response) {
-      throw new Error("Failed to fetch QuiverQuant data")
+      console.warn("Failed to fetch QuiverQuant data, skipping...")
+      return { source: "quiverquant", disclosures_found: 0, disclosures: [] }
     }
 
     const html = await response.text()
     const disclosures = []
-    
+
+    // Get or create a placeholder politician
+    const politicianId = await this.getOrCreatePolitician("Congress Member (QuiverQuant)", "Congress", "Unknown")
+    if (!politicianId) {
+      console.warn("Could not create QuiverQuant placeholder politician")
+      return { source: "quiverquant", disclosures_found: 0, disclosures: [] }
+    }
+
     // Basic parsing for QuiverQuant data
     const tableMatches = html.match(/<tr[^>]*>.*?<\/tr>/gi) || []
-    
-    for (const row of tableMatches.slice(0, 5)) { // Limit for demo
+
+    for (const row of tableMatches.slice(0, 3)) { // Limit to 3
       disclosures.push({
         source_url: url,
-        politician_name: "QuiverQuant Politician",
+        politician_id: politicianId,
         transaction_date: new Date().toISOString(),
+        disclosure_date: new Date().toISOString(),
         asset_name: "QQ Asset",
         transaction_type: "purchase",
         amount_range_min: 1000,
         amount_range_max: 15000,
+        status: 'pending',
         raw_data: {
           source: "quiverquant",
-          html_row: row.substring(0, 200) // First 200 chars
+          html_row: row.substring(0, 200)
         }
       })
     }
@@ -196,32 +275,44 @@ class PoliticianTradingCollector {
 
   async collectEUParliamentData() {
     console.log("Collecting EU Parliament declarations...")
-    const url = "https://www.europarl.europa.eu/meps/en/declarations"
-    
+    // NOTE: The old URL returns 404, trying the new structure
+    // The EU Parliament website has changed structure
+    const url = "https://www.europarl.europa.eu/meps/en/full-list/all"
+
     const response = await this.fetchWithRetry(url)
-    
+
     if (!response) {
-      throw new Error("Failed to fetch EU Parliament data")
+      console.warn("Failed to fetch EU Parliament data, skipping... (URL may have changed)")
+      return { source: "eu_parliament", disclosures_found: 0, disclosures: [] }
     }
 
     const html = await response.text()
     const disclosures = []
-    
+
+    // Get or create a placeholder politician for EU MEPs
+    const politicianId = await this.getOrCreatePolitician("EU MEP (Placeholder)", "MEP", "Unknown")
+    if (!politicianId) {
+      console.warn("Could not create EU placeholder politician")
+      return { source: "eu_parliament", disclosures_found: 0, disclosures: [] }
+    }
+
     // Basic parsing for EU data
     const linkMatches = html.match(/href="([^"]*mep[^"]*)"/gi) || []
-    
-    for (const linkMatch of linkMatches.slice(0, 5)) {
+
+    for (const linkMatch of linkMatches.slice(0, 3)) {
       const href = linkMatch.match(/href="([^"]*)"/)
       if (href && href[1]) {
         const fullUrl = href[1].startsWith('http') ? href[1] : `https://www.europarl.europa.eu${href[1]}`
         disclosures.push({
           source_url: fullUrl,
-          politician_name: "EU MEP",
+          politician_id: politicianId,
           transaction_date: new Date().toISOString(),
+          disclosure_date: new Date().toISOString(),
           asset_name: "EU Asset",
           transaction_type: "disclosure",
           amount_range_min: 10000,
           amount_range_max: 100000,
+          status: 'pending',
           raw_data: {
             source: "eu_parliament",
             url: fullUrl
@@ -239,47 +330,62 @@ class PoliticianTradingCollector {
 
   async collectCaliforniaData() {
     console.log("Collecting California NetFile data...")
+    // NOTE: NetFile sites are often slow/unreliable, reduce expectations
     const portals = [
-      "https://public.netfile.com/pub2/?AID=SFO", // San Francisco
-      "https://public.netfile.com/pub2/?AID=LAC", // Los Angeles
+      { url: "https://public.netfile.com/pub2/?AID=SFO", jurisdiction: "San Francisco" },
+      { url: "https://public.netfile.com/pub2/?AID=LAC", jurisdiction: "Los Angeles" },
     ]
-    
+
     const allDisclosures = []
-    
+
+    // Get or create a placeholder politician for CA officials
+    const politicianId = await this.getOrCreatePolitician("California Official (Placeholder)", "State Official", "Unknown")
+    if (!politicianId) {
+      console.warn("Could not create CA placeholder politician")
+      return { source: "california", disclosures_found: 0, disclosures: [] }
+    }
+
     for (const portal of portals) {
       try {
-        const response = await this.fetchWithRetry(portal)
+        console.log(`Fetching from ${portal.jurisdiction}...`)
+        const response = await this.fetchWithRetry(portal.url)
         if (response) {
           const html = await response.text()
-          
+
           // Basic parsing for NetFile data
           const disclosures = []
           const linkMatches = html.match(/href="([^"]*report[^"]*)"/gi) || []
-          
-          for (const linkMatch of linkMatches.slice(0, 3)) {
+
+          for (const linkMatch of linkMatches.slice(0, 2)) { // Only 2 per portal
             const href = linkMatch.match(/href="([^"]*)"/)
             if (href && href[1]) {
               disclosures.push({
-                source_url: portal,
-                politician_name: "CA Official",
+                source_url: portal.url,
+                politician_id: politicianId,
                 transaction_date: new Date().toISOString(),
+                disclosure_date: new Date().toISOString(),
                 asset_name: "CA Asset",
                 transaction_type: "disclosure",
                 amount_range_min: 1000,
                 amount_range_max: 25000,
+                status: 'pending',
                 raw_data: {
                   source: "california_netfile",
-                  portal: portal,
-                  jurisdiction: portal.includes("SFO") ? "San Francisco" : "Los Angeles"
+                  portal: portal.url,
+                  jurisdiction: portal.jurisdiction
                 }
               })
             }
           }
-          
+
           allDisclosures.push(...disclosures)
+          console.log(`Found ${disclosures.length} disclosures from ${portal.jurisdiction}`)
+        } else {
+          console.warn(`Skipping ${portal.jurisdiction} - request failed/timed out`)
         }
-      } catch (error) {
-        console.error(`Error collecting from ${portal}:`, error)
+      } catch (error: any) {
+        console.warn(`Error collecting from ${portal.jurisdiction}: ${error.message}`)
+        // Continue with next portal instead of failing
       }
     }
 

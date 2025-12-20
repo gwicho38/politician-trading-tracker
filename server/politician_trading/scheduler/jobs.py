@@ -6,7 +6,7 @@ to be called by APScheduler.
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from politician_trading.utils.logger import create_logger
 from politician_trading.config import SupabaseConfig, ScrapingConfig, WorkflowConfig
@@ -124,6 +124,178 @@ def data_collection_job():
             "Scheduled data collection job failed",
             error=e,
             metadata={"duration_seconds": (datetime.now() - start_time).total_seconds()},
+        )
+        raise  # Re-raise so APScheduler marks it as failed
+
+
+def signal_generation_job():
+    """
+    Generate trading signals from politician trading disclosures.
+
+    This job is designed to be called by APScheduler.
+    It fetches disclosures with tickers, runs signal generation,
+    and saves the results to the trading_signals table.
+    """
+    logger.info("Starting scheduled signal generation job (in-app)")
+    start_time = datetime.now()
+
+    try:
+        # Import here to avoid circular imports
+        from politician_trading.signals.signal_generator import SignalGenerator
+
+        # Initialize database
+        logger.info("Initializing database connection for signal generation")
+        config = SupabaseConfig.from_env()
+        db = SupabaseClient(config)
+        logger.info("Database connection established")
+
+        # Configuration
+        lookback_days = 90  # Look at last 90 days of disclosures
+        confidence_threshold = 0.65
+        fetch_market_data = True
+
+        # Calculate date filter
+        cutoff_date = (datetime.now() - timedelta(days=lookback_days)).isoformat()
+
+        logger.info(
+            "Fetching disclosures with tickers",
+            metadata={"lookback_days": lookback_days, "cutoff_date": cutoff_date},
+        )
+
+        # Fetch disclosures with tickers from the last N days
+        query = db.client.table("trading_disclosures").select("*")
+        query = query.not_.is_("asset_ticker", "null")
+        query = query.neq("asset_ticker", "")
+        query = query.gte("transaction_date", cutoff_date)
+        query = query.order("transaction_date", desc=True)
+
+        response = query.execute()
+        disclosures = response.data or []
+
+        logger.info(
+            "Fetched disclosures",
+            metadata={"count": len(disclosures)},
+        )
+
+        if not disclosures:
+            logger.info("No disclosures found for signal generation")
+            return
+
+        # Group by ticker
+        disclosures_by_ticker = {}
+        for d in disclosures:
+            ticker = d.get("asset_ticker")
+            if ticker and ticker not in ["--", "N/A", ""]:
+                if ticker not in disclosures_by_ticker:
+                    disclosures_by_ticker[ticker] = []
+                disclosures_by_ticker[ticker].append(d)
+
+        logger.info(
+            "Grouped disclosures by ticker",
+            metadata={"unique_tickers": len(disclosures_by_ticker)},
+        )
+
+        # Initialize signal generator
+        generator = SignalGenerator(
+            model_version="v1.0",
+            use_ml=False,  # Use heuristics only for reliability
+            confidence_threshold=confidence_threshold,
+        )
+
+        # Generate signals
+        logger.info("Generating trading signals...")
+        signals = generator.generate_signals(
+            disclosures_by_ticker,
+            fetch_market_data=fetch_market_data,
+        )
+
+        logger.info(
+            "Generated signals",
+            metadata={"count": len(signals)},
+        )
+
+        if not signals:
+            logger.info("No signals met the confidence threshold")
+            return
+
+        # Deactivate old signals before inserting new ones
+        logger.info("Deactivating previous active signals...")
+        try:
+            db.client.table("trading_signals").update({"is_active": False}).eq(
+                "is_active", True
+            ).execute()
+            logger.info("Previous signals deactivated")
+        except Exception as e:
+            logger.warning(f"Could not deactivate old signals: {e}")
+
+        # Save signals to database
+        saved = 0
+        errors = 0
+
+        for signal in signals:
+            try:
+                data = {
+                    "ticker": signal.ticker,
+                    "asset_name": signal.asset_name,
+                    "signal_type": signal.signal_type.value,
+                    "signal_strength": signal.signal_strength.value,
+                    "confidence_score": signal.confidence_score,
+                    "target_price": float(signal.target_price) if signal.target_price else None,
+                    "stop_loss": float(signal.stop_loss) if signal.stop_loss else None,
+                    "take_profit": float(signal.take_profit) if signal.take_profit else None,
+                    "generated_at": signal.generated_at.isoformat(),
+                    "valid_until": signal.valid_until.isoformat() if signal.valid_until else None,
+                    "model_version": signal.model_version,
+                    "politician_activity_count": signal.politician_activity_count,
+                    "total_transaction_volume": (
+                        float(signal.total_transaction_volume)
+                        if signal.total_transaction_volume
+                        else None
+                    ),
+                    "buy_sell_ratio": signal.buy_sell_ratio,
+                    "features": signal.features,
+                    "disclosure_ids": getattr(signal, "disclosure_ids", []),
+                    "is_active": True,
+                    "notes": f"Generated by scheduled job at {datetime.now().isoformat()}",
+                }
+
+                db.client.table("trading_signals").insert(data).execute()
+                saved += 1
+
+            except Exception as e:
+                errors += 1
+                logger.error(
+                    f"Failed to save signal for {signal.ticker}",
+                    error=e,
+                )
+
+        duration = (datetime.now() - start_time).total_seconds()
+
+        # Log summary
+        buy_signals = [s for s in signals if s.signal_type.value in ["buy", "strong_buy"]]
+        sell_signals = [s for s in signals if s.signal_type.value in ["sell", "strong_sell"]]
+
+        logger.info(
+            "✅ Signal generation completed successfully",
+            metadata={
+                "total_signals": len(signals),
+                "buy_signals": len(buy_signals),
+                "sell_signals": len(sell_signals),
+                "saved": saved,
+                "errors": errors,
+                "duration_seconds": duration,
+            },
+        )
+
+        if errors > 0:
+            raise Exception(f"Signal generation completed with {errors} errors saving signals")
+
+    except Exception as e:
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.error(
+            "❌ Scheduled signal generation job failed",
+            error=e,
+            metadata={"duration_seconds": duration},
         )
         raise  # Re-raise so APScheduler marks it as failed
 

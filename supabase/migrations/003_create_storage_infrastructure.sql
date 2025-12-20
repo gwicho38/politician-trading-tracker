@@ -118,6 +118,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Drop trigger if exists to make migration idempotent
+DROP TRIGGER IF EXISTS trigger_update_stored_files_updated_at ON stored_files;
+
 CREATE TRIGGER trigger_update_stored_files_updated_at
     BEFORE UPDATE ON stored_files
     FOR EACH ROW
@@ -126,6 +129,16 @@ CREATE TRIGGER trigger_update_stored_files_updated_at
 -- ============================================================================
 -- 6. STORAGE BUCKET POLICIES
 -- ============================================================================
+
+-- Drop existing policies if they exist (for idempotent migration)
+DROP POLICY IF EXISTS "Service role can upload PDFs" ON storage.objects;
+DROP POLICY IF EXISTS "Service role can read PDFs" ON storage.objects;
+DROP POLICY IF EXISTS "Service role can upload API responses" ON storage.objects;
+DROP POLICY IF EXISTS "Service role can read API responses" ON storage.objects;
+DROP POLICY IF EXISTS "Service role can upload parsed data" ON storage.objects;
+DROP POLICY IF EXISTS "Service role can read parsed data" ON storage.objects;
+DROP POLICY IF EXISTS "Service role can upload HTML" ON storage.objects;
+DROP POLICY IF EXISTS "Service role can read HTML" ON storage.objects;
 
 -- raw-pdfs: Service role can insert/select
 CREATE POLICY "Service role can upload PDFs"

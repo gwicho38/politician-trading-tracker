@@ -69,15 +69,23 @@ const TradeCard = ({ trade, delay = 0 }: TradeCardProps) => {
           <div className="text-right">
             <p className="text-xs text-muted-foreground">Filed</p>
             <p className="text-sm font-medium text-foreground">
-              {new Date(trade.filingDate).toLocaleDateString('en-US', { 
-                month: 'short', 
-                day: 'numeric' 
+              {new Date(trade.filingDate).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric'
               })}
             </p>
           </div>
-          <button className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors opacity-0 group-hover:opacity-100">
-            <ExternalLink className="h-4 w-4" />
-          </button>
+          {trade.sourceUrl && (
+            <a
+              href={trade.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
+              title="View original disclosure document"
+            >
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          )}
         </div>
       </div>
     </div>

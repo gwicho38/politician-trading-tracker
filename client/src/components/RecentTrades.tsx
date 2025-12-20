@@ -64,23 +64,25 @@ const RecentTrades = () => {
           </div>
         ) : trades && trades.length > 0 ? (
           trades.map((trade, index) => (
-            <TradeCard 
-              key={trade.id} 
+            <TradeCard
+              key={trade.id}
               trade={{
                 id: trade.id,
                 politicianId: trade.politician_id,
                 politicianName: trade.politician?.name || 'Unknown',
                 party: (trade.politician?.party as 'D' | 'R' | 'I' | 'Other') || 'Other',
                 jurisdiction: trade.politician?.jurisdiction_id || '',
-                ticker: trade.ticker,
-                company: trade.company,
-                type: trade.trade_type as 'buy' | 'sell',
+                ticker: trade.ticker || trade.asset_ticker || '',
+                company: trade.company || trade.asset_name || '',
+                type: (trade.trade_type === 'buy' || trade.trade_type === 'sell' ? trade.trade_type : 'buy') as 'buy' | 'sell',
                 amount: trade.amount_range,
                 estimatedValue: trade.estimated_value,
-                filingDate: trade.filing_date,
+                filingDate: trade.filing_date || trade.disclosure_date,
                 transactionDate: trade.transaction_date,
-              }} 
-              delay={index * 50} 
+                sourceUrl: trade.source_url || undefined,
+                sourceDocumentId: trade.source_document_id || undefined,
+              }}
+              delay={index * 50}
             />
           ))
         ) : (

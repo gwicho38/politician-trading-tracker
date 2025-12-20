@@ -130,6 +130,19 @@ serve(async (req) => {
 
     let response: Response
 
+    // Parse body for POST requests
+    let bodyParams: any = {}
+    if (req.method === 'POST') {
+      try {
+        bodyParams = await req.clone().json()
+        if (bodyParams.action) {
+          action = bodyParams.action
+        }
+      } catch {
+        // Body parsing failed, use path
+      }
+    }
+
     switch (action) {
       case 'get-portfolio':
       case 'portfolio':
@@ -140,6 +153,9 @@ serve(async (req) => {
         break
       case 'get-account-info':
         response = await handleGetAccountInfo(supabaseClient, req, requestId)
+        break
+      case 'place-order':
+        response = await handlePlaceOrder(supabaseClient, req, requestId, bodyParams)
         break
       default:
         log.warn('Invalid endpoint requested', { requestId, path, action })
@@ -293,6 +309,192 @@ async function handleGetPortfolio(supabaseClient: any, req: Request, requestId: 
     )
 
     return errorResponse
+  }
+}
+
+async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: string, bodyParams: any) {
+  const handlerStartTime = Date.now()
+
+  try {
+    log.info('Placing order - handler started', {
+      requestId,
+      handler: 'place-order',
+      params: bodyParams
+    })
+
+    // Validate authentication
+    const authHeader = req.headers.get('authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required' }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    // Get user from JWT
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    )
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid authentication' }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    // Validate order parameters
+    const { ticker, quantity, side, order_type, limit_price, trading_mode } = bodyParams
+
+    if (!ticker || !quantity || !side) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields: ticker, quantity, side' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    // Get Alpaca API credentials from environment
+    const alpacaApiKey = Deno.env.get('ALPACA_API_KEY')
+    const alpacaSecretKey = Deno.env.get('ALPACA_SECRET_KEY')
+    const alpacaPaper = Deno.env.get('ALPACA_PAPER') === 'true'
+    const alpacaBaseUrl = Deno.env.get('ALPACA_BASE_URL')
+
+    if (!alpacaApiKey || !alpacaSecretKey) {
+      log.error('Missing Alpaca API credentials', { requestId })
+      return new Response(
+        JSON.stringify({ error: 'Alpaca API credentials not configured' }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    // Prepare Alpaca order payload
+    const orderPayload: any = {
+      symbol: ticker.toUpperCase(),
+      qty: String(quantity),
+      side: side.toLowerCase(),
+      type: (order_type || 'market').toLowerCase(),
+      time_in_force: 'day'
+    }
+
+    // Add limit price for limit orders
+    if (order_type === 'limit' && limit_price) {
+      orderPayload.limit_price = String(limit_price)
+    }
+
+    log.info('Calling Alpaca API to place order', { requestId, orderPayload })
+
+    // Call Alpaca API to place order
+    const baseUrl = alpacaBaseUrl || (alpacaPaper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets')
+    const alpacaResponse = await fetch(`${baseUrl}/v2/orders`, {
+      method: 'POST',
+      headers: {
+        'APCA-API-KEY-ID': alpacaApiKey,
+        'APCA-API-SECRET-KEY': alpacaSecretKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(orderPayload)
+    })
+
+    const alpacaData = await alpacaResponse.json()
+
+    if (!alpacaResponse.ok) {
+      log.error('Alpaca order placement failed', { requestId, status: alpacaResponse.status, error: alpacaData })
+      return new Response(
+        JSON.stringify({
+          error: alpacaData.message || 'Failed to place order with Alpaca',
+          details: alpacaData
+        }),
+        {
+          status: alpacaResponse.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    log.info('Alpaca order placed successfully', { requestId, orderId: alpacaData.id })
+
+    // Save order to database
+    const orderRecord = {
+      user_id: user.id,
+      ticker: ticker.toUpperCase(),
+      side: side.toLowerCase(),
+      quantity: quantity,
+      order_type: order_type || 'market',
+      limit_price: limit_price || null,
+      status: alpacaData.status || 'new',
+      filled_qty: parseFloat(alpacaData.filled_qty) || 0,
+      filled_avg_price: alpacaData.filled_avg_price ? parseFloat(alpacaData.filled_avg_price) : null,
+      trading_mode: trading_mode || 'paper',
+      alpaca_order_id: alpacaData.id,
+      submitted_at: alpacaData.submitted_at || new Date().toISOString()
+    }
+
+    const { data: insertedOrder, error: insertError } = await supabaseClient
+      .from('trading_orders')
+      .insert(orderRecord)
+      .select()
+      .single()
+
+    if (insertError) {
+      log.warn('Failed to save order to database', { requestId, error: insertError.message })
+      // Don't fail the request - order was placed successfully
+    } else {
+      log.info('Order saved to database', { requestId, orderId: insertedOrder?.id })
+    }
+
+    const responseData = {
+      success: true,
+      order: {
+        id: insertedOrder?.id || alpacaData.id,
+        alpaca_order_id: alpacaData.id,
+        ticker: ticker.toUpperCase(),
+        side: side,
+        quantity: quantity,
+        order_type: order_type || 'market',
+        status: alpacaData.status,
+        submitted_at: alpacaData.submitted_at
+      }
+    }
+
+    log.info('Order placed successfully - handler completed', {
+      requestId,
+      handler: 'place-order',
+      duration: Date.now() - handlerStartTime,
+      orderId: alpacaData.id
+    })
+
+    return new Response(
+      JSON.stringify(responseData),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
+  } catch (error) {
+    log.error('Error in handlePlaceOrder', error, {
+      requestId,
+      handler: 'place-order',
+      duration: Date.now() - handlerStartTime
+    })
+
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
   }
 }
 

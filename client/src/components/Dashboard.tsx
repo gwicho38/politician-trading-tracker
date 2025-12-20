@@ -39,16 +39,16 @@ const Dashboard = ({ jurisdictionId }: DashboardProps) => {
             <StatsCard
               title="Total Trades"
               value={stats?.total_trades?.toLocaleString() || '0'}
-              change="+12% from last month"
-              changeType="positive"
+              change={`Avg ${formatCurrency(stats?.average_trade_size || 0)} per trade`}
+              changeType="neutral"
               icon={TrendingUp}
               delay={0}
             />
             <StatsCard
               title="Total Volume"
               value={formatCurrency(stats?.total_volume || 0)}
-              change="+8.2% from last month"
-              changeType="positive"
+              change="Disclosed trading value"
+              changeType="neutral"
               icon={DollarSign}
               delay={100}
             />
