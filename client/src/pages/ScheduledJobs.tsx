@@ -65,123 +65,118 @@ const ScheduledJobs = () => {
     };
   }, [autoRefresh, refreshInterval]);
 
+  const formatSchedule = (scheduleType: string, scheduleValue: string): string => {
+    if (scheduleType === 'interval') {
+      const seconds = parseInt(scheduleValue);
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+
+      if (hours >= 24) {
+        const days = Math.floor(hours / 24);
+        return `Daily${days > 1 ? ` (every ${days} days)` : ''}`;
+      } else if (hours > 0) {
+        return `Every ${hours} hour${hours > 1 ? 's' : ''}`;
+      } else if (minutes > 0) {
+        return `Every ${minutes} minute${minutes > 1 ? 's' : ''}`;
+      } else {
+        return `Every ${seconds} seconds`;
+      }
+    } else if (scheduleType === 'cron') {
+      // Parse cron expression for display
+      const parts = scheduleValue.split(' ');
+      if (parts.length >= 5) {
+        const [minute, hour] = parts;
+        if (hour !== '*' && minute !== '*') {
+          return `Daily at ${hour}:${minute.padStart(2, '0')} AM`;
+        }
+      }
+      return scheduleValue;
+    }
+    return scheduleValue;
+  };
+
   const loadJobs = async () => {
     try {
-      // Load jobs from database (would come from scheduler API in real implementation)
-      // For now, we'll use mock data since we don't have a jobs table yet
-      const mockJobs: ScheduledJob[] = [
-        {
-          id: 'data-collection',
-          name: 'Data Collection',
-          description: 'Collect politician trading data from various sources',
-          type: 'data_collection',
-          schedule: 'Every 6 hours',
-          is_paused: false,
-          next_run: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-          last_execution: {
-            timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-            status: 'success',
-            duration_seconds: 45.2,
-            logs: [
-              '2024-01-15 10:30:15 INFO Starting data collection',
-              '2024-01-15 10:30:20 INFO Connecting to data sources',
-              '2024-01-15 10:30:35 INFO Processing 150 records',
-              '2024-01-15 10:30:45 INFO Data collection completed successfully'
-            ]
-          }
-        },
-        {
-          id: 'ticker-backfill',
-          name: 'Ticker Backfill',
-          description: 'Backfill missing ticker data for existing records',
-          type: 'maintenance',
-          schedule: 'Daily at 2 AM',
-          is_paused: false,
-          next_run: new Date(Date.now() + 16 * 60 * 60 * 1000).toISOString(),
-          last_execution: {
-            timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-            status: 'success',
-            duration_seconds: 120.5,
-            logs: [
-              '2024-01-15 02:00:00 INFO Starting ticker backfill',
-              '2024-01-15 02:00:05 INFO Found 25 missing tickers',
-              '2024-01-15 02:01:45 INFO Backfill completed successfully'
-            ]
-          }
-        },
-        {
-          id: 'signal-generation',
-          name: 'Signal Generation',
-          description: 'Generate trading signals based on collected data',
-          type: 'analysis',
-          schedule: 'Every 2 hours',
-          is_paused: true,
-          last_execution: {
-            timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-            status: 'error',
-            duration_seconds: 15.3,
-            error: 'Database connection timeout',
-            logs: [
-              '2024-01-14 08:00:00 INFO Starting signal generation',
-              '2024-01-14 08:00:05 ERROR Database connection failed',
-              '2024-01-14 08:00:15 INFO Retrying connection...',
-              '2024-01-14 08:00:20 ERROR Connection timeout after 3 attempts'
-            ]
-          }
-        }
-      ];
+      setLoading(true);
 
-      setJobs(mockJobs);
-      setSchedulerRunning(true); // Mock scheduler status
+      // Fetch jobs from the scheduled_jobs table
+      const { data: jobsData, error: jobsError } = await supabase
+        .from('scheduled_jobs')
+        .select('*')
+        .order('job_name');
+
+      if (jobsError) {
+        console.error('Error fetching jobs:', jobsError);
+        toast.error('Failed to load scheduled jobs');
+        return;
+      }
+
+      // For each job, fetch the last execution
+      const jobsWithExecutions: ScheduledJob[] = await Promise.all(
+        (jobsData || []).map(async (job) => {
+          // Fetch last execution for this job
+          // Using maybeSingle() to avoid 406 errors when no executions exist for this job
+          const { data: execData } = await supabase
+            .from('job_executions')
+            .select('*')
+            .eq('job_id', job.job_id)
+            .order('started_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          return {
+            id: job.job_id,
+            name: job.job_name,
+            description: job.metadata?.description || '',
+            type: job.schedule_type,
+            schedule: formatSchedule(job.schedule_type, job.schedule_value),
+            is_paused: !job.enabled,
+            next_run: job.next_scheduled_run,
+            last_execution: execData ? {
+              timestamp: execData.started_at,
+              status: execData.status,
+              duration_seconds: execData.duration_seconds,
+              error: execData.error_message,
+              logs: execData.logs ? execData.logs.split('\n').filter((l: string) => l.trim()) : []
+            } : undefined
+          };
+        })
+      );
+
+      setJobs(jobsWithExecutions);
+      setSchedulerRunning(jobsWithExecutions.length > 0);
     } catch (error) {
       console.error('Error loading jobs:', error);
       toast.error('Failed to load scheduled jobs');
+    } finally {
+      setLoading(false);
     }
   };
 
   const loadExecutions = async () => {
     try {
-      // Load recent executions (would come from scheduler API in real implementation)
-      const mockExecutions: JobExecution[] = [
-        {
-          job_id: 'data-collection',
-          timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-          status: 'success',
-          duration_seconds: 45.2,
-          logs: [
-            '2024-01-15 10:30:15 INFO Starting data collection',
-            '2024-01-15 10:30:20 INFO Connecting to data sources',
-            '2024-01-15 10:30:35 INFO Processing 150 records',
-            '2024-01-15 10:30:45 INFO Data collection completed successfully'
-          ]
-        },
-        {
-          job_id: 'ticker-backfill',
-          timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-          status: 'success',
-          duration_seconds: 120.5,
-          logs: [
-            '2024-01-15 02:00:00 INFO Starting ticker backfill',
-            '2024-01-15 02:00:05 INFO Found 25 missing tickers',
-            '2024-01-15 02:01:45 INFO Backfill completed successfully'
-          ]
-        },
-        {
-          job_id: 'signal-generation',
-          timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          status: 'error',
-          duration_seconds: 15.3,
-          error: 'Database connection timeout',
-          logs: [
-            '2024-01-14 08:00:00 INFO Starting signal generation',
-            '2024-01-14 08:00:05 ERROR Database connection failed',
-            '2024-01-14 08:00:15 INFO Retrying connection...',
-            '2024-01-14 08:00:20 ERROR Connection timeout after 3 attempts'
-          ]
-        }
-      ];
+      // Fetch recent job executions from the database
+      const { data: execData, error: execError } = await supabase
+        .from('job_executions')
+        .select('*')
+        .order('started_at', { ascending: false })
+        .limit(50);
 
-      setExecutions(mockExecutions);
+      if (execError) {
+        console.error('Error fetching executions:', execError);
+        return;
+      }
+
+      const formattedExecutions: JobExecution[] = (execData || []).map((exec) => ({
+        job_id: exec.job_id,
+        timestamp: exec.started_at,
+        status: exec.status,
+        duration_seconds: exec.duration_seconds,
+        error: exec.error_message,
+        logs: exec.logs ? exec.logs.split('\n').filter((l: string) => l.trim()) : []
+      }));
+
+      setExecutions(formattedExecutions);
     } catch (error) {
       console.error('Error loading executions:', error);
     }
