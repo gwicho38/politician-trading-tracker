@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { usePagination } from '@/hooks/usePagination';
+import { PaginationControls } from '@/components/PaginationControls';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +26,15 @@ const AdminUserManagement = () => {
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+  const pagination = usePagination();
+
+  // Update pagination when users change
+  useEffect(() => {
+    pagination.setTotalItems(users.length);
+  }, [users.length]);
+
+  // Paginate users
+  const paginatedUsers = users.slice(pagination.startIndex, pagination.endIndex);
 
   const fetchUsers = async () => {
     setIsLoading(true);
@@ -195,6 +206,7 @@ const AdminUserManagement = () => {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -206,7 +218,7 @@ const AdminUserManagement = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {users.map(user => (
+                {paginatedUsers.map(user => (
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">
                       {getDisplayIdentifier(user)}
@@ -241,7 +253,7 @@ const AdminUserManagement = () => {
                     </TableCell>
                   </TableRow>
                 ))}
-                {users.length === 0 && (
+                {paginatedUsers.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                       No users found
@@ -250,6 +262,12 @@ const AdminUserManagement = () => {
                 )}
               </TableBody>
             </Table>
+
+            {/* Pagination Controls */}
+            {users.length > 0 && (
+              <PaginationControls pagination={pagination} itemLabel="users" />
+            )}
+            </>
           )}
         </CardContent>
       </Card>

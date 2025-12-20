@@ -29,9 +29,11 @@ PaginationItem.displayName = "PaginationItem";
 type PaginationLinkProps = {
   isActive?: boolean;
 } & Pick<ButtonProps, "size"> &
-  React.ComponentProps<"a">;
+  Omit<React.ComponentProps<"a">, "onClick"> & {
+    onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
+  };
 
-const PaginationLink = ({ className, isActive, size = "icon", ...props }: PaginationLinkProps) => (
+const PaginationLink = ({ className, isActive, size = "icon", onClick, ...props }: PaginationLinkProps) => (
   <a
     aria-current={isActive ? "page" : undefined}
     className={cn(
@@ -39,8 +41,13 @@ const PaginationLink = ({ className, isActive, size = "icon", ...props }: Pagina
         variant: isActive ? "outline" : "ghost",
         size,
       }),
+      "cursor-pointer select-none",
       className,
     )}
+    onClick={(e) => {
+      e.preventDefault();
+      onClick?.(e);
+    }}
     {...props}
   />
 );

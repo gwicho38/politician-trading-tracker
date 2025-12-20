@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { usePagination } from '@/hooks/usePagination';
+import { PaginationControls } from '@/components/PaginationControls';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,8 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Loader2, RefreshCw, Download, ExternalLink, Clock, CheckCircle, AlertTriangle, XCircle, Minus } from 'lucide-react';
+import { Loader2, RefreshCw, Download, ExternalLink, Clock, CheckCircle, AlertTriangle, XCircle, Minus, CloudDownload } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface TradingOrder {
@@ -33,13 +34,19 @@ interface TradingOrder {
 const Orders = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [orders, setOrders] = useState<TradingOrder[]>([]);
   const [tradingMode, setTradingMode] = useState<'paper' | 'live'>('paper');
   const [hasLiveAccess, setHasLiveAccess] = useState(false);
+  const pagination = usePagination();
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [limit, setLimit] = useState(100);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    pagination.setPage(1);
+  }, [tradingMode, statusFilter]);
 
   useEffect(() => {
     if (user) {
@@ -48,7 +55,7 @@ const Orders = () => {
     } else {
       setLoading(false);
     }
-  }, [user, tradingMode, statusFilter, limit]);
+  }, [user, tradingMode, statusFilter, pagination.currentPage, pagination.pageSize]);
 
   const checkApiKeys = async () => {
     try {
@@ -59,7 +66,7 @@ const Orders = () => {
     }
   };
 
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     if (!user) return;
 
     setLoading(true);
@@ -70,7 +77,8 @@ const Orders = () => {
           action: 'get-orders',
           trading_mode: tradingMode,
           status: statusFilter,
-          limit: limit
+          limit: pagination.pageSize,
+          offset: pagination.offset
         }
       });
 
@@ -81,6 +89,7 @@ const Orders = () => {
 
       if (data?.success) {
         setOrders(data.orders || []);
+        pagination.setTotalItems(data.total || 0);
       } else {
         throw new Error(data?.error || 'Failed to fetch orders');
       }
@@ -90,11 +99,44 @@ const Orders = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, tradingMode, statusFilter, pagination.pageSize, pagination.offset]);
 
   const refreshOrders = () => {
     loadOrders();
     toast.success('Orders refreshed');
+  };
+
+  const syncFromAlpaca = async () => {
+    if (!user) return;
+
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('orders', {
+        body: {
+          action: 'sync-orders',
+          status: 'all',
+          limit: 100
+        }
+      });
+
+      if (error) {
+        console.error('Sync error:', error);
+        throw new Error(error.message || 'Failed to sync orders');
+      }
+
+      if (data?.success) {
+        toast.success(`Synced ${data.synced || 0} orders from Alpaca`);
+        // Reload orders after sync
+        await loadOrders();
+      } else {
+        throw new Error(data?.error || 'Failed to sync orders');
+      }
+    } catch (error) {
+      console.error('Error syncing orders:', error);
+      toast.error('Failed to sync orders from Alpaca');
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const getStatusIcon = (status: string) => {
@@ -147,15 +189,8 @@ const Orders = () => {
     return { pending, filled, partial, canceled, rejected };
   };
 
-  const filteredOrders = orders.filter(order => {
-    if (statusFilter === 'all') return true;
-    if (statusFilter === 'open') return ['new', 'accepted', 'pending_new', 'partially_filled'].includes(order.status);
-    if (statusFilter === 'closed') return ['filled', 'canceled', 'rejected', 'expired'].includes(order.status);
-    return order.status === statusFilter;
-  });
-
   const exportToCSV = () => {
-    const csvData = filteredOrders.map(order => ({
+    const csvData = orders.map(order => ({
       'Order ID': order.alpaca_order_id.substring(0, 8) + '...',
       'Ticker': order.ticker,
       'Type': order.order_type,
@@ -267,20 +302,34 @@ const Orders = () => {
                 View detailed order information in your Alpaca dashboard
               </p>
             </div>
-            <Button variant="outline" asChild>
-              <a
-                href={tradingMode === 'paper'
-                  ? "https://app.alpaca.markets/paper/dashboard/overview"
-                  : "https://app.alpaca.markets/live/dashboard/overview"
-                }
-                target="_blank"
-                rel="noopener noreferrer"
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={syncFromAlpaca}
+                disabled={syncing}
                 className="flex items-center gap-2"
               >
-                <ExternalLink className="h-4 w-4" />
-                View Dashboard
-              </a>
-            </Button>
+                {syncing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CloudDownload className="h-4 w-4" />
+                )}
+                {syncing ? 'Syncing...' : 'Sync from Alpaca'}
+              </Button>
+              <Button variant="outline" asChild>
+                <a
+                  href={tradingMode === 'paper'
+                    ? "https://app.alpaca.markets/paper/dashboard/overview"
+                    : "https://app.alpaca.markets/live/dashboard/overview"
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View Dashboard
+                </a>
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -347,18 +396,6 @@ const Orders = () => {
               </Select>
             </div>
 
-            <div className="flex-1">
-              <Label htmlFor="limit">Limit</Label>
-              <Input
-                id="limit"
-                type="number"
-                min={10}
-                max={500}
-                value={limit}
-                onChange={(e) => setLimit(Number(e.target.value))}
-              />
-            </div>
-
             <div className="flex items-end">
               <Button onClick={refreshOrders} variant="outline" className="flex items-center gap-2">
                 <RefreshCw className="h-4 w-4" />
@@ -369,9 +406,11 @@ const Orders = () => {
 
           <div className="flex justify-between items-center">
             <p className="text-sm text-muted-foreground">
-              Showing {filteredOrders.length} orders
+              {pagination.totalItems > 0
+                ? `Showing ${pagination.showingFrom} to ${pagination.showingTo} of ${pagination.totalItems.toLocaleString()} orders`
+                : 'No orders found'}
             </p>
-            <Button onClick={exportToCSV} variant="outline" size="sm" className="flex items-center gap-2">
+            <Button onClick={exportToCSV} variant="outline" size="sm" className="flex items-center gap-2" disabled={orders.length === 0}>
               <Download className="h-4 w-4" />
               Export CSV
             </Button>
@@ -387,7 +426,7 @@ const Orders = () => {
             <p className="text-muted-foreground">Loading orders...</p>
           </CardContent>
         </Card>
-      ) : filteredOrders.length > 0 ? (
+      ) : orders.length > 0 ? (
         <Card>
           <CardContent className="pt-6">
             <div className="overflow-x-auto">
@@ -406,7 +445,7 @@ const Orders = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredOrders.map((order) => (
+                  {orders.map((order) => (
                     <tr key={order.id} className="border-b hover:bg-muted/50">
                       <td className="p-2 font-mono text-sm">
                         {order.alpaca_order_id.substring(0, 8)}...
@@ -439,6 +478,13 @@ const Orders = () => {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls */}
+            <PaginationControls
+              pagination={pagination}
+              itemLabel="orders"
+              showPageSizeSelector={true}
+            />
           </CardContent>
         </Card>
       ) : (
@@ -454,7 +500,7 @@ const Orders = () => {
       )}
 
       {/* Order Details */}
-      {filteredOrders.length > 0 && (
+      {orders.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Order Details</CardTitle>
@@ -463,7 +509,7 @@ const Orders = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {filteredOrders.slice(0, 10).map((order) => (
+            {orders.slice(0, 10).map((order) => (
               <Card key={order.id} className="border-l-4 border-l-primary">
                 <CardContent className="pt-4">
                   <div className="flex items-center justify-between mb-4">

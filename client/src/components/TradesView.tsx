@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import TradeCard from '@/components/TradeCard';
 import { useTrades, useJurisdictions } from '@/hooks/useSupabaseData';
+import { usePagination } from '@/hooks/usePagination';
+import { PaginationControls } from '@/components/PaginationControls';
 
 interface TradesViewProps {
   jurisdictionId?: string;
@@ -12,8 +14,9 @@ interface TradesViewProps {
 
 const TradesView = ({ jurisdictionId, searchQuery }: TradesViewProps) => {
   const [filterJurisdiction, setFilterJurisdiction] = useState<string | undefined>(jurisdictionId);
-  const { data: trades, isLoading: tradesLoading } = useTrades(50, filterJurisdiction);
+  const { data: trades, isLoading: tradesLoading } = useTrades(500, filterJurisdiction);
   const { data: jurisdictions, isLoading: jurisdictionsLoading } = useJurisdictions();
+  const pagination = usePagination();
 
   const isLoading = tradesLoading || jurisdictionsLoading;
 
@@ -27,6 +30,19 @@ const TradesView = ({ jurisdictionId, searchQuery }: TradesViewProps) => {
       trade.politician?.name.toLowerCase().includes(query)
     );
   });
+
+  // Update pagination when filtered trades change
+  useEffect(() => {
+    pagination.setTotalItems(filteredTrades?.length || 0);
+  }, [filteredTrades?.length]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    pagination.setPage(1);
+  }, [filterJurisdiction, searchQuery]);
+
+  // Get paginated trades
+  const paginatedTrades = filteredTrades?.slice(pagination.startIndex, pagination.endIndex);
 
   return (
     <div className="space-y-6">
@@ -74,25 +90,27 @@ const TradesView = ({ jurisdictionId, searchQuery }: TradesViewProps) => {
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : filteredTrades && filteredTrades.length > 0 ? (
-            filteredTrades.map((trade, index) => (
-              <TradeCard 
-                key={trade.id} 
+          ) : paginatedTrades && paginatedTrades.length > 0 ? (
+            paginatedTrades.map((trade, index) => (
+              <TradeCard
+                key={trade.id}
                 trade={{
                   id: trade.id,
                   politicianId: trade.politician_id,
                   politicianName: trade.politician?.name || 'Unknown',
                   party: (trade.politician?.party as 'D' | 'R' | 'I' | 'Other') || 'Other',
                   jurisdiction: trade.politician?.jurisdiction_id || '',
-                  ticker: trade.ticker,
-                  company: trade.company,
-                  type: trade.trade_type as 'buy' | 'sell',
+                  ticker: trade.ticker || trade.asset_ticker || '',
+                  company: trade.company || trade.asset_name || '',
+                  type: (trade.trade_type === 'buy' || trade.trade_type === 'sell' ? trade.trade_type : 'buy') as 'buy' | 'sell',
                   amount: trade.amount_range,
                   estimatedValue: trade.estimated_value,
-                  filingDate: trade.filing_date,
+                  filingDate: trade.filing_date || trade.disclosure_date,
                   transactionDate: trade.transaction_date,
-                }} 
-                delay={index * 30} 
+                  sourceUrl: trade.source_url || undefined,
+                  sourceDocumentId: trade.source_document_id || undefined,
+                }}
+                delay={index * 30}
               />
             ))
           ) : (
@@ -101,6 +119,11 @@ const TradesView = ({ jurisdictionId, searchQuery }: TradesViewProps) => {
             </p>
           )}
         </div>
+
+        {/* Pagination Controls */}
+        {filteredTrades && filteredTrades.length > 0 && (
+          <PaginationControls pagination={pagination} itemLabel="trades" />
+        )}
       </div>
     </div>
   );
