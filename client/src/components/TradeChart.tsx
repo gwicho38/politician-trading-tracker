@@ -1,25 +1,63 @@
+import { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Loader2 } from 'lucide-react';
-import { useChartData } from '@/hooks/useSupabaseData';
+import { useChartData, useChartYears, ChartTimeRange } from '@/hooks/useSupabaseData';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const TradeChart = () => {
-  const { data: chartData, isLoading } = useChartData();
+  const [timeRange, setTimeRange] = useState<ChartTimeRange>('trailing12');
+  const { data: chartData, isLoading } = useChartData(timeRange);
+  const { data: availableYears } = useChartYears();
+
+  const handleTimeRangeChange = (value: string) => {
+    if (value === 'trailing12' || value === 'trailing24' || value === 'all') {
+      setTimeRange(value);
+    } else {
+      setTimeRange(parseInt(value, 10));
+    }
+  };
 
   return (
     <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-foreground">Trading Activity</h3>
-          <p className="text-sm text-muted-foreground">Buy vs Sell volume over time</p>
+          <p className="text-sm text-muted-foreground">Buy vs Sell transactions over time</p>
         </div>
-        <div className="flex items-center gap-4 text-sm">
-          <div className="flex items-center gap-2">
-            <div className="h-3 w-3 rounded-full bg-success" />
-            <span className="text-muted-foreground">Buys</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="h-3 w-3 rounded-full bg-destructive" />
-            <span className="text-muted-foreground">Sells</span>
+        <div className="flex items-center gap-4">
+          <Select
+            value={typeof timeRange === 'number' ? String(timeRange) : timeRange}
+            onValueChange={handleTimeRangeChange}
+          >
+            <SelectTrigger className="w-[140px] h-8 text-xs">
+              <SelectValue placeholder="Time range" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="trailing12">Last 12 months</SelectItem>
+              <SelectItem value="trailing24">Last 24 months</SelectItem>
+              <SelectItem value="all">All time</SelectItem>
+              {availableYears?.map((year) => (
+                <SelectItem key={year} value={String(year)}>
+                  {year}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex items-center gap-3 text-sm">
+            <div className="flex items-center gap-1.5">
+              <div className="h-2.5 w-2.5 rounded-full bg-success" />
+              <span className="text-muted-foreground text-xs">Buys</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-2.5 w-2.5 rounded-full bg-destructive" />
+              <span className="text-muted-foreground text-xs">Sells</span>
+            </div>
           </div>
         </div>
       </div>
