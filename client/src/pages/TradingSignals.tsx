@@ -9,7 +9,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Target, TrendingUp, TrendingDown, Minus, Download } from 'lucide-react';
+import { Loader2, Target, TrendingUp, TrendingDown, Minus, Download, ShoppingCart, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface TradingSignal {
@@ -28,6 +28,13 @@ interface TradingSignal {
   is_active: boolean;
 }
 
+interface CartItem {
+  signal: TradingSignal;
+  quantity: number;
+}
+
+const CART_STORAGE_KEY = 'trading-signals-cart';
+
 const TradingSignals = () => {
   const { user } = useAuth();
   const [signals, setSignals] = useState<TradingSignal[]>([]);
@@ -42,6 +49,36 @@ const TradingSignals = () => {
   // Filters
   const [signalTypeFilter, setSignalTypeFilter] = useState<string[]>(['buy', 'strong_buy', 'sell', 'strong_sell']);
   const [minConfidenceDisplay, setMinConfidenceDisplay] = useState(0.0);
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  // Cart
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [showCart, setShowCart] = useState(false);
+  const [placingOrders, setPlacingOrders] = useState(false);
+
+  // Load cart from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedCart = localStorage.getItem(CART_STORAGE_KEY);
+      if (savedCart) {
+        setCart(JSON.parse(savedCart));
+      }
+    } catch (e) {
+      console.error('Failed to load cart from localStorage:', e);
+    }
+  }, []);
+
+  // Save cart to localStorage when it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+    } catch (e) {
+      console.error('Failed to save cart to localStorage:', e);
+    }
+  }, [cart]);
 
   useEffect(() => {
     fetchSignals();
@@ -136,7 +173,103 @@ const TradingSignals = () => {
     signal.confidence_score >= minConfidenceDisplay
   );
 
+  // Pagination
+  const totalPages = Math.ceil(filteredSignals.length / pageSize);
+  const paginatedSignals = filteredSignals.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
   const topSignals = signals.slice(0, 10);
+
+  // Cart methods
+  const addToCart = (signal: TradingSignal) => {
+    const existingItem = cart.find(item => item.signal.ticker === signal.ticker);
+    if (!existingItem) {
+      setCart([...cart, { signal, quantity: 1 }]);
+      toast.success(`${signal.ticker} added to cart`);
+    } else {
+      toast.info(`${signal.ticker} is already in cart`);
+    }
+  };
+
+  const removeFromCart = (ticker: string) => {
+    setCart(cart.filter(item => item.signal.ticker !== ticker));
+    toast.success(`${ticker} removed from cart`);
+  };
+
+  const updateQuantity = (ticker: string, quantity: number) => {
+    if (quantity < 1) return;
+    setCart(cart.map(item =>
+      item.signal.ticker === ticker
+        ? { ...item, quantity }
+        : item
+    ));
+  };
+
+  const isInCart = (ticker: string) => cart.some(item => item.signal.ticker === ticker);
+
+  const getCartItem = (ticker: string) => cart.find(item => item.signal.ticker === ticker);
+
+  const placeOrders = async () => {
+    if (!user) {
+      toast.error('Please log in to place orders');
+      return;
+    }
+
+    if (cart.length === 0) {
+      toast.error('Cart is empty');
+      return;
+    }
+
+    setPlacingOrders(true);
+
+    try {
+      // Convert cart items to order format
+      const orders = cart.map(item => ({
+        ticker: item.signal.ticker,
+        side: item.signal.signal_type.includes('buy') ? 'buy' : 'sell',
+        quantity: item.quantity,
+        order_type: 'market',
+        signal_id: item.signal.id
+      }));
+
+      // Call the orders edge function
+      const { data, error } = await supabase.functions.invoke('orders', {
+        body: {
+          action: 'place-orders',
+          orders
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to place orders');
+      }
+
+      if (data.success) {
+        toast.success(data.message || `${data.summary?.success || 0} orders placed successfully`);
+        setCart([]); // Clear cart after successful orders
+        setShowCart(false);
+      } else {
+        // Show results summary
+        const failedOrders = data.results?.filter((r: any) => !r.success) || [];
+        if (failedOrders.length > 0) {
+          toast.error(`${failedOrders.length} orders failed: ${failedOrders.map((o: any) => o.ticker).join(', ')}`);
+        }
+        if (data.summary?.success > 0) {
+          toast.success(`${data.summary.success} orders placed successfully`);
+          // Remove successful orders from cart
+          const successTickers = data.results?.filter((r: any) => r.success).map((r: any) => r.ticker) || [];
+          setCart(cart.filter(item => !successTickers.includes(item.signal.ticker)));
+        }
+      }
+    } catch (error: any) {
+      console.error('Error placing orders:', error);
+      toast.error(error.message || 'Failed to place orders');
+    } finally {
+      setPlacingOrders(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -148,14 +281,30 @@ const TradingSignals = () => {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center gap-3">
-        <Target className="h-8 w-8 text-primary" />
-        <div>
-          <h1 className="text-3xl font-bold">Trading Signals</h1>
-          <p className="text-muted-foreground">
-            AI-powered trading recommendations based on politician activity
-          </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Target className="h-8 w-8 text-primary" />
+          <div>
+            <h1 className="text-3xl font-bold">Trading Signals</h1>
+            <p className="text-muted-foreground">
+              AI-powered trading recommendations based on politician activity
+            </p>
+          </div>
         </div>
+
+        <Button
+          variant="outline"
+          onClick={() => setShowCart(true)}
+          className="relative"
+        >
+          <ShoppingCart className="h-4 w-4 mr-2" />
+          Cart
+          {cart.length > 0 && (
+            <Badge className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs">
+              {cart.length}
+            </Badge>
+          )}
+        </Button>
       </div>
 
       {/* Signal Generation Parameters */}
@@ -313,9 +462,9 @@ const TradingSignals = () => {
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Active Trading Signals</CardTitle>
-            <CardDescription>
-              {filteredSignals.length} signals match your filters
-            </CardDescription>
+             <CardDescription>
+               {filteredSignals.length} signals match your filters • Page {currentPage} of {totalPages}
+             </CardDescription>
           </div>
           <Button variant="outline" size="sm">
             <Download className="h-4 w-4 mr-2" />
@@ -335,36 +484,100 @@ const TradingSignals = () => {
                   <th className="text-left p-2">B/S Ratio</th>
                   <th className="text-left p-2">Target</th>
                   <th className="text-left p-2">Generated</th>
+                  <th className="text-left p-2">Action</th>
                 </tr>
               </thead>
-              <tbody>
-                {filteredSignals.map(signal => (
-                  <tr key={signal.id} className="border-b hover:bg-muted/50">
-                    <td className="p-2 font-medium">{signal.ticker}</td>
-                    <td className="p-2">
-                      <Badge className={getSignalColor(signal.signal_type)}>
-                        <div className="flex items-center gap-1">
-                          {getSignalIcon(signal.signal_type)}
-                          {signal.signal_type.replace('_', ' ').toUpperCase()}
-                        </div>
-                      </Badge>
-                    </td>
-                    <td className="p-2">{signal.signal_strength}</td>
-                    <td className="p-2">{(signal.confidence_score * 100).toFixed(1)}%</td>
-                    <td className="p-2">{signal.politician_activity_count}</td>
-                    <td className="p-2">{signal.buy_sell_ratio.toFixed(2)}</td>
-                    <td className="p-2">
-                      {signal.target_price ? `$${signal.target_price.toFixed(2)}` : 'N/A'}
-                    </td>
-                    <td className="p-2">
-                      {new Date(signal.generated_at).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+               <tbody>
+                 {paginatedSignals.map(signal => (
+                   <tr key={signal.id} className="border-b hover:bg-muted/50">
+                     <td className="p-2 font-medium">{signal.ticker}</td>
+                     <td className="p-2">
+                       <Badge className={getSignalColor(signal.signal_type)}>
+                         <div className="flex items-center gap-1">
+                           {getSignalIcon(signal.signal_type)}
+                           {signal.signal_type.replace('_', ' ').toUpperCase()}
+                         </div>
+                       </Badge>
+                     </td>
+                     <td className="p-2">{signal.signal_strength}</td>
+                     <td className="p-2">{(signal.confidence_score * 100).toFixed(1)}%</td>
+                     <td className="p-2">{signal.politician_activity_count}</td>
+                     <td className="p-2">{signal.buy_sell_ratio.toFixed(2)}</td>
+                     <td className="p-2">
+                       {signal.target_price ? `$${signal.target_price.toFixed(2)}` : 'N/A'}
+                     </td>
+                     <td className="p-2">
+                       {new Date(signal.generated_at).toLocaleDateString()}
+                     </td>
+                     <td className="p-2">
+                       <Button
+                         variant={isInCart(signal.ticker) ? "default" : "outline"}
+                         size="sm"
+                         onClick={() => isInCart(signal.ticker) ? removeFromCart(signal.ticker) : addToCart(signal)}
+                       >
+                         {isInCart(signal.ticker) ? (
+                           <X className="h-3 w-3" />
+                         ) : (
+                           <ShoppingCart className="h-3 w-3" />
+                         )}
+                       </Button>
+                     </td>
+                   </tr>
+                 ))}
+               </tbody>
             </table>
           </div>
         </CardContent>
+
+        {/* Pagination Controls */}
+        {filteredSignals.length > pageSize && (
+          <div className="flex items-center justify-between px-6 py-4 border-t">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="page-size">Show:</Label>
+              <select
+                id="page-size"
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="px-2 py-1 border rounded"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span className="text-sm text-muted-foreground">
+                Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredSignals.length)} of {filteredSignals.length} signals
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+
+              <span className="text-sm">
+                Page {currentPage} of {totalPages}
+              </span>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Top 10 Signals */}
@@ -385,10 +598,14 @@ const TradingSignals = () => {
                         {signal.signal_type.replace('_', ' ').toUpperCase()} • {(signal.confidence_score * 100).toFixed(1)}% confidence
                       </p>
                     </div>
-                  </div>
-                  <Button variant="outline" size="sm">
-                    Add to Cart
-                  </Button>
+                   </div>
+                   <Button
+                     variant={isInCart(signal.ticker) ? "default" : "outline"}
+                     size="sm"
+                     onClick={() => isInCart(signal.ticker) ? removeFromCart(signal.ticker) : addToCart(signal)}
+                   >
+                     {isInCart(signal.ticker) ? "Remove from Cart" : "Add to Cart"}
+                   </Button>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 text-sm">
@@ -416,6 +633,118 @@ const TradingSignals = () => {
           ))}
         </CardContent>
       </Card>
+
+      {/* Cart Panel */}
+      {showCart && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <Card className="w-full max-w-lg max-h-[80vh] overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5" />
+                Cart ({cart.length} {cart.length === 1 ? 'signal' : 'signals'})
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowCart(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="overflow-y-auto max-h-96">
+              {cart.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>Your cart is empty</p>
+                  <p className="text-sm">Add some trading signals to get started</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {cart.map(item => (
+                    <div key={item.signal.ticker} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex items-center gap-3 flex-1">
+                        {getSignalIcon(item.signal.signal_type)}
+                        <div className="flex-1">
+                          <p className="font-medium">{item.signal.ticker}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {item.signal.asset_name}
+                          </p>
+                          <Badge className={`${getSignalColor(item.signal.signal_type)} text-xs mt-1`}>
+                            {item.signal.signal_type.replace('_', ' ').toUpperCase()}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          <Label htmlFor={`qty-${item.signal.ticker}`} className="text-xs text-muted-foreground">
+                            Qty:
+                          </Label>
+                          <Input
+                            id={`qty-${item.signal.ticker}`}
+                            type="number"
+                            min={1}
+                            value={item.quantity}
+                            onChange={(e) => updateQuantity(item.signal.ticker, parseInt(e.target.value) || 1)}
+                            className="w-16 h-8 text-center"
+                          />
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeFromCart(item.signal.ticker)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+            {cart.length > 0 && (
+              <div className="p-4 border-t space-y-3">
+                {!user && (
+                  <Alert>
+                    <AlertDescription>
+                      Please log in to place orders
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <div className="text-sm text-muted-foreground">
+                  Total shares: {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setCart([]);
+                      toast.success('Cart cleared');
+                    }}
+                    disabled={placingOrders}
+                  >
+                    Clear All
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={placeOrders}
+                    disabled={!user || placingOrders}
+                  >
+                    {placingOrders ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Placing Orders...
+                      </>
+                    ) : (
+                      <>Place {cart.length} Order{cart.length > 1 ? 's' : ''}</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
     </div>
   );
 };
