@@ -80,9 +80,9 @@ const FilingsView = ({ jurisdictionId }: FilingsViewProps) => {
 
                 <div className="ml-13 space-y-2">
                   {filingsByDate?.[date]?.map((trade) => (
-                    <div 
+                    <div
                       key={trade.id}
-                      className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 hover:bg-secondary/50 transition-colors"
+                      className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 hover:bg-secondary/50 transition-colors group"
                     >
                       <div className="flex items-center gap-3">
                         <Badge variant={trade.trade_type === 'buy' ? 'default' : 'destructive'} className="text-xs">
@@ -95,11 +95,24 @@ const FilingsView = ({ jurisdictionId }: FilingsViewProps) => {
                           <p className="text-xs text-muted-foreground">{trade.company}</p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-mono text-sm font-semibold text-foreground">
-                          {formatCurrency(trade.estimated_value)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{trade.amount_range}</p>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <p className="font-mono text-sm font-semibold text-foreground">
+                            {formatCurrency(trade.estimated_value)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{trade.amount_range}</p>
+                        </div>
+                        {trade.source_url && (
+                          <a
+                            href={trade.source_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
+                            title="View original disclosure document"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </a>
+                        )}
                       </div>
                     </div>
                   ))}
