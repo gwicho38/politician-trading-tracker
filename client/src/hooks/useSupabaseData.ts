@@ -194,19 +194,40 @@ export const useTrades = (limit = 10, jurisdictionId?: string) => {
   });
 };
 
-// Fetch trading disclosures with search/filter support
+// Sort configuration type
+export type SortField = 'disclosure_date' | 'transaction_date' | 'amount_range_max' | 'asset_ticker' | 'transaction_type';
+export type SortDirection = 'asc' | 'desc';
+
+// Fetch trading disclosures with search/filter/sort support
 export const useTradingDisclosures = (options: {
   limit?: number;
   offset?: number;
   ticker?: string;
   politicianId?: string;
   transactionType?: string;
+  party?: string;
   searchQuery?: string;
+  sortField?: SortField;
+  sortDirection?: SortDirection;
+  dateFrom?: string;
+  dateTo?: string;
 } = {}) => {
-  const { limit = 50, offset = 0, ticker, politicianId, transactionType, searchQuery } = options;
+  const {
+    limit = 50,
+    offset = 0,
+    ticker,
+    politicianId,
+    transactionType,
+    party,
+    searchQuery,
+    sortField = 'disclosure_date',
+    sortDirection = 'desc',
+    dateFrom,
+    dateTo,
+  } = options;
 
   return useQuery({
-    queryKey: ['tradingDisclosures', limit, offset, ticker, politicianId, transactionType, searchQuery],
+    queryKey: ['tradingDisclosures', limit, offset, ticker, politicianId, transactionType, party, searchQuery, sortField, sortDirection, dateFrom, dateTo],
     queryFn: async () => {
       let query = supabase
         .from('trading_disclosures')
@@ -215,7 +236,7 @@ export const useTradingDisclosures = (options: {
           politician:politicians(*)
         `, { count: 'exact' })
         .eq('status', 'active')
-        .order('disclosure_date', { ascending: false })
+        .order(sortField, { ascending: sortDirection === 'asc' })
         .range(offset, offset + limit - 1);
 
       if (ticker) {
@@ -228,21 +249,34 @@ export const useTradingDisclosures = (options: {
         query = query.eq('transaction_type', transactionType);
       }
       if (searchQuery) {
+        // Search across multiple fields
         query = query.or(`asset_name.ilike.%${searchQuery}%,asset_ticker.ilike.%${searchQuery}%`);
+      }
+      if (dateFrom) {
+        query = query.gte('disclosure_date', dateFrom);
+      }
+      if (dateTo) {
+        query = query.lte('disclosure_date', dateTo);
       }
 
       const { data, error, count } = await query;
       if (error) throw error;
 
+      // Filter by party client-side (since it's on the joined table)
+      let filteredData = data || [];
+      if (party) {
+        filteredData = filteredData.filter(d => d.politician?.party === party);
+      }
+
       return {
-        disclosures: (data || []).map(d => ({
+        disclosures: filteredData.map(d => ({
           ...d,
           politician: d.politician ? {
             ...d.politician,
             name: d.politician.full_name || `${d.politician.first_name} ${d.politician.last_name}`,
           } : undefined,
         })) as TradingDisclosure[],
-        total: count || 0,
+        total: party ? filteredData.length : (count || 0), // Adjust count if party filtered
       };
     },
   });
