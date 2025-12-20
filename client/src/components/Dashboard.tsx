@@ -3,7 +3,7 @@ import StatsCard from '@/components/StatsCard';
 import TradeChart from '@/components/TradeChart';
 import VolumeChart from '@/components/VolumeChart';
 import TopTraders from '@/components/TopTraders';
-import RecentTrades from '@/components/RecentTrades';
+import LandingTradesTable from '@/components/LandingTradesTable';
 import { useDashboardStats } from '@/hooks/useSupabaseData';
 import { formatCurrency } from '@/lib/mockData';
 
@@ -18,11 +18,16 @@ const Dashboard = ({ jurisdictionId }: DashboardProps) => {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-2">
-        <h2 className="text-2xl font-bold text-foreground">Dashboard</h2>
+        <h2 className="text-2xl font-bold text-foreground">
+          Politician Stock Trading Tracker
+        </h2>
         <p className="text-muted-foreground">
-          Track politician trading disclosures across multiple jurisdictions
+          A free public resource tracking congressional stock trades and disclosures
         </p>
       </div>
+
+      {/* Main Trades Table - First and Prominent */}
+      <LandingTradesTable />
 
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -78,14 +83,9 @@ const Dashboard = ({ jurisdictionId }: DashboardProps) => {
         <VolumeChart />
       </div>
 
-      {/* Bottom Row */}
-      <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
-          <RecentTrades />
-        </div>
-        <div className="lg:col-span-2">
-          <TopTraders />
-        </div>
+      {/* Top Traders */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <TopTraders />
       </div>
     </div>
   );
