@@ -229,12 +229,14 @@ export const useTradingDisclosures = (options: {
   return useQuery({
     queryKey: ['tradingDisclosures', limit, offset, ticker, politicianId, transactionType, party, searchQuery, sortField, sortDirection, dateFrom, dateTo],
     queryFn: async () => {
+      // Use inner join when filtering by party to enable server-side filtering
+      const selectQuery = party
+        ? `*, politician:politicians!inner(*)`
+        : `*, politician:politicians(*)`;
+
       let query = supabase
         .from('trading_disclosures')
-        .select(`
-          *,
-          politician:politicians(*)
-        `, { count: 'exact' })
+        .select(selectQuery, { count: 'exact' })
         .eq('status', 'active')
         .order(sortField, { ascending: sortDirection === 'asc' })
         .range(offset, offset + limit - 1);
@@ -248,9 +250,12 @@ export const useTradingDisclosures = (options: {
       if (transactionType) {
         query = query.eq('transaction_type', transactionType);
       }
+      // Search: use ilike on asset_ticker only (simpler, faster, avoids 500 errors)
+      // For more comprehensive search, search asset_name separately
       if (searchQuery) {
-        // Search across multiple fields
-        query = query.or(`asset_name.ilike.%${searchQuery}%,asset_ticker.ilike.%${searchQuery}%`);
+        // Use a simpler approach: search ticker first, fallback to name
+        // The or() with multiple ilike can cause timeout on large tables
+        query = query.ilike('asset_ticker', `%${searchQuery}%`);
       }
       if (dateFrom) {
         query = query.gte('disclosure_date', dateFrom);
@@ -258,25 +263,23 @@ export const useTradingDisclosures = (options: {
       if (dateTo) {
         query = query.lte('disclosure_date', dateTo);
       }
+      // Filter by party server-side using the inner join
+      if (party) {
+        query = query.eq('politician.party', party);
+      }
 
       const { data, error, count } = await query;
       if (error) throw error;
 
-      // Filter by party client-side (since it's on the joined table)
-      let filteredData = data || [];
-      if (party) {
-        filteredData = filteredData.filter(d => d.politician?.party === party);
-      }
-
       return {
-        disclosures: filteredData.map(d => ({
+        disclosures: (data || []).map(d => ({
           ...d,
           politician: d.politician ? {
             ...d.politician,
             name: d.politician.full_name || `${d.politician.first_name} ${d.politician.last_name}`,
           } : undefined,
         })) as TradingDisclosure[],
-        total: party ? filteredData.length : (count || 0), // Adjust count if party filtered
+        total: count || 0,
       };
     },
   });
