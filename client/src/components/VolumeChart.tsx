@@ -1,16 +1,54 @@
+import { useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Loader2 } from 'lucide-react';
-import { useChartData } from '@/hooks/useSupabaseData';
+import { useChartData, useChartYears, ChartTimeRange } from '@/hooks/useSupabaseData';
 import { formatCurrency } from '@/lib/mockData';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const VolumeChart = () => {
-  const { data: chartData, isLoading } = useChartData();
+  const [timeRange, setTimeRange] = useState<ChartTimeRange>('trailing12');
+  const { data: chartData, isLoading } = useChartData(timeRange);
+  const { data: availableYears } = useChartYears();
+
+  const handleTimeRangeChange = (value: string) => {
+    if (value === 'trailing12' || value === 'trailing24' || value === 'all') {
+      setTimeRange(value);
+    } else {
+      setTimeRange(parseInt(value, 10));
+    }
+  };
 
   return (
     <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-6">
-      <div className="mb-6">
-        <h3 className="text-lg font-semibold text-foreground">Trade Volume</h3>
-        <p className="text-sm text-muted-foreground">Total disclosed trading volume by month</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-foreground">Trade Volume</h3>
+          <p className="text-sm text-muted-foreground">Total disclosed trading volume by month</p>
+        </div>
+        <Select
+          value={typeof timeRange === 'number' ? String(timeRange) : timeRange}
+          onValueChange={handleTimeRangeChange}
+        >
+          <SelectTrigger className="w-[140px] h-8 text-xs">
+            <SelectValue placeholder="Time range" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="trailing12">Last 12 months</SelectItem>
+            <SelectItem value="trailing24">Last 24 months</SelectItem>
+            <SelectItem value="all">All time</SelectItem>
+            {availableYears?.map((year) => (
+              <SelectItem key={year} value={String(year)}>
+                {year}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       
       <div className="h-72">

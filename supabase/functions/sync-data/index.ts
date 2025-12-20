@@ -71,6 +71,10 @@ serve(async (req) => {
         return await handleUpdateStats(supabaseClient, requestId)
       case 'sync-full':
         return await handleSyncFull(supabaseClient, requestId)
+      case 'update-chart-data':
+        return await handleUpdateChartData(supabaseClient, requestId)
+      case 'update-politician-totals':
+        return await handleUpdatePoliticianTotals(supabaseClient, requestId)
       default:
         logger.warn('serve', `Invalid endpoint: ${path}`, { requestId })
         return new Response(
@@ -309,11 +313,13 @@ async function handleUpdateStats(supabaseClient: any, requestId: string) {
 
   logger.info(fn, 'Calculated stats', stats)
 
-  // Update dashboard_stats table
+  // Update dashboard_stats table - use fixed ID for singleton row
+  const DASHBOARD_STATS_ID = '00000000-0000-0000-0000-000000000001'
   logger.debug(fn, 'Upserting to dashboard_stats table...')
   const { error: updateError } = await supabaseClient
     .from('dashboard_stats')
     .upsert({
+      id: DASHBOARD_STATS_ID,
       total_trades: stats.total_trades,
       total_volume: stats.total_volume,
       active_politicians: stats.active_politicians,
@@ -321,7 +327,7 @@ async function handleUpdateStats(supabaseClient: any, requestId: string) {
       average_trade_size: stats.average_trade_size,
       recent_filings: stats.recent_filings,
       updated_at: new Date().toISOString()
-    })
+    }, { onConflict: 'id' })
 
   if (updateError) {
     logger.error(fn, `Failed to update stats: ${updateError.message}`, { requestId })
@@ -340,6 +346,120 @@ async function handleUpdateStats(supabaseClient: any, requestId: string) {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     }
   )
+}
+
+async function handleUpdateChartData(supabaseClient: any, requestId: string) {
+  const fn = 'handleUpdateChartData'
+  logger.info(fn, 'START - Updating chart data', { requestId })
+
+  try {
+    // Aggregate by month/year - fetch all records using pagination
+    const chartDataMap = new Map<string, { buys: number, sells: number, volume: number }>()
+    const PAGE_SIZE = 1000
+    let offset = 0
+    let totalFetched = 0
+
+    logger.debug(fn, 'Fetching disclosures for chart aggregation (paginated)...')
+
+    while (true) {
+      const { data: disclosures, error: fetchError } = await supabaseClient
+        .from('trading_disclosures')
+        .select('transaction_date, transaction_type, amount_range_min, amount_range_max')
+        .eq('status', 'active')
+        .range(offset, offset + PAGE_SIZE - 1)
+
+      if (fetchError) {
+        throw new Error(`Failed to fetch disclosures: ${fetchError.message}`)
+      }
+
+      const batchSize = disclosures?.length || 0
+      if (batchSize === 0) break
+
+      totalFetched += batchSize
+      logger.debug(fn, `Fetched batch: ${batchSize} records (total: ${totalFetched})`)
+
+      for (const disclosure of disclosures || []) {
+        if (!disclosure.transaction_date) continue
+
+        const date = new Date(disclosure.transaction_date)
+        const year = date.getFullYear()
+        const month = date.getMonth() + 1 // 1-12
+        const key = `${year}-${month}`
+
+        if (!chartDataMap.has(key)) {
+          chartDataMap.set(key, { buys: 0, sells: 0, volume: 0 })
+        }
+
+        const entry = chartDataMap.get(key)!
+        const transactionType = (disclosure.transaction_type || '').toLowerCase()
+        const minVal = disclosure.amount_range_min || 0
+        const maxVal = disclosure.amount_range_max || minVal
+        const volume = (minVal + maxVal) / 2
+
+        if (transactionType.includes('purchase') || transactionType.includes('buy')) {
+          entry.buys++
+        } else if (transactionType.includes('sale') || transactionType.includes('sell')) {
+          entry.sells++
+        }
+        entry.volume += volume
+      }
+
+      // If we got less than PAGE_SIZE, we've reached the end
+      if (batchSize < PAGE_SIZE) break
+      offset += PAGE_SIZE
+    }
+
+    logger.info(fn, `Processed ${totalFetched} total disclosures`)
+
+    // Clear existing chart data and insert new data
+    logger.debug(fn, 'Clearing existing chart data...')
+    await supabaseClient.from('chart_data').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+
+    // Insert new chart data
+    const chartDataRows = Array.from(chartDataMap.entries()).map(([key, data]) => {
+      const [year, month] = key.split('-')
+      return {
+        month: parseInt(month),
+        year: parseInt(year),
+        buys: data.buys,
+        sells: data.sells,
+        volume: Math.round(data.volume)
+      }
+    })
+
+    if (chartDataRows.length > 0) {
+      logger.debug(fn, `Inserting ${chartDataRows.length} chart data rows...`)
+      const { error: insertError } = await supabaseClient
+        .from('chart_data')
+        .insert(chartDataRows)
+
+      if (insertError) {
+        logger.warn(fn, `Failed to insert chart data: ${insertError.message}`)
+      }
+    }
+
+    logger.info(fn, 'END - Chart data updated', { requestId, rows: chartDataRows.length })
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: 'Chart data updated',
+        rows: chartDataRows.length
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
+  } catch (error) {
+    logger.error(fn, `Error: ${error.message}`, { requestId })
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
+  }
 }
 
 async function handleSyncFull(supabaseClient: any, requestId: string) {
@@ -388,6 +508,94 @@ async function handleSyncFull(supabaseClient: any, requestId: string) {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     }
   )
+}
+
+async function handleUpdatePoliticianTotals(supabaseClient: any, requestId: string) {
+  const fn = 'handleUpdatePoliticianTotals'
+  logger.info(fn, 'START - Updating politician totals', { requestId })
+
+  try {
+    // Get aggregated trade data per politician from trading_disclosures
+    logger.debug(fn, 'Fetching aggregated trade data per politician...')
+
+    // Get all politicians
+    const { data: politicians, error: politiciansError } = await supabaseClient
+      .from('politicians')
+      .select('id')
+
+    if (politiciansError) {
+      throw new Error(`Failed to fetch politicians: ${politiciansError.message}`)
+    }
+
+    const totalCount = politicians?.length || 0
+    let updatedCount = 0
+
+    // Update each politician's totals
+    for (const politician of (politicians || [])) {
+      // Get disclosure stats for this politician
+      const { data: disclosures } = await supabaseClient
+        .from('trading_disclosures')
+        .select('amount_range_min, amount_range_max')
+        .eq('politician_id', politician.id)
+        .eq('status', 'active')
+
+      let total_trades = 0
+      let total_volume = 0
+
+      if (disclosures && disclosures.length > 0) {
+        total_trades = disclosures.length
+        total_volume = disclosures.reduce((sum: number, d: any) => {
+          const min = d.amount_range_min || 0
+          const max = d.amount_range_max || min
+          return sum + ((min + max) / 2)
+        }, 0)
+      }
+
+      // Only update if there are trades
+      if (total_trades > 0) {
+        const { error: updateError } = await supabaseClient
+          .from('politicians')
+          .update({
+            total_trades,
+            total_volume,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', politician.id)
+
+        if (!updateError) {
+          updatedCount++
+        }
+      }
+
+      // Log progress every 100 records
+      if ((updatedCount + 1) % 100 === 0) {
+        logger.info(fn, `Progress: ${updatedCount}/${totalCount} updated`)
+      }
+    }
+
+    logger.info(fn, 'END - Politician totals updated', { requestId, total: totalCount, updated: updatedCount })
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: `Updated ${updatedCount} politicians with trade data`,
+        total: totalCount,
+        updated: updatedCount
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
+  } catch (error) {
+    logger.error(fn, `Error: ${error.message}`, { requestId })
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
+  }
 }
 
 // =============================================================================
@@ -497,18 +705,24 @@ async function updatePoliticianTotals(supabaseClient: any, requestId: string) {
   if (politicians) {
     for (let i = 0; i < politicians.length; i++) {
       const politician = politicians[i]
-      // Calculate totals for this politician
-      const { data: trades } = await supabaseClient
-        .from('trades')
-        .select('estimated_value')
+      // Calculate totals for this politician from trading_disclosures
+      const { data: disclosures } = await supabaseClient
+        .from('trading_disclosures')
+        .select('amount_range_min, amount_range_max')
         .eq('politician_id', politician.id)
+        .eq('status', 'active')
 
       let total_trades = 0
       let total_volume = 0
 
-      if (trades) {
-        total_trades = trades.length
-        total_volume = trades.reduce((sum: number, trade: any) => sum + (trade.estimated_value || 0), 0)
+      if (disclosures) {
+        total_trades = disclosures.length
+        // Calculate volume using midpoint of amount ranges
+        total_volume = disclosures.reduce((sum: number, d: any) => {
+          const min = d.amount_range_min || 0
+          const max = d.amount_range_max || min
+          return sum + ((min + max) / 2)
+        }, 0)
       }
 
       logger.debug(fn, `Updating ${politician.id}: trades=${total_trades}, volume=$${total_volume}`)
@@ -537,30 +751,40 @@ async function calculateDashboardStats(supabaseClient: any, requestId: string) {
   const fn = 'calculateDashboardStats'
   logger.debug(fn, 'START', { requestId })
 
-  // Total trades and volume
-  logger.debug(fn, 'Fetching trades count...')
-  const { data: trades, count: totalTrades } = await supabaseClient
-    .from('trades')
-    .select('estimated_value', { count: 'exact', head: true })
+  // Total disclosures and volume from trading_disclosures table
+  logger.debug(fn, 'Fetching trading disclosures count...')
+  const { data: disclosures, count: totalTrades } = await supabaseClient
+    .from('trading_disclosures')
+    .select('amount_range_min, amount_range_max', { count: 'exact' })
+    .eq('status', 'active')
 
+  // Calculate total volume from amount ranges (using midpoint)
   let totalVolume = 0
-  if (trades) {
-    totalVolume = trades.reduce((sum: number, trade: any) => sum + (trade.estimated_value || 0), 0)
+  if (disclosures) {
+    totalVolume = disclosures.reduce((sum: number, d: any) => {
+      const min = d.amount_range_min || 0
+      const max = d.amount_range_max || min
+      return sum + ((min + max) / 2)
+    }, 0)
   }
-  logger.debug(fn, `trades=${totalTrades}, volume=$${totalVolume}`)
+  logger.debug(fn, `disclosures=${totalTrades}, volume=$${totalVolume}`)
 
   // Active politicians
   logger.debug(fn, 'Fetching politicians count...')
   const { count: activePoliticians } = await supabaseClient
     .from('politicians')
     .select('*', { count: 'exact', head: true })
+    .eq('is_active', true)
   logger.debug(fn, `active_politicians=${activePoliticians}`)
 
-  // Jurisdictions tracked
-  logger.debug(fn, 'Fetching jurisdictions count...')
-  const { count: jurisdictionsTracked } = await supabaseClient
-    .from('jurisdictions')
-    .select('*', { count: 'exact', head: true })
+  // Jurisdictions tracked - count unique roles from politicians
+  logger.debug(fn, 'Counting jurisdictions...')
+  const { data: rolesData } = await supabaseClient
+    .from('politicians')
+    .select('role')
+    .eq('is_active', true)
+  const uniqueRoles = new Set((rolesData || []).map((p: any) => p.role).filter(Boolean))
+  const jurisdictionsTracked = uniqueRoles.size || 4 // Default to 4 for US House, Senate, EU, UK
   logger.debug(fn, `jurisdictions=${jurisdictionsTracked}`)
 
   // Average trade size
@@ -572,16 +796,17 @@ async function calculateDashboardStats(supabaseClient: any, requestId: string) {
   const weekAgoStr = sevenDaysAgo.toISOString().split('T')[0]
   logger.debug(fn, `Fetching recent filings since ${weekAgoStr}...`)
   const { count: recentFilings } = await supabaseClient
-    .from('trades')
+    .from('trading_disclosures')
     .select('*', { count: 'exact', head: true })
-    .gte('filing_date', weekAgoStr)
+    .eq('status', 'active')
+    .gte('disclosure_date', weekAgoStr)
   logger.debug(fn, `recent_filings=${recentFilings}`)
 
   const stats = {
     total_trades: totalTrades || 0,
     total_volume: totalVolume,
     active_politicians: activePoliticians || 0,
-    jurisdictions_tracked: jurisdictionsTracked || 0,
+    jurisdictions_tracked: jurisdictionsTracked,
     average_trade_size: averageTradeSize,
     recent_filings: recentFilings || 0
   }
