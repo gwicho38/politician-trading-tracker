@@ -139,6 +139,12 @@ serve(async (req) => {
       case 'get-order-stats':
         response = await handleGetOrderStats(supabaseClient, req, requestId)
         break
+      case 'place-order':
+        response = await handlePlaceOrder(supabaseClient, req, requestId, bodyParams)
+        break
+      case 'place-orders':
+        response = await handlePlaceOrders(supabaseClient, req, requestId, bodyParams)
+        break
       case 'orders':
         // Default action when called via supabase.functions.invoke('orders')
         response = await handleGetOrders(supabaseClient, req, requestId, bodyParams)
@@ -297,9 +303,17 @@ async function handleGetOrders(supabaseClient: any, req: Request, requestId: str
       log.warn('Exception fetching orders', { error: e.message })
     }
 
+    // Transform orders to match frontend expectations (filled_qty -> filled_quantity)
+    const transformedOrders = (orders || []).map((order: any) => ({
+      ...order,
+      filled_quantity: order.filled_qty || 0,
+      // Ensure alpaca_order_id exists for display
+      alpaca_order_id: order.alpaca_order_id || order.id
+    }))
+
     const responseData = {
       success: true,
-      orders: orders || [],
+      orders: transformedOrders,
       total: count || 0,
       limit,
       offset
@@ -442,6 +456,373 @@ async function handleGetOrderStats(supabaseClient: any, req: Request) {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
+    )
+  }
+}
+
+// =============================================================================
+// PLACE ORDER HANDLER
+// =============================================================================
+
+async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: string, bodyParams: any = {}) {
+  const handlerStartTime = Date.now()
+
+  try {
+    // Validate authentication
+    const authHeader = req.headers.get('authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Get user from JWT
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    )
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid authentication' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Validate required fields
+    const { ticker, side, quantity, order_type = 'market', limit_price, signal_id } = bodyParams
+
+    if (!ticker || !side || !quantity) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields: ticker, side, quantity' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!['buy', 'sell'].includes(side)) {
+      return new Response(
+        JSON.stringify({ error: 'Side must be "buy" or "sell"' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (quantity <= 0) {
+      return new Response(
+        JSON.stringify({ error: 'Quantity must be greater than 0' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    log.info('Placing order', {
+      requestId,
+      ticker,
+      side,
+      quantity,
+      order_type,
+      limit_price,
+      userId: user.id
+    })
+
+    // Get Alpaca API credentials from environment
+    const alpacaApiKey = Deno.env.get('ALPACA_API_KEY')
+    const alpacaSecretKey = Deno.env.get('ALPACA_SECRET_KEY')
+    const alpacaPaper = Deno.env.get('ALPACA_PAPER') === 'true'
+    const alpacaBaseUrl = Deno.env.get('ALPACA_BASE_URL') || (alpacaPaper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets')
+
+    if (!alpacaApiKey || !alpacaSecretKey) {
+      return new Response(
+        JSON.stringify({ error: 'Alpaca API credentials not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Build Alpaca order request
+    const orderRequest: any = {
+      symbol: ticker.toUpperCase(),
+      qty: quantity,
+      side: side,
+      type: order_type,
+      time_in_force: 'day'
+    }
+
+    // Add limit price for limit orders
+    if (order_type === 'limit' && limit_price) {
+      orderRequest.limit_price = limit_price
+    }
+
+    // Call Alpaca API to place order
+    const alpacaUrl = `${alpacaBaseUrl}/v2/orders`
+
+    log.info('Calling Alpaca API to place order', { requestId, url: alpacaUrl, order: orderRequest })
+
+    const response = await fetch(alpacaUrl, {
+      method: 'POST',
+      headers: {
+        'APCA-API-KEY-ID': alpacaApiKey,
+        'APCA-API-SECRET-KEY': alpacaSecretKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(orderRequest)
+    })
+
+    const alpacaResponse = await response.json()
+
+    if (!response.ok) {
+      log.error('Alpaca API error', { requestId, status: response.status, error: alpacaResponse })
+      return new Response(
+        JSON.stringify({ error: alpacaResponse.message || 'Failed to place order with Alpaca' }),
+        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    log.info('Alpaca order placed successfully', { requestId, orderId: alpacaResponse.id, status: alpacaResponse.status })
+
+    // Save order to database
+    const orderRecord = {
+      user_id: user.id,
+      alpaca_order_id: alpacaResponse.id,
+      ticker: ticker.toUpperCase(),
+      side: side,
+      quantity: quantity,
+      order_type: order_type,
+      limit_price: limit_price || null,
+      status: alpacaResponse.status,
+      trading_mode: alpacaPaper ? 'paper' : 'live',
+      signal_id: signal_id || null,
+      submitted_at: alpacaResponse.submitted_at || new Date().toISOString(),
+      filled_qty: alpacaResponse.filled_qty || 0,
+      filled_avg_price: alpacaResponse.filled_avg_price || null
+    }
+
+    const { data: savedOrder, error: saveError } = await supabaseClient
+      .from('trading_orders')
+      .insert(orderRecord)
+      .select()
+      .single()
+
+    if (saveError) {
+      log.warn('Failed to save order to database', { requestId, error: saveError.message })
+      // Don't fail the request - order was placed successfully with Alpaca
+    }
+
+    const duration = Date.now() - handlerStartTime
+
+    log.info('Order placed successfully', {
+      requestId,
+      orderId: alpacaResponse.id,
+      duration
+    })
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        order: {
+          id: savedOrder?.id || alpacaResponse.id,
+          alpaca_order_id: alpacaResponse.id,
+          ticker: ticker.toUpperCase(),
+          side,
+          quantity,
+          order_type,
+          status: alpacaResponse.status,
+          submitted_at: alpacaResponse.submitted_at
+        }
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+
+  } catch (error) {
+    log.error('Error placing order', error, { requestId, duration: Date.now() - handlerStartTime })
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+}
+
+// =============================================================================
+// PLACE MULTIPLE ORDERS HANDLER (for cart checkout)
+// =============================================================================
+
+async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: string, bodyParams: any = {}) {
+  const handlerStartTime = Date.now()
+
+  try {
+    // Validate authentication
+    const authHeader = req.headers.get('authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Get user from JWT
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    )
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid authentication' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const { orders } = bodyParams
+
+    if (!orders || !Array.isArray(orders) || orders.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'No orders provided' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    log.info('Placing multiple orders', { requestId, orderCount: orders.length, userId: user.id })
+
+    // Get Alpaca API credentials
+    const alpacaApiKey = Deno.env.get('ALPACA_API_KEY')
+    const alpacaSecretKey = Deno.env.get('ALPACA_SECRET_KEY')
+    const alpacaPaper = Deno.env.get('ALPACA_PAPER') === 'true'
+    const alpacaBaseUrl = Deno.env.get('ALPACA_BASE_URL') || (alpacaPaper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets')
+
+    if (!alpacaApiKey || !alpacaSecretKey) {
+      return new Response(
+        JSON.stringify({ error: 'Alpaca API credentials not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const results: any[] = []
+    const alpacaUrl = `${alpacaBaseUrl}/v2/orders`
+
+    // Process each order
+    for (const order of orders) {
+      const { ticker, side, quantity, order_type = 'market', limit_price, signal_id } = order
+
+      // Validate order
+      if (!ticker || !side || !quantity) {
+        results.push({
+          ticker: ticker || 'unknown',
+          success: false,
+          error: 'Missing required fields'
+        })
+        continue
+      }
+
+      if (!['buy', 'sell'].includes(side)) {
+        results.push({
+          ticker,
+          success: false,
+          error: 'Invalid side'
+        })
+        continue
+      }
+
+      try {
+        // Build Alpaca order request
+        const orderRequest: any = {
+          symbol: ticker.toUpperCase(),
+          qty: quantity,
+          side: side,
+          type: order_type,
+          time_in_force: 'day'
+        }
+
+        if (order_type === 'limit' && limit_price) {
+          orderRequest.limit_price = limit_price
+        }
+
+        // Place order with Alpaca
+        const response = await fetch(alpacaUrl, {
+          method: 'POST',
+          headers: {
+            'APCA-API-KEY-ID': alpacaApiKey,
+            'APCA-API-SECRET-KEY': alpacaSecretKey,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(orderRequest)
+        })
+
+        const alpacaResponse = await response.json()
+
+        if (!response.ok) {
+          results.push({
+            ticker: ticker.toUpperCase(),
+            success: false,
+            error: alpacaResponse.message || 'Alpaca API error'
+          })
+          continue
+        }
+
+        // Save order to database
+        const orderRecord = {
+          user_id: user.id,
+          alpaca_order_id: alpacaResponse.id,
+          ticker: ticker.toUpperCase(),
+          side,
+          quantity,
+          order_type,
+          limit_price: limit_price || null,
+          status: alpacaResponse.status,
+          trading_mode: alpacaPaper ? 'paper' : 'live',
+          signal_id: signal_id || null,
+          submitted_at: alpacaResponse.submitted_at || new Date().toISOString(),
+          filled_qty: alpacaResponse.filled_qty || 0,
+          filled_avg_price: alpacaResponse.filled_avg_price || null
+        }
+
+        await supabaseClient.from('trading_orders').insert(orderRecord)
+
+        results.push({
+          ticker: ticker.toUpperCase(),
+          success: true,
+          order_id: alpacaResponse.id,
+          status: alpacaResponse.status
+        })
+
+        // Small delay between orders to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100))
+
+      } catch (orderError) {
+        results.push({
+          ticker: ticker.toUpperCase(),
+          success: false,
+          error: orderError.message
+        })
+      }
+    }
+
+    const successCount = results.filter(r => r.success).length
+    const failCount = results.filter(r => !r.success).length
+    const duration = Date.now() - handlerStartTime
+
+    log.info('Multiple orders processed', {
+      requestId,
+      total: orders.length,
+      success: successCount,
+      failed: failCount,
+      duration
+    })
+
+    return new Response(
+      JSON.stringify({
+        success: failCount === 0,
+        message: `${successCount} orders placed, ${failCount} failed`,
+        results,
+        summary: {
+          total: orders.length,
+          success: successCount,
+          failed: failCount
+        }
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+
+  } catch (error) {
+    log.error('Error placing multiple orders', error, { requestId, duration: Date.now() - handlerStartTime })
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 }
