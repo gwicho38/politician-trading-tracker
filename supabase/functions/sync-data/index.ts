@@ -75,6 +75,8 @@ serve(async (req) => {
         return await handleUpdateChartData(supabaseClient, requestId)
       case 'update-politician-totals':
         return await handleUpdatePoliticianTotals(supabaseClient, requestId)
+      case 'update-politician-parties':
+        return await handleUpdatePoliticianParties(supabaseClient, requestId)
       default:
         logger.warn('serve', `Invalid endpoint: ${path}`, { requestId })
         return new Response(
@@ -813,4 +815,235 @@ async function calculateDashboardStats(supabaseClient: any, requestId: string) {
 
   logger.debug(fn, 'END', stats)
   return stats
+}
+
+// =============================================================================
+// POLITICIAN PARTY LOOKUP VIA OLLAMA
+// =============================================================================
+
+const OLLAMA_API_URL = 'https://ollama.lefv.io/api/generate'
+const OLLAMA_API_KEY = '2df4dc81117fa1845a8ee21a6a315676a4aa099833b79602697dbe15d48af7fc'
+const OLLAMA_MODEL = 'llama3.1:8b'
+
+// Well-known politician party mappings (for speed - avoids API calls)
+const KNOWN_PARTIES: Record<string, string> = {
+  // Senate Republicans
+  'mitch mcconnell': 'R',
+  'a. mitchell mcconnell': 'R',
+  'john cornyn': 'R',
+  'john thune': 'R',
+  'rick scott': 'R',
+  'marco rubio': 'R',
+  'ted cruz': 'R',
+  'rand paul': 'R',
+  'susan collins': 'R',
+  'susan m collins': 'R',
+  'lisa murkowski': 'R',
+  'mitt romney': 'R',
+  'john boozman': 'R',
+  'tom cotton': 'R',
+  'bill cassidy': 'R',
+  'william cassidy': 'R',
+  'pat toomey': 'R',
+  'patrick j toomey': 'R',
+  'kelly loeffler': 'R',
+  'david perdue': 'R',
+  'jerry moran': 'R',
+  'pat roberts': 'R',
+  'ron johnson': 'R',
+  'mike lee': 'R',
+  'lindsey graham': 'R',
+  'tim scott': 'R',
+  // Senate Democrats
+  'chuck schumer': 'D',
+  'charles schumer': 'D',
+  'dick durbin': 'D',
+  'richard durbin': 'D',
+  'patty murray': 'D',
+  'debbie stabenow': 'D',
+  'elizabeth warren': 'D',
+  'bernie sanders': 'I',
+  'mark warner': 'D',
+  'mark r warner': 'D',
+  'tim kaine': 'D',
+  'timothy m kaine': 'D',
+  'michael bennet': 'D',
+  'michael f bennet': 'D',
+  'chris coons': 'D',
+  'christopher a coons': 'D',
+  'jeanne shaheen': 'D',
+  'maggie hassan': 'D',
+  'angus king': 'I',
+  'angus s king': 'I',
+  'joe manchin': 'D',
+  'kyrsten sinema': 'I',
+  'jon ossoff': 'D',
+  'raphael warnock': 'D',
+  // House members & others
+  'nancy pelosi': 'D',
+  'kevin mccarthy': 'R',
+  'mike johnson': 'R',
+  'hakeem jeffries': 'D',
+  'justin amash': 'I',
+  'ron desantis': 'R',
+  'greg abbott': 'R',
+  'gavin newsom': 'D',
+  'dade phelan': 'R',
+}
+
+async function lookupPartyFromOllama(politicianName: string, role: string): Promise<string | null> {
+  try {
+    const prompt = `What is the political party of ${politicianName}${role ? ` (${role})` : ''} in US politics? Reply with ONLY a JSON object: {"party": "R"} for Republican, {"party": "D"} for Democrat, {"party": "I"} for Independent. No other text.`
+
+    const response = await fetch(OLLAMA_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OLLAMA_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        prompt: prompt,
+        stream: false
+      })
+    })
+
+    if (!response.ok) {
+      console.warn(`Ollama API error for ${politicianName}: ${response.status}`)
+      return null
+    }
+
+    const data = await response.json()
+    const responseText = data.response?.trim() || ''
+
+    // Try to parse JSON from response
+    const jsonMatch = responseText.match(/\{[^}]+\}/)
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0])
+        if (parsed.party && ['R', 'D', 'I'].includes(parsed.party)) {
+          return parsed.party
+        }
+      } catch {
+        // JSON parse failed
+      }
+    }
+
+    // Fallback: look for party indicators in text
+    const lowerResponse = responseText.toLowerCase()
+    if (lowerResponse.includes('republican') || lowerResponse.includes('"r"')) {
+      return 'R'
+    } else if (lowerResponse.includes('democrat') || lowerResponse.includes('"d"')) {
+      return 'D'
+    } else if (lowerResponse.includes('independent') || lowerResponse.includes('"i"')) {
+      return 'I'
+    }
+
+    return null
+  } catch (error) {
+    console.warn(`Ollama lookup failed for ${politicianName}:`, error)
+    return null
+  }
+}
+
+async function handleUpdatePoliticianParties(supabaseClient: any, requestId: string) {
+  const fn = 'handleUpdatePoliticianParties'
+  logger.info(fn, 'START - Updating politician parties via Ollama', { requestId })
+
+  try {
+    // Get politicians with missing party info
+    const { data: politicians, error: fetchError } = await supabaseClient
+      .from('politicians')
+      .select('id, full_name, party, role')
+      .or('party.is.null,party.eq.')
+      .limit(100) // Process in batches to avoid timeout
+
+    if (fetchError) {
+      throw new Error(`Failed to fetch politicians: ${fetchError.message}`)
+    }
+
+    if (!politicians || politicians.length === 0) {
+      logger.info(fn, 'No politicians need party updates', { requestId })
+      return new Response(
+        JSON.stringify({ success: true, message: 'All politicians have party info', updated: 0 }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    logger.info(fn, `Found ${politicians.length} politicians needing party lookup`, { requestId })
+
+    let updatedCount = 0
+    let skippedCount = 0
+    let ollamaCallCount = 0
+
+    for (const politician of politicians) {
+      const name = politician.full_name || ''
+      const normalizedName = name.toLowerCase().replace(/[.,]+/g, '').trim()
+
+      let party: string | null = null
+
+      // First check known parties mapping (instant)
+      if (KNOWN_PARTIES[normalizedName]) {
+        party = KNOWN_PARTIES[normalizedName]
+        logger.debug(fn, `Found ${name} in known parties: ${party}`)
+      } else {
+        // Fall back to Ollama
+        ollamaCallCount++
+        party = await lookupPartyFromOllama(name, politician.role)
+        logger.debug(fn, `Ollama lookup for ${name}: ${party}`)
+
+        // Rate limit: small delay between Ollama calls
+        if (ollamaCallCount % 5 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+      }
+
+      if (party) {
+        const { error: updateError } = await supabaseClient
+          .from('politicians')
+          .update({
+            party: party,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', politician.id)
+
+        if (updateError) {
+          logger.warn(fn, `Failed to update ${name}: ${updateError.message}`)
+          skippedCount++
+        } else {
+          updatedCount++
+          logger.info(fn, `Updated ${name} -> ${party}`)
+        }
+      } else {
+        skippedCount++
+        logger.warn(fn, `Could not determine party for ${name}`)
+      }
+    }
+
+    logger.info(fn, 'END', {
+      requestId,
+      total: politicians.length,
+      updated: updatedCount,
+      skipped: skippedCount,
+      ollamaCalls: ollamaCallCount
+    })
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: `Updated ${updatedCount} politician parties`,
+        total: politicians.length,
+        updated: updatedCount,
+        skipped: skippedCount,
+        ollamaCalls: ollamaCallCount
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch (error) {
+    logger.error(fn, `Error: ${error.message}`, { requestId })
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
 }
