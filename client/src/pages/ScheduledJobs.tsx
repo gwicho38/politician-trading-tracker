@@ -68,6 +68,9 @@ const ScheduledJobs = () => {
   const formatSchedule = (scheduleType: string, scheduleValue: string): string => {
     if (scheduleType === 'interval') {
       const seconds = parseInt(scheduleValue);
+      if (isNaN(seconds) || seconds <= 0) {
+        return scheduleValue; // Return raw value if not a valid interval
+      }
       const hours = Math.floor(seconds / 3600);
       const minutes = Math.floor((seconds % 3600) / 60);
 
@@ -79,18 +82,35 @@ const ScheduledJobs = () => {
       } else if (minutes > 0) {
         return `Every ${minutes} minute${minutes > 1 ? 's' : ''}`;
       } else {
-        return `Every ${seconds} seconds`;
+        return `Every ${seconds} second${seconds > 1 ? 's' : ''}`;
       }
     } else if (scheduleType === 'cron') {
-      // Parse cron expression for display
+      // Parse cron expression for display: minute hour day month weekday
       const parts = scheduleValue.split(' ');
       if (parts.length >= 5) {
-        const [minute, hour] = parts;
-        if (hour !== '*' && minute !== '*') {
-          return `Daily at ${hour}:${minute.padStart(2, '0')} AM`;
+        const [minute, hour, day, month, weekday] = parts;
+
+        // Every N hours pattern: "0 */N * * *" or "M */N * * *"
+        if (hour.startsWith('*/')) {
+          const interval = parseInt(hour.slice(2));
+          const atMinute = minute !== '0' ? ` at :${minute.padStart(2, '0')}` : '';
+          return `Every ${interval} hour${interval > 1 ? 's' : ''}${atMinute}`;
+        }
+
+        // Hourly pattern: "0 * * * *" or "M * * * *"
+        if (hour === '*' && day === '*' && month === '*' && weekday === '*') {
+          return `Hourly at :${minute.padStart(2, '0')}`;
+        }
+
+        // Daily at specific time: "M H * * *"
+        if (hour !== '*' && minute !== '*' && day === '*' && month === '*' && weekday === '*') {
+          const h = parseInt(hour);
+          const ampm = h >= 12 ? 'PM' : 'AM';
+          const displayHour = h > 12 ? h - 12 : (h === 0 ? 12 : h);
+          return `Daily at ${displayHour}:${minute.padStart(2, '0')} ${ampm}`;
         }
       }
-      return scheduleValue;
+      return scheduleValue; // Return raw cron if we can't parse it
     }
     return scheduleValue;
   };
