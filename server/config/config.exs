@@ -23,19 +23,11 @@ config :server,
 # Format: postgres://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
 
 # Main Repo - connects to public schema
+# Note: Actual connection details are set in dev.exs/runtime.exs
+# These are defaults that get merged/overridden
 config :server, Server.Repo,
   database: "postgres",
-  hostname: "aws-0-eu-north-1.pooler.supabase.com",
-  port: 6543,
-  username: "postgres.uljsqvwkomdrlnofmlad",
-  # Password should be set via DATABASE_PASSWORD env var in runtime.exs
   pool_size: 10,
-  ssl: true,
-  ssl_opts: [
-    verify: :verify_none
-  ],
-  # Use transaction mode for connection pooling (Supavisor)
-  prepare: :unnamed,
   parameters: [
     application_name: "politician_trading_server"
   ]
@@ -43,15 +35,7 @@ config :server, Server.Repo,
 # Jobs Repo - connects to jobs schema for scheduled job management
 config :server, Server.JobsRepo,
   database: "postgres",
-  hostname: "aws-0-eu-north-1.pooler.supabase.com",
-  port: 6543,
-  username: "postgres.uljsqvwkomdrlnofmlad",
   pool_size: 5,
-  ssl: true,
-  ssl_opts: [
-    verify: :verify_none
-  ],
-  prepare: :unnamed,
   # Use the jobs schema prefix for all queries
   after_connect: {Postgrex, :query!, ["SET search_path TO jobs, public", []]},
   parameters: [

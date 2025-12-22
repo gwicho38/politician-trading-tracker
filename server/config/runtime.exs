@@ -39,15 +39,23 @@ if config_env() == :prod do
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
   pool_size = String.to_integer(System.get_env("POOL_SIZE") || "10")
 
-  # Main Repo configuration
+  # Main Repo configuration (direct connection to Supabase)
   config :server, Server.Repo,
+    hostname: "db.uljsqvwkomdrlnofmlad.supabase.co",
+    port: 5432,
+    username: "postgres",
     password: database_password,
+    ssl: [verify: :verify_none],
     pool_size: pool_size,
     socket_options: maybe_ipv6
 
   # Jobs Repo configuration (uses same password, smaller pool)
   config :server, Server.JobsRepo,
+    hostname: "db.uljsqvwkomdrlnofmlad.supabase.co",
+    port: 5432,
+    username: "postgres",
     password: database_password,
+    ssl: [verify: :verify_none],
     pool_size: div(pool_size, 2),
     socket_options: maybe_ipv6
 

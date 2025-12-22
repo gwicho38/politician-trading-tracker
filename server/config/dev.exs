@@ -1,6 +1,39 @@
 import Config
 
 # =============================================================================
+# Load .env file for development
+# =============================================================================
+#
+# Parse .env file from the parent repo root (politician-trading-tracker/.env)
+# This runs at compile time before deps are available, so we parse manually.
+
+env_file = Path.expand("../../.env", __DIR__)
+
+if File.exists?(env_file) do
+  env_file
+  |> File.read!()
+  |> String.split("\n")
+  |> Enum.each(fn line ->
+    line = String.trim(line)
+    # Skip comments and empty lines
+    unless line == "" or String.starts_with?(line, "#") do
+      case String.split(line, "=", parts: 2) do
+        [key, value] ->
+          # Remove quotes if present
+          value = value
+            |> String.trim()
+            |> String.trim_leading("\"")
+            |> String.trim_trailing("\"")
+            |> String.trim_leading("'")
+            |> String.trim_trailing("'")
+          System.put_env(String.trim(key), value)
+        _ -> :ok
+      end
+    end
+  end)
+end
+
+# =============================================================================
 # Database Configuration for Development
 # =============================================================================
 #
@@ -12,31 +45,31 @@ import Config
 use_supabase = System.get_env("USE_LOCAL_DB") != "true"
 
 if use_supabase do
-  # Connect to Supabase for development
-  supabase_password = System.get_env("SUPABASE_DB_PASSWORD") || "YOUR_PASSWORD_HERE"
+  # Connect to self-hosted Supabase (localhost or remote)
+  # TODO: Move password to .env after testing
+  supabase_password = "0e05e3e93ee53b94e72953b59ed190c9"
+
+  # Use SUPABASE_DB_HOST env var, default to localhost for local dev
+  db_host = System.get_env("SUPABASE_DB_HOST") || "127.0.0.1"
 
   config :server, Server.Repo,
     database: "postgres",
-    hostname: "aws-0-eu-north-1.pooler.supabase.com",
-    port: 6543,
-    username: "postgres.uljsqvwkomdrlnofmlad",
+    hostname: db_host,
+    port: 54322,
+    username: "postgres",
     password: supabase_password,
-    ssl: true,
-    ssl_opts: [verify: :verify_none],
-    prepare: :unnamed,
+    ssl: false,
     stacktrace: true,
     show_sensitive_data_on_connection_error: true,
     pool_size: 10
 
   config :server, Server.JobsRepo,
     database: "postgres",
-    hostname: "aws-0-eu-north-1.pooler.supabase.com",
-    port: 6543,
-    username: "postgres.uljsqvwkomdrlnofmlad",
+    hostname: db_host,
+    port: 54322,
+    username: "postgres",
     password: supabase_password,
-    ssl: true,
-    ssl_opts: [verify: :verify_none],
-    prepare: :unnamed,
+    ssl: false,
     after_connect: {Postgrex, :query!, ["SET search_path TO jobs, public", []]},
     stacktrace: true,
     show_sensitive_data_on_connection_error: true,
