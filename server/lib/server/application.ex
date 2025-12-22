@@ -9,9 +9,9 @@ defmodule Server.Application do
   def start(_type, _args) do
     children = [
       ServerWeb.Telemetry,
-      # Database repositories
-      Server.Repo,
-      Server.JobsRepo,
+      # Note: Ecto repos disabled - using Supabase REST API via Server.Supabase instead
+      # Server.Repo,
+      # Server.JobsRepo,
       {DNSCluster, query: Application.get_env(:server, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Server.PubSub},
       # Start the Finch HTTP client for sending emails
