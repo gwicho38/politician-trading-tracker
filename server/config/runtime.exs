@@ -36,7 +36,13 @@ if config_env() == :prod do
   database_url = System.get_env("DATABASE_URL")
 
   if database_url do
-    config :server, Server.Repo, url: database_url
+    # Supabase requires SSL for external connections
+    config :server, Server.Repo,
+      url: database_url,
+      ssl: [verify: :verify_none],
+      pool_size: String.to_integer(System.get_env("POOL_SIZE", "10")),
+      # Supabase uses pgbouncer which requires prepared statements to be unnamed
+      prepare: :unnamed
   else
     database_password =
       System.get_env("DATABASE_PASSWORD") ||
