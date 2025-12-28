@@ -1,4 +1,9 @@
 defmodule Server.MixProject do
+  @moduledoc """
+  Mix project configuration for the Politician Trading Tracker server.
+
+  This is a minimal Phoenix API server that connects to Supabase PostgreSQL.
+  """
   use Mix.Project
 
   def project do
@@ -9,13 +14,14 @@ defmodule Server.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+
+      # Documentation
+      name: "Politician Trading Server",
+      docs: [main: "Server", extras: ["README.md"]]
     ]
   end
 
-  # Configuration for the OTP application.
-  #
-  # Type `mix help compile.app` for more information.
   def application do
     [
       mod: {Server.Application, []},
@@ -23,61 +29,45 @@ defmodule Server.MixProject do
     ]
   end
 
-  # Specifies which paths to compile per environment.
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
-  # Specifies your project dependencies.
-  #
-  # Type `mix help deps` for examples and options.
+  # Minimal dependencies for API server with Supabase PostgreSQL
   defp deps do
     [
+      # Phoenix core (API only - no HTML/assets)
       {:phoenix, "~> 1.7.21"},
+      {:bandit, "~> 1.5"},
+
+      # Database (Ecto + PostgreSQL for Supabase)
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.10"},
       {:postgrex, ">= 0.0.0"},
-      {:phoenix_live_dashboard, "~> 0.8.3"},
-      {:esbuild, "~> 0.8", runtime: Mix.env() == :dev},
-      {:tailwind, "~> 0.2.0", runtime: Mix.env() == :dev},
-      {:heroicons,
-       github: "tailwindlabs/heroicons",
-       tag: "v2.1.1",
-       sparse: "optimized",
-       app: false,
-       compile: false,
-       depth: 1},
-      {:swoosh, "~> 1.5"},
-      {:finch, "~> 0.13"},
+
+      # JSON handling
+      {:jason, "~> 1.2"},
+
+      # Telemetry & monitoring
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
-      {:gettext, "~> 0.26"},
-      {:jason, "~> 1.2"},
+
+      # HTTP client (for external API calls if needed)
+      {:finch, "~> 0.13"},
+
+      # Clustering (optional, for distributed deployments)
       {:dns_cluster, "~> 0.1.1"},
-      {:bandit, "~> 1.5"},
-      # Supabase REST API client
-      {:req, "~> 0.5"}
+
+      # Cron scheduling
+      {:quantum, "~> 3.5"}
     ]
   end
 
-  # Aliases are shortcuts or tasks specific to the current project.
-  # For example, to install project dependencies and perform other setup tasks, run:
-  #
-  #     $ mix setup
-  #
-  # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
+      setup: ["deps.get", "ecto.setup"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
-      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
-      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
-      "assets.build": ["tailwind server", "esbuild server"],
-      "assets.deploy": [
-        "tailwind server --minify",
-        "esbuild server --minify",
-        "phx.digest"
-      ]
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"]
     ]
   end
 end

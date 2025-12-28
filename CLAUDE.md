@@ -1,1 +1,2 @@
 - remember use supabase not postgres
+- do not use mock data, make sure all front end functions are wired with real data
