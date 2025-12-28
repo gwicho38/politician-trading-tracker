@@ -1,10 +1,16 @@
+# =============================================================================
+# Test Configuration
+# =============================================================================
+
 import Config
 
-# Configure your database
+# =============================================================================
+# Database Configuration
+# =============================================================================
 #
-# The MIX_TEST_PARTITION environment variable can be used
-# to provide built-in test partitioning in CI environment.
-# Run `mix help test` for more information.
+# Uses local PostgreSQL with sandbox pool for test isolation.
+# MIX_TEST_PARTITION allows parallel test execution in CI.
+
 config :server, Server.Repo,
   username: "postgres",
   password: "postgres",
@@ -13,21 +19,21 @@ config :server, Server.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
-# We don't run a server during test. If one is required,
-# you can enable the server option below.
+# =============================================================================
+# Phoenix Endpoint Configuration
+# =============================================================================
+
 config :server, ServerWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "bqp2cMPE7TrN0Tqg0NMw3a83rgjI10Si4PNJTvFcYwSIY/HbD+kzHsbbGSIYOIx1",
   server: false
 
-# In test we don't send emails
-config :server, Server.Mailer, adapter: Swoosh.Adapters.Test
+# =============================================================================
+# Test Settings
+# =============================================================================
 
-# Disable swoosh api client as it is only required for production adapters
-config :swoosh, :api_client, false
-
-# Print only warnings and errors during test
+# Only log warnings and errors during tests
 config :logger, level: :warning
 
-# Initialize plugs at runtime for faster test compilation
+# Runtime plug initialization for faster test compilation
 config :phoenix, :plug_init_mode, :runtime

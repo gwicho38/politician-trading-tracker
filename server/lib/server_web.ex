@@ -1,29 +1,29 @@
 defmodule ServerWeb do
   @moduledoc """
-  The entrypoint for defining your web interface, such
-  as controllers, components, channels, and so on.
+  Web interface module for the Politician Trading Tracker API.
 
-  This can be used in your application as:
+  This module provides macros for defining controllers and routers.
+  Use it in your modules like:
 
       use ServerWeb, :controller
-      use ServerWeb, :html
+      use ServerWeb, :router
 
-  The definitions below will be executed for every controller,
-  component, etc, so keep them short and clean, focused
-  on imports, uses and aliases.
+  ## API-Only Design
 
-  Do NOT define functions inside the quoted expressions
-  below. Instead, define additional modules and import
-  those modules here.
+  This server is designed as a JSON API backend. It does not include:
+  - HTML rendering
+  - LiveView
+  - Asset compilation
+
+  All endpoints return JSON responses.
   """
 
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
+  def static_paths, do: ~w(favicon.ico robots.txt)
 
   def router do
     quote do
       use Phoenix.Router, helpers: false
 
-      # Import common connection and controller functions to use in pipelines
       import Plug.Conn
       import Phoenix.Controller
     end
@@ -37,11 +37,7 @@ defmodule ServerWeb do
 
   def controller do
     quote do
-      use Phoenix.Controller,
-        formats: [:html, :json],
-        layouts: [html: ServerWeb.Layouts]
-
-      use Gettext, backend: ServerWeb.Gettext
+      use Phoenix.Controller, formats: [:json]
 
       import Plug.Conn
 
@@ -59,7 +55,7 @@ defmodule ServerWeb do
   end
 
   @doc """
-  When used, dispatch to the appropriate controller/live_view/etc.
+  Dispatches to the appropriate module based on the usage type.
   """
   defmacro __using__(which) when is_atom(which) do
     apply(__MODULE__, which, [])

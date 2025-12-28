@@ -6,6 +6,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Helper to check if request is using service role key (for scheduled jobs)
+function isServiceRoleRequest(req: Request): boolean {
+  const authHeader = req.headers.get('authorization')
+  if (!authHeader) return false
+
+  const token = authHeader.replace('Bearer ', '')
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+
+  return token === serviceRoleKey
+}
+
 // Structured logging utility
 const log = {
   info: (message: string, metadata?: any) => {
@@ -64,34 +75,41 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Validate authentication
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Authentication required' }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+    // Check if this is a service role request (scheduled job)
+    const isServerRequest = isServiceRoleRequest(req)
+
+    if (isServerRequest) {
+      log.info('Service role request (scheduled job)', { requestId })
+    } else {
+      // Validate user authentication for client requests
+      const authHeader = req.headers.get('authorization')
+      if (!authHeader) {
+        return new Response(
+          JSON.stringify({ error: 'Authentication required' }),
+          {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        )
+      }
+
+      // Get user from JWT
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(
+        authHeader.replace('Bearer ', '')
       )
+
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid authentication' }),
+          {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        )
+      }
+
+      log.info('User authenticated', { requestId, userId: user.id })
     }
-
-    // Get user from JWT
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    )
-
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid authentication' }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      )
-    }
-
-    log.info('User authenticated', { requestId, userId: user.id })
 
     // Get Alpaca API credentials from environment
     const alpacaApiKey = Deno.env.get('ALPACA_API_KEY')

@@ -1,155 +1,68 @@
+# =============================================================================
+# Development Configuration
+# =============================================================================
+
 import Config
 
 # =============================================================================
-# Load .env file for development
+# Database Configuration - Supabase PostgreSQL
 # =============================================================================
 #
-# Parse .env file from the parent repo root (politician-trading-tracker/.env)
-# This runs at compile time before deps are available, so we parse manually.
+# Supabase Project: uljsqvwkomdrlnofmlad
+#
+# CONNECTION OPTIONS:
+#
+# Option 1: Via Pooler (recommended for external connections)
+#   Host: aws-1-eu-north-1.pooler.supabase.com
+#   Port: 6543
+#   Username: postgres.uljsqvwkomdrlnofmlad
+#
+# Option 2: Direct connection (may have network restrictions)
+#   Host: db.uljsqvwkomdrlnofmlad.supabase.co
+#   Port: 5432
+#   Username: postgres
+#
+# Get your password from Supabase Dashboard:
+#   Project Settings > Database > Database password
 
-env_file = Path.expand("../../.env", __DIR__)
-
-if File.exists?(env_file) do
-  env_file
-  |> File.read!()
-  |> String.split("\n")
-  |> Enum.each(fn line ->
-    line = String.trim(line)
-    # Skip comments and empty lines
-    unless line == "" or String.starts_with?(line, "#") do
-      case String.split(line, "=", parts: 2) do
-        [key, value] ->
-          # Remove quotes if present
-          value = value
-            |> String.trim()
-            |> String.trim_leading("\"")
-            |> String.trim_trailing("\"")
-            |> String.trim_leading("'")
-            |> String.trim_trailing("'")
-          System.put_env(String.trim(key), value)
-        _ -> :ok
-      end
-    end
-  end)
-end
+# Using pooler connection for better connectivity
+config :server, Server.Repo,
+  hostname: "aws-1-eu-north-1.pooler.supabase.com",
+  port: 6543,
+  username: "postgres.uljsqvwkomdrlnofmlad",
+  password: System.get_env("DATABASE_PASSWORD", "servicetoanothertoast"),
+  database: "postgres",
+  ssl: [verify: :verify_none],
+  pool_size: 10,
+  # Required for Supabase pgbouncer in transaction mode
+  prepare: :unnamed,
+  stacktrace: true,
+  show_sensitive_data_on_connection_error: true
 
 # =============================================================================
-# Database Configuration for Development
+# Phoenix Endpoint Configuration
 # =============================================================================
-#
-# By default, connects to Supabase. Set USE_LOCAL_DB=true to use local Postgres.
-#
-# For Supabase, set SUPABASE_DB_PASSWORD environment variable.
-# Get the password from: Supabase Dashboard > Project Settings > Database
 
-use_supabase = System.get_env("USE_LOCAL_DB") != "true"
-
-if use_supabase do
-  # Connect to self-hosted Supabase (localhost or remote)
-  # TODO: Move password to .env after testing
-  supabase_password = "0e05e3e93ee53b94e72953b59ed190c9"
-
-  # Use SUPABASE_DB_HOST env var, default to localhost for local dev
-  db_host = System.get_env("SUPABASE_DB_HOST") || "127.0.0.1"
-
-  config :server, Server.Repo,
-    database: "postgres",
-    hostname: db_host,
-    port: 54322,
-    username: "postgres",
-    password: supabase_password,
-    ssl: false,
-    stacktrace: true,
-    show_sensitive_data_on_connection_error: true,
-    pool_size: 10
-
-  config :server, Server.JobsRepo,
-    database: "postgres",
-    hostname: db_host,
-    port: 54322,
-    username: "postgres",
-    password: supabase_password,
-    ssl: false,
-    after_connect: {Postgrex, :query!, ["SET search_path TO jobs, public", []]},
-    stacktrace: true,
-    show_sensitive_data_on_connection_error: true,
-    pool_size: 5
-else
-  # Local Postgres for offline development
-  config :server, Server.Repo,
-    username: "postgres",
-    password: "postgres",
-    hostname: "localhost",
-    database: "server_dev",
-    stacktrace: true,
-    show_sensitive_data_on_connection_error: true,
-    pool_size: 10
-
-  config :server, Server.JobsRepo,
-    username: "postgres",
-    password: "postgres",
-    hostname: "localhost",
-    database: "server_dev",
-    after_connect: {Postgrex, :query!, ["SET search_path TO jobs, public", []]},
-    stacktrace: true,
-    show_sensitive_data_on_connection_error: true,
-    pool_size: 5
-end
-
-# For development, we disable any cache and enable
-# debugging and code reloading.
-#
-# The watchers configuration can be used to run external
-# watchers to your application. For example, we can use it
-# to bundle .js and .css sources.
 config :server, ServerWeb.Endpoint,
-  # Binding to loopback ipv4 address prevents access from other machines.
-  # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
   http: [ip: {127, 0, 0, 1}, port: 4000],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
   secret_key_base: "Hr8rKs6uda9rTug0oLeK4ZzdpV/gge3ada1ON7dn8vSQqoxahKaJeOp0cgdAZGrk",
-  watchers: [
-    esbuild: {Esbuild, :install_and_run, [:server, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:server, ~w(--watch)]}
-  ]
+  watchers: []
 
-# ## SSL Support
-#
-# In order to use HTTPS in development, a self-signed
-# certificate can be generated by running the following
-# Mix task:
-#
-#     mix phx.gen.cert
-#
-# Run `mix help phx.gen.cert` for more information.
-#
-# The `http:` config above can be replaced with:
-#
-#     https: [
-#       port: 4001,
-#       cipher_suite: :strong,
-#       keyfile: "priv/cert/selfsigned_key.pem",
-#       certfile: "priv/cert/selfsigned.pem"
-#     ],
-#
-# If desired, both `http:` and `https:` keys can be
-# configured to run both http and https servers on
-# different ports.
+# =============================================================================
+# Development Settings
+# =============================================================================
 
-# Enable dev routes for dashboard and mailbox
+# Enable dev routes (health checks, debug endpoints)
 config :server, dev_routes: true
 
-# Do not include metadata nor timestamps in development logs
+# Simplified log format for development
 config :logger, :console, format: "[$level] $message\n"
 
-# Set a higher stacktrace during development. Avoid configuring such
-# in production as building large stacktraces may be expensive.
+# Higher stacktrace depth for debugging
 config :phoenix, :stacktrace_depth, 20
 
-# Initialize plugs at runtime for faster development compilation
+# Runtime plug initialization for faster compilation
 config :phoenix, :plug_init_mode, :runtime
-
-# Disable swoosh api client as it is only required for production adapters.
-config :swoosh, :api_client, false

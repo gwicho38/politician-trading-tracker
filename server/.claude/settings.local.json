@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs ls:*)",
+      "Bash(mix deps.get:*)",
+      "Bash(mix compile:*)",
+      "Bash(mix run:*)",
+      "Bash(nslookup:*)",
+      "Bash(curl:*)",
+      "Bash(cat:*)",
+      "WebSearch",
+      "WebFetch(domain:hexdocs.pm)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)"
+    ]
+  }
+}

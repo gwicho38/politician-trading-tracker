@@ -9,8 +9,9 @@ defmodule Server.Schemas.JobExecution do
   import Ecto.Changeset
 
   @primary_key {:id, :binary_id, autogenerate: true}
+  @schema_prefix "jobs"
 
-  schema "jobs.job_executions" do
+  schema "job_executions" do
     field :job_id, :string
     field :started_at, :utc_datetime
     field :completed_at, :utc_datetime
@@ -21,23 +22,35 @@ defmodule Server.Schemas.JobExecution do
     field :logs, :string
     field :execution_log, :map, default: %{}
 
-    timestamps(inserted_at: :created_at, updated_at: false)
+    timestamps(inserted_at: :created_at, updated_at: false, type: :utc_datetime)
   end
 
   @valid_statuses ~w(running success failed completed)
 
   def changeset(execution, attrs) do
     execution
-    |> cast(attrs, [:job_id, :started_at, :completed_at, :status,
-                    :duration_seconds, :records_processed, :error_message,
-                    :logs, :execution_log])
+    |> cast(attrs, [
+      :job_id,
+      :started_at,
+      :completed_at,
+      :status,
+      :duration_seconds,
+      :records_processed,
+      :error_message,
+      :logs,
+      :execution_log
+    ])
     |> validate_required([:job_id])
     |> validate_inclusion(:status, @valid_statuses)
   end
 
   def start_changeset(job_id) do
     %__MODULE__{}
-    |> cast(%{job_id: job_id, started_at: DateTime.utc_now(), status: "running"}, [:job_id, :started_at, :status])
+    |> cast(%{job_id: job_id, started_at: DateTime.utc_now(), status: "running"}, [
+      :job_id,
+      :started_at,
+      :status
+    ])
   end
 
   def complete_changeset(execution, result) do
@@ -50,10 +63,20 @@ defmodule Server.Schemas.JobExecution do
           %{completed_at: now, status: "success", duration_seconds: duration}
 
         {:ok, records} when is_integer(records) ->
-          %{completed_at: now, status: "success", duration_seconds: duration, records_processed: records}
+          %{
+            completed_at: now,
+            status: "success",
+            duration_seconds: duration,
+            records_processed: records
+          }
 
         {:error, message} ->
-          %{completed_at: now, status: "failed", duration_seconds: duration, error_message: inspect(message)}
+          %{
+            completed_at: now,
+            status: "failed",
+            duration_seconds: duration,
+            error_message: inspect(message)
+          }
       end
 
     execution

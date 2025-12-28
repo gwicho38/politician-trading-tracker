@@ -6,6 +6,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Helper to check if request is using service role key (for scheduled jobs)
+function isServiceRoleRequest(req: Request): boolean {
+  const authHeader = req.headers.get('authorization')
+  if (!authHeader) return false
+
+  const token = authHeader.replace('Bearer ', '')
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+
+  return token === serviceRoleKey
+}
+
 // Structured logging utility
 const log = {
   info: (message: string, metadata?: any) => {
@@ -849,28 +860,37 @@ async function handleSyncOrders(supabaseClient: any, req: Request, requestId: st
   const handlerStartTime = Date.now()
 
   try {
-    // Validate authentication
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Authentication required' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    // Check if this is a service role request (scheduled job)
+    const isServerRequest = isServiceRoleRequest(req)
+    let userId: string | null = null
+
+    if (isServerRequest) {
+      log.info('Service role request (scheduled job) - syncing all orders', { requestId })
+    } else {
+      // Validate authentication for client requests
+      const authHeader = req.headers.get('authorization')
+      if (!authHeader) {
+        return new Response(
+          JSON.stringify({ error: 'Authentication required' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // Get user from JWT
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(
+        authHeader.replace('Bearer ', '')
       )
+
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid authentication' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      userId = user.id
+      log.info('Syncing orders from Alpaca', { requestId, userId })
     }
-
-    // Get user from JWT
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    )
-
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid authentication' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    log.info('Syncing orders from Alpaca', { requestId, userId: user.id })
 
     // Get Alpaca API credentials
     const alpacaApiKey = Deno.env.get('ALPACA_API_KEY')
@@ -951,7 +971,7 @@ async function handleSyncOrders(supabaseClient: any, req: Request, requestId: st
         } else {
           // Insert new order
           const orderRecord = {
-            user_id: user.id,
+            user_id: userId,  // null for service role (scheduled job) requests
             alpaca_order_id: order.id,
             alpaca_client_order_id: order.client_order_id || null,
             ticker: order.symbol,

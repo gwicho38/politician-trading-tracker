@@ -13,6 +13,8 @@ defmodule Server.Application do
 
   use Application
 
+  require Logger
+
   @impl true
   def start(_type, _args) do
     children = [
@@ -48,7 +50,32 @@ defmodule Server.Application do
   end
 
   defp register_jobs do
-    Server.Scheduler.register_job(Server.Scheduler.Jobs.SyncJob)
+    jobs = [
+      # Core sync jobs
+      Server.Scheduler.Jobs.SyncJob,
+      Server.Scheduler.Jobs.SyncDataJob,
+      Server.Scheduler.Jobs.TradingSignalsJob,
+      # Alpaca trading jobs
+      Server.Scheduler.Jobs.AlpacaAccountJob,
+      Server.Scheduler.Jobs.OrdersJob,
+      Server.Scheduler.Jobs.PortfolioJob,
+      # Politician trading collection (split by source to avoid timeouts)
+      Server.Scheduler.Jobs.PoliticianTradingHouseJob,
+      Server.Scheduler.Jobs.PoliticianTradingSenateJob,
+      Server.Scheduler.Jobs.PoliticianTradingQuiverJob,
+      Server.Scheduler.Jobs.PoliticianTradingEuJob,
+      Server.Scheduler.Jobs.PoliticianTradingCaliforniaJob
+    ]
+
+    Enum.each(jobs, fn job_module ->
+      case Server.Scheduler.register_job(job_module) do
+        {:ok, _} ->
+          Logger.info("Registered job: #{job_module.job_name()}")
+
+        {:error, reason} ->
+          Logger.warning("Failed to register job #{job_module.job_name()}: #{inspect(reason)}")
+      end
+    end)
   end
 
   @impl true

@@ -1,28 +1,50 @@
 defmodule ServerWeb.Router do
+  @moduledoc """
+  Phoenix Router for the Politician Trading Tracker API.
+
+  ## Routes
+
+  - `GET /health` - Liveness check (server running)
+  - `GET /health/ready` - Readiness check (database connected)
+  - `GET /api/*` - API endpoints (to be added)
+  """
+
   use ServerWeb, :router
+
+  # ===========================================================================
+  # Pipelines
+  # ===========================================================================
 
   pipeline :api do
     plug :accepts, ["json"]
   end
 
-  scope "/api", ServerWeb do
-    pipe_through :api
+  # ===========================================================================
+  # Base  Routes (no pipeline - always accessible)
+  # ===========================================================================
+
+  scope "/", ServerWeb do
+    get "/", HealthController, :index
+    get "/ready", HealthController, :ready
   end
 
-  # Enable LiveDashboard and Swoosh mailbox preview in development
-  if Application.compile_env(:server, :dev_routes) do
-    # If you want to use the LiveDashboard in production, you should put
-    # it behind authentication and allow only admins to access it.
-    # If your application does not have an admins-only section yet,
-    # you can use Plug.BasicAuth to set up some basic authentication
-    # as long as you are also using SSL (which you should anyway).
-    import Phoenix.LiveDashboard.Router
+  # ===========================================================================
+  # Health Check Routes (no pipeline - always accessible)
+  # ===========================================================================
 
-    scope "/dev" do
-      pipe_through [:fetch_session, :protect_from_forgery]
+  scope "/health", ServerWeb do
+    get "/", HealthController, :index
+    get "/ready", HealthController, :ready
+  end
 
-      live_dashboard "/dashboard", metrics: ServerWeb.Telemetry
-      forward "/mailbox", Plug.Swoosh.MailboxPreview
-    end
+  # ===========================================================================
+  # API Routes
+  # ===========================================================================
+
+  scope "/api", ServerWeb do
+    pipe_through :api
+
+    # Add API routes here
+    # Example: resources "/trades", TradeController
   end
 end
