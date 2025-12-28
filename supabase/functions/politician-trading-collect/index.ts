@@ -22,9 +22,9 @@ class PoliticianTradingCollector {
     this.supabase = supabaseClient
     this.config = {
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-      timeout: 60000, // Increased from 30s to 60s
-      maxRetries: 2,  // Reduced retries to fail faster
-      requestDelay: 2000
+      timeout: 30000, // 30s timeout per request (reduced for faster failures)
+      maxRetries: 1,  // Single retry to fail fast
+      requestDelay: 1000
     }
   }
 
@@ -501,6 +501,41 @@ class PoliticianTradingCollector {
 
     return results
   }
+
+  // Collect from a single source (for faster, targeted collection)
+  async collectSingleSource(source: string): Promise<{ source: string; disclosures_found: number; disclosures: any[] }> {
+    const sourceMap: Record<string, () => Promise<any>> = {
+      'house': () => this.collectUSHouseData(),
+      'senate': () => this.collectUSSenateData(),
+      'quiver': () => this.collectQuiverQuantData(),
+      'eu': () => this.collectEUParliamentData(),
+      'california': () => this.collectCaliforniaData()
+    }
+
+    const collector = sourceMap[source.toLowerCase()]
+    if (!collector) {
+      return {
+        source: source,
+        disclosures_found: 0,
+        disclosures: []
+      }
+    }
+
+    const result = await collector()
+
+    // Store disclosures in database
+    if (result.disclosures.length > 0) {
+      const { error } = await this.supabase
+        .from('trading_disclosures')
+        .insert(result.disclosures)
+
+      if (error) {
+        console.error(`Error storing ${source} disclosures:`, error)
+      }
+    }
+
+    return result
+  }
 }
 
 Deno.serve(async (req) => {
@@ -510,6 +545,10 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Parse URL to get source parameter
+    const url = new URL(req.url)
+    const source = url.searchParams.get('source') // 'house', 'senate', 'quiver', 'eu', 'california', or null for all
+
     // Initialize Supabase client
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -517,10 +556,35 @@ Deno.serve(async (req) => {
     )
 
     const collector = new PoliticianTradingCollector(supabaseClient)
-    
-    console.log('🏛️ Starting politician trading data collection...')
+
+    // If a specific source is requested, run only that source
+    if (source) {
+      console.log(`🏛️ Starting ${source} data collection...`)
+      const result = await collector.collectSingleSource(source)
+
+      console.log(`✅ ${source} collection completed:`, {
+        disclosures: result.disclosures_found
+      })
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: result,
+          message: `${source} collection completed. Found ${result.disclosures_found} disclosures.`
+        }),
+        {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
+      )
+    }
+
+    // Full collection (all sources)
+    console.log('🏛️ Starting full politician trading data collection...')
     const results = await collector.runFullCollection()
-    
+
     console.log('✅ Collection completed:', {
       status: results.status,
       total_disclosures: results.summary.total_new_disclosures,
@@ -533,29 +597,29 @@ Deno.serve(async (req) => {
         data: results,
         message: `Collection ${results.status}. Found ${results.summary.total_new_disclosures} disclosures.`
       }),
-      { 
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        } 
+      {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
       }
     )
 
   } catch (error: any) {
     console.error('Edge function error:', error)
-    
+
     return new Response(
-      JSON.stringify({ 
-        success: false, 
+      JSON.stringify({
+        success: false,
         error: error.message,
         message: 'Failed to run politician trading collection'
       }),
-      { 
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        }, 
-        status: 400 
+      {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        },
+        status: 400
       }
     )
   }

@@ -47,7 +47,9 @@ defmodule Server.Repo.Migrations.CreateJobsSchema do
 
     # Create indexes
     execute "CREATE INDEX IF NOT EXISTS idx_jobs_executions_job_id ON jobs.job_executions(job_id)"
+
     execute "CREATE INDEX IF NOT EXISTS idx_jobs_executions_started_at ON jobs.job_executions(started_at DESC)"
+
     execute "CREATE INDEX IF NOT EXISTS idx_jobs_scheduled_enabled ON jobs.scheduled_jobs(enabled)"
 
     # Insert default job definitions

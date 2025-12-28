@@ -10,8 +10,9 @@ defmodule Server.Schemas.ScheduledJob do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @timestamps_opts [type: :utc_datetime]
+  @schema_prefix "jobs"
 
-  schema "jobs.scheduled_jobs" do
+  schema "scheduled_jobs" do
     field :job_id, :string
     field :job_name, :string
     field :job_function, :string
@@ -45,7 +46,12 @@ defmodule Server.Schemas.ScheduledJob do
 
   def update_execution_changeset(job, attrs) do
     job
-    |> cast(attrs, [:last_run_at, :last_attempted_run, :last_successful_run,
-                    :next_scheduled_run, :consecutive_failures])
+    |> cast(attrs, [
+      :last_run_at,
+      :last_attempted_run,
+      :last_successful_run,
+      :next_scheduled_run,
+      :consecutive_failures
+    ])
   end
 end

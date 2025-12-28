@@ -56,6 +56,7 @@ defmodule Server.Scheduler.API do
         if enabled do
           add_to_quantum(module)
         end
+
         Logger.info("[Scheduler] Registered job: #{job_id}")
         {:ok, job_id}
 
@@ -162,8 +163,12 @@ defmodule Server.Scheduler.API do
           case Crontab.CronExpression.Parser.parse(schedule) do
             {:ok, cron_expr} ->
               Quantum.Job.set_schedule(quantum_job, cron_expr)
+
             {:error, reason} ->
-              Logger.error("[Scheduler] Invalid cron expression for #{job_id}: #{inspect(reason)}")
+              Logger.error(
+                "[Scheduler] Invalid cron expression for #{job_id}: #{inspect(reason)}"
+              )
+
               nil
           end
 
@@ -172,11 +177,21 @@ defmodule Server.Scheduler.API do
           # Quantum doesn't have native interval support, so we use extended cron
           seconds = String.to_integer(schedule)
           minutes = div(seconds, 60)
+
           if minutes > 0 do
-            Quantum.Job.set_schedule(quantum_job, Crontab.CronExpression.Parser.parse!("*/#{minutes} * * * *"))
+            Quantum.Job.set_schedule(
+              quantum_job,
+              Crontab.CronExpression.Parser.parse!("*/#{minutes} * * * *")
+            )
           else
-            Logger.warning("[Scheduler] Interval #{seconds}s is less than 1 minute for #{job_id}, using 1 minute")
-            Quantum.Job.set_schedule(quantum_job, Crontab.CronExpression.Parser.parse!("* * * * *"))
+            Logger.warning(
+              "[Scheduler] Interval #{seconds}s is less than 1 minute for #{job_id}, using 1 minute"
+            )
+
+            Quantum.Job.set_schedule(
+              quantum_job,
+              Crontab.CronExpression.Parser.parse!("* * * * *")
+            )
           end
       end
 
@@ -188,6 +203,7 @@ defmodule Server.Scheduler.API do
   defp execute_job_async(module) do
     Task.start(fn ->
       job_record = Repo.get_by(ScheduledJob, job_id: module.job_id())
+
       if job_record && job_record.enabled do
         execute_job(module, job_record)
       end
@@ -249,6 +265,7 @@ defmodule Server.Scheduler.API do
 
     # Update job record
     now = DateTime.utc_now()
+
     job_updates =
       case status do
         "success" ->
@@ -287,6 +304,7 @@ defmodule Server.Scheduler.API do
 
         # Update Quantum scheduler
         quantum_name = String.to_atom(job_id)
+
         if enabled do
           QuantumScheduler.activate_job(quantum_name)
         else

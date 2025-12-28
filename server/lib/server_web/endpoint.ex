@@ -1,44 +1,46 @@
 defmodule ServerWeb.Endpoint do
+  @moduledoc """
+  Phoenix Endpoint for the Politician Trading Tracker API.
+
+  Handles HTTP request processing pipeline including:
+  - Request ID generation
+  - Telemetry
+  - JSON parsing
+  - Routing
+  """
+
   use Phoenix.Endpoint, otp_app: :server
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
-  @session_options [
-    store: :cookie,
-    key: "_server_key",
-    signing_salt: "dOOGKk1H",
-    same_site: "Lax"
-  ]
+  # ---------------------------------------------------------------------------
+  # Static Files (minimal - API only)
+  # ---------------------------------------------------------------------------
 
-  socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: [connect_info: [session: @session_options]]
-
-  # Serve at "/" the static files from "priv/static" directory.
-  #
-  # You should set gzip to true if you are running phx.digest
-  # when deploying your static files in production.
   plug Plug.Static,
     at: "/",
     from: :server,
     gzip: false,
     only: ServerWeb.static_paths()
 
-  # Code reloading can be explicitly enabled under the
-  # :code_reloader configuration of your endpoint.
+  # ---------------------------------------------------------------------------
+  # Development Reloading
+  # ---------------------------------------------------------------------------
+
   if code_reloading? do
     plug Phoenix.CodeReloader
     plug Phoenix.Ecto.CheckRepoStatus, otp_app: :server
   end
 
-  plug Phoenix.LiveDashboard.RequestLogger,
-    param_key: "request_logger",
-    cookie_key: "request_logger"
+  # ---------------------------------------------------------------------------
+  # Request Pipeline
+  # ---------------------------------------------------------------------------
 
+  # Add unique request ID to each request
   plug Plug.RequestId
+
+  # Emit telemetry events for monitoring
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
+  # Parse request body (JSON, form data)
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
@@ -46,6 +48,7 @@ defmodule ServerWeb.Endpoint do
 
   plug Plug.MethodOverride
   plug Plug.Head
-  plug Plug.Session, @session_options
+
+  # Route to controllers
   plug ServerWeb.Router
 end

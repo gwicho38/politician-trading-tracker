@@ -1,140 +1,110 @@
+# =============================================================================
+# Runtime Configuration
+# =============================================================================
+#
+# This file is executed at runtime (not compile time), making it ideal for:
+# - Loading secrets from environment variables
+# - Production configuration that varies by deployment
+#
+# For releases, start with: PHX_SERVER=true bin/server start
+
 import Config
 
-# config/runtime.exs is executed for all environments, including
-# during releases. It is executed after compilation and before the
-# system starts, so it is typically used to load production configuration
-# and secrets from environment variables or elsewhere. Do not define
-# any compile-time configuration in here, as it won't be applied.
-# The block below contains prod specific runtime configuration.
+# =============================================================================
+# Start Phoenix Server (for releases)
+# =============================================================================
 
-# ## Using releases
-#
-# If you use `mix release`, you need to explicitly enable the server
-# by passing the PHX_SERVER=true when you start it:
-#
-#     PHX_SERVER=true bin/server start
-#
-# Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
-# script that automatically sets the env var above.
 if System.get_env("PHX_SERVER") do
   config :server, ServerWeb.Endpoint, server: true
 end
 
+# =============================================================================
+# Production Configuration
+# =============================================================================
+
 if config_env() == :prod do
-  # =============================================================================
-  # Supabase Database Configuration
-  # =============================================================================
+  # ---------------------------------------------------------------------------
+  # Database Configuration (Supabase PostgreSQL)
+  # ---------------------------------------------------------------------------
   #
-  # Option 1: Use DATABASE_URL (full connection string)
-  # Option 2: Use DATABASE_PASSWORD (password only, other settings from config.exs)
+  # Set DATABASE_URL for the full connection string, or set individual vars:
+  # - DATABASE_HOST (default: db.uljsqvwkomdrlnofmlad.supabase.co)
+  # - DATABASE_PASSWORD (required)
+  # - DATABASE_PORT (default: 5432)
+  # - POOL_SIZE (default: 10)
 
-  database_password =
-    System.get_env("DATABASE_PASSWORD") ||
-      System.get_env("SUPABASE_DB_PASSWORD") ||
-      raise """
-      environment variable DATABASE_PASSWORD or SUPABASE_DB_PASSWORD is missing.
-      Get this from Supabase Dashboard > Project Settings > Database > Connection string
-      """
+  database_url = System.get_env("DATABASE_URL")
 
-  maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
-  pool_size = String.to_integer(System.get_env("POOL_SIZE") || "10")
+  if database_url do
+    config :server, Server.Repo, url: database_url
+  else
+    database_password =
+      System.get_env("DATABASE_PASSWORD") ||
+        raise """
+        Environment variable DATABASE_PASSWORD is missing.
+        Get this from Supabase Dashboard > Project Settings > Database
+        """
 
-  # Main Repo configuration (direct connection to Supabase)
-  config :server, Server.Repo,
-    hostname: "db.uljsqvwkomdrlnofmlad.supabase.co",
-    port: 5432,
-    username: "postgres",
-    password: database_password,
-    ssl: [verify: :verify_none],
-    pool_size: pool_size,
-    socket_options: maybe_ipv6
+    config :server, Server.Repo,
+      hostname: System.get_env("DATABASE_HOST", "aws-1-eu-north-1.pooler.supabase.com"),
+      port: String.to_integer(System.get_env("DATABASE_PORT", "6543")),
+      username: System.get_env("DATABASE_USER", "postgres.uljsqvwkomdrlnofmlad"),
+      password: database_password,
+      database: "postgres",
+      ssl: [verify: :verify_none],
+      pool_size: String.to_integer(System.get_env("POOL_SIZE", "10")),
+      socket_options: if(System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: [])
+  end
 
-  # Jobs Repo configuration (uses same password, smaller pool)
-  config :server, Server.JobsRepo,
-    hostname: "db.uljsqvwkomdrlnofmlad.supabase.co",
-    port: 5432,
-    username: "postgres",
-    password: database_password,
-    ssl: [verify: :verify_none],
-    pool_size: div(pool_size, 2),
-    socket_options: maybe_ipv6
+  # ---------------------------------------------------------------------------
+  # Phoenix Endpoint Configuration
+  # ---------------------------------------------------------------------------
 
-  # The secret key base is used to sign/encrypt cookies and other secrets.
-  # A default value is used in config/dev.exs and config/test.exs but you
-  # want to use a different value for prod and you most likely don't want
-  # to check this value into version control, so we use an environment
-  # variable instead.
   secret_key_base =
     System.get_env("SECRET_KEY_BASE") ||
       raise """
-      environment variable SECRET_KEY_BASE is missing.
-      You can generate one by calling: mix phx.gen.secret
+      Environment variable SECRET_KEY_BASE is missing.
+      Generate one with: mix phx.gen.secret
       """
 
-  host = System.get_env("PHX_HOST") || "example.com"
-  port = String.to_integer(System.get_env("PORT") || "4000")
-
-  config :server, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
+  host = System.get_env("PHX_HOST", "localhost")
+  port = String.to_integer(System.get_env("PORT", "4000"))
 
   config :server, ServerWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
-    http: [
-      # Enable IPv6 and bind on all interfaces.
-      # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
-      # See the documentation on https://hexdocs.pm/bandit/Bandit.html#t:options/0
-      # for details about using IPv6 vs IPv4 and loopback vs public addresses.
-      ip: {0, 0, 0, 0, 0, 0, 0, 0},
-      port: port
-    ],
+    http: [ip: {0, 0, 0, 0, 0, 0, 0, 0}, port: port],
     secret_key_base: secret_key_base
 
-  # ## SSL Support
-  #
-  # To get SSL working, you will need to add the `https` key
-  # to your endpoint configuration:
-  #
-  #     config :server, ServerWeb.Endpoint,
-  #       https: [
-  #         ...,
-  #         port: 443,
-  #         cipher_suite: :strong,
-  #         keyfile: System.get_env("SOME_APP_SSL_KEY_PATH"),
-  #         certfile: System.get_env("SOME_APP_SSL_CERT_PATH")
-  #       ]
-  #
-  # The `cipher_suite` is set to `:strong` to support only the
-  # latest and more secure SSL ciphers. This means old browsers
-  # and clients may not be supported. You can set it to
-  # `:compatible` for wider support.
-  #
-  # `:keyfile` and `:certfile` expect an absolute path to the key
-  # and cert in disk or a relative path inside priv, for example
-  # "priv/ssl/server.key". For all supported SSL configuration
-  # options, see https://hexdocs.pm/plug/Plug.SSL.html#configure/1
-  #
-  # We also recommend setting `force_ssl` in your config/prod.exs,
-  # ensuring no data is ever sent via http, always redirecting to https:
-  #
-  #     config :server, ServerWeb.Endpoint,
-  #       force_ssl: [hsts: true]
-  #
-  # Check `Plug.SSL` for all available options in `force_ssl`.
+  # ---------------------------------------------------------------------------
+  # DNS Clustering (optional)
+  # ---------------------------------------------------------------------------
 
-  # ## Configuring the mailer
+  config :server, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
+
+  # ---------------------------------------------------------------------------
+  # Supabase Edge Functions Configuration
+  # ---------------------------------------------------------------------------
   #
-  # In production you need to configure the mailer to use a different adapter.
-  # Also, you may need to configure the Swoosh API client of your choice if you
-  # are not using SMTP. Here is an example of the configuration:
-  #
-  #     config :server, Server.Mailer,
-  #       adapter: Swoosh.Adapters.Mailgun,
-  #       api_key: System.get_env("MAILGUN_API_KEY"),
-  #       domain: System.get_env("MAILGUN_DOMAIN")
-  #
-  # For this example you need include a HTTP client required by Swoosh API client.
-  # Swoosh supports Hackney and Finch out of the box:
-  #
-  #     config :swoosh, :api_client, Swoosh.ApiClient.Hackney
-  #
-  # See https://hexdocs.pm/swoosh/Swoosh.html#module-installation for details.
+  # SUPABASE_SERVICE_KEY is required to invoke edge functions
+  # Get this from Supabase Dashboard > Project Settings > API > service_role key
+
+  supabase_service_key =
+    System.get_env("SUPABASE_SERVICE_KEY") ||
+      raise """
+      Environment variable SUPABASE_SERVICE_KEY is missing.
+      Get this from Supabase Dashboard > Project Settings > API > service_role key
+      """
+
+  config :server, :supabase_service_key, supabase_service_key
+end
+
+# =============================================================================
+# Development & Test Configuration
+# =============================================================================
+#
+# Load Supabase service key from env for non-prod environments too
+
+if config_env() in [:dev, :test] do
+  # Allow optional service key in dev/test (jobs will fail gracefully if missing)
+  config :server, :supabase_service_key, System.get_env("SUPABASE_SERVICE_KEY")
 end
