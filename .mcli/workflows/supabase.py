@@ -11,8 +11,11 @@ Usage:
     mcli run supabase schema <table>   # Show table schema
     mcli run supabase query <table>    # Query table data
     mcli run supabase stats            # Show database statistics
+    mcli run supabase deploy <func>    # Deploy edge function
+    mcli run supabase functions        # List edge functions
 """
 import os
+import subprocess
 import click
 from pathlib import Path
 from dotenv import load_dotenv
@@ -29,6 +32,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 # Supabase configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")  # Use service key for admin access
+SUPABASE_PROJECT_REF = os.getenv("SUPABASE_PROJECT_REF", "uljsqvwkomdrlnofmlad")
 
 
 def get_client():
@@ -466,3 +470,141 @@ def recent(limit: int):
 
     except Exception as e:
         console.print(f"[red]✗ Error: {e}[/red]")
+
+
+# =============================================================================
+# Edge Functions Commands
+# =============================================================================
+
+@supabase.command(name="deploy")
+@click.argument("function_name", required=False)
+@click.option("--all", "-a", "deploy_all", is_flag=True, help="Deploy all functions")
+@click.option("--project", "-p", default=None, help="Override project reference")
+def deploy(function_name: str | None, deploy_all: bool, project: str | None):
+    """Deploy edge function(s) to Supabase.
+
+    Examples:
+        mcli run supabase deploy trading-signals    # Deploy specific function
+        mcli run supabase deploy --all              # Deploy all functions
+        mcli run supabase deploy trading-signals -p myproject  # Custom project
+    """
+    functions_dir = PROJECT_ROOT / "supabase" / "functions"
+    project_ref = project or SUPABASE_PROJECT_REF
+
+    if not functions_dir.exists():
+        console.print(f"[red]✗ Functions directory not found: {functions_dir}[/red]")
+        return
+
+    # Determine which functions to deploy
+    if deploy_all:
+        functions = [d.name for d in functions_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
+    elif function_name:
+        functions = [function_name]
+    else:
+        console.print("[yellow]⚠ No function specified. Use function name or --all[/yellow]")
+        console.print("\nAvailable functions:")
+        for d in functions_dir.iterdir():
+            if d.is_dir() and not d.name.startswith("."):
+                console.print(f"  • {d.name}")
+        return
+
+    console.print(f"[cyan]🚀 Deploying to project: {project_ref}[/cyan]\n")
+
+    for func in functions:
+        func_path = functions_dir / func
+        if not func_path.exists():
+            console.print(f"[yellow]⚠ Function not found: {func}[/yellow]")
+            continue
+
+        console.print(f"[dim]Deploying {func}...[/dim]")
+
+        try:
+            result = subprocess.run(
+                ["npx", "supabase", "functions", "deploy", func, "--project-ref", project_ref],
+                capture_output=True,
+                text=True,
+                cwd=PROJECT_ROOT,
+            )
+
+            if result.returncode == 0:
+                console.print(f"[green]✓ Deployed: {func}[/green]")
+            else:
+                console.print(f"[red]✗ Failed: {func}[/red]")
+                if result.stderr:
+                    # Extract meaningful error message
+                    error_lines = [l for l in result.stderr.split("\n") if l.strip() and not l.startswith("WARNING")]
+                    for line in error_lines[:3]:
+                        console.print(f"[dim]  {line}[/dim]")
+
+        except FileNotFoundError:
+            console.print("[red]✗ npx/supabase CLI not found. Install with: npm install -g supabase[/red]")
+            return
+        except Exception as e:
+            console.print(f"[red]✗ Error deploying {func}: {e}[/red]")
+
+    console.print(f"\n[dim]Dashboard: https://supabase.com/dashboard/project/{project_ref}/functions[/dim]")
+
+
+@supabase.command(name="functions")
+@click.option("--remote", "-r", is_flag=True, help="List deployed functions (requires auth)")
+def functions(remote: bool):
+    """List edge functions.
+
+    Examples:
+        mcli run supabase functions          # List local functions
+        mcli run supabase functions --remote # List deployed functions
+    """
+    functions_dir = PROJECT_ROOT / "supabase" / "functions"
+
+    if not functions_dir.exists():
+        console.print(f"[red]✗ Functions directory not found: {functions_dir}[/red]")
+        return
+
+    if remote:
+        console.print("[cyan]📡 Deployed Edge Functions[/cyan]\n")
+        try:
+            result = subprocess.run(
+                ["npx", "supabase", "functions", "list", "--project-ref", SUPABASE_PROJECT_REF],
+                capture_output=True,
+                text=True,
+                cwd=PROJECT_ROOT,
+            )
+            if result.returncode == 0:
+                console.print(result.stdout)
+            else:
+                console.print(f"[red]✗ Failed to list functions[/red]")
+                if result.stderr:
+                    console.print(f"[dim]{result.stderr}[/dim]")
+        except FileNotFoundError:
+            console.print("[red]✗ supabase CLI not found[/red]")
+        return
+
+    console.print("[cyan]📁 Local Edge Functions[/cyan]\n")
+
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Function", style="white")
+    table.add_column("Files", style="dim")
+    table.add_column("Size", justify="right", style="yellow")
+
+    for func_dir in sorted(functions_dir.iterdir()):
+        if not func_dir.is_dir() or func_dir.name.startswith("."):
+            continue
+
+        # Count files and calculate size
+        files = list(func_dir.rglob("*"))
+        file_count = len([f for f in files if f.is_file()])
+        total_size = sum(f.stat().st_size for f in files if f.is_file())
+
+        # Format size
+        if total_size > 1024 * 1024:
+            size_str = f"{total_size / (1024 * 1024):.1f} MB"
+        elif total_size > 1024:
+            size_str = f"{total_size / 1024:.1f} KB"
+        else:
+            size_str = f"{total_size} B"
+
+        table.add_row(func_dir.name, str(file_count), size_str)
+
+    console.print(table)
+    console.print(f"\n[dim]Functions directory: {functions_dir}[/dim]")
+    console.print(f"[dim]Project: {SUPABASE_PROJECT_REF}[/dim]")
