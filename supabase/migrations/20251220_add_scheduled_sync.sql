@@ -17,6 +17,15 @@ CREATE TABLE IF NOT EXISTS public.sync_logs (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Add sync_type column if it doesn't exist (for existing tables)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'sync_logs' AND column_name = 'sync_type') THEN
+        ALTER TABLE public.sync_logs ADD COLUMN sync_type TEXT DEFAULT 'manual';
+    END IF;
+END $$;
+
 -- Indexes for querying logs
 CREATE INDEX IF NOT EXISTS idx_sync_logs_created_at ON public.sync_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sync_logs_status ON public.sync_logs(status);

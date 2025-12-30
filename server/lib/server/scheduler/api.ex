@@ -84,8 +84,17 @@ defmodule Server.Scheduler.API do
         {:error, :not_found}
 
       job_record ->
-        module = String.to_existing_atom(job_record.job_function)
-        execute_job(module, job_record)
+        try do
+          module = String.to_existing_atom(job_record.job_function)
+          execute_job(module, job_record)
+        rescue
+          ArgumentError ->
+            Logger.warning(
+              "[Scheduler] Module not loaded for job #{job_id}: #{job_record.job_function}"
+            )
+
+            {:error, {:module_not_loaded, job_record.job_function}}
+        end
     end
   end
 
@@ -250,6 +259,7 @@ defmodule Server.Scheduler.API do
       case result do
         :ok -> {"success", 0, nil}
         {:ok, count} when is_integer(count) -> {"success", count, nil}
+        {:ok, _other} -> {"success", 0, nil}
         {:error, reason} -> {"failed", 0, inspect(reason)}
       end
 

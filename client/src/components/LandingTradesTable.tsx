@@ -189,18 +189,6 @@ const LandingTradesTable = () => {
               <h2 className="text-xl font-bold text-foreground">
                 Politician Trading Disclosures
               </h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                Real-time tracking of congressional stock trades. Data sourced from{' '}
-                <a
-                  href="https://www.capitoltrades.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline inline-flex items-center gap-1"
-                >
-                  Capitol Trades
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </p>
             </div>
             <div className="text-sm text-muted-foreground">
               {total.toLocaleString()} {hasActiveFilters ? 'matching' : 'total'} disclosures
@@ -229,7 +217,7 @@ const LandingTradesTable = () => {
             </div>
 
             {/* Transaction Type Filter */}
-            <Select value={transactionType} onValueChange={(v) => { setTransactionType(v); setPage(0); }}>
+            <Select value={transactionType || 'all'} onValueChange={(v) => { setTransactionType(v === 'all' ? '' : v); setPage(0); }}>
               <SelectTrigger className="w-[140px] bg-background/50">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
@@ -243,7 +231,7 @@ const LandingTradesTable = () => {
             </Select>
 
             {/* Party Filter */}
-            <Select value={party} onValueChange={(v) => { setParty(v === 'all' ? '' : v); setPage(0); }}>
+            <Select value={party || 'all'} onValueChange={(v) => { setParty(v === 'all' ? '' : v); setPage(0); }}>
               <SelectTrigger className="w-[140px] bg-background/50">
                 <SelectValue placeholder="Party" />
               </SelectTrigger>

@@ -16,12 +16,13 @@ const TopTraders = () => {
           <h3 className="text-lg font-semibold text-foreground">Top Traders</h3>
           <p className="text-sm text-muted-foreground">By total trading volume</p>
         </div>
-        <button 
+        {/* COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready */}
+        {/* <button
           onClick={() => window.dispatchEvent(new CustomEvent('navigate-section', { detail: 'politicians' }))}
           className="text-sm text-primary hover:underline flex items-center gap-1"
         >
           View all <ArrowUpRight className="h-3 w-3" />
-        </button>
+        </button> */}
       </div>
 
       <div className="space-y-3">

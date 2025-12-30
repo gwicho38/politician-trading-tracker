@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Search, Menu, LogOut, User, Shield } from 'lucide-react';
+import { Search, Menu, LogOut, User, Shield, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -18,6 +18,34 @@ import type { User as SupabaseUser } from '@supabase/supabase-js';
 interface HeaderProps {
   onMenuClick: () => void;
 }
+
+// Compact sync status for header
+const SyncStatus = () => {
+  const [lastSync] = useState<Date>(new Date());
+  const [timeAgo, setTimeAgo] = useState('just now');
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const diff = Math.floor((Date.now() - lastSync.getTime()) / 1000);
+      if (diff < 60) {
+        setTimeAgo(`${diff}s ago`);
+      } else if (diff < 3600) {
+        setTimeAgo(`${Math.floor(diff / 60)}m ago`);
+      } else {
+        setTimeAgo(`${Math.floor(diff / 3600)}h ago`);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lastSync]);
+
+  return (
+    <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-secondary/50 rounded-lg px-3 py-1.5">
+      <Globe className="h-3 w-3" />
+      <span>Synced {timeAgo}</span>
+      <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+    </div>
+  );
+};
 
 const Header = ({ onMenuClick }: HeaderProps) => {
   const navigate = useNavigate();
@@ -67,7 +95,7 @@ const Header = ({ onMenuClick }: HeaderProps) => {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          
+
           <Link to="/" className="flex items-center gap-3">
             <div className="relative">
               <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center border border-primary/30">
@@ -77,8 +105,8 @@ const Header = ({ onMenuClick }: HeaderProps) => {
             </div>
             <div className="hidden sm:block">
               <h1 className="text-lg font-bold tracking-tight">
-                <span className="text-gradient">Capitol</span>
-                <span className="text-foreground">Trades</span>
+                <span className="text-gradient">Gov</span>
+                <span className="text-foreground">Market</span>
               </h1>
               <p className="text-xs text-muted-foreground -mt-0.5">
                 Politician Trading Tracker
@@ -105,20 +133,23 @@ const Header = ({ onMenuClick }: HeaderProps) => {
               className="w-64 pl-9 bg-secondary/50 border-border/50 focus:border-primary/50"
             />
           </form>
-          
-          {user && <NotificationBell />}
 
-          {isAdmin && (
-            <Button 
-              variant="outline" 
-              size="sm" 
+          <SyncStatus />
+
+          {/* COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready */}
+          {/* {user && <NotificationBell />} */}
+
+          {/* {isAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
               className="gap-2"
               onClick={() => navigate('/admin')}
             >
               <Shield className="h-4 w-4" />
               <span className="hidden sm:inline">Admin</span>
             </Button>
-          )}
+          )} */}
 
           {user ? (
             <DropdownMenu>
@@ -140,13 +171,13 @@ const Header = ({ onMenuClick }: HeaderProps) => {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               className="hidden sm:flex"
               onClick={() => navigate('/auth')}
             >
-              Connect Wallet
+              Sign In
             </Button>
           )}
         </div>

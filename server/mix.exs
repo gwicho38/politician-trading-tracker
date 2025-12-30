@@ -58,7 +58,10 @@ defmodule Server.MixProject do
       {:dns_cluster, "~> 0.1.1"},
 
       # Cron scheduling
-      {:quantum, "~> 3.5"}
+      {:quantum, "~> 3.5"},
+
+      # CORS support
+      {:corsica, "~> 2.1"}
     ]
   end
 

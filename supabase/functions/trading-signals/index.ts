@@ -128,11 +128,19 @@ serve(async (req) => {
       case 'generate-signals':
         response = await handleGenerateSignals(supabaseClient, req, requestId)
         break
+      case 'regenerate-signals':
+        // Service-level regeneration for scheduled jobs (no user auth required)
+        response = await handleRegenerateSignals(supabaseClient, req, requestId)
+        break
       case 'get-signal-stats':
         response = await handleGetSignalStats(supabaseClient, req, requestId)
         break
       case 'update-target-prices':
         response = await handleUpdateTargetPrices(supabaseClient, req, requestId)
+        break
+      case 'preview-signals':
+        // Preview signals with custom weights (no DB persist, no auth required)
+        response = await handlePreviewSignals(supabaseClient, req, requestId)
         break
       case 'test':
         log.info('Test endpoint called', { requestId })
@@ -879,6 +887,336 @@ function calculateTargetPrice(
   }
 }
 
+// Service-level signal regeneration (for scheduled jobs, no user auth required)
+async function handleRegenerateSignals(supabaseClient: any, req: Request, requestId: string) {
+  const handlerStartTime = Date.now()
+  try {
+    const body = await req.json().catch(() => ({}))
+    const { lookbackDays = 90, minConfidence = 0.60, clearOld = true } = body
+
+    log.info('Regenerating signals (service-level) - handler started', {
+      requestId,
+      handler: 'regenerate-signals',
+      params: { lookbackDays, minConfidence, clearOld }
+    })
+
+    // Clear old signals if requested
+    if (clearOld) {
+      log.info('Clearing old signals', { requestId })
+      const { error: deleteError } = await supabaseClient
+        .from('trading_signals')
+        .delete()
+        .eq('is_active', true)
+
+      if (deleteError) {
+        log.warn('Failed to clear old signals', { requestId, error: deleteError.message })
+      } else {
+        log.info('Old signals cleared', { requestId })
+      }
+    }
+
+    // Calculate date range for lookback
+    const startDate = new Date()
+    startDate.setDate(startDate.getDate() - lookbackDays)
+    const startDateStr = startDate.toISOString().split('T')[0]
+
+    log.info('Querying trading disclosures', {
+      requestId,
+      startDate: startDateStr,
+      lookbackDays
+    })
+
+    // Query trading disclosures within the lookback period
+    const { data: disclosures, error: disclosureError } = await supabaseClient
+      .from('trading_disclosures')
+      .select(`
+        id,
+        asset_ticker,
+        asset_name,
+        transaction_type,
+        amount_range_min,
+        amount_range_max,
+        transaction_date,
+        politician_id,
+        politician:politicians(id, full_name, party)
+      `)
+      .not('asset_ticker', 'is', null)
+      .or('transaction_type.ilike.%purchase%,transaction_type.ilike.%sale%,transaction_type.ilike.%buy%,transaction_type.ilike.%sell%')
+      .gte('transaction_date', startDateStr)
+      .order('transaction_date', { ascending: false })
+      .limit(10000)
+
+    if (disclosureError) {
+      log.error('Failed to fetch disclosures', disclosureError, { requestId })
+      throw new Error(`Failed to fetch disclosures: ${disclosureError.message}`)
+    }
+
+    log.info('Disclosures fetched', {
+      requestId,
+      count: disclosures?.length || 0
+    })
+
+    if (!disclosures || disclosures.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'No actionable trading activity found in the lookback period',
+          signals: [],
+          parameters: { lookbackDays, minConfidence }
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    // Aggregate disclosures by ticker
+    const tickerData: Record<string, {
+      ticker: string
+      assetName: string
+      buys: number
+      sells: number
+      buyVolume: number
+      sellVolume: number
+      politicians: Set<string>
+      parties: Set<string>
+      recentActivity: number
+      disclosureIds: string[]
+    }> = {}
+
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+    for (const disclosure of disclosures) {
+      const ticker = disclosure.asset_ticker?.toUpperCase()
+      if (!ticker || ticker.length < 1 || ticker.length > 10) continue
+      // Skip non-stock tickers (real estate, bonds, etc.)
+      if (ticker.includes(' ') || ticker.includes('[') || ticker.includes('(')) continue
+
+      if (!tickerData[ticker]) {
+        tickerData[ticker] = {
+          ticker,
+          assetName: disclosure.asset_name || ticker,
+          buys: 0,
+          sells: 0,
+          buyVolume: 0,
+          sellVolume: 0,
+          politicians: new Set(),
+          parties: new Set(),
+          recentActivity: 0,
+          disclosureIds: []
+        }
+      }
+
+      const data = tickerData[ticker]
+      const txType = (disclosure.transaction_type || '').toLowerCase()
+      const minVal = disclosure.amount_range_min || 0
+      const maxVal = disclosure.amount_range_max || minVal
+      const volume = (minVal + maxVal) / 2
+
+      if (txType.includes('purchase') || txType.includes('buy')) {
+        data.buys++
+        data.buyVolume += volume
+      } else if (txType.includes('sale') || txType.includes('sell')) {
+        data.sells++
+        data.sellVolume += volume
+      }
+
+      if (disclosure.politician_id) {
+        data.politicians.add(disclosure.politician_id)
+      }
+      if (disclosure.politician?.party) {
+        data.parties.add(disclosure.politician.party)
+      }
+
+      // Track recent activity (last 30 days)
+      const txDate = new Date(disclosure.transaction_date)
+      if (txDate >= thirtyDaysAgo) {
+        data.recentActivity++
+      }
+
+      data.disclosureIds.push(disclosure.id)
+    }
+
+    log.info('Aggregated ticker data', {
+      requestId,
+      uniqueTickers: Object.keys(tickerData).length
+    })
+
+    // Generate signals - relaxed criteria for more signals
+    const generatedSignals: any[] = []
+    const MIN_POLITICIANS = 1  // Relaxed from 2
+    const MIN_TRANSACTIONS = 2  // Relaxed from 3
+
+    for (const [ticker, data] of Object.entries(tickerData)) {
+      const totalTx = data.buys + data.sells
+      const politicianCount = data.politicians.size
+
+      // Filter: require minimum politicians and transactions
+      if (politicianCount < MIN_POLITICIANS || totalTx < MIN_TRANSACTIONS) {
+        continue
+      }
+
+      // Calculate buy/sell ratio
+      const buySellRatio = data.sells > 0 ? data.buys / data.sells : data.buys > 0 ? 10 : 1
+
+      // Calculate confidence based on various factors
+      let confidence = 0.5
+
+      // Factor 1: Politician count (more = more confidence)
+      if (politicianCount >= 5) confidence += 0.15
+      else if (politicianCount >= 3) confidence += 0.10
+      else if (politicianCount >= 2) confidence += 0.05
+
+      // Factor 2: Transaction count
+      if (totalTx >= 10) confidence += 0.10
+      else if (totalTx >= 5) confidence += 0.05
+
+      // Factor 3: Recent activity
+      if (data.recentActivity >= 5) confidence += 0.10
+      else if (data.recentActivity >= 2) confidence += 0.05
+
+      // Factor 4: Bipartisan activity (both D and R trading)
+      if (data.parties.has('D') && data.parties.has('R')) {
+        confidence += 0.10
+      }
+
+      // Factor 5: Volume magnitude
+      const netVolume = data.buyVolume - data.sellVolume
+      if (Math.abs(netVolume) > 1000000) confidence += 0.10
+      else if (Math.abs(netVolume) > 100000) confidence += 0.05
+
+      // Determine signal type based on buy/sell ratio
+      let signalType: string
+      let signalStrength: string
+
+      if (buySellRatio >= 3.0) {
+        signalType = 'strong_buy'
+        signalStrength = 'very_strong'
+        confidence = Math.min(confidence + 0.15, 0.95)
+      } else if (buySellRatio >= 1.5) {
+        signalType = 'buy'
+        signalStrength = 'strong'
+        confidence = Math.min(confidence + 0.10, 0.90)
+      } else if (buySellRatio <= 0.33) {
+        signalType = 'strong_sell'
+        signalStrength = 'very_strong'
+        confidence = Math.min(confidence + 0.15, 0.95)
+      } else if (buySellRatio <= 0.67) {
+        signalType = 'sell'
+        signalStrength = 'strong'
+        confidence = Math.min(confidence + 0.10, 0.90)
+      } else {
+        signalType = 'hold'
+        signalStrength = 'moderate'
+      }
+
+      // Skip if below minimum confidence
+      if (confidence < minConfidence) {
+        continue
+      }
+
+      // Skip HOLD signals (only generate actionable signals)
+      if (signalType === 'hold') {
+        continue
+      }
+
+      generatedSignals.push({
+        ticker,
+        asset_name: data.assetName,
+        signal_type: signalType,
+        signal_strength: signalStrength,
+        confidence_score: Math.round(confidence * 100) / 100,
+        politician_activity_count: politicianCount,
+        buy_sell_ratio: Math.round(buySellRatio * 100) / 100,
+        total_transaction_volume: Math.round(data.buyVolume + data.sellVolume),
+        generated_at: new Date().toISOString(),
+        is_active: true,
+        model_version: 'v2.1-service',
+        features: {
+          buys: data.buys,
+          sells: data.sells,
+          buyVolume: data.buyVolume,
+          sellVolume: data.sellVolume,
+          recentActivity: data.recentActivity,
+          bipartisan: data.parties.has('D') && data.parties.has('R')
+        },
+        notes: `Generated from ${totalTx} transactions by ${politicianCount} politicians over ${lookbackDays} days`
+      })
+    }
+
+    log.info('Signals generated', {
+      requestId,
+      signalCount: generatedSignals.length
+    })
+
+    if (generatedSignals.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'No signals met the minimum confidence threshold',
+          signals: [],
+          parameters: { lookbackDays, minConfidence }
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    // Sort by confidence (highest first) and limit to top 100
+    generatedSignals.sort((a, b) => b.confidence_score - a.confidence_score)
+    const topSignals = generatedSignals.slice(0, 100)
+
+    // Insert signals into database (no user_id for service-level)
+    const { data: insertedSignals, error: insertError } = await supabaseClient
+      .from('trading_signals')
+      .insert(topSignals)
+      .select()
+
+    if (insertError) {
+      log.error('Failed to insert signals', insertError, { requestId })
+      throw new Error(`Failed to save signals: ${insertError.message}`)
+    }
+
+    log.info('Signals inserted successfully', {
+      requestId,
+      insertedCount: insertedSignals?.length || 0,
+      duration: Date.now() - handlerStartTime
+    })
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: `Regenerated ${insertedSignals?.length || 0} trading signals from ${disclosures.length} disclosures`,
+        signals: insertedSignals || [],
+        parameters: { lookbackDays, minConfidence },
+        stats: {
+          totalDisclosures: disclosures.length,
+          uniqueTickers: Object.keys(tickerData).length,
+          signalsGenerated: insertedSignals?.length || 0
+        }
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
+  } catch (error) {
+    log.error('Error regenerating signals', error, {
+      requestId,
+      handler: 'regenerate-signals',
+      duration: Date.now() - handlerStartTime
+    })
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
+  }
+}
+
 async function handleGetSignalStats(supabaseClient: any, req: Request) {
   try {
     // Get signal statistics
@@ -922,6 +1260,480 @@ async function handleGetSignalStats(supabaseClient: any, req: Request) {
     )
   } catch (error) {
     console.error('Error fetching signal stats:', error)
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
+  }
+}
+
+// Interface for configurable signal weights
+interface SignalWeights {
+  baseConfidence: number
+  politicianCount5Plus: number
+  politicianCount3_4: number
+  politicianCount2: number
+  recentActivity5Plus: number
+  recentActivity2_4: number
+  bipartisanBonus: number
+  volume1MPlus: number
+  volume100KPlus: number
+  strongSignalBonus: number
+  moderateSignalBonus: number
+  strongBuyThreshold: number
+  buyThreshold: number
+  strongSellThreshold: number
+  sellThreshold: number
+}
+
+// Default weights (matching current hardcoded values)
+const DEFAULT_WEIGHTS: SignalWeights = {
+  baseConfidence: 0.50,
+  politicianCount5Plus: 0.15,
+  politicianCount3_4: 0.10,
+  politicianCount2: 0.05,
+  recentActivity5Plus: 0.10,
+  recentActivity2_4: 0.05,
+  bipartisanBonus: 0.10,
+  volume1MPlus: 0.10,
+  volume100KPlus: 0.05,
+  strongSignalBonus: 0.15,
+  moderateSignalBonus: 0.10,
+  strongBuyThreshold: 3.0,
+  buyThreshold: 2.0,
+  strongSellThreshold: 0.33,
+  sellThreshold: 0.5,
+}
+
+// ML Integration Configuration
+const PHOENIX_API_URL = Deno.env.get('PHOENIX_API_URL') || 'https://politician-trading-server.fly.dev'
+const ML_ENABLED = Deno.env.get('ML_ENABLED') !== 'false' // Enabled by default
+const ML_BLEND_WEIGHT = 0.4 // 40% ML, 60% heuristic
+const ML_TIMEOUT_MS = 5000 // 5 second timeout for ML calls
+
+// Signal type to numeric mapping for ML blending
+const SIGNAL_TYPE_MAP: Record<string, number> = {
+  'strong_buy': 2,
+  'buy': 1,
+  'hold': 0,
+  'sell': -1,
+  'strong_sell': -2,
+}
+
+const NUMERIC_TO_SIGNAL: Record<number, string> = {
+  2: 'strong_buy',
+  1: 'buy',
+  0: 'hold',
+  '-1': 'sell',
+  '-2': 'strong_sell',
+}
+
+// Helper to call ML prediction API
+async function getMlPrediction(features: {
+  ticker: string
+  politician_count: number
+  buy_sell_ratio: number
+  recent_activity_30d: number
+  bipartisan: boolean
+  net_volume: number
+}): Promise<{ prediction: number; confidence: number } | null> {
+  if (!ML_ENABLED) return null
+
+  try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), ML_TIMEOUT_MS)
+
+    const response = await fetch(`${PHOENIX_API_URL}/api/ml/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        features: {
+          ticker: features.ticker,
+          politician_count: features.politician_count,
+          buy_sell_ratio: features.buy_sell_ratio,
+          recent_activity_30d: features.recent_activity_30d,
+          bipartisan: features.bipartisan,
+          net_volume: features.net_volume,
+          volume_magnitude: Math.log1p(Math.abs(features.net_volume)),
+          party_alignment: 0.5, // Placeholder
+          committee_relevance: 0.5, // Placeholder
+          disclosure_delay: 30, // Default
+          sentiment_score: 0, // Placeholder
+          market_momentum: 0, // Placeholder
+          sector_performance: 0, // Placeholder
+        },
+        use_cache: true,
+      }),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      log.warn('ML prediction request failed', { status: response.status })
+      return null
+    }
+
+    const data = await response.json()
+    return {
+      prediction: data.prediction,
+      confidence: data.confidence,
+    }
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      log.warn('ML prediction timed out')
+    } else {
+      log.warn('ML prediction error', { error: error.message })
+    }
+    return null
+  }
+}
+
+// Helper to blend heuristic and ML signals
+function blendSignals(
+  heuristicType: string,
+  heuristicConfidence: number,
+  mlPrediction: number | null,
+  mlConfidence: number | null
+): { signalType: string; confidence: number; mlEnhanced: boolean } {
+  if (mlPrediction === null || mlConfidence === null) {
+    return { signalType: heuristicType, confidence: heuristicConfidence, mlEnhanced: false }
+  }
+
+  const heuristicNumeric = SIGNAL_TYPE_MAP[heuristicType] ?? 0
+
+  // Calculate blended confidence
+  const blendedConfidence = heuristicConfidence * (1 - ML_BLEND_WEIGHT) + mlConfidence * ML_BLEND_WEIGHT
+
+  // If signals agree, boost confidence
+  if (heuristicNumeric === mlPrediction) {
+    return {
+      signalType: heuristicType,
+      confidence: Math.min(blendedConfidence * 1.1, 0.98),
+      mlEnhanced: true,
+    }
+  }
+
+  // If signals disagree, use heuristic but reduce confidence
+  return {
+    signalType: heuristicType,
+    confidence: blendedConfidence * 0.85,
+    mlEnhanced: true,
+  }
+}
+
+// Handler for preview-signals endpoint
+// Similar to generate-signals but with configurable weights and NO database persistence
+async function handlePreviewSignals(supabaseClient: any, req: Request, requestId: string) {
+  const handlerStartTime = Date.now()
+  try {
+    const body = await req.json()
+    const { lookbackDays = 30, weights: providedWeights, useML = ML_ENABLED } = body
+
+    // Merge provided weights with defaults
+    const weights: SignalWeights = {
+      ...DEFAULT_WEIGHTS,
+      ...(providedWeights || {})
+    }
+
+    log.info('Preview signals - handler started', {
+      requestId,
+      handler: 'preview-signals',
+      params: { lookbackDays },
+      weights
+    })
+
+    // Calculate date range for lookback
+    const startDate = new Date()
+    startDate.setDate(startDate.getDate() - lookbackDays)
+    const startDateStr = startDate.toISOString().split('T')[0]
+
+    log.info('Querying trading disclosures for preview', {
+      requestId,
+      startDate: startDateStr,
+      lookbackDays
+    })
+
+    // Query trading disclosures within the lookback period
+    const { data: disclosures, error: disclosureError } = await supabaseClient
+      .from('trading_disclosures')
+      .select(`
+        id,
+        asset_ticker,
+        asset_name,
+        transaction_type,
+        amount_range_min,
+        amount_range_max,
+        transaction_date,
+        politician_id,
+        politician:politicians(id, full_name, party)
+      `)
+      .eq('status', 'active')
+      .not('asset_ticker', 'is', null)
+      .gte('transaction_date', startDateStr)
+      .order('transaction_date', { ascending: false })
+
+    if (disclosureError) {
+      log.error('Failed to fetch disclosures for preview', disclosureError, { requestId })
+      throw new Error(`Failed to fetch disclosures: ${disclosureError.message}`)
+    }
+
+    log.info('Disclosures fetched for preview', {
+      requestId,
+      count: disclosures?.length || 0
+    })
+
+    if (!disclosures || disclosures.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          preview: true,
+          message: 'No trading activity found in the lookback period',
+          signals: [],
+          weights,
+          stats: {
+            totalDisclosures: 0,
+            uniqueTickers: 0,
+            signalsGenerated: 0
+          }
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    // Aggregate disclosures by ticker
+    const tickerData: Record<string, {
+      ticker: string
+      assetName: string
+      buys: number
+      sells: number
+      buyVolume: number
+      sellVolume: number
+      politicians: Set<string>
+      parties: Set<string>
+      recentActivity: number
+      disclosureIds: string[]
+    }> = {}
+
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+    for (const disclosure of disclosures) {
+      const ticker = disclosure.asset_ticker?.toUpperCase()
+      if (!ticker || ticker.length < 1 || ticker.length > 10) continue
+      // Skip non-stock tickers (real estate, bonds, etc.)
+      if (ticker.includes(' ') || ticker.includes('[') || ticker.includes('(')) continue
+
+      if (!tickerData[ticker]) {
+        tickerData[ticker] = {
+          ticker,
+          assetName: disclosure.asset_name || ticker,
+          buys: 0,
+          sells: 0,
+          buyVolume: 0,
+          sellVolume: 0,
+          politicians: new Set(),
+          parties: new Set(),
+          recentActivity: 0,
+          disclosureIds: []
+        }
+      }
+
+      const data = tickerData[ticker]
+      const txType = (disclosure.transaction_type || '').toLowerCase()
+      const minVal = disclosure.amount_range_min || 0
+      const maxVal = disclosure.amount_range_max || minVal
+      const volume = (minVal + maxVal) / 2
+
+      if (txType.includes('purchase') || txType.includes('buy')) {
+        data.buys++
+        data.buyVolume += volume
+      } else if (txType.includes('sale') || txType.includes('sell')) {
+        data.sells++
+        data.sellVolume += volume
+      }
+
+      if (disclosure.politician_id) {
+        data.politicians.add(disclosure.politician_id)
+      }
+      if (disclosure.politician?.party) {
+        data.parties.add(disclosure.politician.party)
+      }
+
+      // Track recent activity (last 30 days)
+      const txDate = new Date(disclosure.transaction_date)
+      if (txDate >= thirtyDaysAgo) {
+        data.recentActivity++
+      }
+
+      data.disclosureIds.push(disclosure.id)
+    }
+
+    log.info('Aggregated ticker data for preview', {
+      requestId,
+      uniqueTickers: Object.keys(tickerData).length
+    })
+
+    // Generate signals for all tickers with activity (more lenient for preview)
+    const generatedSignals: any[] = []
+    const MIN_POLITICIANS = 1  // More lenient for preview
+    const MIN_TRANSACTIONS = 2
+
+    for (const [ticker, data] of Object.entries(tickerData)) {
+      const totalTx = data.buys + data.sells
+      const politicianCount = data.politicians.size
+
+      // Filter: require minimum politicians and transactions
+      if (politicianCount < MIN_POLITICIANS || totalTx < MIN_TRANSACTIONS) {
+        continue
+      }
+
+      // Calculate buy/sell ratio
+      const buySellRatio = data.sells > 0 ? data.buys / data.sells : data.buys > 0 ? 10 : 1
+
+      // Calculate confidence using configurable weights
+      let confidence = weights.baseConfidence
+
+      // Factor 1: Politician count (more = more confidence)
+      if (politicianCount >= 5) confidence += weights.politicianCount5Plus
+      else if (politicianCount >= 3) confidence += weights.politicianCount3_4
+      else if (politicianCount >= 2) confidence += weights.politicianCount2
+
+      // Factor 2: Recent activity
+      if (data.recentActivity >= 5) confidence += weights.recentActivity5Plus
+      else if (data.recentActivity >= 2) confidence += weights.recentActivity2_4
+
+      // Factor 3: Bipartisan activity (both D and R trading)
+      if (data.parties.has('D') && data.parties.has('R')) {
+        confidence += weights.bipartisanBonus
+      }
+
+      // Factor 4: Volume magnitude
+      const netVolume = data.buyVolume - data.sellVolume
+      if (Math.abs(netVolume) > 1000000) confidence += weights.volume1MPlus
+      else if (Math.abs(netVolume) > 100000) confidence += weights.volume100KPlus
+
+      // Determine signal type based on buy/sell ratio using configurable thresholds
+      let signalType: string
+      let signalStrength: string
+
+      if (buySellRatio >= weights.strongBuyThreshold) {
+        signalType = 'strong_buy'
+        signalStrength = 'very_strong'
+        confidence = Math.min(confidence + weights.strongSignalBonus, 0.95)
+      } else if (buySellRatio >= weights.buyThreshold) {
+        signalType = 'buy'
+        signalStrength = 'strong'
+        confidence = Math.min(confidence + weights.moderateSignalBonus, 0.90)
+      } else if (buySellRatio <= weights.strongSellThreshold) {
+        signalType = 'strong_sell'
+        signalStrength = 'very_strong'
+        confidence = Math.min(confidence + weights.strongSignalBonus, 0.95)
+      } else if (buySellRatio <= weights.sellThreshold) {
+        signalType = 'sell'
+        signalStrength = 'strong'
+        confidence = Math.min(confidence + weights.moderateSignalBonus, 0.90)
+      } else {
+        signalType = 'hold'
+        signalStrength = 'moderate'
+      }
+
+      // Optional ML enhancement
+      let mlEnhanced = false
+      if (useML) {
+        const mlResult = await getMlPrediction({
+          ticker,
+          politician_count: politicianCount,
+          buy_sell_ratio: buySellRatio,
+          recent_activity_30d: data.recentActivity,
+          bipartisan: data.parties.has('D') && data.parties.has('R'),
+          net_volume: netVolume,
+        })
+
+        if (mlResult) {
+          const blended = blendSignals(
+            signalType,
+            confidence,
+            mlResult.prediction,
+            mlResult.confidence
+          )
+          signalType = blended.signalType
+          confidence = blended.confidence
+          mlEnhanced = blended.mlEnhanced
+        }
+      }
+
+      // Include all signals in preview (even hold and low confidence)
+      generatedSignals.push({
+        ticker,
+        asset_name: data.assetName,
+        signal_type: signalType,
+        signal_strength: signalStrength,
+        confidence_score: Math.round(confidence * 100) / 100,
+        politician_activity_count: politicianCount,
+        buy_sell_ratio: Math.round(buySellRatio * 100) / 100,
+        total_transaction_volume: Math.round(data.buyVolume + data.sellVolume),
+        ml_enhanced: mlEnhanced,
+        features: {
+          buys: data.buys,
+          sells: data.sells,
+          buyVolume: data.buyVolume,
+          sellVolume: data.sellVolume,
+          recentActivity: data.recentActivity,
+          bipartisan: data.parties.has('D') && data.parties.has('R')
+        }
+      })
+    }
+
+    // Sort by confidence (highest first) and limit to top 100 for preview
+    generatedSignals.sort((a, b) => b.confidence_score - a.confidence_score)
+    const topSignals = generatedSignals.slice(0, 100)
+
+    // Count ML-enhanced signals
+    const mlEnhancedCount = topSignals.filter(s => s.ml_enhanced).length
+
+    log.info('Preview signals generated', {
+      requestId,
+      totalGenerated: generatedSignals.length,
+      returned: topSignals.length,
+      mlEnabled: useML,
+      mlEnhancedCount,
+      duration: Date.now() - handlerStartTime
+    })
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        preview: true,
+        signals: topSignals,
+        weights,
+        stats: {
+          totalDisclosures: disclosures.length,
+          uniqueTickers: Object.keys(tickerData).length,
+          signalsGenerated: topSignals.length,
+          mlEnabled: useML,
+          mlEnhancedCount,
+          signalTypeDistribution: topSignals.reduce((acc, s) => {
+            acc[s.signal_type] = (acc[s.signal_type] || 0) + 1
+            return acc
+          }, {} as Record<string, number>)
+        }
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
+  } catch (error) {
+    log.error('Error in preview signals', error, {
+      requestId,
+      handler: 'preview-signals',
+      duration: Date.now() - handlerStartTime
+    })
     return new Response(
       JSON.stringify({ error: error.message }),
       {
