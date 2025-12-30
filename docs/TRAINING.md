@@ -28,7 +28,7 @@ python-etl-service/app/services/
 ## Training a Model
 
 ```bash
-mcli run etl ml-train-watch
+mcli run ml train-watch
 ```
 
 This command:
@@ -39,15 +39,34 @@ This command:
 ### Options
 
 ```bash
-mcli run etl ml-train-watch --lookback 180    # Use 6 months of data (default: 365)
-mcli run etl ml-train-watch --model lightgbm  # Use LightGBM instead of XGBoost
-mcli run etl ml-train-watch -v                # Verbose: show all logs
+mcli run ml train-watch --lookback 180    # Use 6 months of data (default: 365)
+mcli run ml train-watch --model lightgbm  # Use LightGBM instead of XGBoost
+mcli run ml train-watch -v                # Verbose: show all logs
+mcli run ml train-watch --job <job_id>    # Watch existing job
 ```
 
 ## Checking Model Status
 
 ```bash
-mcli run etl ml-active    # Show active model info
-mcli run etl ml-status    # List all trained models
-mcli run etl ml-health    # Check ML service health
+mcli run ml active    # Show active model info with metrics & features
+mcli run ml status    # List all trained models
+mcli run ml health    # Check ML service health
+mcli run ml list      # List all models with details
+```
+
+## Testing & Predictions
+
+```bash
+mcli run ml predict AAPL                  # Get prediction for a ticker
+mcli run ml predict NVDA -p 5 -r 3.0 -b   # Custom features
+mcli run ml test                          # Test on default tickers
+mcli run ml test --scenarios              # Run multiple test scenarios
+```
+
+## Model Management
+
+```bash
+mcli run ml features            # Show feature importance for active model
+mcli run ml features <model_id> # Show features for specific model
+mcli run ml activate <model_id> # Activate a specific model
 ```
