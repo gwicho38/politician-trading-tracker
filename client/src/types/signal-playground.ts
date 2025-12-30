@@ -103,6 +103,8 @@ export interface PreviewStats {
   uniqueTickers: number;
   signalsGenerated: number;
   signalTypeDistribution: Record<SignalType, number>;
+  mlEnabled?: boolean;
+  mlEnhancedCount?: number;
 }
 
 /**
@@ -113,10 +115,8 @@ export interface PreviewResponse {
   preview: boolean;
   signals: PreviewSignal[];
   stats: PreviewStats;
-  weightsApplied: SignalWeights;
-  requestId: string;
-  mlEnabled?: boolean;
-  mlEnhancedCount?: number;
+  weights: SignalWeights; // Note: edge function returns 'weights', not 'weightsApplied'
+  requestId?: string;
 }
 
 /**

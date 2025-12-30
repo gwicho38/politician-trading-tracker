@@ -139,7 +139,8 @@ export function useSignalPlayground(options: UseSignalPlaygroundOptions = {}) {
   // Extract signals from response
   const signals: PreviewSignal[] = previewData?.signals || [];
   const stats = previewData?.stats;
-  const mlEnhancedCount = previewData?.mlEnhancedCount || 0;
+  // mlEnhancedCount comes from stats in the edge function response
+  const mlEnhancedCount = previewData?.stats?.mlEnhancedCount || 0;
 
   return {
     // Weight state
