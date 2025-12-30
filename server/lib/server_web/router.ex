@@ -44,7 +44,21 @@ defmodule ServerWeb.Router do
   scope "/api", ServerWeb do
     pipe_through :api
 
-    # Add API routes here
-    # Example: resources "/trades", TradeController
+    # Job management
+    get "/jobs", JobController, :index
+    get "/jobs/:job_id", JobController, :show
+    post "/jobs/:job_id/run", JobController, :run
+    post "/jobs/run-all", JobController, :run_all
+
+    # ML prediction and model management
+    post "/ml/predict", MlController, :predict
+    post "/ml/batch-predict", MlController, :batch_predict
+    get "/ml/models", MlController, :list_models
+    get "/ml/models/active", MlController, :active_model
+    get "/ml/models/:model_id", MlController, :show_model
+    get "/ml/models/:model_id/feature-importance", MlController, :feature_importance
+    post "/ml/train", MlController, :trigger_training
+    get "/ml/train/:job_id", MlController, :training_status
+    get "/ml/health", MlController, :health
   end
 end

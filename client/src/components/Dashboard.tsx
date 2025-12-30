@@ -3,6 +3,7 @@ import StatsCard from '@/components/StatsCard';
 import TradeChart from '@/components/TradeChart';
 import VolumeChart from '@/components/VolumeChart';
 import TopTraders from '@/components/TopTraders';
+import TopTickers from '@/components/TopTickers';
 import LandingTradesTable from '@/components/LandingTradesTable';
 import { useDashboardStats } from '@/hooks/useSupabaseData';
 import { formatCurrency } from '@/lib/mockData';
@@ -25,9 +26,6 @@ const Dashboard = ({ jurisdictionId }: DashboardProps) => {
           A free public resource tracking congressional stock trades and disclosures
         </p>
       </div>
-
-      {/* Main Trades Table - First and Prominent */}
-      <LandingTradesTable />
 
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -77,15 +75,19 @@ const Dashboard = ({ jurisdictionId }: DashboardProps) => {
         )}
       </div>
 
+      {/* Main Trades Table */}
+      <LandingTradesTable />
+
       {/* Charts Row */}
       <div className="grid gap-6 lg:grid-cols-2">
         <TradeChart />
         <VolumeChart />
       </div>
 
-      {/* Top Traders */}
+      {/* Top Traders & Top Tickers */}
       <div className="grid gap-6 lg:grid-cols-2">
         <TopTraders />
+        <TopTickers />
       </div>
     </div>
   );

@@ -12,7 +12,8 @@ import {
   Globe,
   X,
   ChevronRight,
-  Loader2
+  Loader2,
+  Sliders,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -31,14 +32,20 @@ interface SidebarProps {
 
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'trading-signals', label: 'Trading Signals', icon: Target },
-  { id: 'trading-operations', label: 'Trading Operations', icon: Briefcase },
-  { id: 'portfolio', label: 'Portfolio', icon: BarChart3 },
-  { id: 'orders', label: 'Orders', icon: ClipboardList },
-  { id: 'scheduled-jobs', label: 'Scheduled Jobs', icon: Clock },
-  { id: 'trades', label: 'Recent Trades', icon: TrendingUp },
   { id: 'politicians', label: 'Politicians', icon: Users },
   { id: 'filings', label: 'Filings', icon: FileText },
+  // COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready
+  // { id: 'trading-signals', label: 'Trading Signals', icon: Target },
+  // { id: 'trading-operations', label: 'Trading Operations', icon: Briefcase },
+  // { id: 'portfolio', label: 'Portfolio', icon: BarChart3 },
+  // { id: 'orders', label: 'Orders', icon: ClipboardList },
+  // { id: 'scheduled-jobs', label: 'Scheduled Jobs', icon: Clock },
+  // { id: 'trades', label: 'Recent Trades', icon: TrendingUp },
+];
+
+// Standalone pages with their own routes
+const standalonePages = [
+  { path: '/playground', label: 'Signal Playground', icon: Sliders },
 ];
 
 const SyncStatus = () => {
@@ -95,7 +102,7 @@ const Sidebar = ({ isOpen, onClose, activeSection, onSectionChange, selectedJuri
         <div className="flex h-full flex-col">
           {/* Mobile close button */}
           <div className="flex items-center justify-between p-4 lg:hidden">
-            <span className="text-lg font-bold text-gradient">CapitolTrades</span>
+            <span className="text-lg font-bold text-gradient">GovMarket</span>
             <Button variant="ghost" size="icon" onClick={onClose}>
               <X className="h-5 w-5" />
             </Button>
@@ -128,9 +135,23 @@ const Sidebar = ({ isOpen, onClose, activeSection, onSectionChange, selectedJuri
                   )}
                 </button>
               ))}
+
+              {/* Standalone pages */}
+              {standalonePages.map((page) => (
+                <Link
+                  key={page.path}
+                  to={page.path}
+                  onClick={onClose}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                >
+                  <page.icon className="h-4 w-4" />
+                  {page.label}
+                </Link>
+              ))}
             </div>
 
-            <div>
+            {/* COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready */}
+            {/* <div>
               <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Jurisdictions
               </p>
@@ -148,8 +169,8 @@ const Sidebar = ({ isOpen, onClose, activeSection, onSectionChange, selectedJuri
                         onClose();
                       }}
                       className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200 hover:bg-secondary hover:text-foreground ${
-                        selectedJurisdiction === j.id 
-                          ? 'bg-primary/20 text-primary border border-primary/30' 
+                        selectedJurisdiction === j.id
+                          ? 'bg-primary/20 text-primary border border-primary/30'
                           : 'text-muted-foreground'
                       }`}
                     >
@@ -159,18 +180,19 @@ const Sidebar = ({ isOpen, onClose, activeSection, onSectionChange, selectedJuri
                   ))
                 )}
               </div>
-            </div>
+            </div> */}
           </nav>
 
           {/* Footer */}
           <div className="border-t border-border/50 p-4">
-            <Link 
-              to="/admin" 
+            {/* COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready */}
+            {/* <Link
+              to="/admin"
               className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-all duration-200 hover:bg-secondary hover:text-foreground"
             >
               <Settings className="h-4 w-4" />
               Settings
-            </Link>
+            </Link> */}
             <SyncStatus />
           </div>
         </div>

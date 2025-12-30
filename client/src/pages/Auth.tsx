@@ -163,7 +163,7 @@ const Auth = () => {
 
       <Card className="relative w-full max-w-md border-border/50 bg-card/60 backdrop-blur-xl">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-gradient">CapitolTrades</CardTitle>
+          <CardTitle className="text-2xl font-bold text-gradient">GovMarket</CardTitle>
           <CardDescription>
             Sign in to track politician trading activity
           </CardDescription>

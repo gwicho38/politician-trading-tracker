@@ -2,14 +2,15 @@ import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
 import Dashboard from '@/components/Dashboard';
-import TradingSignals from '@/pages/TradingSignals';
-import TradingOperations from '@/pages/TradingOperations';
-import Portfolio from '@/pages/Portfolio';
-import Orders from '@/pages/Orders';
-import ScheduledJobs from '@/pages/ScheduledJobs';
-import TradesView from '@/components/TradesView';
 import PoliticiansView from '@/components/PoliticiansView';
 import FilingsView from '@/components/FilingsView';
+// COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready
+// import TradingSignals from '@/pages/TradingSignals';
+// import TradingOperations from '@/pages/TradingOperations';
+// import Portfolio from '@/pages/Portfolio';
+// import Orders from '@/pages/Orders';
+// import ScheduledJobs from '@/pages/ScheduledJobs';
+// import TradesView from '@/components/TradesView';
 
 const Index = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -37,22 +38,23 @@ const Index = () => {
 
   const renderContent = () => {
     switch (activeSection) {
-      case 'trading-signals':
-        return <TradingSignals />;
-      case 'trading-operations':
-        return <TradingOperations />;
-      case 'portfolio':
-        return <Portfolio />;
-      case 'orders':
-        return <Orders />;
-      case 'scheduled-jobs':
-        return <ScheduledJobs />;
-      case 'trades':
-        return <TradesView jurisdictionId={selectedJurisdiction} searchQuery={searchQuery} />;
       case 'politicians':
         return <PoliticiansView jurisdictionId={selectedJurisdiction} />;
       case 'filings':
         return <FilingsView jurisdictionId={selectedJurisdiction} />;
+      // COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready
+      // case 'trading-signals':
+      //   return <TradingSignals />;
+      // case 'trading-operations':
+      //   return <TradingOperations />;
+      // case 'portfolio':
+      //   return <Portfolio />;
+      // case 'orders':
+      //   return <Orders />;
+      // case 'scheduled-jobs':
+      //   return <ScheduledJobs />;
+      // case 'trades':
+      //   return <TradesView jurisdictionId={selectedJurisdiction} searchQuery={searchQuery} />;
       default:
         return <Dashboard jurisdictionId={selectedJurisdiction} />;
     }

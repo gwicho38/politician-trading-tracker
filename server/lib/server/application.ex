@@ -64,7 +64,11 @@ defmodule Server.Application do
       Server.Scheduler.Jobs.PoliticianTradingSenateJob,
       Server.Scheduler.Jobs.PoliticianTradingQuiverJob,
       Server.Scheduler.Jobs.PoliticianTradingEuJob,
-      Server.Scheduler.Jobs.PoliticianTradingCaliforniaJob
+      Server.Scheduler.Jobs.PoliticianTradingCaliforniaJob,
+      # Data quality jobs
+      Server.Scheduler.Jobs.TickerBackfillJob,
+      # Party enrichment (Ollama LLM)
+      Server.Scheduler.Jobs.PartyEnrichmentJob
     ]
 
     Enum.each(jobs, fn job_module ->

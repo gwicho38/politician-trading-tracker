@@ -49,6 +49,33 @@ defmodule ServerWeb.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
 
+  # CORS - Allow cross-origin requests from client apps
+  plug Corsica,
+    origins: {__MODULE__, :cors_origin_allowed?, []},
+    allow_headers: ["content-type", "authorization", "accept"],
+    allow_methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_credentials: true,
+    max_age: 86400
+
+  @allowed_origins [
+    # Local development
+    "http://localhost:9090",
+    "http://localhost:8080",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    # Production
+    "https://govmarket.trade",
+    "https://www.govmarket.trade"
+  ]
+
+  @doc false
+  def cors_origin_allowed?(_conn, origin) do
+    origin in @allowed_origins or
+      String.ends_with?(origin, ".fly.dev") or
+      String.ends_with?(origin, ".vercel.app") or
+      String.ends_with?(origin, ".netlify.app")
+  end
+
   # Route to controllers
   plug ServerWeb.Router
 end

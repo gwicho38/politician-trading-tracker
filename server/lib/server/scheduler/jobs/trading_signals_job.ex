@@ -22,18 +22,27 @@ defmodule Server.Scheduler.Jobs.TradingSignalsJob do
 
   @impl true
   def run do
-    Logger.info("[TradingSignalsJob] Starting signal generation")
+    Logger.info("[TradingSignalsJob] Starting signal regeneration")
 
-    # trading-signals uses path-based routing, call get-signals endpoint (public read)
-    case Server.SupabaseClient.invoke("trading-signals", path: "get-signals", timeout: 60_000) do
+    # Call regenerate-signals endpoint (service-level, clears old and generates fresh)
+    case Server.SupabaseClient.invoke("trading-signals",
+           path: "regenerate-signals",
+           body: %{lookbackDays: 90, minConfidence: 0.60, clearOld: true},
+           timeout: 120_000
+         ) do
       {:ok, response} ->
         signals = get_in(response, ["signals"]) || []
         count = length(signals)
-        Logger.info("[TradingSignalsJob] Signal fetch completed, signals: #{count}")
+        stats = get_in(response, ["stats"]) || %{}
+
+        Logger.info(
+          "[TradingSignalsJob] Signal regeneration completed: #{count} signals from #{stats["totalDisclosures"] || 0} disclosures"
+        )
+
         {:ok, count}
 
       {:error, reason} ->
-        Logger.error("[TradingSignalsJob] Signal generation failed: #{inspect(reason)}")
+        Logger.error("[TradingSignalsJob] Signal regeneration failed: #{inspect(reason)}")
         {:error, reason}
     end
   end

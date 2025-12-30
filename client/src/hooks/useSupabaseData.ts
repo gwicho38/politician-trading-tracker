@@ -355,6 +355,57 @@ export const useChartYears = () => {
   });
 };
 
+// Fetch top tickers by trade count
+export const useTopTickers = (limit = 5) => {
+  return useQuery({
+    queryKey: ['topTickers', limit],
+    queryFn: async () => {
+      // Get all active disclosures with tickers
+      const { data, error } = await supabase
+        .from('trading_disclosures')
+        .select('asset_ticker, asset_name, amount_range_min, amount_range_max')
+        .eq('status', 'active')
+        .not('asset_ticker', 'is', null)
+        .not('asset_ticker', 'eq', '');
+
+      if (error) throw error;
+
+      // Group by ticker and count
+      const tickerMap = new Map<string, {
+        ticker: string;
+        name: string;
+        count: number;
+        totalVolume: number;
+      }>();
+
+      (data || []).forEach(d => {
+        const ticker = d.asset_ticker?.toUpperCase();
+        if (!ticker) return;
+
+        const existing = tickerMap.get(ticker);
+        const midpoint = ((d.amount_range_min || 0) + (d.amount_range_max || 0)) / 2;
+
+        if (existing) {
+          existing.count++;
+          existing.totalVolume += midpoint;
+        } else {
+          tickerMap.set(ticker, {
+            ticker,
+            name: d.asset_name || ticker,
+            count: 1,
+            totalVolume: midpoint,
+          });
+        }
+      });
+
+      // Sort by count and take top N
+      return Array.from(tickerMap.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, limit);
+    },
+  });
+};
+
 // Fixed ID for singleton dashboard stats row
 const DASHBOARD_STATS_ID = '00000000-0000-0000-0000-000000000001';
 
