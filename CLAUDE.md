@@ -1,2 +1,3 @@
 - remember use supabase not postgres
 - do not use mock data, make sure all front end functions are wired with real data
+- if you are using curl multiple times in a single session, then just create an mcli local command client for the specific logic you are using curl for 

@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "generated_at": "2025-12-28T19:49:16.081251Z",
+  "generated_at": "2025-12-31T13:41:21.441788Z",
   "commands": {
     "00_orchestrator": {
       "file": "00_orchestrator.ipynb",
@@ -106,6 +106,45 @@
       "shell": null,
       "last_modified": "2025-11-30T20:30:18.685552Z"
     },
+    "backfill": {
+      "file": "backfill.py",
+      "language": "python",
+      "content_hash": "sha256:595fb995c3a4a99b9db137ef915d1e3861f78779923fce70b98b107b7bb748b0",
+      "version": "1.0.0",
+      "group": "workflows",
+      "description": "backfill command",
+      "author": "",
+      "requires": [],
+      "tags": [],
+      "shell": null,
+      "last_modified": "2025-12-29T10:36:22.862967Z"
+    },
+    "client": {
+      "file": "client.py",
+      "language": "python",
+      "content_hash": "sha256:bf2cb7a85f71e004ca70d8f795bdb94c9b3d3686569f54b920bbb2c13b07c962",
+      "version": "1.0.0",
+      "group": "workflows",
+      "description": "Deploy and manage GovMarket client on Fly.io",
+      "author": "",
+      "requires": [],
+      "tags": [],
+      "shell": null,
+      "last_modified": "2025-12-28T22:17:01.755650Z"
+    },
+    "etl": {
+      "file": "etl.py",
+      "language": "python",
+      "content_hash": "sha256:4ffcbeb495105b3b5ecf873d1845a5e4eebd0f738909a6e4569541c790677d59",
+      "version": "1.0.0",
+      "group": "workflows",
+      "description": "etl command",
+      "author": "",
+      "requires": [],
+      "tags": [],
+      "shell": null,
+      "last_modified": "2025-12-30T11:03:13.817048Z"
+    },
     "ingest": {
       "file": "ingest.ipynb",
       "language": "ipynb",
@@ -118,6 +157,19 @@
       "tags": [],
       "shell": null,
       "last_modified": "2025-11-28T17:56:17.912728Z"
+    },
+    "ml": {
+      "file": "ml.py",
+      "language": "python",
+      "content_hash": "sha256:1d42e2b2ab6c3f16bbf92710221fb213c9f6a54c20700d7882c99318de14f5a1",
+      "version": "1.0.0",
+      "group": "workflows",
+      "description": "ml command",
+      "author": "",
+      "requires": [],
+      "tags": [],
+      "shell": null,
+      "last_modified": "2025-12-30T10:59:57.133708Z"
     },
     "politician_trading_tracker": {
       "file": "politician_trading_tracker.py",
@@ -135,15 +187,41 @@
     "server": {
       "file": "server.py",
       "language": "python",
-      "content_hash": "sha256:9e815d1ed824ea86943a50862ec16318dce6dbac9e2032ea4ce8d01541d2788f",
-      "version": "1.0.0",
+      "content_hash": "sha256:5d4a441f32814b21fc45e8f1b32a1226d48910617e20e168dcb5ac34032b0209",
+      "version": "2.1.0",
       "group": "workflows",
-      "description": "Server command",
+      "description": "Deploy and manage politician-trading-tracker Elixir server",
       "author": "",
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2025-12-28T20:49:16.080293Z"
+      "last_modified": "2025-12-30T00:18:46.371008Z"
+    },
+    "shell": {
+      "file": "shell.sh",
+      "language": "shell",
+      "content_hash": "sha256:b3d51d8a3dc30a7071c856152f3d0767204bc8c65f9321072087c497007faa36",
+      "version": "1.0.0",
+      "group": "workflows",
+      "description": "Shell command",
+      "author": "",
+      "requires": [],
+      "tags": [],
+      "shell": "zsh",
+      "last_modified": "2025-12-31T14:41:21.438640Z"
+    },
+    "supabase": {
+      "file": "supabase.py",
+      "language": "python",
+      "content_hash": "sha256:63c5ebb7d7c6e60874d8284d5b5e2631e6a16b983cd224e105bb584ea09cfad9",
+      "version": "1.0.0",
+      "group": "workflows",
+      "description": "Supabase database management for politician-trading-tracker",
+      "author": "",
+      "requires": [],
+      "tags": [],
+      "shell": null,
+      "last_modified": "2025-12-30T12:06:47.826630Z"
     }
   }
 }

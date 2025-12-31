@@ -10,6 +10,7 @@ import json
 import pickle
 import hashlib
 import logging
+import io
 from typing import Optional, Tuple, List, Dict, Any
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 MODEL_STORAGE_PATH = os.environ.get("MODEL_STORAGE_PATH", "/tmp/models")
+MODEL_STORAGE_BUCKET = "ml-models"  # Supabase Storage bucket for persistent model storage
 
 # Feature configuration
 FEATURE_NAMES = [
@@ -55,6 +57,92 @@ SIGNAL_LABELS = {
 def get_supabase() -> Client:
     """Get Supabase client."""
     return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+def ensure_storage_bucket_exists(supabase: Client) -> bool:
+    """Ensure the ML models storage bucket exists."""
+    try:
+        # Try to list files in bucket (will fail if bucket doesn't exist)
+        supabase.storage.from_(MODEL_STORAGE_BUCKET).list()
+        return True
+    except Exception:
+        try:
+            # Create the bucket if it doesn't exist
+            supabase.storage.create_bucket(MODEL_STORAGE_BUCKET, options={
+                "public": False,
+                "file_size_limit": 100 * 1024 * 1024,  # 100MB max
+            })
+            logger.info(f"Created storage bucket: {MODEL_STORAGE_BUCKET}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to create storage bucket: {e}")
+            return False
+
+
+def upload_model_to_storage(model_id: str, local_path: str) -> Optional[str]:
+    """
+    Upload a model artifact to Supabase Storage.
+
+    Args:
+        model_id: The model's unique ID
+        local_path: Path to the local .pkl file
+
+    Returns:
+        Storage path (e.g., "models/uuid.pkl") or None on failure
+    """
+    try:
+        supabase = get_supabase()
+        ensure_storage_bucket_exists(supabase)
+
+        storage_path = f"models/{model_id}.pkl"
+
+        with open(local_path, 'rb') as f:
+            file_data = f.read()
+
+        # Upload to storage (upsert to overwrite if exists)
+        supabase.storage.from_(MODEL_STORAGE_BUCKET).upload(
+            storage_path,
+            file_data,
+            file_options={"content-type": "application/octet-stream", "upsert": "true"}
+        )
+
+        logger.info(f"Uploaded model to storage: {storage_path}")
+        return storage_path
+
+    except Exception as e:
+        logger.error(f"Failed to upload model to storage: {e}")
+        return None
+
+
+def download_model_from_storage(model_id: str, local_path: str) -> bool:
+    """
+    Download a model artifact from Supabase Storage.
+
+    Args:
+        model_id: The model's unique ID
+        local_path: Path to save the downloaded .pkl file
+
+    Returns:
+        True if download succeeded, False otherwise
+    """
+    try:
+        supabase = get_supabase()
+        storage_path = f"models/{model_id}.pkl"
+
+        # Download from storage
+        data = supabase.storage.from_(MODEL_STORAGE_BUCKET).download(storage_path)
+
+        # Save to local path
+        Path(local_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(local_path, 'wb') as f:
+            f.write(data)
+
+        logger.info(f"Downloaded model from storage: {storage_path} -> {local_path}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to download model from storage: {e}")
+        return False
 
 
 def compute_feature_hash(features: Dict[str, Any]) -> str:
@@ -339,6 +427,8 @@ def load_active_model(model_id: Optional[str] = None) -> Optional[CongressSignal
     """
     Load the active model from database or storage.
 
+    First checks local cache, then downloads from Supabase Storage if needed.
+
     Args:
         model_id: Specific model ID to load. If None, loads the latest active model.
 
@@ -363,11 +453,23 @@ def load_active_model(model_id: Optional[str] = None) -> Optional[CongressSignal
             return None
 
         model_record = result.data[0] if isinstance(result.data, list) else result.data
+        db_model_id = model_record.get('id')
         model_path = model_record.get('model_artifact_path')
 
-        if not model_path or not Path(model_path).exists():
-            logger.warning(f"Model artifact not found: {model_path}")
-            return None
+        # Check if local file exists
+        if model_path and Path(model_path).exists():
+            logger.info(f"Loading model from local cache: {model_path}")
+        else:
+            # Try to download from Supabase Storage
+            local_path = f"{MODEL_STORAGE_PATH}/{db_model_id}.pkl"
+            logger.info(f"Local model not found, downloading from storage...")
+
+            if download_model_from_storage(db_model_id, local_path):
+                model_path = local_path
+                logger.info(f"Downloaded model from storage: {model_path}")
+            else:
+                logger.warning(f"Model artifact not found in storage: {db_model_id}")
+                return None
 
         _active_model = CongressSignalModel(model_path)
         logger.info(f"Loaded active model: {model_record.get('model_name')} v{model_record.get('model_version')}")

@@ -168,17 +168,38 @@ async def batch_predict_signals(request: BatchPredictRequest):
     """
     Batch prediction for multiple tickers.
 
-    More efficient than individual calls for multiple tickers.
+    Optimized for batch processing - does direct model inference without
+    per-ticker cache overhead (which would cause HTTP bottlenecks).
     """
-    results = []
+    # Get active model once for all predictions
+    model = get_active_model()
+    if model is None:
+        model = load_active_model()
+        if model is None:
+            raise HTTPException(
+                status_code=503,
+                detail="No trained model available. Trigger training first.",
+            )
 
+    results = []
     for feature_vec in request.tickers:
         try:
-            single_request = PredictRequest(features=feature_vec, use_cache=request.use_cache)
-            result = await predict_signal(single_request)
-            results.append(result)
-        except HTTPException as e:
-            # Add error result
+            features_dict = feature_vec.model_dump()
+            ticker = features_dict['ticker']
+
+            # Direct model inference - no cache lookup/write to avoid HTTP overhead
+            feature_vector = model.prepare_features(features_dict)
+            prediction, confidence = model.predict(feature_vector)
+
+            results.append(PredictResponse(
+                ticker=ticker,
+                prediction=prediction,
+                signal_type=SIGNAL_LABELS.get(prediction, 'hold'),
+                confidence=confidence,
+                cached=False,
+            ))
+        except Exception as e:
+            logger.error(f"Batch prediction error for {feature_vec.ticker}: {e}")
             results.append(PredictResponse(
                 ticker=feature_vec.ticker,
                 prediction=0,

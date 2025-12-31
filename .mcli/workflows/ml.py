@@ -610,6 +610,83 @@ def compare(ticker: str):
     click.echo("Coming soon...")
 
 
+@ml.command(name="batch")
+@click.option("--count", "-n", default=174, help="Number of tickers to test (default: 174)")
+@click.option("--cache/--no-cache", default=False, help="Use cache (default: no)")
+def batch(count: int, cache: bool):
+    """
+    Test batch prediction performance.
+
+    Examples:
+        mcli run ml batch              # Test with 174 tickers (production load)
+        mcli run ml batch -n 50        # Test with 50 tickers
+        mcli run ml batch --cache      # Test with cache enabled
+    """
+    tickers = [
+        {
+            "ticker": f"T{i}",
+            "politician_count": i % 10,
+            "buy_sell_ratio": 1.5 + (i % 5) * 0.5,
+            "recent_activity_30d": i % 8,
+            "bipartisan": i % 3 == 0,
+            "net_volume": 10000 * (i % 20),
+            "volume_magnitude": 5,
+            "party_alignment": 0.5,
+            "committee_relevance": 0.5,
+            "disclosure_delay": 30,
+            "sentiment_score": 0.0,
+            "market_momentum": 0.0,
+            "sector_performance": 0.0,
+        }
+        for i in range(count)
+    ]
+
+    click.echo(f"🧪 Batch Prediction Test\n")
+    click.echo(f"  Tickers: {count}")
+    click.echo(f"  Cache: {'enabled' if cache else 'disabled'}")
+    click.echo()
+
+    try:
+        start_time = time.time()
+        response = httpx.post(
+            f"{ETL_SERVICE_URL}/ml/batch-predict",
+            json={"tickers": tickers, "use_cache": cache},
+            timeout=120.0
+        )
+        elapsed = time.time() - start_time
+
+        if response.status_code == 503:
+            click.echo("❌ No trained model available. Train first: mcli run ml train")
+            return
+
+        response.raise_for_status()
+        data = response.json()
+
+        if isinstance(data, list):
+            click.echo(f"✓ Received {len(data)} predictions")
+            click.echo(f"  Time: {elapsed:.2f}s")
+            click.echo(f"  Per ticker: {elapsed * 1000 / count:.1f}ms")
+
+            # Show signal distribution
+            signals = {}
+            for pred in data:
+                signal = pred.get("signal_type", "unknown")
+                signals[signal] = signals.get(signal, 0) + 1
+
+            click.echo(f"\n📊 Signal Distribution:")
+            for signal, cnt in sorted(signals.items()):
+                bar = "█" * int(cnt / count * 30)
+                click.echo(f"  {signal:<12} {bar} {cnt}")
+        else:
+            click.echo(f"❌ Unexpected response format: {type(data)}")
+
+    except httpx.ReadTimeout:
+        click.echo(f"❌ Request timed out after 120s")
+    except httpx.HTTPError as e:
+        click.echo(f"❌ Error: {e}", err=True)
+        raise SystemExit(1)
+
+
 # =============================================================================
 # Model Management Commands
 # =============================================================================
