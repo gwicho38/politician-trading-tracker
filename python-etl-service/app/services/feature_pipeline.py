@@ -480,7 +480,11 @@ class TrainingJob:
 
     async def run(self):
         """Execute the training job."""
-        from app.services.ml_signal_model import CongressSignalModel, MODEL_STORAGE_PATH
+        from app.services.ml_signal_model import (
+            CongressSignalModel,
+            MODEL_STORAGE_PATH,
+            upload_model_to_storage,
+        )
 
         self.status = "running"
         self.started_at = datetime.utcnow()
@@ -524,9 +528,18 @@ class TrainingJob:
             self.current_step = "Saving model..."
             self.progress = 80
 
-            # Save model artifact
+            # Save model artifact locally
             model_path = f"{MODEL_STORAGE_PATH}/{self.model_id}.pkl"
             model.save(model_path)
+
+            # Upload to Supabase Storage for persistent storage across restarts
+            self.current_step = "Uploading to storage..."
+            self.progress = 85
+            storage_path = upload_model_to_storage(self.model_id, model_path)
+            if storage_path:
+                logger.info(f"[{self.job_id}] Model uploaded to storage: {storage_path}")
+            else:
+                logger.warning(f"[{self.job_id}] Failed to upload model to storage - model may not persist")
 
             # Update model record
             supabase.table('ml_models').update({

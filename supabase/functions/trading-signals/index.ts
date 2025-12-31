@@ -1309,10 +1309,12 @@ const DEFAULT_WEIGHTS: SignalWeights = {
 }
 
 // ML Integration Configuration
-const PHOENIX_API_URL = Deno.env.get('PHOENIX_API_URL') || 'https://politician-trading-server.fly.dev'
-const ML_ENABLED = Deno.env.get('ML_ENABLED') !== 'false' // Enabled by default
+// Call ETL directly for ML (Phoenix proxy adds latency)
+const ETL_API_URL = Deno.env.get('ETL_API_URL') || 'https://politician-trading-etl.fly.dev'
+// ML enabled by default - quick health check prevents blocking on cold starts
+const ML_ENABLED = Deno.env.get('ML_ENABLED') !== 'false'
 const ML_BLEND_WEIGHT = 0.4 // 40% ML, 60% heuristic
-const ML_TIMEOUT_MS = 5000 // 5 second timeout for ML calls
+const ML_TIMEOUT_MS = 10000 // 10 second timeout for batch prediction
 
 // Signal type to numeric mapping for ML blending
 const SIGNAL_TYPE_MAP: Record<string, number> = {
@@ -1331,65 +1333,128 @@ const NUMERIC_TO_SIGNAL: Record<number, string> = {
   '-2': 'strong_sell',
 }
 
-// Helper to call ML prediction API
-async function getMlPrediction(features: {
+// Feature set for ML prediction
+interface MlFeatures {
   ticker: string
   politician_count: number
   buy_sell_ratio: number
   recent_activity_30d: number
   bipartisan: boolean
   net_volume: number
-}): Promise<{ prediction: number; confidence: number } | null> {
-  if (!ML_ENABLED) return null
+}
+
+// Cache for ML model availability (avoid repeated checks)
+let mlModelAvailable: boolean | null = null
+let mlModelCheckTime = 0
+const ML_MODEL_CHECK_CACHE_SUCCESS_MS = 60000 // Cache successful checks for 1 minute
+const ML_MODEL_CHECK_CACHE_FAIL_MS = 5000 // Cache failures for 5 seconds only (allow retries)
+
+// Quick check if ML model is available
+async function checkMlModelAvailable(): Promise<boolean> {
+  const now = Date.now()
+  const cacheMs = mlModelAvailable ? ML_MODEL_CHECK_CACHE_SUCCESS_MS : ML_MODEL_CHECK_CACHE_FAIL_MS
+  if (mlModelAvailable !== null && (now - mlModelCheckTime) < cacheMs) {
+    log.info('ML model availability (cached)', { available: mlModelAvailable })
+    return mlModelAvailable
+  }
+
+  try {
+    log.info('Checking ML model availability', { url: `${ETL_API_URL}/ml/models/active` })
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000) // 5s timeout for health check
+
+    const response = await fetch(`${ETL_API_URL}/ml/models/active`, {
+      method: 'GET',
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    mlModelAvailable = response.ok
+    mlModelCheckTime = now
+    log.info('ML model availability check completed', { available: mlModelAvailable, status: response.status })
+    return mlModelAvailable
+  } catch (error) {
+    log.warn('ML model availability check failed', { error: error.message })
+    mlModelAvailable = false
+    mlModelCheckTime = now
+    return false
+  }
+}
+
+// Batch ML prediction - single call for all tickers
+async function getBatchMlPredictions(
+  featuresList: MlFeatures[]
+): Promise<Map<string, { prediction: number; confidence: number }>> {
+  const results = new Map<string, { prediction: number; confidence: number }>()
+
+  if (!ML_ENABLED || featuresList.length === 0) return results
+
+  // Quick check if model is available (cached)
+  const modelAvailable = await checkMlModelAvailable()
+  if (!modelAvailable) {
+    log.info('ML model not available, skipping predictions')
+    return results
+  }
 
   try {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), ML_TIMEOUT_MS)
 
-    const response = await fetch(`${PHOENIX_API_URL}/api/ml/predict`, {
+    // Build batch request with all tickers - API expects flat FeatureVector objects
+    const tickers = featuresList.map(f => ({
+      ticker: f.ticker,
+      politician_count: f.politician_count,
+      buy_sell_ratio: f.buy_sell_ratio,
+      recent_activity_30d: f.recent_activity_30d,
+      bipartisan: f.bipartisan,
+      net_volume: f.net_volume,
+      volume_magnitude: Math.log1p(Math.abs(f.net_volume)),
+      party_alignment: 0.5,
+      committee_relevance: 0.5,
+      disclosure_delay: 30,
+      sentiment_score: 0,
+      market_momentum: 0,
+      sector_performance: 0,
+    }))
+
+    log.info('Calling ETL batch-predict', { tickerCount: tickers.length, url: `${ETL_API_URL}/ml/batch-predict` })
+
+    const response = await fetch(`${ETL_API_URL}/ml/batch-predict`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        features: {
-          ticker: features.ticker,
-          politician_count: features.politician_count,
-          buy_sell_ratio: features.buy_sell_ratio,
-          recent_activity_30d: features.recent_activity_30d,
-          bipartisan: features.bipartisan,
-          net_volume: features.net_volume,
-          volume_magnitude: Math.log1p(Math.abs(features.net_volume)),
-          party_alignment: 0.5, // Placeholder
-          committee_relevance: 0.5, // Placeholder
-          disclosure_delay: 30, // Default
-          sentiment_score: 0, // Placeholder
-          market_momentum: 0, // Placeholder
-          sector_performance: 0, // Placeholder
-        },
-        use_cache: true,
-      }),
+      body: JSON.stringify({ tickers, use_cache: true }),
       signal: controller.signal,
     })
 
     clearTimeout(timeoutId)
 
     if (!response.ok) {
-      log.warn('ML prediction request failed', { status: response.status })
-      return null
+      log.warn('ML batch prediction request failed', { status: response.status })
+      return results
     }
 
     const data = await response.json()
-    return {
-      prediction: data.prediction,
-      confidence: data.confidence,
+
+    // Parse batch response - format: [{ ticker, prediction, signal_type, confidence, ... }]
+    if (Array.isArray(data)) {
+      for (const pred of data) {
+        if (pred.ticker && pred.signal_type !== 'error') {
+          results.set(pred.ticker, { prediction: pred.prediction, confidence: pred.confidence })
+        }
+      }
     }
+
+    log.info('ML batch prediction completed', { tickerCount: featuresList.length, successCount: results.size })
   } catch (error) {
     if (error.name === 'AbortError') {
-      log.warn('ML prediction timed out')
+      log.warn('ML batch prediction timed out')
     } else {
-      log.warn('ML prediction error', { error: error.message })
+      log.warn('ML batch prediction error', { error: error.message })
     }
-    return null
   }
+
+  return results
 }
 
 // Helper to blend heuristic and ML signals
@@ -1584,6 +1649,14 @@ async function handlePreviewSignals(supabaseClient: any, req: Request, requestId
     const MIN_POLITICIANS = 1  // More lenient for preview
     const MIN_TRANSACTIONS = 2
 
+    // First pass: generate heuristic signals and collect ML features
+    const mlFeaturesList: MlFeatures[] = []
+    const signalDataMap = new Map<string, {
+      signal: any
+      heuristicType: string
+      heuristicConfidence: number
+    }>()
+
     for (const [ticker, data] of Object.entries(tickerData)) {
       const totalTx = data.buys + data.sells
       const politicianCount = data.politicians.size
@@ -1643,33 +1716,8 @@ async function handlePreviewSignals(supabaseClient: any, req: Request, requestId
         signalStrength = 'moderate'
       }
 
-      // Optional ML enhancement
-      let mlEnhanced = false
-      if (useML) {
-        const mlResult = await getMlPrediction({
-          ticker,
-          politician_count: politicianCount,
-          buy_sell_ratio: buySellRatio,
-          recent_activity_30d: data.recentActivity,
-          bipartisan: data.parties.has('D') && data.parties.has('R'),
-          net_volume: netVolume,
-        })
-
-        if (mlResult) {
-          const blended = blendSignals(
-            signalType,
-            confidence,
-            mlResult.prediction,
-            mlResult.confidence
-          )
-          signalType = blended.signalType
-          confidence = blended.confidence
-          mlEnhanced = blended.mlEnhanced
-        }
-      }
-
-      // Include all signals in preview (even hold and low confidence)
-      generatedSignals.push({
+      // Build signal object (ML enhancement applied later)
+      const signal = {
         ticker,
         asset_name: data.assetName,
         signal_type: signalType,
@@ -1678,7 +1726,7 @@ async function handlePreviewSignals(supabaseClient: any, req: Request, requestId
         politician_activity_count: politicianCount,
         buy_sell_ratio: Math.round(buySellRatio * 100) / 100,
         total_transaction_volume: Math.round(data.buyVolume + data.sellVolume),
-        ml_enhanced: mlEnhanced,
+        ml_enhanced: false,
         features: {
           buys: data.buys,
           sells: data.sells,
@@ -1687,7 +1735,51 @@ async function handlePreviewSignals(supabaseClient: any, req: Request, requestId
           recentActivity: data.recentActivity,
           bipartisan: data.parties.has('D') && data.parties.has('R')
         }
-      })
+      }
+
+      generatedSignals.push(signal)
+
+      // Collect ML features for batch prediction
+      if (useML) {
+        mlFeaturesList.push({
+          ticker,
+          politician_count: politicianCount,
+          buy_sell_ratio: buySellRatio,
+          recent_activity_30d: data.recentActivity,
+          bipartisan: data.parties.has('D') && data.parties.has('R'),
+          net_volume: netVolume,
+        })
+        signalDataMap.set(ticker, {
+          signal,
+          heuristicType: signalType,
+          heuristicConfidence: confidence,
+        })
+      }
+    }
+
+    // Single batch ML prediction call (instead of N sequential calls)
+    let mlPredictionCount = 0
+    if (useML && mlFeaturesList.length > 0) {
+      log.info('Starting batch ML prediction', { tickerCount: mlFeaturesList.length })
+      const mlPredictions = await getBatchMlPredictions(mlFeaturesList)
+      mlPredictionCount = mlPredictions.size
+      log.info('ML predictions received', { count: mlPredictionCount })
+
+      // Apply ML predictions to signals
+      for (const [ticker, mlResult] of mlPredictions) {
+        const data = signalDataMap.get(ticker)
+        if (data) {
+          const blended = blendSignals(
+            data.heuristicType,
+            data.heuristicConfidence,
+            mlResult.prediction,
+            mlResult.confidence
+          )
+          data.signal.signal_type = blended.signalType
+          data.signal.confidence_score = Math.round(blended.confidence * 100) / 100
+          data.signal.ml_enhanced = blended.mlEnhanced
+        }
+      }
     }
 
     // Sort by confidence (highest first) and limit to top 100 for preview
@@ -1718,6 +1810,8 @@ async function handlePreviewSignals(supabaseClient: any, req: Request, requestId
           signalsGenerated: topSignals.length,
           mlEnabled: useML,
           mlEnhancedCount,
+          mlPredictionCount,
+          mlFeaturesCount: mlFeaturesList.length,
           signalTypeDistribution: topSignals.reduce((acc, s) => {
             acc[s.signal_type] = (acc[s.signal_type] || 0) + 1
             return acc

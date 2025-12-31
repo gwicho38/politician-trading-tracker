@@ -3,7 +3,7 @@
  * Left panel with accordion sections for adjusting signal weights
  */
 
-import { RotateCcw, Save } from 'lucide-react';
+import { RotateCcw, Save, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
@@ -59,16 +59,19 @@ function WeightSlider({
   return (
     <div className="space-y-2 py-2">
       <div className="flex items-center justify-between">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="text-sm font-medium cursor-help">
-              {field.label}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="right" className="max-w-xs">
-            <p>{field.description}</p>
-          </TooltipContent>
-        </Tooltip>
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-medium">
+            {field.label}
+          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <HelpCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground cursor-help transition-colors" />
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-xs">
+              <p>{field.description}</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
 
         <div className="flex items-center gap-2">
           {hasDiff && (
@@ -145,7 +148,7 @@ export function WeightControls({
                   variant="outline"
                   size="sm"
                   onClick={onSave}
-                  disabled={!canSave || !hasChanges || isUpdating}
+                  disabled={!canSave || isUpdating}
                 >
                   <Save className="h-4 w-4 mr-2" />
                   Save Preset
