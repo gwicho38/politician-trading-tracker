@@ -74,6 +74,40 @@ defmodule ServerWeb.JobController do
   end
 
   @doc """
+  Gets the latest sync status across all data collection jobs.
+  GET /api/jobs/sync-status
+
+  Returns the most recent successful run time for data collection jobs.
+  """
+  def sync_status(conn, _params) do
+    jobs = Scheduler.list_jobs()
+
+    # Find the most recent successful run across data collection jobs
+    data_jobs = ["politician-trading-house", "sync-data", "trading-signals"]
+
+    last_sync =
+      jobs
+      |> Enum.filter(fn job -> job.job_id in data_jobs end)
+      |> Enum.map(& &1.last_successful_run)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.max(DateTime, fn -> nil end)
+
+    json(conn, %{
+      last_sync: last_sync,
+      jobs:
+        jobs
+        |> Enum.filter(fn job -> job.job_id in data_jobs end)
+        |> Enum.map(fn job ->
+          %{
+            job_id: job.job_id,
+            job_name: job.job_name,
+            last_successful_run: job.last_successful_run
+          }
+        end)
+    })
+  end
+
+  @doc """
   Runs all jobs manually (async).
   POST /api/jobs/run-all
 

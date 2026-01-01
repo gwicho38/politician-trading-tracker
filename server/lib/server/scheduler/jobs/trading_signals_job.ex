@@ -17,8 +17,8 @@ defmodule Server.Scheduler.Jobs.TradingSignalsJob do
   def job_name, do: "Trading Signals Generation"
 
   @impl true
-  # Every minute (testing)
-  def schedule, do: "* * * * *"
+  # Every 6 hours (0:00, 6:00, 12:00, 18:00 UTC)
+  def schedule, do: "0 */6 * * *"
 
   @impl true
   def run do

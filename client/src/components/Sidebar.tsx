@@ -9,7 +9,6 @@ import {
   ClipboardList,
   Clock,
   Settings,
-  Globe,
   X,
   ChevronRight,
   Loader2,
@@ -20,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useJurisdictions } from '@/hooks/useSupabaseData';
 import { Link } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { SidebarSyncStatus } from '@/components/SyncStatus';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -49,37 +48,6 @@ const standalonePages = [
   { path: '/playground', label: 'Signal Playground', icon: Sliders },
   { path: '/showcase', label: 'Strategy Showcase', icon: Sparkles },
 ];
-
-const SyncStatus = () => {
-  const [lastSync, setLastSync] = useState<Date>(new Date());
-  const [timeAgo, setTimeAgo] = useState('just now');
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const diff = Math.floor((Date.now() - lastSync.getTime()) / 1000);
-      if (diff < 60) {
-        setTimeAgo(`${diff}s ago`);
-      } else if (diff < 3600) {
-        setTimeAgo(`${Math.floor(diff / 60)}m ago`);
-      } else {
-        setTimeAgo(`${Math.floor(diff / 3600)}h ago`);
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [lastSync]);
-
-  return (
-    <div className="mt-4 rounded-lg bg-secondary/50 p-3">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Globe className="h-3 w-3" />
-        <span>Last sync: {timeAgo}</span>
-      </div>
-      <div className="mt-1 h-1 w-full rounded-full bg-border">
-        <div className="h-1 w-full rounded-full bg-primary animate-pulse" />
-      </div>
-    </div>
-  );
-};
 
 const Sidebar = ({ isOpen, onClose, activeSection, onSectionChange, selectedJurisdiction, onJurisdictionChange }: SidebarProps) => {
   const { data: jurisdictions, isLoading } = useJurisdictions();
@@ -195,7 +163,7 @@ const Sidebar = ({ isOpen, onClose, activeSection, onSectionChange, selectedJuri
               <Settings className="h-4 w-4" />
               Settings
             </Link> */}
-            <SyncStatus />
+            <SidebarSyncStatus />
           </div>
         </div>
       </aside>
