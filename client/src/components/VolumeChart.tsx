@@ -10,11 +10,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { MonthDetailModal } from '@/components/detail-modals';
+
+interface ChartDataPoint {
+  month: string;
+  monthNum: number;
+  year: number;
+  buys: number;
+  sells: number;
+  volume: number;
+}
 
 const VolumeChart = () => {
   const [timeRange, setTimeRange] = useState<ChartTimeRange>('trailing12');
   const { data: chartData, isLoading } = useChartData(timeRange);
   const { data: availableYears } = useChartYears();
+
+  // State for month detail modal
+  const [selectedMonth, setSelectedMonth] = useState<{ month: number; year: number } | null>(null);
+
+  const handleAreaClick = (data: ChartDataPoint) => {
+    if (data && data.monthNum && data.year) {
+      setSelectedMonth({ month: data.monthNum, year: data.year });
+    }
+  };
 
   const handleTimeRangeChange = (value: string) => {
     if (value === 'trailing12' || value === 'trailing24' || value === 'all') {
@@ -25,7 +44,8 @@ const VolumeChart = () => {
   };
 
   return (
-    <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-6">
+    <>
+      <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-foreground">Trade Volume</h3>
@@ -58,7 +78,15 @@ const VolumeChart = () => {
           </div>
         ) : chartData && chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData}>
+            <AreaChart
+              data={chartData}
+              onClick={(data) => {
+                if (data && data.activePayload && data.activePayload[0]) {
+                  handleAreaClick(data.activePayload[0].payload as ChartDataPoint);
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            >
               <defs>
                 <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
@@ -107,7 +135,21 @@ const VolumeChart = () => {
           </div>
         )}
       </div>
+
+      {chartData && chartData.length > 0 && (
+        <p className="text-xs text-muted-foreground text-center mt-2">
+          Click on the chart to see detailed trades for that month
+        </p>
+      )}
     </div>
+
+    <MonthDetailModal
+      month={selectedMonth?.month ?? null}
+      year={selectedMonth?.year ?? null}
+      open={!!selectedMonth}
+      onOpenChange={(open) => !open && setSelectedMonth(null)}
+    />
+  </>
   );
 };
 
