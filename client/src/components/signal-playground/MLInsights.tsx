@@ -86,7 +86,7 @@ export function MLInsights({ mlEnhancedCount, totalSignals }: MLInsightsProps) {
   const [activeModel, setActiveModel] = useState<ModelInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isOpen, setIsOpen] = useState(true); // Collapsible state
+  const [isOpen, setIsOpen] = useState(false); // Start collapsed by default
 
   // ML is always enabled - fetch model on mount
   useEffect(() => {
@@ -160,9 +160,9 @@ export function MLInsights({ mlEnhancedCount, totalSignals }: MLInsightsProps) {
             </span>
           )}
           {isOpen ? (
-            <ChevronUp className="h-4 w-4 text-muted-foreground" />
-          ) : (
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronUp className="h-4 w-4 text-muted-foreground" />
           )}
         </div>
       </div>
