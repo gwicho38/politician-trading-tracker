@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Loader2, ChevronRight } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { Loader2, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { usePoliticians, type Politician } from '@/hooks/useSupabaseData';
 import { usePagination } from '@/hooks/usePagination';
@@ -7,6 +7,10 @@ import { PaginationControls } from '@/components/PaginationControls';
 import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
 import { PoliticianProfileModal } from '@/components/detail-modals';
+
+// Sortable fields for politicians
+type SortField = 'name' | 'party' | 'chamber' | 'state' | 'total_volume' | 'total_trades';
+type SortDirection = 'asc' | 'desc';
 
 interface PoliticiansViewProps {
   jurisdictionId?: string;
@@ -18,13 +22,70 @@ const PoliticiansView = ({ jurisdictionId, initialPoliticianId, onPoliticianSele
   const { data: politicians, isLoading, error } = usePoliticians(jurisdictionId);
   const pagination = usePagination();
   const [selectedPolitician, setSelectedPolitician] = useState<Politician | null>(null);
+  const [sortField, setSortField] = useState<SortField>('total_volume');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  // Handle column header click for sorting
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      // Toggle direction if same field
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      // New field, default to descending for numeric, ascending for text
+      setSortField(field);
+      setSortDirection(['total_volume', 'total_trades'].includes(field) ? 'desc' : 'asc');
+    }
+    pagination.setPage(1); // Reset to first page on sort change
+  };
+
+  // Get sort icon for a column
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="h-3 w-3 ml-1 opacity-50" />;
+    }
+    return sortDirection === 'asc'
+      ? <ArrowUp className="h-3 w-3 ml-1 text-primary" />
+      : <ArrowDown className="h-3 w-3 ml-1 text-primary" />;
+  };
+
+  // Sort politicians client-side
+  const sortedPoliticians = useMemo(() => {
+    if (!politicians) return [];
+
+    return [...politicians].sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortField) {
+        case 'name':
+          comparison = (a.name || '').localeCompare(b.name || '');
+          break;
+        case 'party':
+          comparison = (a.party || '').localeCompare(b.party || '');
+          break;
+        case 'chamber':
+          comparison = (a.chamber || '').localeCompare(b.chamber || '');
+          break;
+        case 'state':
+          comparison = (a.state || '').localeCompare(b.state || '');
+          break;
+        case 'total_volume':
+          comparison = (a.total_volume || 0) - (b.total_volume || 0);
+          break;
+        case 'total_trades':
+          comparison = (a.total_trades || 0) - (b.total_trades || 0);
+          break;
+      }
+
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [politicians, sortField, sortDirection]);
 
   // Update total items when politicians data changes
   useEffect(() => {
-    if (politicians) {
-      pagination.setTotalItems(politicians.length);
+    if (sortedPoliticians) {
+      pagination.setTotalItems(sortedPoliticians.length);
     }
-  }, [politicians]);
+  }, [sortedPoliticians]);
 
   // Reset to page 1 when jurisdiction changes
   useEffect(() => {
@@ -42,8 +103,8 @@ const PoliticiansView = ({ jurisdictionId, initialPoliticianId, onPoliticianSele
     }
   }, [initialPoliticianId, politicians, onPoliticianSelected]);
 
-  // Get paginated politicians
-  const paginatedPoliticians = politicians?.slice(pagination.startIndex, pagination.endIndex);
+  // Get paginated politicians from sorted list
+  const paginatedPoliticians = sortedPoliticians.slice(pagination.startIndex, pagination.endIndex);
 
   return (
     <div className="space-y-6">
@@ -71,10 +132,34 @@ const PoliticiansView = ({ jurisdictionId, initialPoliticianId, onPoliticianSele
           <>
             {/* Table Header */}
             <div className="grid grid-cols-12 gap-4 px-4 py-3 border-b border-border/50 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              <div className="col-span-5 sm:col-span-4">Politician</div>
-              <div className="col-span-2 hidden sm:block">Chamber</div>
-              <div className="col-span-3 sm:col-span-2 text-right">Volume</div>
-              <div className="col-span-3 sm:col-span-2 text-right">Trades</div>
+              <button
+                onClick={() => handleSort('name')}
+                className="col-span-5 sm:col-span-4 flex items-center hover:text-foreground transition-colors text-left"
+              >
+                Politician
+                {getSortIcon('name')}
+              </button>
+              <button
+                onClick={() => handleSort('chamber')}
+                className="col-span-2 hidden sm:flex items-center hover:text-foreground transition-colors text-left"
+              >
+                Chamber
+                {getSortIcon('chamber')}
+              </button>
+              <button
+                onClick={() => handleSort('total_volume')}
+                className="col-span-3 sm:col-span-2 flex items-center justify-end hover:text-foreground transition-colors"
+              >
+                Volume
+                {getSortIcon('total_volume')}
+              </button>
+              <button
+                onClick={() => handleSort('total_trades')}
+                className="col-span-3 sm:col-span-2 flex items-center justify-end hover:text-foreground transition-colors"
+              >
+                Trades
+                {getSortIcon('total_trades')}
+              </button>
               <div className="col-span-1 sm:col-span-2"></div>
             </div>
 
