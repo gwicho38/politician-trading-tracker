@@ -1,4 +1,4 @@
-import { X, TrendingUp, TrendingDown, ExternalLink, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, ExternalLink, Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -59,24 +59,31 @@ export function PoliticianDetailModal({
         ) : detail ? (
           <div className="flex-1 overflow-y-auto space-y-6 py-4">
             {/* Trading Stats */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="rounded-lg bg-secondary/50 p-4 text-center">
-                <p className="text-2xl font-bold">{detail.total_trades}</p>
-                <p className="text-xs text-muted-foreground">Total Trades</p>
+            <div className="grid grid-cols-4 gap-3">
+              <div className="rounded-lg bg-secondary/50 p-3 text-center">
+                <p className="text-xl font-bold">{detail.total_trades}</p>
+                <p className="text-xs text-muted-foreground">Total</p>
               </div>
-              <div className="rounded-lg bg-success/10 p-4 text-center">
+              <div className="rounded-lg bg-success/10 p-3 text-center">
                 <div className="flex items-center justify-center gap-1">
-                  <TrendingUp className="h-4 w-4 text-success" />
-                  <p className="text-2xl font-bold text-success">{detail.buyCount}</p>
+                  <TrendingUp className="h-3 w-3 text-success" />
+                  <p className="text-xl font-bold text-success">{detail.buyCount}</p>
                 </div>
                 <p className="text-xs text-muted-foreground">Buys</p>
               </div>
-              <div className="rounded-lg bg-destructive/10 p-4 text-center">
+              <div className="rounded-lg bg-destructive/10 p-3 text-center">
                 <div className="flex items-center justify-center gap-1">
-                  <TrendingDown className="h-4 w-4 text-destructive" />
-                  <p className="text-2xl font-bold text-destructive">{detail.sellCount}</p>
+                  <TrendingDown className="h-3 w-3 text-destructive" />
+                  <p className="text-xl font-bold text-destructive">{detail.sellCount}</p>
                 </div>
                 <p className="text-xs text-muted-foreground">Sells</p>
+              </div>
+              <div className="rounded-lg bg-primary/10 p-3 text-center">
+                <div className="flex items-center justify-center gap-1">
+                  <Wallet className="h-3 w-3 text-primary" />
+                  <p className="text-xl font-bold text-primary">{detail.holdingCount}</p>
+                </div>
+                <p className="text-xs text-muted-foreground">Holdings</p>
               </div>
             </div>
 
@@ -118,12 +125,16 @@ export function PoliticianDetailModal({
                           variant="outline"
                           className={cn(
                             'text-xs',
-                            trade.transaction_type === 'purchase'
-                              ? 'bg-success/10 text-success border-success/30'
-                              : 'bg-destructive/10 text-destructive border-destructive/30'
+                            trade.transaction_type === 'purchase' && 'bg-success/10 text-success border-success/30',
+                            trade.transaction_type === 'sale' && 'bg-destructive/10 text-destructive border-destructive/30',
+                            trade.transaction_type === 'holding' && 'bg-primary/10 text-primary border-primary/30',
+                            !['purchase', 'sale', 'holding'].includes(trade.transaction_type || '') && 'bg-muted/10 text-muted-foreground border-muted'
                           )}
                         >
-                          {trade.transaction_type === 'purchase' ? 'BUY' : 'SELL'}
+                          {trade.transaction_type === 'purchase' ? 'BUY' :
+                           trade.transaction_type === 'sale' ? 'SELL' :
+                           trade.transaction_type === 'holding' ? 'HOLD' :
+                           trade.transaction_type?.toUpperCase() || 'N/A'}
                         </Badge>
                         <div>
                           <span className="font-mono font-semibold">
