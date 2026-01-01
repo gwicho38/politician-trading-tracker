@@ -638,3 +638,216 @@ def open_dashboard():
 # ML commands have been moved to ml.py
 # Use: mcli run ml <command>
 # =============================================================================
+
+
+# =============================================================================
+# Database Cleanup Commands
+# =============================================================================
+
+def get_supabase_keys():
+    """Get Supabase URL and service role key from environment."""
+    load_env()
+    url = os.environ.get("SUPABASE_URL", "https://uljsqvwkomdrlnofmlad.supabase.co")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not service_key:
+        # Try getting from lsh
+        try:
+            result = subprocess.run(
+                ["lsh", "get", "SUPABASE_SERVICE_ROLE_KEY"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                service_key = result.stdout.strip()
+        except FileNotFoundError:
+            pass
+
+    if not service_key:
+        raise click.ClickException(
+            "SUPABASE_SERVICE_ROLE_KEY not found. "
+            "Set it in .env or via: lsh set SUPABASE_SERVICE_ROLE_KEY <key>"
+        )
+
+    return url, service_key
+
+
+@etl.command(name="cleanup-bad-dates")
+@click.option("--dry-run", "-d", is_flag=True, help="Show what would be deleted without deleting")
+def cleanup_bad_dates(dry_run: bool):
+    """
+    Delete records with invalid future dates (e.g., 2204 instead of 2024).
+
+    These are typos in the original PDF that were faithfully parsed.
+
+    Example:
+        mcli run etl cleanup-bad-dates --dry-run  # Preview
+        mcli run etl cleanup-bad-dates            # Delete
+    """
+    url, service_key = get_supabase_keys()
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+    }
+
+    # Find records with disclosure_date > 2030
+    query_url = f"{url}/rest/v1/trading_disclosures?select=id,disclosure_date,asset_name&disclosure_date=gt.2030-01-01"
+
+    try:
+        response = httpx.get(query_url, headers=headers, timeout=30.0)
+        response.raise_for_status()
+        records = response.json()
+
+        if not records:
+            click.echo("No records with future dates found.")
+            return
+
+        click.echo(f"Found {len(records)} records with future dates:")
+        for r in records[:10]:
+            click.echo(f"  - {r['disclosure_date'][:10]}: {r['asset_name'][:50]}...")
+
+        if len(records) > 10:
+            click.echo(f"  ... and {len(records) - 10} more")
+
+        if dry_run:
+            click.echo("\nDry run - no changes made.")
+            return
+
+        # Delete
+        delete_url = f"{url}/rest/v1/trading_disclosures?disclosure_date=gt.2030-01-01"
+        response = httpx.delete(delete_url, headers=headers, timeout=30.0)
+        response.raise_for_status()
+
+        click.echo(f"\n✓ Deleted {len(records)} records with future dates.")
+
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@etl.command(name="cleanup-raw-pdf-text")
+@click.option("--dry-run", "-d", is_flag=True, help="Show what would be deleted without deleting")
+@click.option("--pattern", "-p", default="F S: New", help="Pattern to match in asset_name")
+def cleanup_raw_pdf_text(dry_run: bool, pattern: str):
+    """
+    Delete records where asset_name contains raw PDF metadata.
+
+    These are duplicates from older ETL runs that didn't properly parse
+    the PDF table columns.
+
+    Common patterns:
+        - "F S: New" (filing status metadata)
+        - " P DD/DD/DDDD " (purchase + dates)
+        - " S DD/DD/DDDD " (sale + dates)
+
+    Examples:
+        mcli run etl cleanup-raw-pdf-text --dry-run
+        mcli run etl cleanup-raw-pdf-text --pattern "S: New"
+    """
+    url, service_key = get_supabase_keys()
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+    }
+
+    # URL-encode the pattern for ilike query
+    import urllib.parse
+    encoded_pattern = urllib.parse.quote(f"*{pattern}*")
+
+    # Find matching records
+    query_url = f"{url}/rest/v1/trading_disclosures?select=id,asset_name&asset_name=ilike.{encoded_pattern}&limit=500"
+
+    try:
+        response = httpx.get(query_url, headers=headers, timeout=30.0)
+        response.raise_for_status()
+        records = response.json()
+
+        if not records:
+            click.echo(f"No records matching pattern '{pattern}' found.")
+            return
+
+        click.echo(f"Found {len(records)} records containing '{pattern}':")
+        for r in records[:5]:
+            click.echo(f"  - {r['asset_name'][:70]}...")
+
+        if len(records) > 5:
+            click.echo(f"  ... and {len(records) - 5} more")
+
+        if dry_run:
+            click.echo("\nDry run - no changes made.")
+            return
+
+        # Delete
+        delete_url = f"{url}/rest/v1/trading_disclosures?asset_name=ilike.{encoded_pattern}"
+        response = httpx.delete(delete_url, headers=headers, timeout=30.0)
+        response.raise_for_status()
+
+        click.echo(f"\n✓ Deleted {len(records)} records matching '{pattern}'.")
+
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@etl.command(name="cleanup-all")
+@click.option("--dry-run", "-d", is_flag=True, help="Show what would be deleted without deleting")
+def cleanup_all(dry_run: bool):
+    """
+    Run all cleanup tasks: bad dates and raw PDF text patterns.
+
+    This is a convenience command that runs:
+        1. cleanup-bad-dates (future dates like 2204)
+        2. cleanup-raw-pdf-text with pattern "F S: New"
+        3. cleanup-raw-pdf-text with pattern " P __/__/____ "
+        4. cleanup-raw-pdf-text with pattern " S __/__/____ "
+
+    Example:
+        mcli run etl cleanup-all --dry-run  # Preview all
+        mcli run etl cleanup-all            # Delete all
+    """
+    url, service_key = get_supabase_keys()
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+    }
+
+    total_deleted = 0
+
+    # Pattern definitions
+    patterns = [
+        ("future dates (> 2030)", "disclosure_date=gt.2030-01-01"),
+        ("'F S: New' in asset_name", "asset_name=ilike.*F%20S:%20New*"),
+        ("' P DD/DD/DDDD ' in asset_name", "asset_name=like.*%20P%20__/__/____%20*"),
+        ("' S DD/DD/DDDD ' in asset_name", "asset_name=like.*%20S%20__/__/____%20*"),
+    ]
+
+    for desc, filter_query in patterns:
+        try:
+            # Count matching records
+            query_url = f"{url}/rest/v1/trading_disclosures?select=id&{filter_query}&limit=1000"
+            response = httpx.get(query_url, headers=headers, timeout=30.0)
+            response.raise_for_status()
+            records = response.json()
+            count = len(records)
+
+            if count == 0:
+                click.echo(f"  ○ {desc}: 0 records")
+                continue
+
+            click.echo(f"  ● {desc}: {count} records")
+
+            if dry_run:
+                continue
+
+            # Delete
+            delete_url = f"{url}/rest/v1/trading_disclosures?{filter_query}"
+            response = httpx.delete(delete_url, headers=headers, timeout=30.0)
+            response.raise_for_status()
+            total_deleted += count
+
+        except httpx.HTTPError as e:
+            click.echo(f"    Error: {e}", err=True)
+
+    if dry_run:
+        click.echo("\nDry run - no changes made.")
+    else:
+        click.echo(f"\n✓ Total deleted: {total_deleted} records")
