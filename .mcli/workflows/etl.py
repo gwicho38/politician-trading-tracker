@@ -39,15 +39,20 @@ def etl():
 @click.argument("year", type=int)
 @click.option("--limit", "-l", type=int, default=None, help="Limit PDFs to process (for testing)")
 @click.option("--wait", "-w", is_flag=True, help="Wait for job to complete")
-def trigger(year: int, limit: int | None, wait: bool):
+@click.option("--update", "-u", is_flag=True, help="Update mode: re-parse and update existing records")
+def trigger(year: int, limit: int | None, wait: bool, update: bool):
     """
     Trigger ETL job for a specific year.
 
-    Example: mcli run etl trigger 2024
+    Examples:
+        mcli run etl trigger 2024              # Normal mode (skip duplicates)
+        mcli run etl trigger 2024 --update     # Update mode (re-parse all)
+        mcli run etl trigger 2024 -l 10 -u     # Update first 10 PDFs
     """
-    click.echo(f"Triggering ETL for year {year}...")
+    mode_str = " (UPDATE MODE)" if update else ""
+    click.echo(f"Triggering ETL for year {year}{mode_str}...")
 
-    payload = {"source": "house", "year": year}
+    payload = {"source": "house", "year": year, "update_mode": update}
     if limit:
         payload["limit"] = limit
 
@@ -139,26 +144,30 @@ def _wait_for_job(job_id: str):
 @click.argument("end_year", type=int)
 @click.option("--limit", "-l", type=int, default=None, help="Limit PDFs per year (for testing)")
 @click.option("--sequential", "-s", is_flag=True, help="Wait for each year to complete before starting next")
-def ingest_range(start_year: int, end_year: int, limit: int | None, sequential: bool):
+@click.option("--update", "-u", is_flag=True, help="Update mode: re-parse and update existing records")
+def ingest_range(start_year: int, end_year: int, limit: int | None, sequential: bool, update: bool):
     """
     Trigger ETL for a range of years.
 
-    Example: mcli run etl ingest-range 2016 2024
+    Examples:
+        mcli run etl ingest-range 2016 2024           # Normal mode
+        mcli run etl ingest-range 2016 2024 --update  # Update all years
     """
     if start_year > end_year:
         click.echo("Error: start_year must be <= end_year", err=True)
         raise SystemExit(1)
 
     years = list(range(start_year, end_year + 1))
-    click.echo(f"Triggering ETL for years: {years}")
+    mode_str = " (UPDATE MODE)" if update else ""
+    click.echo(f"Triggering ETL for years: {years}{mode_str}")
 
     job_ids = {}
 
     for year in years:
         click.echo(f"\n{'='*50}")
-        click.echo(f"Starting ETL for {year}...")
+        click.echo(f"Starting ETL for {year}{mode_str}...")
 
-        payload = {"source": "house", "year": year}
+        payload = {"source": "house", "year": year, "update_mode": update}
         if limit:
             payload["limit"] = limit
 
@@ -189,6 +198,52 @@ def ingest_range(start_year: int, end_year: int, limit: int | None, sequential: 
 
     if not sequential:
         click.echo("\nTo check status: mcli run etl status <job_id>")
+
+
+@etl.command(name="update")
+@click.argument("year", type=int)
+@click.option("--limit", "-l", type=int, default=None, help="Limit PDFs to process (for testing)")
+@click.option("--wait", "-w", is_flag=True, help="Wait for job to complete")
+def update(year: int, limit: int | None, wait: bool):
+    """
+    Re-parse and update existing records for a year.
+
+    This is a shortcut for 'trigger --update'. It re-downloads PDFs,
+    re-parses them with the latest parsing logic, and updates existing
+    database records.
+
+    Examples:
+        mcli run etl update 2025              # Update all 2025 records
+        mcli run etl update 2025 -l 10 -w     # Update first 10, wait for completion
+    """
+    click.echo(f"🔄 Updating ETL records for year {year}...")
+
+    payload = {"source": "house", "year": year, "update_mode": True}
+    if limit:
+        payload["limit"] = limit
+
+    try:
+        response = httpx.post(
+            f"{ETL_SERVICE_URL}/etl/trigger",
+            json=payload,
+            timeout=30.0
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        job_id = data["job_id"]
+        click.echo(f"Job started: {job_id}")
+        click.echo(f"Message: {data['message']}")
+
+        if wait:
+            click.echo("\nWaiting for completion...")
+            _wait_for_job(job_id)
+        else:
+            click.echo(f"\nTo check status: mcli run etl status {job_id}")
+
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
 
 
 @etl.command(name="check-years")
@@ -255,6 +310,89 @@ def health():
         click.echo(f"ETL Service: {data.get('status', 'unknown')}")
         click.echo(f"URL: {ETL_SERVICE_URL}")
     except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@etl.command(name="ingest")
+@click.argument("url")
+@click.option("--name", "-n", default=None, help="Politician name (optional)")
+@click.option("--dry-run", "-d", is_flag=True, help="Parse only, don't upload to database")
+@click.option("--verbose", "-v", is_flag=True, help="Show full transaction details")
+def ingest(url: str, name: str | None, dry_run: bool, verbose: bool):
+    """
+    Ingest a single disclosure PDF by URL.
+
+    Useful for testing ETL parsing on specific filings.
+
+    Examples:
+        mcli run etl ingest https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2025/20033576.pdf
+        mcli run etl ingest URL --dry-run  # Parse without uploading
+        mcli run etl ingest URL --name "Nancy Pelosi"  # Override politician name
+    """
+    click.echo(f"Ingesting PDF: {url}")
+
+    payload = {"url": url, "dry_run": dry_run}
+    if name:
+        payload["politician_name"] = name
+
+    try:
+        response = httpx.post(
+            f"{ETL_SERVICE_URL}/etl/ingest-url",
+            json=payload,
+            timeout=60.0
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Show summary
+        click.echo(f"\n{'='*60}")
+        click.echo(f"Document ID: {data['doc_id']}")
+        click.echo(f"Year: {data['year']}")
+        click.echo(f"Politician: {data.get('politician_name', 'Unknown')}")
+        if data.get('politician_id'):
+            click.echo(f"Politician ID: {data['politician_id']}")
+        click.echo(f"{'='*60}")
+        click.echo(f"Transactions found: {data['transactions_found']}")
+
+        if dry_run:
+            click.echo(f"Dry run: transactions NOT uploaded")
+        else:
+            click.echo(f"Transactions uploaded: {data['transactions_uploaded']}")
+
+        # Show transactions
+        if data['transactions']:
+            click.echo(f"\n{'─'*60}")
+            click.echo("Transactions:")
+            for i, txn in enumerate(data['transactions'], 1):
+                ticker = txn.get('asset_ticker') or '-'
+                asset = txn.get('asset_name', 'Unknown')[:40]
+                tx_type = txn.get('transaction_type') or 'unknown'
+                value_low = txn.get('value_low')
+                value_high = txn.get('value_high')
+
+                if value_low and value_high:
+                    value_str = f"${value_low:,.0f} - ${value_high:,.0f}"
+                else:
+                    value_str = "-"
+
+                click.echo(f"  {i:2}. [{ticker:5}] {asset:40} {tx_type:8} {value_str}")
+
+                if verbose:
+                    tx_date = txn.get('transaction_date', '-')
+                    notif_date = txn.get('notification_date', '-')
+                    click.echo(f"      Transaction: {tx_date}, Notification: {notif_date}")
+        else:
+            click.echo("\nNo transactions found in PDF.")
+
+    except httpx.HTTPStatusError as e:
+        try:
+            detail = e.response.json().get('detail', str(e))
+        except Exception:
+            detail = str(e)
+        click.echo(f"Error: {detail}", err=True)
+        raise SystemExit(1)
+    except httpx.HTTPError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 

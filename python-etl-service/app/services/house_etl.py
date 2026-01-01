@@ -343,9 +343,29 @@ def extract_tables_from_pdf(pdf_bytes: bytes) -> List[List[List[str]]]:
 
 
 def is_header_row(row_text: str) -> bool:
-    """Check if a row is a header row."""
-    headers = ["asset", "owner", "value", "income", "description"]
-    return any(header in row_text.lower() for header in headers)
+    """Check if a row is a header row.
+
+    PDF tables sometimes split headers across multiple rows, e.g.:
+    Row 0: ['ID', 'Owner', 'Asset', 'Transaction', ...]
+    Row 1: ['', '', '', 'Type', ...]  ← continuation of header
+
+    We need to detect both full headers and these continuation rows.
+    """
+    text_lower = row_text.lower().strip()
+
+    # Standard header keywords
+    headers = ["asset", "owner", "value", "income", "description", "transaction", "notification"]
+    if any(header in text_lower for header in headers):
+        return True
+
+    # Exact match for standalone header continuation words
+    # These appear in continuation rows with mostly empty cells
+    standalone_headers = ["type", "date", "amount", "cap.", "gains"]
+    words = [w.strip() for w in text_lower.split() if w.strip()]
+    if words and all(w in standalone_headers or w.startswith("$") or w == ">" for w in words):
+        return True
+
+    return False
 
 
 def is_metadata_row(text: str) -> bool:
@@ -758,8 +778,17 @@ def upload_transaction_to_supabase(
     politician_id: str,
     transaction: Dict[str, Any],
     disclosure: Dict[str, Any],
+    update_mode: bool = False,
 ) -> Optional[str]:
-    """Upload a single transaction to Supabase trading_disclosures table."""
+    """Upload a single transaction to Supabase trading_disclosures table.
+
+    Args:
+        supabase_client: Supabase client instance
+        politician_id: UUID of the politician
+        transaction: Parsed transaction data
+        disclosure: Disclosure metadata
+        update_mode: If True, use upsert to update existing records
+    """
     try:
         # Get dates: prefer extracted dates from row, fall back to filing_date
         filing_date = transaction.get("filing_date") or disclosure.get("filing_date")
@@ -814,9 +843,23 @@ def upload_transaction_to_supabase(
             "status": "active",
         }
 
-        response = (
-            supabase_client.table("trading_disclosures").insert(disclosure_data).execute()
-        )
+        if update_mode:
+            # Upsert: update if exists (based on unique constraint), insert if not
+            # The unique constraint idx_disclosures_unique is on:
+            # (politician_id, transaction_date, asset_name, transaction_type, disclosure_date)
+            response = (
+                supabase_client.table("trading_disclosures")
+                .upsert(
+                    disclosure_data,
+                    on_conflict="politician_id,transaction_date,asset_name,transaction_type,disclosure_date"
+                )
+                .execute()
+            )
+        else:
+            # Normal insert (fails on duplicate)
+            response = (
+                supabase_client.table("trading_disclosures").insert(disclosure_data).execute()
+            )
 
         if response.data and len(response.data) > 0:
             return response.data[0]["id"]
@@ -836,7 +879,12 @@ def upload_transaction_to_supabase(
 # =============================================================================
 
 
-async def run_house_etl(job_id: str, year: int = 2025, limit: Optional[int] = None):
+async def run_house_etl(
+    job_id: str,
+    year: int = 2025,
+    limit: Optional[int] = None,
+    update_mode: bool = False,
+):
     """
     Run the complete House disclosure ETL pipeline.
 
@@ -850,9 +898,11 @@ async def run_house_etl(job_id: str, year: int = 2025, limit: Optional[int] = No
         job_id: Unique job identifier for status tracking
         year: Year to process (default: 2025)
         limit: Optional limit on number of PDFs (for testing). If None, processes all.
+        update_mode: If True, upsert to update existing records with new parsing.
     """
     JOB_STATUS[job_id]["status"] = "running"
-    JOB_STATUS[job_id]["message"] = "Initializing..."
+    mode_str = " (UPDATE MODE)" if update_mode else ""
+    JOB_STATUS[job_id]["message"] = f"Initializing{mode_str}..."
 
     # Reset rate limiter for this job
     global rate_limiter
@@ -963,12 +1013,14 @@ async def run_house_etl(job_id: str, year: int = 2025, limit: Optional[int] = No
                 # Upload transactions
                 for txn in transactions:
                     disclosure_id = upload_transaction_to_supabase(
-                        supabase_client, politician_id, txn, disclosure
+                        supabase_client, politician_id, txn, disclosure,
+                        update_mode=update_mode,
                     )
                     if disclosure_id:
                         transactions_uploaded += 1
+                        action = "Updated" if update_mode else "Uploaded"
                         logger.info(
-                            f"Uploaded: {txn.get('asset_ticker', txn.get('asset_name', 'N/A')[:30])}"
+                            f"{action}: {txn.get('asset_ticker', txn.get('asset_name', 'N/A')[:30])}"
                         )
 
                 # Rate limiting is now handled in fetch_pdf via RateLimiter
