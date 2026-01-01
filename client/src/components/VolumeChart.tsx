@@ -49,7 +49,10 @@ const VolumeChart = () => {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-foreground">Trade Volume</h3>
-          <p className="text-sm text-muted-foreground">Total disclosed trading volume by month</p>
+          <p className="text-sm text-muted-foreground">
+            Total disclosed trading volume by month
+            <span className="text-xs ml-2 text-primary/70">• Click chart for details</span>
+          </p>
         </div>
         <Select
           value={typeof timeRange === 'number' ? String(timeRange) : timeRange}

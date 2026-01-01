@@ -250,12 +250,9 @@ export const useTradingDisclosures = (options: {
       if (transactionType) {
         query = query.eq('transaction_type', transactionType);
       }
-      // Search: use ilike on asset_ticker only (simpler, faster, avoids 500 errors)
-      // For more comprehensive search, search asset_name separately
+      // Search: search both ticker and company name
       if (searchQuery) {
-        // Use a simpler approach: search ticker first, fallback to name
-        // The or() with multiple ilike can cause timeout on large tables
-        query = query.ilike('asset_ticker', `%${searchQuery}%`);
+        query = query.or(`asset_ticker.ilike.%${searchQuery}%,asset_name.ilike.%${searchQuery}%`);
       }
       if (dateFrom) {
         query = query.gte('disclosure_date', dateFrom);

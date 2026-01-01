@@ -12,6 +12,10 @@ import {
   ArrowDown,
   X,
   Filter,
+  Copy,
+  Check,
+  Download,
+  Calendar,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -86,6 +90,11 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [transactionType, setTransactionType] = useState('');
   const [party, setParty] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  // Copy ticker state
+  const [copiedTicker, setCopiedTicker] = useState<string | null>(null);
 
   // Handle initial search query from props
   useEffect(() => {
@@ -117,6 +126,8 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
     searchQuery: debouncedSearch || undefined,
     transactionType: transactionType || undefined,
     party: party || undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
     sortField,
     sortDirection,
   });
@@ -126,7 +137,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
   const totalPages = Math.ceil(total / ROWS_PER_PAGE);
 
   // Check if any filters are active
-  const hasActiveFilters = debouncedSearch || transactionType || party;
+  const hasActiveFilters = debouncedSearch || transactionType || party || dateFrom || dateTo;
 
   // Clear all filters
   const clearFilters = () => {
@@ -134,7 +145,50 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
     setDebouncedSearch('');
     setTransactionType('');
     setParty('');
+    setDateFrom('');
+    setDateTo('');
     setPage(0);
+  };
+
+  // Copy ticker to clipboard
+  const copyTicker = async (ticker: string) => {
+    try {
+      await navigator.clipboard.writeText(ticker);
+      setCopiedTicker(ticker);
+      setTimeout(() => setCopiedTicker(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  // Export to CSV
+  const exportToCSV = () => {
+    if (!disclosures.length) return;
+
+    const headers = ['Politician', 'Party', 'Ticker', 'Asset Name', 'Type', 'Amount Min', 'Amount Max', 'Transaction Date', 'Disclosure Date'];
+    const rows = disclosures.map(d => [
+      d.politician?.name || 'Unknown',
+      d.politician?.party || 'Unknown',
+      d.asset_ticker || '',
+      d.asset_name || '',
+      d.transaction_type || '',
+      d.amount_range_min || '',
+      d.amount_range_max || '',
+      d.transaction_date || '',
+      d.disclosure_date || '',
+    ]);
+
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `politician-trades-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   // Handle sort click
@@ -211,12 +265,12 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
           </div>
 
           {/* Search and Filters Row */}
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
             {/* Search Input */}
-            <div className="relative flex-1 max-w-md">
+            <div className="relative flex-1 min-w-[200px] max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by ticker (e.g., AAPL, MSFT)..."
+                placeholder="Search ticker or company..."
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 className="pl-9 bg-background/50"
@@ -233,7 +287,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
 
             {/* Transaction Type Filter */}
             <Select value={transactionType || 'all'} onValueChange={(v) => { setTransactionType(v === 'all' ? '' : v); setPage(0); }}>
-              <SelectTrigger className="w-[140px] bg-background/50">
+              <SelectTrigger className="w-[130px] bg-background/50">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
@@ -247,7 +301,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
 
             {/* Party Filter */}
             <Select value={party || 'all'} onValueChange={(v) => { setParty(v === 'all' ? '' : v); setPage(0); }}>
-              <SelectTrigger className="w-[140px] bg-background/50">
+              <SelectTrigger className="w-[130px] bg-background/50">
                 <SelectValue placeholder="Party" />
               </SelectTrigger>
               <SelectContent>
@@ -258,6 +312,30 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                 ))}
               </SelectContent>
             </Select>
+
+            {/* Date From */}
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => { setDateFrom(e.target.value); setPage(0); }}
+                className="pl-9 w-[150px] bg-background/50"
+                title="From date"
+              />
+            </div>
+
+            {/* Date To */}
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => { setDateTo(e.target.value); setPage(0); }}
+                className="pl-9 w-[150px] bg-background/50"
+                title="To date"
+              />
+            </div>
 
             {/* Clear Filters */}
             {hasActiveFilters && (
@@ -271,6 +349,18 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                 Clear
               </Button>
             )}
+
+            {/* Export CSV */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportToCSV}
+              disabled={disclosures.length === 0}
+              className="gap-1 ml-auto"
+            >
+              <Download className="h-4 w-4" />
+              Export
+            </Button>
           </div>
 
           {/* Active Filters Display */}
@@ -297,6 +387,22 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                 <Badge variant="secondary" className="gap-1">
                   Party: {party}
                   <button onClick={() => { setParty(''); setPage(0); }}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {dateFrom && (
+                <Badge variant="secondary" className="gap-1">
+                  From: {dateFrom}
+                  <button onClick={() => { setDateFrom(''); setPage(0); }}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {dateTo && (
+                <Badge variant="secondary" className="gap-1">
+                  To: {dateTo}
+                  <button onClick={() => { setDateTo(''); setPage(0); }}>
                     <X className="h-3 w-3" />
                   </button>
                 </Badge>
@@ -408,18 +514,34 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {disclosure.asset_ticker && (
-                          <span className="font-mono text-sm font-semibold text-primary">
-                            {disclosure.asset_ticker}
-                          </span>
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono text-sm font-semibold text-primary">
+                              {disclosure.asset_ticker}
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyTicker(disclosure.asset_ticker!);
+                              }}
+                              className="p-1 rounded hover:bg-secondary transition-colors opacity-0 group-hover:opacity-100"
+                              title="Copy ticker"
+                            >
+                              {copiedTicker === disclosure.asset_ticker ? (
+                                <Check className="h-3 w-3 text-success" />
+                              ) : (
+                                <Copy className="h-3 w-3 text-muted-foreground" />
+                              )}
+                            </button>
+                          </div>
                         )}
-                        <span className="text-sm text-muted-foreground truncate max-w-[200px]">
+                        <span className="text-sm text-muted-foreground truncate max-w-[180px]">
                           {disclosure.asset_name}
                         </span>
                       </div>
                       {disclosure.asset_type && (
-                        <div className="text-xs text-muted-foreground">
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 mt-1 font-normal">
                           {disclosure.asset_type}
-                        </div>
+                        </Badge>
                       )}
                     </TableCell>
 
