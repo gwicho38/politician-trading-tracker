@@ -46,6 +46,7 @@ defmodule ServerWeb.Router do
 
     # Job management
     get "/jobs", JobController, :index
+    get "/jobs/sync-status", JobController, :sync_status
     get "/jobs/:job_id", JobController, :show
     post "/jobs/:job_id/run", JobController, :run
     post "/jobs/run-all", JobController, :run_all

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Search, Menu, LogOut, User, Shield, Globe } from 'lucide-react';
+import { Search, Menu, LogOut, User, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -13,39 +13,12 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAdmin } from '@/hooks/useAdmin';
 import NotificationBell from '@/components/NotificationBell';
+import { HeaderSyncStatus } from '@/components/SyncStatus';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface HeaderProps {
   onMenuClick: () => void;
 }
-
-// Compact sync status for header
-const SyncStatus = () => {
-  const [lastSync] = useState<Date>(new Date());
-  const [timeAgo, setTimeAgo] = useState('just now');
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const diff = Math.floor((Date.now() - lastSync.getTime()) / 1000);
-      if (diff < 60) {
-        setTimeAgo(`${diff}s ago`);
-      } else if (diff < 3600) {
-        setTimeAgo(`${Math.floor(diff / 60)}m ago`);
-      } else {
-        setTimeAgo(`${Math.floor(diff / 3600)}h ago`);
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [lastSync]);
-
-  return (
-    <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-secondary/50 rounded-lg px-3 py-1.5">
-      <Globe className="h-3 w-3" />
-      <span>Synced {timeAgo}</span>
-      <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-    </div>
-  );
-};
 
 const Header = ({ onMenuClick }: HeaderProps) => {
   const navigate = useNavigate();
@@ -134,7 +107,7 @@ const Header = ({ onMenuClick }: HeaderProps) => {
             />
           </form>
 
-          <SyncStatus />
+          <HeaderSyncStatus />
 
           {/* COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready */}
           {/* {user && <NotificationBell />} */}

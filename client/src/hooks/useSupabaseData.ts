@@ -282,6 +282,7 @@ export const useTradingDisclosures = (options: {
         total: count || 0,
       };
     },
+    staleTime: 5 * 60 * 1000, // Cache paginated results for 5 minutes
   });
 };
 
@@ -355,54 +356,27 @@ export const useChartYears = () => {
   });
 };
 
-// Fetch top tickers by trade count
+// Fetch top tickers by trade count (uses database view for performance)
 export const useTopTickers = (limit = 5) => {
   return useQuery({
     queryKey: ['topTickers', limit],
     queryFn: async () => {
-      // Get all active disclosures with tickers
+      // Query from pre-aggregated view instead of all disclosures
       const { data, error } = await supabase
-        .from('trading_disclosures')
-        .select('asset_ticker, asset_name, amount_range_min, amount_range_max')
-        .eq('status', 'active')
-        .not('asset_ticker', 'is', null)
-        .not('asset_ticker', 'eq', '');
+        .from('top_tickers')
+        .select('ticker, name, trade_count, total_volume')
+        .limit(limit);
 
       if (error) throw error;
 
-      // Group by ticker and count
-      const tickerMap = new Map<string, {
-        ticker: string;
-        name: string;
-        count: number;
-        totalVolume: number;
-      }>();
-
-      (data || []).forEach(d => {
-        const ticker = d.asset_ticker?.toUpperCase();
-        if (!ticker) return;
-
-        const existing = tickerMap.get(ticker);
-        const midpoint = ((d.amount_range_min || 0) + (d.amount_range_max || 0)) / 2;
-
-        if (existing) {
-          existing.count++;
-          existing.totalVolume += midpoint;
-        } else {
-          tickerMap.set(ticker, {
-            ticker,
-            name: d.asset_name || ticker,
-            count: 1,
-            totalVolume: midpoint,
-          });
-        }
-      });
-
-      // Sort by count and take top N
-      return Array.from(tickerMap.values())
-        .sort((a, b) => b.count - a.count)
-        .slice(0, limit);
+      return (data || []).map(d => ({
+        ticker: d.ticker,
+        name: d.name || d.ticker,
+        count: d.trade_count,
+        totalVolume: d.total_volume,
+      }));
     },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 };
 
