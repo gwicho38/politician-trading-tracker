@@ -10,9 +10,11 @@ import { PoliticianProfileModal } from '@/components/detail-modals';
 
 interface PoliticiansViewProps {
   jurisdictionId?: string;
+  initialPoliticianId?: string | null;
+  onPoliticianSelected?: () => void;
 }
 
-const PoliticiansView = ({ jurisdictionId }: PoliticiansViewProps) => {
+const PoliticiansView = ({ jurisdictionId, initialPoliticianId, onPoliticianSelected }: PoliticiansViewProps) => {
   const { data: politicians, isLoading, error } = usePoliticians(jurisdictionId);
   const pagination = usePagination();
   const [selectedPolitician, setSelectedPolitician] = useState<Politician | null>(null);
@@ -28,6 +30,17 @@ const PoliticiansView = ({ jurisdictionId }: PoliticiansViewProps) => {
   useEffect(() => {
     pagination.setPage(1);
   }, [jurisdictionId]);
+
+  // Handle initial politician selection from search
+  useEffect(() => {
+    if (initialPoliticianId && politicians) {
+      const politician = politicians.find(p => p.id === initialPoliticianId);
+      if (politician) {
+        setSelectedPolitician(politician);
+        onPoliticianSelected?.();
+      }
+    }
+  }, [initialPoliticianId, politicians, onPoliticianSelected]);
 
   // Get paginated politicians
   const paginatedPoliticians = politicians?.slice(pagination.startIndex, pagination.endIndex);

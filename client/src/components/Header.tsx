@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Search, Menu, LogOut, User, Shield } from 'lucide-react';
+import { Menu, LogOut, User, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAdmin } from '@/hooks/useAdmin';
 import NotificationBell from '@/components/NotificationBell';
 import { HeaderSyncStatus } from '@/components/SyncStatus';
+import { GlobalSearch } from '@/components/GlobalSearch';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface HeaderProps {
@@ -89,23 +89,9 @@ const Header = ({ onMenuClick }: HeaderProps) => {
         </div>
 
         <div className="flex items-center gap-3">
-          <form 
-            className="relative hidden md:block"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const input = e.currentTarget.querySelector('input');
-              if (input?.value) {
-                window.dispatchEvent(new CustomEvent('search', { detail: input.value }));
-              }
-            }}
-          >
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search politicians, tickers..."
-              className="w-64 pl-9 bg-secondary/50 border-border/50 focus:border-primary/50"
-            />
-          </form>
+          <div className="hidden md:block">
+            <GlobalSearch />
+          </div>
 
           <HeaderSyncStatus />
 
