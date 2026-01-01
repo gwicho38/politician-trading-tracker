@@ -6,6 +6,7 @@ import { WalletProvider } from "@/components/WalletProvider";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import SignalPlayground from "./pages/SignalPlayground";
+import Showcase from "./pages/Showcase";
 // COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready
 // import Admin from "./pages/Admin";
 // import AdminDataCollection from "./pages/AdminDataCollection";
@@ -24,6 +25,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/playground" element={<SignalPlayground />} />
+          <Route path="/showcase" element={<Showcase />} />
           {/* COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready */}
           {/* <Route path="/admin" element={<Admin />} /> */}
           {/* <Route path="/admin/data-collection" element={<AdminDataCollection />} /> */}

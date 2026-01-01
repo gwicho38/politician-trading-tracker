@@ -48,6 +48,7 @@ export interface SignalPreset {
   name: string;
   description: string | null;
   is_public: boolean;
+  author_name?: string | null;
 
   // Weight values (snake_case to match DB schema)
   base_confidence: number;
@@ -167,4 +168,25 @@ export interface SignalDistributionData {
 export interface ConfidenceDistributionData {
   range: string;
   count: number;
+}
+
+/**
+ * Strategy like record
+ */
+export interface StrategyLike {
+  id: string;
+  user_id: string;
+  preset_id: string;
+  created_at: string;
+}
+
+/**
+ * Strategy for showcase with likes and author info
+ * Returned by get_public_strategies database function
+ */
+export interface ShowcaseStrategy extends SignalPreset {
+  author_name: string | null;
+  author_email: string | null;
+  likes_count: number;
+  user_has_liked: boolean;
 }
