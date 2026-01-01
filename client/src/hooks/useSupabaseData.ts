@@ -421,6 +421,8 @@ export const useDashboardStats = () => {
 export interface PoliticianDetail extends Politician {
   buyCount: number;
   sellCount: number;
+  holdingCount: number;
+  otherCount: number;
   topTickers: Array<{ ticker: string; count: number }>;
   recentTrades: TradingDisclosure[];
 }
@@ -450,9 +452,13 @@ export const usePoliticianDetail = (politicianId: string | null) => {
 
       if (tradesError) throw tradesError;
 
-      // Calculate stats
+      // Calculate stats by transaction type
       const buyCount = trades?.filter(t => t.transaction_type === 'purchase').length || 0;
       const sellCount = trades?.filter(t => t.transaction_type === 'sale').length || 0;
+      const holdingCount = trades?.filter(t => t.transaction_type === 'holding').length || 0;
+      const otherCount = trades?.filter(t =>
+        t.transaction_type && !['purchase', 'sale', 'holding'].includes(t.transaction_type)
+      ).length || 0;
 
       // Get top tickers
       const tickerCounts = new Map<string, number>();
@@ -474,6 +480,8 @@ export const usePoliticianDetail = (politicianId: string | null) => {
         state: politician.state_or_country || politician.district,
         buyCount,
         sellCount,
+        holdingCount,
+        otherCount,
         topTickers,
         recentTrades: (trades || []).slice(0, 10) as TradingDisclosure[],
       } as PoliticianDetail;
@@ -491,6 +499,8 @@ export interface TickerDetail {
   totalVolume: number;
   buyCount: number;
   sellCount: number;
+  holdingCount: number;
+  otherCount: number;
   topPoliticians: Array<{ name: string; party: string; count: number }>;
   recentTrades: TradingDisclosure[];
 }
@@ -512,9 +522,13 @@ export const useTickerDetail = (ticker: string | null) => {
       if (error) throw error;
       if (!trades || trades.length === 0) return null;
 
-      // Calculate stats
+      // Calculate stats by transaction type
       const buyCount = trades.filter(t => t.transaction_type === 'purchase').length;
       const sellCount = trades.filter(t => t.transaction_type === 'sale').length;
+      const holdingCount = trades.filter(t => t.transaction_type === 'holding').length;
+      const otherCount = trades.filter(t =>
+        t.transaction_type && !['purchase', 'sale', 'holding'].includes(t.transaction_type)
+      ).length;
       const totalVolume = trades.reduce((sum, t) => {
         return sum + ((t.amount_range_min || 0) + (t.amount_range_max || 0)) / 2;
       }, 0);
@@ -548,6 +562,8 @@ export const useTickerDetail = (ticker: string | null) => {
         totalVolume,
         buyCount,
         sellCount,
+        holdingCount,
+        otherCount,
         topPoliticians,
         recentTrades: trades.slice(0, 10).map(t => ({
           ...t,
@@ -571,6 +587,8 @@ export interface MonthDetail {
   totalTrades: number;
   buyCount: number;
   sellCount: number;
+  holdingCount: number;
+  otherCount: number;
   totalVolume: number;
   topTickers: Array<{ ticker: string; name: string; count: number }>;
   topPoliticians: Array<{ name: string; party: string; count: number }>;
@@ -600,9 +618,13 @@ export const useMonthDetail = (month: number | null, year: number | null) => {
 
       if (error) throw error;
 
-      // Calculate stats
+      // Calculate stats by transaction type
       const buyCount = trades?.filter(t => t.transaction_type === 'purchase').length || 0;
       const sellCount = trades?.filter(t => t.transaction_type === 'sale').length || 0;
+      const holdingCount = trades?.filter(t => t.transaction_type === 'holding').length || 0;
+      const otherCount = trades?.filter(t =>
+        t.transaction_type && !['purchase', 'sale', 'holding'].includes(t.transaction_type)
+      ).length || 0;
       const totalVolume = trades?.reduce((sum, t) => {
         return sum + ((t.amount_range_min || 0) + (t.amount_range_max || 0)) / 2;
       }, 0) || 0;
@@ -653,6 +675,8 @@ export const useMonthDetail = (month: number | null, year: number | null) => {
         totalTrades: trades?.length || 0,
         buyCount,
         sellCount,
+        holdingCount,
+        otherCount,
         totalVolume,
         topTickers,
         topPoliticians,
