@@ -1,12 +1,14 @@
-import { TrendingUp, Users, FileText, DollarSign, Loader2 } from 'lucide-react';
+import { TrendingUp, Users, FileText, DollarSign, Loader2, ArrowUpRight, ArrowDownRight, Wallet } from 'lucide-react';
 import StatsCard from '@/components/StatsCard';
 import TradeChart from '@/components/TradeChart';
 import VolumeChart from '@/components/VolumeChart';
 import TopTraders from '@/components/TopTraders';
 import TopTickers from '@/components/TopTickers';
+import PartyBreakdown from '@/components/PartyBreakdown';
 import LandingTradesTable from '@/components/LandingTradesTable';
-import { useDashboardStats } from '@/hooks/useSupabaseData';
+import { useDashboardStats, useChartData } from '@/hooks/useSupabaseData';
 import { formatCurrency } from '@/lib/mockData';
+import { Badge } from '@/components/ui/badge';
 
 interface DashboardProps {
   jurisdictionId?: string;
@@ -16,6 +18,16 @@ interface DashboardProps {
 
 const Dashboard = ({ jurisdictionId, initialTickerSearch, onTickerSearchClear }: DashboardProps) => {
   const { data: stats, isLoading } = useDashboardStats();
+  const { data: chartData } = useChartData('all');
+
+  // Calculate transaction type totals from chart data
+  const transactionTotals = chartData?.reduce(
+    (acc, month) => ({
+      buys: acc.buys + (month.buys || 0),
+      sells: acc.sells + (month.sells || 0),
+    }),
+    { buys: 0, sells: 0 }
+  ) || { buys: 0, sells: 0 };
 
   return (
     <div className="space-y-6">
@@ -77,6 +89,25 @@ const Dashboard = ({ jurisdictionId, initialTickerSearch, onTickerSearchClear }:
         )}
       </div>
 
+      {/* Transaction Type Summary */}
+      {transactionTotals.buys > 0 || transactionTotals.sells > 0 ? (
+        <div className="flex items-center gap-4 flex-wrap">
+          <span className="text-sm text-muted-foreground">Transaction breakdown:</span>
+          <Badge variant="outline" className="gap-1.5 bg-success/10 text-success border-success/30">
+            <ArrowUpRight className="h-3 w-3" />
+            {transactionTotals.buys.toLocaleString()} Buys
+          </Badge>
+          <Badge variant="outline" className="gap-1.5 bg-destructive/10 text-destructive border-destructive/30">
+            <ArrowDownRight className="h-3 w-3" />
+            {transactionTotals.sells.toLocaleString()} Sells
+          </Badge>
+          <Badge variant="outline" className="gap-1.5 bg-primary/10 text-primary border-primary/30">
+            <Wallet className="h-3 w-3" />
+            {((stats?.total_trades || 0) - transactionTotals.buys - transactionTotals.sells).toLocaleString()} Other
+          </Badge>
+        </div>
+      ) : null}
+
       {/* Main Trades Table */}
       <LandingTradesTable
         initialSearchQuery={initialTickerSearch}
@@ -89,10 +120,11 @@ const Dashboard = ({ jurisdictionId, initialTickerSearch, onTickerSearchClear }:
         <VolumeChart />
       </div>
 
-      {/* Top Traders & Top Tickers */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* Top Traders, Top Tickers & Party Breakdown */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <TopTraders />
         <TopTickers />
+        <PartyBreakdown />
       </div>
     </div>
   );

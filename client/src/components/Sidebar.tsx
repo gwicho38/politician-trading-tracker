@@ -120,10 +120,10 @@ const Sidebar = ({ isOpen, onClose, activeSection, onSectionChange, selectedJuri
               ))}
             </div>
 
-            {/* COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready */}
-            {/* <div>
+            {/* Jurisdictions Filter */}
+            <div className="mt-4">
               <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Jurisdictions
+                Filter by Chamber
               </p>
               <div className="space-y-1">
                 {isLoading ? (
@@ -138,11 +138,12 @@ const Sidebar = ({ isOpen, onClose, activeSection, onSectionChange, selectedJuri
                         onJurisdictionChange(selectedJurisdiction === j.id ? undefined : j.id);
                         onClose();
                       }}
-                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200 hover:bg-secondary hover:text-foreground ${
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200",
                         selectedJurisdiction === j.id
                           ? 'bg-primary/20 text-primary border border-primary/30'
-                          : 'text-muted-foreground'
-                      }`}
+                          : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                      )}
                     >
                       <span className="text-base">{j.flag}</span>
                       {j.name}
@@ -150,7 +151,7 @@ const Sidebar = ({ isOpen, onClose, activeSection, onSectionChange, selectedJuri
                   ))
                 )}
               </div>
-            </div> */}
+            </div>
           </nav>
 
           {/* Footer */}

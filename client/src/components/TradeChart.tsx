@@ -48,7 +48,10 @@ const TradeChart = () => {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-foreground">Trading Activity</h3>
-            <p className="text-sm text-muted-foreground">Buy vs Sell transactions over time</p>
+            <p className="text-sm text-muted-foreground">
+              Buy vs Sell transactions over time
+              <span className="text-xs ml-2 text-primary/70">• Click bars for details</span>
+            </p>
           </div>
           <div className="flex items-center gap-4">
             <Select
