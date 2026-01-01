@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Loader2,
   Sliders,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,7 @@ const navItems = [
 // Standalone pages with their own routes
 const standalonePages = [
   { path: '/playground', label: 'Signal Playground', icon: Sliders },
+  { path: '/showcase', label: 'Strategy Showcase', icon: Sparkles },
 ];
 
 const SyncStatus = () => {

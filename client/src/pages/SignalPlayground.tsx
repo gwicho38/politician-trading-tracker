@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Save, Calendar, User, LogOut } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Save, Calendar, User, LogOut, Sparkles } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -61,6 +61,9 @@ const LOOKBACK_OPTIONS = [
 export default function SignalPlayground() {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const presetIdFromUrl = searchParams.get('preset');
+  const fromShowcase = !!presetIdFromUrl;
 
   // User auth state
   const [user, setUser] = useState<SupabaseUser | null>(null);
@@ -130,6 +133,21 @@ export default function SignalPlayground() {
 
   // Selected preset for tracking
   const [selectedPresetId, setSelectedPresetId] = useState<string>();
+
+  // Load preset from URL if provided (from Showcase)
+  useEffect(() => {
+    if (presetIdFromUrl && presets.length > 0 && !selectedPresetId) {
+      const preset = presets.find((p) => p.id === presetIdFromUrl);
+      if (preset) {
+        loadPreset(preset);
+        setSelectedPresetId(preset.id);
+        toast({
+          title: 'Strategy loaded',
+          description: `"${preset.name}" from showcase has been applied.`,
+        });
+      }
+    }
+  }, [presetIdFromUrl, presets, selectedPresetId, loadPreset, toast]);
 
   // Handle reset to defaults with feedback
   const handleReset = () => {
@@ -216,7 +234,7 @@ export default function SignalPlayground() {
       <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <div className="container flex h-14 items-center justify-between px-4">
           <div className="flex items-center gap-4">
-            <Link to="/">
+            <Link to={fromShowcase ? '/showcase' : '/'}>
               <Button variant="ghost" size="icon">
                 <ArrowLeft className="h-5 w-5" />
               </Button>
@@ -224,7 +242,14 @@ export default function SignalPlayground() {
             <div>
               <h1 className="text-lg font-semibold">Signal Playground</h1>
               <p className="text-xs text-muted-foreground">
-                Experiment with signal generation weights
+                {fromShowcase ? (
+                  <span className="flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" />
+                    Trying strategy from showcase
+                  </span>
+                ) : (
+                  'Experiment with signal generation weights'
+                )}
               </p>
             </div>
           </div>
