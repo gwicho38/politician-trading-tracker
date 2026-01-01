@@ -10,9 +10,11 @@ import { formatCurrency } from '@/lib/mockData';
 
 interface DashboardProps {
   jurisdictionId?: string;
+  initialTickerSearch?: string;
+  onTickerSearchClear?: () => void;
 }
 
-const Dashboard = ({ jurisdictionId }: DashboardProps) => {
+const Dashboard = ({ jurisdictionId, initialTickerSearch, onTickerSearchClear }: DashboardProps) => {
   const { data: stats, isLoading } = useDashboardStats();
 
   return (
@@ -76,7 +78,10 @@ const Dashboard = ({ jurisdictionId }: DashboardProps) => {
       </div>
 
       {/* Main Trades Table */}
-      <LandingTradesTable />
+      <LandingTradesTable
+        initialSearchQuery={initialTickerSearch}
+        onSearchClear={onTickerSearchClear}
+      />
 
       {/* Charts Row */}
       <div className="grid gap-6 lg:grid-cols-2">

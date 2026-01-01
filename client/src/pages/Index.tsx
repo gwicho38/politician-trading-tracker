@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
 import Dashboard from '@/components/Dashboard';
@@ -13,11 +14,39 @@ import FilingsView from '@/components/FilingsView';
 // import TradesView from '@/components/TradesView';
 
 const Index = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('dashboard');
   const [selectedJurisdiction, setSelectedJurisdiction] = useState<string | undefined>(undefined);
+  const [selectedPoliticianId, setSelectedPoliticianId] = useState<string | null>(null);
+  const [tickerFilter, setTickerFilter] = useState<string | undefined>(undefined);
 
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Handle URL parameters on mount and when they change
+  useEffect(() => {
+    const view = searchParams.get('view');
+    const politicianId = searchParams.get('politician');
+    const ticker = searchParams.get('ticker');
+
+    if (view) {
+      setActiveSection(view);
+    }
+    if (politicianId) {
+      setSelectedPoliticianId(politicianId);
+      if (!view) setActiveSection('politicians');
+    }
+    if (ticker) {
+      setTickerFilter(ticker);
+      // Ticker search goes to dashboard (which has the trades table)
+      if (!view) setActiveSection('dashboard');
+    }
+
+    // Clear URL params after processing
+    if (view || politicianId || ticker) {
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Listen for navigation events from child components
   useEffect(() => {
@@ -36,10 +65,27 @@ const Index = () => {
     };
   }, []);
 
+  // Clear politician selection when switching away from politicians view
+  const handleSectionChange = (section: string) => {
+    if (section !== 'politicians') {
+      setSelectedPoliticianId(null);
+    }
+    if (section !== 'filings') {
+      setTickerFilter(undefined);
+    }
+    setActiveSection(section);
+  };
+
   const renderContent = () => {
     switch (activeSection) {
       case 'politicians':
-        return <PoliticiansView jurisdictionId={selectedJurisdiction} />;
+        return (
+          <PoliticiansView
+            jurisdictionId={selectedJurisdiction}
+            initialPoliticianId={selectedPoliticianId}
+            onPoliticianSelected={() => setSelectedPoliticianId(null)}
+          />
+        );
       case 'filings':
         return <FilingsView jurisdictionId={selectedJurisdiction} />;
       // COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready
@@ -56,7 +102,13 @@ const Index = () => {
       // case 'trades':
       //   return <TradesView jurisdictionId={selectedJurisdiction} searchQuery={searchQuery} />;
       default:
-        return <Dashboard jurisdictionId={selectedJurisdiction} />;
+        return (
+          <Dashboard
+            jurisdictionId={selectedJurisdiction}
+            initialTickerSearch={tickerFilter}
+            onTickerSearchClear={() => setTickerFilter(undefined)}
+          />
+        );
     }
   };
 
@@ -73,7 +125,7 @@ const Index = () => {
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           activeSection={activeSection}
-          onSectionChange={setActiveSection}
+          onSectionChange={handleSectionChange}
           selectedJurisdiction={selectedJurisdiction}
           onJurisdictionChange={setSelectedJurisdiction}
         />

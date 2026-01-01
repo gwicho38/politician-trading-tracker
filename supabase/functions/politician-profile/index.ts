@@ -110,11 +110,16 @@ serve(async (req) => {
 function buildPrompt(politician: PoliticianData): string {
   const tickersList = politician.topTickers?.slice(0, 5).join(", ") || "various securities";
 
-  return `Write a brief, factual 2-3 sentence professional biography for ${politician.name}, a ${politician.party} ${politician.chamber} from ${politician.state}.
+  return `Write a 2-3 sentence professional biography. Start directly with the person's name - do not include any preamble, introduction, or "Here is..." text.
 
-Based on public financial disclosure data, they have reported ${politician.totalTrades} trades with approximately $${formatVolume(politician.totalVolume)} in disclosed trading volume. Their most frequently traded securities include ${tickersList}.
+Subject: ${politician.name}, a ${politician.party} ${politician.chamber} from ${politician.state}.
+Trading data: ${politician.totalTrades} disclosed trades, approximately $${formatVolume(politician.totalVolume)} in volume. Top securities: ${tickersList}.
 
-Keep the tone neutral and professional. Focus on their role and trading activity. Do not make up specific dates, committees, or other details not provided.`;
+Requirements:
+- Start immediately with "${politician.name} is..." or "${politician.name} serves..."
+- Keep tone neutral and professional
+- Do not invent dates, committees, or other unverified details
+- Focus on role and trading activity`;
 }
 
 function generateFallbackBio(politician: PoliticianData): string {

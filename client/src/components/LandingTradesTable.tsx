@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   ExternalLink,
   ArrowUpRight,
@@ -68,7 +68,12 @@ const SORTABLE_COLUMNS: SortableColumn[] = [
   { field: 'transaction_type', label: 'Type' },
 ];
 
-const LandingTradesTable = () => {
+interface LandingTradesTableProps {
+  initialSearchQuery?: string;
+  onSearchClear?: () => void;
+}
+
+const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTradesTableProps = {}) => {
   // Pagination
   const [page, setPage] = useState(0);
 
@@ -81,6 +86,16 @@ const LandingTradesTable = () => {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [transactionType, setTransactionType] = useState('');
   const [party, setParty] = useState('');
+
+  // Handle initial search query from props
+  useEffect(() => {
+    if (initialSearchQuery) {
+      setSearchQuery(initialSearchQuery);
+      setDebouncedSearch(initialSearchQuery);
+      setPage(0);
+      onSearchClear?.();
+    }
+  }, [initialSearchQuery, onSearchClear]);
 
   // Debounce search
   const handleSearchChange = (value: string) => {
