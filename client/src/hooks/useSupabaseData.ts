@@ -412,3 +412,260 @@ export const useDashboardStats = () => {
     },
   });
 };
+
+// ============================================================================
+// Detail View Hooks
+// ============================================================================
+
+// Politician detail: full profile with trading stats and recent trades
+export interface PoliticianDetail extends Politician {
+  buyCount: number;
+  sellCount: number;
+  topTickers: Array<{ ticker: string; count: number }>;
+  recentTrades: TradingDisclosure[];
+}
+
+export const usePoliticianDetail = (politicianId: string | null) => {
+  return useQuery({
+    queryKey: ['politicianDetail', politicianId],
+    queryFn: async () => {
+      if (!politicianId) return null;
+
+      // Fetch politician info
+      const { data: politician, error: politicianError } = await supabase
+        .from('politicians')
+        .select('*')
+        .eq('id', politicianId)
+        .single();
+
+      if (politicianError) throw politicianError;
+
+      // Fetch all trades for this politician
+      const { data: trades, error: tradesError } = await supabase
+        .from('trading_disclosures')
+        .select('*')
+        .eq('politician_id', politicianId)
+        .eq('status', 'active')
+        .order('disclosure_date', { ascending: false });
+
+      if (tradesError) throw tradesError;
+
+      // Calculate stats
+      const buyCount = trades?.filter(t => t.transaction_type === 'purchase').length || 0;
+      const sellCount = trades?.filter(t => t.transaction_type === 'sale').length || 0;
+
+      // Get top tickers
+      const tickerCounts = new Map<string, number>();
+      trades?.forEach(t => {
+        if (t.asset_ticker) {
+          const ticker = t.asset_ticker.toUpperCase();
+          tickerCounts.set(ticker, (tickerCounts.get(ticker) || 0) + 1);
+        }
+      });
+      const topTickers = Array.from(tickerCounts.entries())
+        .map(([ticker, count]) => ({ ticker, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      return {
+        ...politician,
+        name: politician.full_name || `${politician.first_name} ${politician.last_name}`,
+        chamber: politician.role || 'Unknown',
+        state: politician.state_or_country || politician.district,
+        buyCount,
+        sellCount,
+        topTickers,
+        recentTrades: (trades || []).slice(0, 10) as TradingDisclosure[],
+      } as PoliticianDetail;
+    },
+    enabled: !!politicianId,
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
+// Ticker detail: all trades and stats for a specific ticker
+export interface TickerDetail {
+  ticker: string;
+  name: string;
+  totalTrades: number;
+  totalVolume: number;
+  buyCount: number;
+  sellCount: number;
+  topPoliticians: Array<{ name: string; party: string; count: number }>;
+  recentTrades: TradingDisclosure[];
+}
+
+export const useTickerDetail = (ticker: string | null) => {
+  return useQuery({
+    queryKey: ['tickerDetail', ticker],
+    queryFn: async () => {
+      if (!ticker) return null;
+
+      // Fetch all trades for this ticker with politician info
+      const { data: trades, error } = await supabase
+        .from('trading_disclosures')
+        .select('*, politician:politicians(*)')
+        .ilike('asset_ticker', ticker)
+        .eq('status', 'active')
+        .order('disclosure_date', { ascending: false });
+
+      if (error) throw error;
+      if (!trades || trades.length === 0) return null;
+
+      // Calculate stats
+      const buyCount = trades.filter(t => t.transaction_type === 'purchase').length;
+      const sellCount = trades.filter(t => t.transaction_type === 'sale').length;
+      const totalVolume = trades.reduce((sum, t) => {
+        return sum + ((t.amount_range_min || 0) + (t.amount_range_max || 0)) / 2;
+      }, 0);
+
+      // Get top politicians
+      const politicianCounts = new Map<string, { name: string; party: string; count: number }>();
+      trades.forEach(t => {
+        if (t.politician) {
+          const pol = t.politician as Politician;
+          const id = pol.id;
+          const existing = politicianCounts.get(id);
+          if (existing) {
+            existing.count++;
+          } else {
+            politicianCounts.set(id, {
+              name: pol.full_name || `${pol.first_name} ${pol.last_name}`,
+              party: pol.party || 'Unknown',
+              count: 1,
+            });
+          }
+        }
+      });
+      const topPoliticians = Array.from(politicianCounts.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      return {
+        ticker: ticker.toUpperCase(),
+        name: trades[0]?.asset_name || ticker,
+        totalTrades: trades.length,
+        totalVolume,
+        buyCount,
+        sellCount,
+        topPoliticians,
+        recentTrades: trades.slice(0, 10).map(t => ({
+          ...t,
+          politician: t.politician ? {
+            ...t.politician,
+            name: t.politician.full_name || `${t.politician.first_name} ${t.politician.last_name}`,
+          } : undefined,
+        })) as TradingDisclosure[],
+      } as TickerDetail;
+    },
+    enabled: !!ticker,
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
+// Month detail: all trades for a specific month/year
+export interface MonthDetail {
+  month: number;
+  year: number;
+  label: string;
+  totalTrades: number;
+  buyCount: number;
+  sellCount: number;
+  totalVolume: number;
+  topTickers: Array<{ ticker: string; name: string; count: number }>;
+  topPoliticians: Array<{ name: string; party: string; count: number }>;
+  recentTrades: TradingDisclosure[];
+}
+
+export const useMonthDetail = (month: number | null, year: number | null) => {
+  return useQuery({
+    queryKey: ['monthDetail', month, year],
+    queryFn: async () => {
+      if (!month || !year) return null;
+
+      // Calculate date range for the month
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0); // Last day of month
+      const startStr = startDate.toISOString().split('T')[0];
+      const endStr = endDate.toISOString().split('T')[0];
+
+      // Fetch all trades for this month with politician info
+      const { data: trades, error } = await supabase
+        .from('trading_disclosures')
+        .select('*, politician:politicians(*)')
+        .gte('disclosure_date', startStr)
+        .lte('disclosure_date', endStr)
+        .eq('status', 'active')
+        .order('disclosure_date', { ascending: false });
+
+      if (error) throw error;
+
+      // Calculate stats
+      const buyCount = trades?.filter(t => t.transaction_type === 'purchase').length || 0;
+      const sellCount = trades?.filter(t => t.transaction_type === 'sale').length || 0;
+      const totalVolume = trades?.reduce((sum, t) => {
+        return sum + ((t.amount_range_min || 0) + (t.amount_range_max || 0)) / 2;
+      }, 0) || 0;
+
+      // Get top tickers
+      const tickerCounts = new Map<string, { ticker: string; name: string; count: number }>();
+      trades?.forEach(t => {
+        if (t.asset_ticker) {
+          const ticker = t.asset_ticker.toUpperCase();
+          const existing = tickerCounts.get(ticker);
+          if (existing) {
+            existing.count++;
+          } else {
+            tickerCounts.set(ticker, { ticker, name: t.asset_name || ticker, count: 1 });
+          }
+        }
+      });
+      const topTickers = Array.from(tickerCounts.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      // Get top politicians
+      const politicianCounts = new Map<string, { name: string; party: string; count: number }>();
+      trades?.forEach(t => {
+        if (t.politician) {
+          const pol = t.politician as Politician;
+          const id = pol.id;
+          const existing = politicianCounts.get(id);
+          if (existing) {
+            existing.count++;
+          } else {
+            politicianCounts.set(id, {
+              name: pol.full_name || `${pol.first_name} ${pol.last_name}`,
+              party: pol.party || 'Unknown',
+              count: 1,
+            });
+          }
+        }
+      });
+      const topPoliticians = Array.from(politicianCounts.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      return {
+        month,
+        year,
+        label: `${MONTH_NAMES[month]} ${year}`,
+        totalTrades: trades?.length || 0,
+        buyCount,
+        sellCount,
+        totalVolume,
+        topTickers,
+        topPoliticians,
+        recentTrades: (trades || []).slice(0, 10).map(t => ({
+          ...t,
+          politician: t.politician ? {
+            ...t.politician,
+            name: t.politician.full_name || `${t.politician.first_name} ${t.politician.last_name}`,
+          } : undefined,
+        })) as TradingDisclosure[],
+      } as MonthDetail;
+    },
+    enabled: !!month && !!year,
+    staleTime: 5 * 60 * 1000,
+  });
+};
