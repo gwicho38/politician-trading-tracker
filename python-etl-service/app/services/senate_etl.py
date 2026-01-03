@@ -112,75 +112,39 @@ def upsert_senator_to_db(supabase: Client, senator: Dict[str, Any]) -> Optional[
     Returns the politician_id.
     """
     try:
-        # Map party code to full name
-        party_map = {"D": "Democratic", "R": "Republican", "I": "Independent"}
-        party = party_map.get(senator.get("party"), senator.get("party"))
-
-        # First check if politician exists by bioguide_id in raw_data
         bioguide_id = senator.get("bioguide_id")
-        if bioguide_id:
-            # Search for existing politician with this bioguide_id
-            response = supabase.rpc(
-                "find_politician_by_bioguide",
-                {"p_bioguide_id": bioguide_id}
-            ).execute()
 
-            if response.data and len(response.data) > 0:
+        # First check if politician exists by bioguide_id
+        if bioguide_id:
+            response = (
+                supabase.table("politicians")
+                .select("id")
+                .eq("bioguide_id", bioguide_id)
+                .limit(1)
+                .execute()
+            )
+
+            if response.data:
                 # Update existing politician
                 politician_id = response.data[0]["id"]
                 supabase.table("politicians").update({
-                    "name": senator["full_name"],
-                    "party": party,
-                    "state": senator.get("state"),
-                    "position": "Senator",
-                    "jurisdiction": "Federal",
+                    "first_name": senator.get("first_name"),
+                    "last_name": senator.get("last_name"),
+                    "full_name": senator["full_name"],
+                    "party": senator.get("party"),
+                    "state_or_country": senator.get("state"),
+                    "role": "Senator",
                 }).eq("id", politician_id).execute()
 
                 return politician_id
 
-        # Fall back to name-based matching
-        response = (
-            supabase.table("politicians")
-            .select("id")
-            .ilike("name", f"%{senator['last_name']}%")
-            .eq("position", "Senator")
-            .limit(1)
-            .execute()
-        )
-
-        if response.data:
-            # Update existing politician
-            politician_id = response.data[0]["id"]
-            supabase.table("politicians").update({
-                "name": senator["full_name"],
-                "party": party,
-                "state": senator.get("state"),
-                "raw_data": {"bioguide_id": bioguide_id} if bioguide_id else None,
-            }).eq("id", politician_id).execute()
-
-            return politician_id
-
-        # Create new politician
-        new_politician = {
-            "name": senator["full_name"],
-            "party": party,
-            "state": senator.get("state"),
-            "position": "Senator",
-            "jurisdiction": "Federal",
-            "raw_data": {"bioguide_id": bioguide_id} if bioguide_id else None,
-        }
-
-        response = supabase.table("politicians").insert(new_politician).execute()
-        if response.data:
-            logger.info(f"Created new senator: {senator['full_name']}")
-            return response.data[0]["id"]
+        # Fall back to name-based matching using the fallback function
+        return _upsert_senator_by_name(supabase, senator)
 
     except Exception as e:
-        # If RPC doesn't exist, fall back to simple name search
-        if "find_politician_by_bioguide" in str(e):
-            logger.debug("bioguide RPC not found, using name-based matching")
-            return _upsert_senator_by_name(supabase, senator)
         logger.error(f"Error upserting senator {senator['full_name']}: {e}")
+        # Try the fallback
+        return _upsert_senator_by_name(supabase, senator)
 
     return None
 
@@ -188,14 +152,12 @@ def upsert_senator_to_db(supabase: Client, senator: Dict[str, Any]) -> Optional[
 def _upsert_senator_by_name(supabase: Client, senator: Dict[str, Any]) -> Optional[str]:
     """Fallback: upsert senator by name matching only."""
     try:
-        party_map = {"D": "Democratic", "R": "Republican", "I": "Independent"}
-        party = party_map.get(senator.get("party"), senator.get("party"))
-
-        # Try to find by last name
+        # Try to find by last name in full_name column
         response = (
             supabase.table("politicians")
             .select("id")
-            .ilike("name", f"%{senator['last_name']}%")
+            .ilike("full_name", f"%{senator['last_name']}%")
+            .eq("role", "Senator")
             .limit(1)
             .execute()
         )
@@ -203,21 +165,46 @@ def _upsert_senator_by_name(supabase: Client, senator: Dict[str, Any]) -> Option
         if response.data:
             politician_id = response.data[0]["id"]
             supabase.table("politicians").update({
-                "name": senator["full_name"],
-                "party": party,
-                "state": senator.get("state"),
-                "position": "Senator",
-                "jurisdiction": "Federal",
+                "first_name": senator.get("first_name"),
+                "last_name": senator.get("last_name"),
+                "full_name": senator["full_name"],
+                "party": senator.get("party"),
+                "state_or_country": senator.get("state"),
+                "bioguide_id": senator.get("bioguide_id"),
+            }).eq("id", politician_id).execute()
+            return politician_id
+
+        # Try searching by last_name column
+        response = (
+            supabase.table("politicians")
+            .select("id")
+            .ilike("last_name", f"%{senator['last_name']}%")
+            .limit(1)
+            .execute()
+        )
+
+        if response.data:
+            politician_id = response.data[0]["id"]
+            supabase.table("politicians").update({
+                "first_name": senator.get("first_name"),
+                "last_name": senator.get("last_name"),
+                "full_name": senator["full_name"],
+                "party": senator.get("party"),
+                "state_or_country": senator.get("state"),
+                "role": "Senator",
+                "bioguide_id": senator.get("bioguide_id"),
             }).eq("id", politician_id).execute()
             return politician_id
 
         # Create new
         response = supabase.table("politicians").insert({
-            "name": senator["full_name"],
-            "party": party,
-            "state": senator.get("state"),
-            "position": "Senator",
-            "jurisdiction": "Federal",
+            "first_name": senator.get("first_name"),
+            "last_name": senator.get("last_name"),
+            "full_name": senator["full_name"],
+            "party": senator.get("party"),
+            "state_or_country": senator.get("state"),
+            "role": "Senator",
+            "bioguide_id": senator.get("bioguide_id"),
         }).execute()
 
         if response.data:
