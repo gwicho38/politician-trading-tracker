@@ -9,7 +9,7 @@ import os
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
-from app.routes import health, etl, enrichment, ml
+from app.routes import health, etl, enrichment, ml, quality
 
 
 @asynccontextmanager
@@ -34,6 +34,7 @@ app.include_router(health.router, tags=["health"])
 app.include_router(etl.router, prefix="/etl", tags=["etl"])
 app.include_router(enrichment.router, prefix="/enrichment", tags=["enrichment"])
 app.include_router(ml.router, prefix="/ml", tags=["ml"])
+app.include_router(quality.router, prefix="/quality", tags=["quality"])
 
 
 @app.get("/")
@@ -54,5 +55,8 @@ async def root():
             "ml_train": "POST /ml/train",
             "ml_models": "GET /ml/models",
             "ml_health": "GET /ml/health",
+            "quality_validate_tickers": "POST /quality/validate-tickers",
+            "quality_audit_sources": "POST /quality/audit-sources",
+            "quality_freshness": "GET /quality/freshness-report",
         },
     }

@@ -36,6 +36,9 @@ defmodule Server.Application do
       # Cron job scheduler (starts empty, jobs registered via API)
       Server.Scheduler.Quantum,
 
+      # Data quality digest store (accumulates issues for daily digest)
+      Server.DataQuality.DigestStore,
+
       # Phoenix HTTP endpoint (must be last)
       ServerWeb.Endpoint
     ]
@@ -71,7 +74,12 @@ defmodule Server.Application do
       Server.Scheduler.Jobs.PartyEnrichmentJob,
       # ML model training jobs
       Server.Scheduler.Jobs.MlTrainingJob,
-      Server.Scheduler.Jobs.BatchRetrainingJob
+      Server.Scheduler.Jobs.BatchRetrainingJob,
+      # Data quality monitoring jobs
+      Server.Scheduler.Jobs.DataQualityTier1Job,
+      Server.Scheduler.Jobs.DataQualityTier2Job,
+      Server.Scheduler.Jobs.DataQualityTier3Job,
+      Server.Scheduler.Jobs.EmailDigestJob
     ]
 
     Enum.each(jobs, fn job_module ->
