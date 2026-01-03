@@ -265,9 +265,9 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
           </div>
 
           {/* Search and Filters Row */}
-          <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-            {/* Search Input */}
-            <div className="relative flex-1 min-w-[200px] max-w-md">
+          <div className="flex flex-col gap-3">
+            {/* Search Input - Full width on mobile */}
+            <div className="relative w-full sm:max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search ticker or company..."
@@ -285,82 +285,88 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
               )}
             </div>
 
-            {/* Transaction Type Filter */}
-            <Select value={transactionType || 'all'} onValueChange={(v) => { setTransactionType(v === 'all' ? '' : v); setPage(0); }}>
-              <SelectTrigger className="w-[130px] bg-background/50">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                {TRANSACTION_TYPES.map((type) => (
-                  <SelectItem key={type.value} value={type.value || 'all'}>
-                    {type.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Filters Row */}
+            <div className="flex flex-wrap gap-2 items-center">
+              {/* Transaction Type Filter */}
+              <Select value={transactionType || 'all'} onValueChange={(v) => { setTransactionType(v === 'all' ? '' : v); setPage(0); }}>
+                <SelectTrigger className="w-[110px] sm:w-[130px] bg-background/50">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TRANSACTION_TYPES.map((type) => (
+                    <SelectItem key={type.value} value={type.value || 'all'}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            {/* Party Filter */}
-            <Select value={party || 'all'} onValueChange={(v) => { setParty(v === 'all' ? '' : v); setPage(0); }}>
-              <SelectTrigger className="w-[130px] bg-background/50">
-                <SelectValue placeholder="Party" />
-              </SelectTrigger>
-              <SelectContent>
-                {PARTY_OPTIONS.map((p) => (
-                  <SelectItem key={p.value} value={p.value || 'all'}>
-                    {p.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              {/* Party Filter */}
+              <Select value={party || 'all'} onValueChange={(v) => { setParty(v === 'all' ? '' : v); setPage(0); }}>
+                <SelectTrigger className="w-[110px] sm:w-[130px] bg-background/50">
+                  <SelectValue placeholder="Party" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PARTY_OPTIONS.map((p) => (
+                    <SelectItem key={p.value} value={p.value || 'all'}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            {/* Date From */}
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => { setDateFrom(e.target.value); setPage(0); }}
-                className="pl-9 w-[150px] bg-background/50"
-                title="From date"
-              />
-            </div>
+              {/* Date Filters - Hidden on mobile */}
+              <div className="hidden sm:flex gap-2">
+                {/* Date From */}
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => { setDateFrom(e.target.value); setPage(0); }}
+                    className="pl-9 w-[150px] bg-background/50"
+                    title="From date"
+                  />
+                </div>
 
-            {/* Date To */}
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => { setDateTo(e.target.value); setPage(0); }}
-                className="pl-9 w-[150px] bg-background/50"
-                title="To date"
-              />
-            </div>
+                {/* Date To */}
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => { setDateTo(e.target.value); setPage(0); }}
+                    className="pl-9 w-[150px] bg-background/50"
+                    title="To date"
+                  />
+                </div>
+              </div>
 
-            {/* Clear Filters */}
-            {hasActiveFilters && (
+              {/* Clear Filters */}
+              {hasActiveFilters && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="gap-1 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                  Clear
+                </Button>
+              )}
+
+              {/* Export CSV */}
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                onClick={clearFilters}
-                className="gap-1 text-muted-foreground hover:text-foreground"
+                onClick={exportToCSV}
+                disabled={disclosures.length === 0}
+                className="gap-1 ml-auto"
               >
-                <X className="h-4 w-4" />
-                Clear
+                <Download className="h-4 w-4" />
+                Export
               </Button>
-            )}
-
-            {/* Export CSV */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={exportToCSV}
-              disabled={disclosures.length === 0}
-              className="gap-1 ml-auto"
-            >
-              <Download className="h-4 w-4" />
-              Export
-            </Button>
+            </div>
           </div>
 
           {/* Active Filters Display */}
@@ -427,7 +433,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                   {getSortIcon('asset_ticker')}
                 </button>
               </TableHead>
-              <TableHead className="w-[100px]">
+              <TableHead className="w-[100px] hidden sm:table-cell">
                 <button
                   className="flex items-center hover:text-foreground transition-colors"
                   onClick={() => handleSort('transaction_type')}
@@ -436,7 +442,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                   {getSortIcon('transaction_type')}
                 </button>
               </TableHead>
-              <TableHead className="w-[160px]">
+              <TableHead className="w-[160px] hidden md:table-cell">
                 <button
                   className="flex items-center hover:text-foreground transition-colors"
                   onClick={() => handleSort('amount_range_max')}
@@ -445,7 +451,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                   {getSortIcon('amount_range_max')}
                 </button>
               </TableHead>
-              <TableHead className="w-[120px]">
+              <TableHead className="w-[120px] hidden lg:table-cell">
                 <button
                   className="flex items-center hover:text-foreground transition-colors"
                   onClick={() => handleSort('transaction_date')}
@@ -454,7 +460,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                   {getSortIcon('transaction_date')}
                 </button>
               </TableHead>
-              <TableHead className="w-[120px]">
+              <TableHead className="w-[120px] hidden sm:table-cell">
                 <button
                   className="flex items-center hover:text-foreground transition-colors"
                   onClick={() => handleSort('disclosure_date')}
@@ -546,22 +552,22 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                     </TableCell>
 
                     {/* Transaction Type */}
-                    <TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       {getTransactionBadge(disclosure.transaction_type)}
                     </TableCell>
 
                     {/* Amount */}
-                    <TableCell className="font-medium">
+                    <TableCell className="font-medium hidden md:table-cell">
                       {formatAmount(disclosure.amount_range_min, disclosure.amount_range_max)}
                     </TableCell>
 
                     {/* Transaction Date */}
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="text-muted-foreground hidden lg:table-cell">
                       {formatDate(disclosure.transaction_date)}
                     </TableCell>
 
                     {/* Disclosure Date */}
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="text-muted-foreground hidden sm:table-cell">
                       {formatDate(disclosure.disclosure_date)}
                     </TableCell>
 

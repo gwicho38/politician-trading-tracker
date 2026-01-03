@@ -71,7 +71,7 @@ const Dashboard = ({ initialTickerSearch, onTickerSearchClear }: DashboardProps)
             <StatsCard
               title="Active Politicians"
               value={(stats?.active_politicians || 0).toString()}
-              change={`Tracked across ${stats?.jurisdictions_tracked || 0} jurisdictions`}
+              change="US Congress members"
               changeType="neutral"
               icon={Users}
               delay={200}
