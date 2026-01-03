@@ -539,11 +539,14 @@ async def search_all_ptr_disclosures_playwright(
                 user_agent=USER_AGENT,
                 viewport={"width": 1280, "height": 720},
             )
+            logger.info("[Playwright] Created browser context")
             page = await context.new_page()
+            logger.info("[Playwright] Created new page")
 
             # Step 1: Navigate to home page and accept agreement
-            logger.info("[Playwright] Navigating to Senate EFD home page")
-            await page.goto(f"{SENATE_BASE_URL}/search/home/", wait_until="networkidle")
+            logger.info("[Playwright] Navigating to Senate EFD home page...")
+            await page.goto(f"{SENATE_BASE_URL}/search/home/", wait_until="domcontentloaded", timeout=60000)
+            logger.info("[Playwright] Page loaded, checking for agreement")
 
             # Accept agreement by clicking checkbox
             checkbox = page.locator("input[name='prohibition_agreement']")
@@ -815,9 +818,10 @@ async def process_disclosures_playwright(
             logger.info("[Playwright] Browser launched for disclosure processing")
             context = await browser.new_context(user_agent=USER_AGENT)
             page = await context.new_page()
+            logger.info("[Playwright] Page created for disclosure processing")
 
             # Accept agreement first
-            await page.goto(f"{SENATE_BASE_URL}/search/home/", wait_until="networkidle")
+            await page.goto(f"{SENATE_BASE_URL}/search/home/", wait_until="domcontentloaded", timeout=60000)
             checkbox = page.locator("input[name='prohibition_agreement']")
             if await checkbox.count() > 0:
                 await checkbox.click()
