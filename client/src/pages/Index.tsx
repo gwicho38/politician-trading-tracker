@@ -127,6 +127,9 @@ const Index = () => {
                 <a href="https://www.parliament.uk/mps-lords-and-offices/mps/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">UK Parliament</a>
                 */}
               </p>
+              <p className="mt-2">
+                Contact: <a href="mailto:luis@lefv.io" className="text-primary hover:underline">luis@lefv.io</a>
+              </p>
             </div>
           </footer>
         </div>
