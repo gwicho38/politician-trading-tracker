@@ -16,6 +16,7 @@ import {
   Check,
   Download,
   Calendar,
+  Flag,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -36,7 +37,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { useTradingDisclosures, SortField, SortDirection } from '@/hooks/useSupabaseData';
+import { useTradingDisclosures, SortField, SortDirection, TradingDisclosure } from '@/hooks/useSupabaseData';
+import { ReportErrorModal } from '@/components/ReportErrorModal';
 import { getPartyColor, getPartyBg } from '@/lib/mockData';
 
 const ROWS_PER_PAGE = 15;
@@ -95,6 +97,15 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
 
   // Copy ticker state
   const [copiedTicker, setCopiedTicker] = useState<string | null>(null);
+
+  // Report error modal state
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [selectedDisclosure, setSelectedDisclosure] = useState<TradingDisclosure | null>(null);
+
+  const handleReportClick = (disclosure: TradingDisclosure) => {
+    setSelectedDisclosure(disclosure);
+    setReportModalOpen(true);
+  };
 
   // Handle initial search query from props
   useEffect(() => {
@@ -571,21 +582,30 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                       {formatDate(disclosure.disclosure_date)}
                     </TableCell>
 
-                    {/* Source Link */}
+                    {/* Source Link & Report */}
                     <TableCell>
-                      {disclosure.source_url ? (
-                        <a
-                          href={disclosure.source_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                          title="View original disclosure"
+                      <div className="flex items-center gap-1">
+                        {disclosure.source_url ? (
+                          <a
+                            href={disclosure.source_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                            title="View original disclosure"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground/50 p-2">-</span>
+                        )}
+                        <button
+                          onClick={() => handleReportClick(disclosure)}
+                          className="inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:bg-warning/10 hover:text-warning transition-colors opacity-0 group-hover:opacity-100"
+                          title="Report data error"
                         >
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
-                      ) : (
-                        <span className="text-muted-foreground/50">-</span>
-                      )}
+                          <Flag className="h-4 w-4" />
+                        </button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -642,6 +662,13 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
           . For the most accurate and complete data, please verify with official sources.
         </p>
       </div>
+
+      {/* Report Error Modal */}
+      <ReportErrorModal
+        disclosure={selectedDisclosure}
+        open={reportModalOpen}
+        onOpenChange={setReportModalOpen}
+      />
     </div>
   );
 };
