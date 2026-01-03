@@ -80,6 +80,10 @@ class TrainRequest(BaseModel):
     """Request body for triggering training."""
     lookback_days: int = Field(default=365, ge=30, le=730)
     model_type: str = Field(default="xgboost", pattern="^(xgboost|lightgbm)$")
+    triggered_by: str = Field(
+        default="api",
+        description="Source that triggered the training: api, scheduler, batch_retraining, manual"
+    )
 
 
 class ModelInfo(BaseModel):
@@ -222,11 +226,20 @@ async def trigger_training(request: TrainRequest, background_tasks: BackgroundTa
 
     This is a long-running operation that runs in the background.
     Returns a job ID to check progress.
+
+    The triggered_by field tracks the source:
+    - "api" (default): Direct API call
+    - "scheduler": Weekly scheduled training (MlTrainingJob)
+    - "batch_retraining": Threshold-based batch retraining (BatchRetrainingJob)
+    - "manual": Manual trigger via admin/CLI
     """
     job = create_training_job(
         lookback_days=request.lookback_days,
         model_type=request.model_type,
+        triggered_by=request.triggered_by,
     )
+
+    logger.info(f"Training triggered by: {request.triggered_by}")
 
     # Run in background
     background_tasks.add_task(run_training_job_in_background, job)
@@ -234,6 +247,7 @@ async def trigger_training(request: TrainRequest, background_tasks: BackgroundTa
     return {
         "job_id": job.job_id,
         "status": job.status,
+        "triggered_by": request.triggered_by,
         "message": "Training job started. Use GET /ml/train/{job_id} to check progress.",
     }
 

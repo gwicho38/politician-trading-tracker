@@ -68,7 +68,10 @@ defmodule Server.Application do
       # Data quality jobs
       Server.Scheduler.Jobs.TickerBackfillJob,
       # Party enrichment (Ollama LLM)
-      Server.Scheduler.Jobs.PartyEnrichmentJob
+      Server.Scheduler.Jobs.PartyEnrichmentJob,
+      # ML model training jobs
+      Server.Scheduler.Jobs.MlTrainingJob,
+      Server.Scheduler.Jobs.BatchRetrainingJob
     ]
 
     Enum.each(jobs, fn job_module ->
