@@ -20,6 +20,7 @@ from app.services.house_etl import (
     find_or_create_politician,
     upload_transaction_to_supabase,
 )
+from app.services.senate_etl import run_senate_etl
 from app.services.ticker_backfill import run_ticker_backfill, run_transaction_type_backfill
 
 router = APIRouter()
@@ -27,8 +28,9 @@ router = APIRouter()
 
 class ETLTriggerRequest(BaseModel):
     """Request body for triggering ETL."""
-    source: str = "house"
+    source: str = "house"  # "house" or "senate"
     year: int = 2025
+    lookback_days: int = 30  # For senate, how many days back to search
     limit: Optional[int] = None  # Optional limit for testing; None = process all
     update_mode: bool = False  # If true, upsert instead of insert (re-parse existing records)
 
@@ -59,13 +61,14 @@ async def trigger_etl(
     """
     Trigger an ETL job for a specific data source.
 
-    Currently supported sources:
+    Supported sources:
     - house: US House of Representatives disclosures
+    - senate: US Senate disclosures
     """
-    if request.source != "house":
+    if request.source not in ["house", "senate"]:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported source: {request.source}. Currently only 'house' is supported.",
+            detail=f"Unsupported source: {request.source}. Supported: 'house', 'senate'",
         )
 
     # Generate job ID
@@ -81,14 +84,23 @@ async def trigger_etl(
         "completed_at": None,
     }
 
-    # Add ETL task to background
-    background_tasks.add_task(
-        run_house_etl,
-        job_id=job_id,
-        year=request.year,
-        limit=request.limit,
-        update_mode=request.update_mode,
-    )
+    # Add ETL task to background based on source
+    if request.source == "house":
+        background_tasks.add_task(
+            run_house_etl,
+            job_id=job_id,
+            year=request.year,
+            limit=request.limit,
+            update_mode=request.update_mode,
+        )
+    elif request.source == "senate":
+        background_tasks.add_task(
+            run_senate_etl,
+            job_id=job_id,
+            lookback_days=request.lookback_days,
+            limit=request.limit,
+            update_mode=request.update_mode,
+        )
 
     limit_msg = f"up to {request.limit}" if request.limit else "all"
     mode_msg = " (UPDATE MODE)" if request.update_mode else ""
