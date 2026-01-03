@@ -11,12 +11,11 @@ import { formatCurrency } from '@/lib/mockData';
 import { Badge } from '@/components/ui/badge';
 
 interface DashboardProps {
-  jurisdictionId?: string;
   initialTickerSearch?: string;
   onTickerSearchClear?: () => void;
 }
 
-const Dashboard = ({ jurisdictionId, initialTickerSearch, onTickerSearchClear }: DashboardProps) => {
+const Dashboard = ({ initialTickerSearch, onTickerSearchClear }: DashboardProps) => {
   const { data: stats, isLoading } = useDashboardStats();
   const { data: chartData } = useChartData('all');
 

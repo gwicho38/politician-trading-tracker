@@ -7,10 +7,11 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import SignalPlayground from "./pages/SignalPlayground";
 import Showcase from "./pages/Showcase";
+import Trading from "./pages/Trading";
+import TradingSignals from "./pages/TradingSignals";
 // COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready
 // import Admin from "./pages/Admin";
 // import AdminDataCollection from "./pages/AdminDataCollection";
-// import TradingSignals from "./pages/TradingSignals";
 // import Settings from "./pages/Settings";
 // import Subscription from "./pages/Subscription";
 import NotFound from "./pages/NotFound";
@@ -26,10 +27,11 @@ const App = () => (
           <Route path="/auth" element={<Auth />} />
           <Route path="/playground" element={<SignalPlayground />} />
           <Route path="/showcase" element={<Showcase />} />
+          <Route path="/trading" element={<Trading />} />
+          <Route path="/trading-signals" element={<TradingSignals />} />
           {/* COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready */}
           {/* <Route path="/admin" element={<Admin />} /> */}
           {/* <Route path="/admin/data-collection" element={<AdminDataCollection />} /> */}
-          {/* <Route path="/trading-signals" element={<TradingSignals />} /> */}
           {/* <Route path="/settings" element={<Settings />} /> */}
           {/* <Route path="/subscription" element={<Subscription />} /> */}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

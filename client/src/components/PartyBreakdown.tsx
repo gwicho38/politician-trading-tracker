@@ -107,7 +107,7 @@ const PartyBreakdown = () => {
                 const data = partyData.find(p => p.name === value);
                 return (
                   <span className="text-xs text-muted-foreground">
-                    {value} ({data?.count || 0})
+                    {value} ({data?.trades?.toLocaleString() || 0})
                   </span>
                 );
               }}

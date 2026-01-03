@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 // Types matching database schema
 export interface Jurisdiction {
   id: string;
+  code: string;
   name: string;
   flag: string;
 }
@@ -105,12 +106,12 @@ export const usePoliticians = (jurisdictionId?: string) => {
         .order('total_volume', { ascending: false });
 
       if (jurisdictionId) {
-        // Map jurisdiction IDs to state/country filters
+        // Map jurisdiction codes to role filters
         const jurisdictionMap: Record<string, string> = {
-          'us-house': 'Representative',
-          'us-senate': 'Senate',
-          'eu-parliament': 'EU',
-          'uk-parliament': 'UK',
+          'us_house': 'Representative',
+          'us_senate': 'Senate',
+          'eu_parliament': 'EU',
+          'uk_parliament': 'UK',
         };
         const role = jurisdictionMap[jurisdictionId];
         if (role) {
@@ -128,8 +129,8 @@ export const usePoliticians = (jurisdictionId?: string) => {
         chamber: p.role || 'Unknown',
         state: p.state_or_country || p.district,
         party: p.party || 'Unknown',
-        jurisdiction_id: p.role === 'Representative' ? 'us-house' :
-                         p.role === 'Senate' ? 'us-senate' : 'unknown',
+        jurisdiction_id: p.role === 'Representative' ? 'us_house' :
+                         p.role === 'Senate' ? 'us_senate' : 'unknown',
       })) as Politician[];
     },
   });
@@ -185,8 +186,8 @@ export const useTrades = (limit = 10, jurisdictionId?: string) => {
             chamber: politician.role || 'Unknown',
             state: politician.state_or_country || politician.district,
             party: politician.party || 'Unknown',
-            jurisdiction_id: politician.role === 'Representative' ? 'us-house' :
-                             politician.role === 'Senate' ? 'us-senate' : 'unknown',
+            jurisdiction_id: politician.role === 'Representative' ? 'us_house' :
+                             politician.role === 'Senate' ? 'us_senate' : 'unknown',
           } : undefined,
         };
       }) as Trade[];

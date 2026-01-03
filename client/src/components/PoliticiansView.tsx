@@ -13,13 +13,12 @@ type SortField = 'name' | 'party' | 'chamber' | 'state' | 'total_volume' | 'tota
 type SortDirection = 'asc' | 'desc';
 
 interface PoliticiansViewProps {
-  jurisdictionId?: string;
   initialPoliticianId?: string | null;
   onPoliticianSelected?: () => void;
 }
 
-const PoliticiansView = ({ jurisdictionId, initialPoliticianId, onPoliticianSelected }: PoliticiansViewProps) => {
-  const { data: politicians, isLoading, error } = usePoliticians(jurisdictionId);
+const PoliticiansView = ({ initialPoliticianId, onPoliticianSelected }: PoliticiansViewProps) => {
+  const { data: politicians, isLoading, error } = usePoliticians();
   const pagination = usePagination();
   const [selectedPolitician, setSelectedPolitician] = useState<Politician | null>(null);
   const [sortField, setSortField] = useState<SortField>('total_volume');
@@ -87,10 +86,6 @@ const PoliticiansView = ({ jurisdictionId, initialPoliticianId, onPoliticianSele
     }
   }, [sortedPoliticians]);
 
-  // Reset to page 1 when jurisdiction changes
-  useEffect(() => {
-    pagination.setPage(1);
-  }, [jurisdictionId]);
 
   // Handle initial politician selection from search
   useEffect(() => {

@@ -7,12 +7,8 @@ import { PaginationControls } from '@/components/PaginationControls';
 import { formatCurrency } from '@/lib/mockData';
 import { format } from 'date-fns';
 
-interface FilingsViewProps {
-  jurisdictionId?: string;
-}
-
-const FilingsView = ({ jurisdictionId }: FilingsViewProps) => {
-  const { data: trades, isLoading } = useTrades(500, jurisdictionId);
+const FilingsView = () => {
+  const { data: trades, isLoading } = useTrades(500);
   const pagination = usePagination();
 
   // Group trades by filing date
@@ -34,10 +30,6 @@ const FilingsView = ({ jurisdictionId }: FilingsViewProps) => {
     pagination.setTotalItems(sortedDates.length);
   }, [sortedDates.length]);
 
-  // Reset to page 1 when jurisdiction changes
-  useEffect(() => {
-    pagination.setPage(1);
-  }, [jurisdictionId]);
 
   // Paginate the dates (not individual trades)
   const paginatedDates = sortedDates.slice(pagination.startIndex, pagination.endIndex);
