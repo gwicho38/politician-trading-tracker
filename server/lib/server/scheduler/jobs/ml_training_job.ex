@@ -48,7 +48,8 @@ defmodule Server.Scheduler.Jobs.MlTrainingJob do
     body =
       Jason.encode!(%{
         lookback_days: 365,
-        model_type: "xgboost"
+        model_type: "xgboost",
+        triggered_by: "scheduler"
       })
 
     request =

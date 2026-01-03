@@ -449,10 +449,12 @@ class TrainingJob:
         job_id: str,
         lookback_days: int = 365,
         model_type: str = 'xgboost',
+        triggered_by: str = 'api',
     ):
         self.job_id = job_id
         self.lookback_days = lookback_days
         self.model_type = model_type
+        self.triggered_by = triggered_by
         self.status = "pending"
         self.progress = 0
         self.current_step = ""
@@ -471,6 +473,7 @@ class TrainingJob:
             "current_step": self.current_step,
             "model_type": self.model_type,
             "lookback_days": self.lookback_days,
+            "triggered_by": self.triggered_by,
             "result_summary": self.result_summary,
             "error_message": self.error_message,
             "model_id": self.model_id,
@@ -596,11 +599,22 @@ def get_training_job(job_id: str) -> Optional[TrainingJob]:
 def create_training_job(
     lookback_days: int = 365,
     model_type: str = 'xgboost',
+    triggered_by: str = 'api',
 ) -> TrainingJob:
-    """Create a new training job."""
+    """Create a new training job.
+
+    Args:
+        lookback_days: Number of days of historical data to use
+        model_type: Model type ('xgboost' or 'lightgbm')
+        triggered_by: Source that triggered training:
+            - 'api': Direct API call
+            - 'scheduler': Weekly scheduled training
+            - 'batch_retraining': Threshold-based batch retraining
+            - 'manual': Manual trigger
+    """
     import uuid
     job_id = str(uuid.uuid4())[:8]
-    job = TrainingJob(job_id, lookback_days, model_type)
+    job = TrainingJob(job_id, lookback_days, model_type, triggered_by)
     _training_jobs[job_id] = job
     return job
 
