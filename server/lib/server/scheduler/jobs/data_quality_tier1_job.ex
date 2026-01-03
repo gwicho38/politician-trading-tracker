@@ -119,7 +119,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
 
         {:ok, issues}
 
-      {:error, reason} ->
+      {:error, _reason} ->
         # Fallback to direct query via REST API
         check_required_fields_via_rest()
     end
@@ -274,7 +274,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
     end
   end
 
-  defp check_orphaned_records_fallback(service_key) do
+  defp check_orphaned_records_fallback(_service_key) do
     # Count disclosures where politician_id is set but doesn't match any politician
     # This is a simplified check using the REST API
     {:ok, []}
@@ -286,8 +286,6 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
 
   defp check_constraints do
     Logger.debug("[DataQualityTier1] Checking constraint violations")
-
-    issues = []
 
     # Check for future transaction dates
     future_issues =
