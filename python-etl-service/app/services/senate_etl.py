@@ -529,7 +529,9 @@ async def search_all_ptr_disclosures_playwright(
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
                     "--disable-gpu",
-                    "--single-process",
+                    "--disable-extensions",
+                    "--no-first-run",
+                    "--no-zygote",
                 ],
             )
             logger.info("[Playwright] Browser launched successfully")
@@ -805,7 +807,9 @@ async def process_disclosures_playwright(
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
                     "--disable-gpu",
-                    "--single-process",
+                    "--disable-extensions",
+                    "--no-first-run",
+                    "--no-zygote",
                 ],
             )
             logger.info("[Playwright] Browser launched for disclosure processing")
