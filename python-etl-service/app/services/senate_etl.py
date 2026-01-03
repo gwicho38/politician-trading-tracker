@@ -518,9 +518,21 @@ async def search_all_ptr_disclosures_playwright(
     disclosures = []
 
     try:
+        logger.info("[Playwright] Starting browser automation for EFD search...")
         async with async_playwright() as p:
-            # Launch headless browser
-            browser = await p.chromium.launch(headless=True)
+            # Launch headless browser with Docker-compatible flags
+            logger.info("[Playwright] Launching Chromium browser...")
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--single-process",
+                ],
+            )
+            logger.info("[Playwright] Browser launched successfully")
             context = await browser.new_context(
                 user_agent=USER_AGENT,
                 viewport={"width": 1280, "height": 720},
@@ -784,8 +796,19 @@ async def process_disclosures_playwright(
     errors = 0
 
     try:
+        logger.info("[Playwright] Starting browser for disclosure processing...")
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--single-process",
+                ],
+            )
+            logger.info("[Playwright] Browser launched for disclosure processing")
             context = await browser.new_context(user_agent=USER_AGENT)
             page = await context.new_page()
 
