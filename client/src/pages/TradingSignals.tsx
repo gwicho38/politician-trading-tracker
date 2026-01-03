@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useCart } from '@/contexts/CartContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Target, TrendingUp, TrendingDown, Minus, Download, ShoppingCart, X } from 'lucide-react';
 import { toast } from 'sonner';
+import type { CartSignal } from '@/types/cart';
 
 interface TradingSignal {
   id: string;
@@ -28,15 +30,9 @@ interface TradingSignal {
   is_active: boolean;
 }
 
-interface CartItem {
-  signal: TradingSignal;
-  quantity: number;
-}
-
-const CART_STORAGE_KEY = 'trading-signals-cart';
-
 const TradingSignals = () => {
   const { user } = useAuth();
+  const { addToCart, removeFromCart, isInCart, openCart, totalItems } = useCart();
   const [signals, setSignals] = useState<TradingSignal[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -54,39 +50,12 @@ const TradingSignals = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
-  // Cart
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [showCart, setShowCart] = useState(false);
-  const [placingOrders, setPlacingOrders] = useState(false);
-
-  // Load cart from localStorage on mount
-  useEffect(() => {
-    try {
-      const savedCart = localStorage.getItem(CART_STORAGE_KEY);
-      if (savedCart) {
-        setCart(JSON.parse(savedCart));
-      }
-    } catch (e) {
-      console.error('Failed to load cart from localStorage:', e);
-    }
-  }, []);
-
-  // Save cart to localStorage when it changes
-  useEffect(() => {
-    try {
-      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
-    } catch (e) {
-      console.error('Failed to save cart to localStorage:', e);
-    }
-  }, [cart]);
-
   useEffect(() => {
     fetchSignals();
   }, []);
 
   const fetchSignals = async () => {
     try {
-      // Use Supabase client directly instead of Edge Function for public data
       const { data: signals, error } = await supabase
         .from('trading_signals')
         .select('*')
@@ -115,7 +84,6 @@ const TradingSignals = () => {
 
     setGenerating(true);
     try {
-      // Call the signal generation Edge Function
       const { data, error } = await supabase.functions.invoke('trading-signals/generate-signals', {
         body: {
           lookbackDays,
@@ -130,7 +98,7 @@ const TradingSignals = () => {
 
       if (data.success) {
         toast.success(`Generated ${data.signals?.length || 0} trading signals`);
-        fetchSignals(); // Refresh signals after generation
+        fetchSignals();
       } else {
         throw new Error(data.error || 'Failed to generate signals');
       }
@@ -168,6 +136,29 @@ const TradingSignals = () => {
     }
   };
 
+  // Convert TradingSignal to CartSignal
+  const toCartSignal = (signal: TradingSignal): CartSignal => ({
+    id: signal.id,
+    ticker: signal.ticker,
+    asset_name: signal.asset_name,
+    signal_type: signal.signal_type,
+    confidence_score: signal.confidence_score,
+    politician_activity_count: signal.politician_activity_count,
+    buy_sell_ratio: signal.buy_sell_ratio,
+    target_price: signal.target_price,
+    source: 'trading_signals',
+    signal_strength: signal.signal_strength,
+    generated_at: signal.generated_at,
+  });
+
+  const handleCartAction = (signal: TradingSignal) => {
+    if (isInCart(signal.ticker)) {
+      removeFromCart(signal.ticker);
+    } else {
+      addToCart(toCartSignal(signal));
+    }
+  };
+
   const filteredSignals = signals.filter(signal =>
     signalTypeFilter.includes(signal.signal_type) &&
     signal.confidence_score >= minConfidenceDisplay
@@ -181,95 +172,6 @@ const TradingSignals = () => {
   );
 
   const topSignals = signals.slice(0, 10);
-
-  // Cart methods
-  const addToCart = (signal: TradingSignal) => {
-    const existingItem = cart.find(item => item.signal.ticker === signal.ticker);
-    if (!existingItem) {
-      setCart([...cart, { signal, quantity: 1 }]);
-      toast.success(`${signal.ticker} added to cart`);
-    } else {
-      toast.info(`${signal.ticker} is already in cart`);
-    }
-  };
-
-  const removeFromCart = (ticker: string) => {
-    setCart(cart.filter(item => item.signal.ticker !== ticker));
-    toast.success(`${ticker} removed from cart`);
-  };
-
-  const updateQuantity = (ticker: string, quantity: number) => {
-    if (quantity < 1) return;
-    setCart(cart.map(item =>
-      item.signal.ticker === ticker
-        ? { ...item, quantity }
-        : item
-    ));
-  };
-
-  const isInCart = (ticker: string) => cart.some(item => item.signal.ticker === ticker);
-
-  const getCartItem = (ticker: string) => cart.find(item => item.signal.ticker === ticker);
-
-  const placeOrders = async () => {
-    if (!user) {
-      toast.error('Please log in to place orders');
-      return;
-    }
-
-    if (cart.length === 0) {
-      toast.error('Cart is empty');
-      return;
-    }
-
-    setPlacingOrders(true);
-
-    try {
-      // Convert cart items to order format
-      const orders = cart.map(item => ({
-        ticker: item.signal.ticker,
-        side: item.signal.signal_type.includes('buy') ? 'buy' : 'sell',
-        quantity: item.quantity,
-        order_type: 'market',
-        signal_id: item.signal.id
-      }));
-
-      // Call the orders edge function
-      const { data, error } = await supabase.functions.invoke('orders', {
-        body: {
-          action: 'place-orders',
-          orders
-        }
-      });
-
-      if (error) {
-        throw new Error(error.message || 'Failed to place orders');
-      }
-
-      if (data.success) {
-        toast.success(data.message || `${data.summary?.success || 0} orders placed successfully`);
-        setCart([]); // Clear cart after successful orders
-        setShowCart(false);
-      } else {
-        // Show results summary
-        const failedOrders = data.results?.filter((r: any) => !r.success) || [];
-        if (failedOrders.length > 0) {
-          toast.error(`${failedOrders.length} orders failed: ${failedOrders.map((o: any) => o.ticker).join(', ')}`);
-        }
-        if (data.summary?.success > 0) {
-          toast.success(`${data.summary.success} orders placed successfully`);
-          // Remove successful orders from cart
-          const successTickers = data.results?.filter((r: any) => r.success).map((r: any) => r.ticker) || [];
-          setCart(cart.filter(item => !successTickers.includes(item.signal.ticker)));
-        }
-      }
-    } catch (error: any) {
-      console.error('Error placing orders:', error);
-      toast.error(error.message || 'Failed to place orders');
-    } finally {
-      setPlacingOrders(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -294,14 +196,14 @@ const TradingSignals = () => {
 
         <Button
           variant="outline"
-          onClick={() => setShowCart(true)}
+          onClick={openCart}
           className="relative"
         >
           <ShoppingCart className="h-4 w-4 mr-2" />
           Cart
-          {cart.length > 0 && (
+          {totalItems > 0 && (
             <Badge className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs">
-              {cart.length}
+              {totalItems}
             </Badge>
           )}
         </Button>
@@ -368,7 +270,7 @@ const TradingSignals = () => {
             {!user && (
               <Alert className="flex-1">
                 <AlertDescription>
-                  🔒 Log in to generate new signals. You can view existing signals below.
+                  Log in to generate new signals. You can view existing signals below.
                 </AlertDescription>
               </Alert>
             )}
@@ -463,7 +365,7 @@ const TradingSignals = () => {
           <div>
             <CardTitle>Active Trading Signals</CardTitle>
              <CardDescription>
-               {filteredSignals.length} signals match your filters • Page {currentPage} of {totalPages}
+               {filteredSignals.length} signals match your filters - Page {currentPage} of {totalPages || 1}
              </CardDescription>
           </div>
           <Button variant="outline" size="sm">
@@ -513,7 +415,7 @@ const TradingSignals = () => {
                        <Button
                          variant={isInCart(signal.ticker) ? "default" : "outline"}
                          size="sm"
-                         onClick={() => isInCart(signal.ticker) ? removeFromCart(signal.ticker) : addToCart(signal)}
+                         onClick={() => handleCartAction(signal)}
                        >
                          {isInCart(signal.ticker) ? (
                            <X className="h-3 w-3" />
@@ -583,7 +485,7 @@ const TradingSignals = () => {
       {/* Top 10 Signals */}
       <Card>
         <CardHeader>
-          <CardTitle>🏆 Top 10 Signals by Confidence</CardTitle>
+          <CardTitle>Top 10 Signals by Confidence</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {topSignals.map(signal => (
@@ -595,14 +497,14 @@ const TradingSignals = () => {
                     <div>
                       <h3 className="font-semibold">{signal.ticker} - {signal.asset_name}</h3>
                       <p className="text-sm text-muted-foreground">
-                        {signal.signal_type.replace('_', ' ').toUpperCase()} • {(signal.confidence_score * 100).toFixed(1)}% confidence
+                        {signal.signal_type.replace('_', ' ').toUpperCase()} - {(signal.confidence_score * 100).toFixed(1)}% confidence
                       </p>
                     </div>
                    </div>
                    <Button
                      variant={isInCart(signal.ticker) ? "default" : "outline"}
                      size="sm"
-                     onClick={() => isInCart(signal.ticker) ? removeFromCart(signal.ticker) : addToCart(signal)}
+                     onClick={() => handleCartAction(signal)}
                    >
                      {isInCart(signal.ticker) ? "Remove from Cart" : "Add to Cart"}
                    </Button>
@@ -633,118 +535,6 @@ const TradingSignals = () => {
           ))}
         </CardContent>
       </Card>
-
-      {/* Cart Panel */}
-      {showCart && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-lg max-h-[80vh] overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <ShoppingCart className="h-5 w-5" />
-                Cart ({cart.length} {cart.length === 1 ? 'signal' : 'signals'})
-              </CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowCart(false)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </CardHeader>
-            <CardContent className="overflow-y-auto max-h-96">
-              {cart.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>Your cart is empty</p>
-                  <p className="text-sm">Add some trading signals to get started</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {cart.map(item => (
-                    <div key={item.signal.ticker} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center gap-3 flex-1">
-                        {getSignalIcon(item.signal.signal_type)}
-                        <div className="flex-1">
-                          <p className="font-medium">{item.signal.ticker}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {item.signal.asset_name}
-                          </p>
-                          <Badge className={`${getSignalColor(item.signal.signal_type)} text-xs mt-1`}>
-                            {item.signal.signal_type.replace('_', ' ').toUpperCase()}
-                          </Badge>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1">
-                          <Label htmlFor={`qty-${item.signal.ticker}`} className="text-xs text-muted-foreground">
-                            Qty:
-                          </Label>
-                          <Input
-                            id={`qty-${item.signal.ticker}`}
-                            type="number"
-                            min={1}
-                            value={item.quantity}
-                            onChange={(e) => updateQuantity(item.signal.ticker, parseInt(e.target.value) || 1)}
-                            className="w-16 h-8 text-center"
-                          />
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeFromCart(item.signal.ticker)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-            {cart.length > 0 && (
-              <div className="p-4 border-t space-y-3">
-                {!user && (
-                  <Alert>
-                    <AlertDescription>
-                      Please log in to place orders
-                    </AlertDescription>
-                  </Alert>
-                )}
-                <div className="text-sm text-muted-foreground">
-                  Total shares: {cart.reduce((sum, item) => sum + item.quantity, 0)}
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => {
-                      setCart([]);
-                      toast.success('Cart cleared');
-                    }}
-                    disabled={placingOrders}
-                  >
-                    Clear All
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    onClick={placeOrders}
-                    disabled={!user || placingOrders}
-                  >
-                    {placingOrders ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Placing Orders...
-                      </>
-                    ) : (
-                      <>Place {cart.length} Order{cart.length > 1 ? 's' : ''}</>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </Card>
-        </div>
-      )}
     </div>
   );
 };
