@@ -5,16 +5,24 @@ Extracts Periodic Transaction Reports (PTRs) from the Senate EFD database.
 Similar structure to house_etl.py but adapted for Senate disclosure format.
 
 Data Source: https://efdsearch.senate.gov/search/
+Senator List: https://www.senate.gov/general/contact_information/senators_cfm.xml
+
+Approach:
+1. Fetch current senators from Senate.gov XML feed
+2. Upsert senators to politicians table (with bioguide_id for deduplication)
+3. For each senator, search EFD by last name
+4. Parse PTR pages and upload transactions
 """
 
 import asyncio
-import io
 import logging
 import os
 import re
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote
 
 import httpx
 import pdfplumber
@@ -35,10 +43,191 @@ from app.services.house_etl import JOB_STATUS, RateLimiter, VALUE_PATTERNS, ASSE
 SENATE_BASE_URL = "https://efdsearch.senate.gov"
 SENATE_SEARCH_URL = f"{SENATE_BASE_URL}/search/"
 SENATE_PTR_URL = f"{SENATE_BASE_URL}/search/view/ptr/"
-USER_AGENT = "Mozilla/5.0 (compatible; PoliticianTradingETL/1.0)"
+SENATORS_XML_URL = "https://www.senate.gov/general/contact_information/senators_cfm.xml"
+USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 # Global rate limiter instance
 rate_limiter = RateLimiter()
+
+
+# =============================================================================
+# SENATOR LIST FETCHING
+# =============================================================================
+
+
+async def fetch_senators_from_xml() -> List[Dict[str, Any]]:
+    """
+    Fetch current senators from the official Senate.gov XML feed.
+
+    Returns a list of senator dictionaries with:
+    - first_name, last_name, party, state, bioguide_id
+    """
+    senators = []
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                SENATORS_XML_URL,
+                headers={"User-Agent": USER_AGENT},
+                timeout=30.0,
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Failed to fetch senators XML: {response.status_code}")
+                return []
+
+            # Parse XML
+            root = ET.fromstring(response.text)
+
+            for member in root.findall("member"):
+                first_name = member.findtext("first_name", "").strip()
+                last_name = member.findtext("last_name", "").strip()
+                party = member.findtext("party", "").strip()
+                state = member.findtext("state", "").strip()
+                bioguide_id = member.findtext("bioguide_id", "").strip()
+
+                if first_name and last_name:
+                    senators.append({
+                        "first_name": first_name,
+                        "last_name": last_name,
+                        "party": party,  # D, R, or I
+                        "state": state,
+                        "bioguide_id": bioguide_id,
+                        "full_name": f"{first_name} {last_name}",
+                    })
+
+            logger.info(f"Fetched {len(senators)} senators from Senate.gov XML")
+
+    except Exception as e:
+        logger.error(f"Error fetching senators XML: {e}")
+
+    return senators
+
+
+def upsert_senator_to_db(supabase: Client, senator: Dict[str, Any]) -> Optional[str]:
+    """
+    Upsert a senator to the politicians table.
+
+    Uses bioguide_id as the unique identifier to avoid duplicates.
+    Returns the politician_id.
+    """
+    try:
+        # Map party code to full name
+        party_map = {"D": "Democratic", "R": "Republican", "I": "Independent"}
+        party = party_map.get(senator.get("party"), senator.get("party"))
+
+        # First check if politician exists by bioguide_id in raw_data
+        bioguide_id = senator.get("bioguide_id")
+        if bioguide_id:
+            # Search for existing politician with this bioguide_id
+            response = supabase.rpc(
+                "find_politician_by_bioguide",
+                {"p_bioguide_id": bioguide_id}
+            ).execute()
+
+            if response.data and len(response.data) > 0:
+                # Update existing politician
+                politician_id = response.data[0]["id"]
+                supabase.table("politicians").update({
+                    "name": senator["full_name"],
+                    "party": party,
+                    "state": senator.get("state"),
+                    "position": "Senator",
+                    "jurisdiction": "Federal",
+                }).eq("id", politician_id).execute()
+
+                return politician_id
+
+        # Fall back to name-based matching
+        response = (
+            supabase.table("politicians")
+            .select("id")
+            .ilike("name", f"%{senator['last_name']}%")
+            .eq("position", "Senator")
+            .limit(1)
+            .execute()
+        )
+
+        if response.data:
+            # Update existing politician
+            politician_id = response.data[0]["id"]
+            supabase.table("politicians").update({
+                "name": senator["full_name"],
+                "party": party,
+                "state": senator.get("state"),
+                "raw_data": {"bioguide_id": bioguide_id} if bioguide_id else None,
+            }).eq("id", politician_id).execute()
+
+            return politician_id
+
+        # Create new politician
+        new_politician = {
+            "name": senator["full_name"],
+            "party": party,
+            "state": senator.get("state"),
+            "position": "Senator",
+            "jurisdiction": "Federal",
+            "raw_data": {"bioguide_id": bioguide_id} if bioguide_id else None,
+        }
+
+        response = supabase.table("politicians").insert(new_politician).execute()
+        if response.data:
+            logger.info(f"Created new senator: {senator['full_name']}")
+            return response.data[0]["id"]
+
+    except Exception as e:
+        # If RPC doesn't exist, fall back to simple name search
+        if "find_politician_by_bioguide" in str(e):
+            logger.debug("bioguide RPC not found, using name-based matching")
+            return _upsert_senator_by_name(supabase, senator)
+        logger.error(f"Error upserting senator {senator['full_name']}: {e}")
+
+    return None
+
+
+def _upsert_senator_by_name(supabase: Client, senator: Dict[str, Any]) -> Optional[str]:
+    """Fallback: upsert senator by name matching only."""
+    try:
+        party_map = {"D": "Democratic", "R": "Republican", "I": "Independent"}
+        party = party_map.get(senator.get("party"), senator.get("party"))
+
+        # Try to find by last name
+        response = (
+            supabase.table("politicians")
+            .select("id")
+            .ilike("name", f"%{senator['last_name']}%")
+            .limit(1)
+            .execute()
+        )
+
+        if response.data:
+            politician_id = response.data[0]["id"]
+            supabase.table("politicians").update({
+                "name": senator["full_name"],
+                "party": party,
+                "state": senator.get("state"),
+                "position": "Senator",
+                "jurisdiction": "Federal",
+            }).eq("id", politician_id).execute()
+            return politician_id
+
+        # Create new
+        response = supabase.table("politicians").insert({
+            "name": senator["full_name"],
+            "party": party,
+            "state": senator.get("state"),
+            "position": "Senator",
+            "jurisdiction": "Federal",
+        }).execute()
+
+        if response.data:
+            logger.info(f"Created new senator: {senator['full_name']}")
+            return response.data[0]["id"]
+
+    except Exception as e:
+        logger.error(f"Error in name-based upsert for {senator['full_name']}: {e}")
+
+    return None
 
 
 # =============================================================================
@@ -392,120 +581,266 @@ async def accept_senate_agreement(client: httpx.AsyncClient) -> bool:
         return False
 
 
-async def fetch_senate_ptr_list(
+async def search_senator_disclosures(
     client: httpx.AsyncClient,
+    senator: Dict[str, Any],
     lookback_days: int = 30,
-    limit: int = 100,
 ) -> List[Dict[str, Any]]:
     """
-    Fetch list of Senate PTR filings via AJAX search.
+    Search for a senator's disclosures using the two-step EFD search flow.
 
-    Uses the DataTables AJAX endpoint to get PTR (Periodic Transaction Report) filings.
-    Returns a list of disclosures with politician name, filing date, and source URL.
+    Step 1: POST to /search/ with last_name to set up session
+    Step 2: POST to /search/report/data/ with DataTables params to get results
+    Step 3: Handle pagination if needed
+
+    Returns list of disclosure metadata (source_url, filing_date, etc.)
     """
     disclosures = []
+    last_name = senator.get("last_name", "")
+
+    if not last_name:
+        return []
 
     # Calculate date range
     end_date = datetime.now()
     start_date = end_date - timedelta(days=lookback_days)
 
-    try:
-        # First, accept the usage agreement
-        if not await accept_senate_agreement(client):
-            logger.warning("Could not accept Senate EFD agreement, proceeding anyway")
+    # Use a long date range to get historical data
+    # The EFD site has data going back to 2012
+    start_date_str = "01/01/2012 00:00:00"
+    end_date_str = end_date.strftime("%m/%d/%Y %H:%M:%S")
 
+    try:
         # Get CSRF token from cookie
         csrf_token = client.cookies.get("csrftoken", "")
 
-        # Use the DataTables AJAX endpoint
-        ajax_data = {
-            "draw": "1",
-            "start": "0",
-            "length": str(limit),
-            "report_types": '["11"]',  # 11 = PTR
-            "filer_types": '["1"]',    # 1 = Senator
-            "submitted_start_date": start_date.strftime("%m/%d/%Y"),
-            "submitted_end_date": end_date.strftime("%m/%d/%Y"),
-            "candidate_state": "",
-            "senator_state": "",
-            "office_id": "",
+        # Step 1: POST to /search/ to set up session with last_name filter
+        search_data = {
             "first_name": "",
-            "last_name": "",
+            "last_name": last_name,
+            "submitted_start_date": "",
+            "submitted_end_date": "",
+            "csrfmiddlewaretoken": csrf_token,
         }
 
-        response = await client.post(
-            f"{SENATE_BASE_URL}/search/report/data/",
-            data=ajax_data,
+        search_response = await client.post(
+            SENATE_SEARCH_URL,
+            data=search_data,
             headers={
                 "User-Agent": USER_AGENT,
-                "Referer": f"{SENATE_BASE_URL}/search/",
-                "X-Requested-With": "XMLHttpRequest",
-                "X-CSRFToken": csrf_token,
-                "Accept": "application/json",
+                "Referer": SENATE_SEARCH_URL,
+                "Origin": SENATE_BASE_URL,
+                "Content-Type": "application/x-www-form-urlencoded",
             },
-            timeout=60.0,
+            follow_redirects=True,
+            timeout=30.0,
         )
 
-        if response.status_code == 200:
+        if search_response.status_code != 200:
+            logger.warning(f"Search POST failed for {last_name}: {search_response.status_code}")
+            return []
+
+        # Update CSRF token if it changed
+        csrf_token = client.cookies.get("csrftoken", csrf_token)
+
+        # Step 2: POST to DataTables endpoint with pagination
+        page_start = 0
+        page_size = 100
+        total_records = None
+
+        while total_records is None or page_start < total_records:
+            # DataTables AJAX request format
+            ajax_data = {
+                "draw": str(page_start // page_size + 1),
+                "columns[0][data]": "0",
+                "columns[0][name]": "",
+                "columns[0][searchable]": "true",
+                "columns[0][orderable]": "true",
+                "columns[1][data]": "1",
+                "columns[1][name]": "",
+                "columns[1][searchable]": "true",
+                "columns[1][orderable]": "true",
+                "columns[2][data]": "2",
+                "columns[2][name]": "",
+                "columns[2][searchable]": "true",
+                "columns[2][orderable]": "true",
+                "columns[3][data]": "3",
+                "columns[3][name]": "",
+                "columns[3][searchable]": "true",
+                "columns[3][orderable]": "true",
+                "columns[4][data]": "4",
+                "columns[4][name]": "",
+                "columns[4][searchable]": "true",
+                "columns[4][orderable]": "true",
+                "columns[5][data]": "5",
+                "columns[5][name]": "",
+                "columns[5][searchable]": "false",
+                "columns[5][orderable]": "false",
+                "order[0][column]": "4",  # Order by date
+                "order[0][dir]": "desc",  # Newest first
+                "start": str(page_start),
+                "length": str(page_size),
+                "search[value]": "",
+                "search[regex]": "false",
+                "report_types": '["11"]',  # 11 = PTR (Periodic Transaction Report)
+                "filer_types": '["1","2","3","4","5"]',  # All filer types
+                "submitted_start_date": start_date_str,
+                "submitted_end_date": end_date_str,
+                "candidate_state": "",
+                "senator_state": "",
+                "office_id": "",
+                "first_name": "",
+                "last_name": last_name,
+            }
+
+            ajax_response = await client.post(
+                f"{SENATE_BASE_URL}/search/report/data/",
+                data=ajax_data,
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Referer": SENATE_SEARCH_URL,
+                    "Origin": SENATE_BASE_URL,
+                    "X-Requested-With": "XMLHttpRequest",
+                    "X-CSRFToken": csrf_token,
+                    "Accept": "application/json, text/javascript, */*; q=0.01",
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                },
+                timeout=60.0,
+            )
+
+            if ajax_response.status_code == 503:
+                logger.warning(f"EFD AJAX endpoint under maintenance for {last_name}")
+                break
+
+            if ajax_response.status_code != 200:
+                logger.warning(f"AJAX search failed for {last_name}: {ajax_response.status_code}")
+                break
+
             try:
-                data = response.json()
+                data = ajax_response.json()
                 records = data.get("data", [])
-                logger.info(f"AJAX search returned {len(records)} records")
+                total_records = data.get("recordsTotal", 0)
+
+                logger.debug(f"Page {page_start//page_size + 1}: {len(records)} records for {last_name}")
 
                 for record in records:
-                    # Record format: [first_name, last_name, office, report_type, date, link_html]
-                    if len(record) >= 5:
-                        first_name = record[0] if record[0] else ""
-                        last_name = record[1] if record[1] else ""
-                        full_name = f"{first_name} {last_name}".strip()
-                        filing_date_str = record[4] if len(record) > 4 else ""
+                    disclosure = parse_datatables_record(record, senator)
+                    if disclosure:
+                        disclosures.append(disclosure)
 
-                        # Parse link from HTML
-                        link_html = record[5] if len(record) > 5 else ""
-                        link_match = re.search(r'href="([^"]+)"', link_html)
-                        report_url = None
-                        doc_id = None
-                        if link_match:
-                            href = link_match.group(1)
-                            report_url = f"{SENATE_BASE_URL}{href}" if not href.startswith("http") else href
-                            # Extract UUID from URL like /search/view/ptr/83de647b-ddf0-49c3-bd56-8b32f23c0e78/
-                            uuid_match = re.search(r'/ptr/([a-f0-9-]+)/', href)
-                            if uuid_match:
-                                doc_id = uuid_match.group(1)
+                # Move to next page
+                page_start += page_size
 
-                        # Parse filing date
-                        filing_date = None
-                        if filing_date_str:
-                            try:
-                                filing_date = datetime.strptime(filing_date_str, "%m/%d/%Y").isoformat()
-                            except ValueError:
-                                pass
+                # Limit to recent records based on lookback_days
+                if page_start >= min(total_records, 500):  # Cap at 500 records per senator
+                    break
 
-                        if full_name and report_url:
-                            disclosures.append({
-                                "politician_name": full_name,
-                                "report_type": "PTR",
-                                "filing_date": filing_date,
-                                "source_url": report_url,
-                                "doc_id": doc_id,
-                            })
-
-                logger.info(f"Parsed {len(disclosures)} Senate disclosures from AJAX")
-                return disclosures
+                # Rate limit between pages
+                await asyncio.sleep(0.5)
 
             except Exception as e:
-                logger.warning(f"Failed to parse AJAX response: {e}")
+                logger.warning(f"Failed to parse AJAX response for {last_name}: {e}")
+                break
 
-        elif response.status_code == 503:
-            logger.warning("Senate EFD AJAX endpoint under maintenance, skipping")
-            return []
-        else:
-            logger.warning(f"AJAX search failed: {response.status_code}")
+        logger.info(f"Found {len(disclosures)} PTR disclosures for {senator['full_name']}")
 
     except Exception as e:
-        logger.error(f"Error fetching Senate PTR list: {e}", exc_info=True)
+        logger.error(f"Error searching disclosures for {last_name}: {e}")
 
     return disclosures
+
+
+def parse_datatables_record(record: List, senator: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Parse a DataTables record from the EFD search results.
+
+    Record format: [first_name, last_name, office, report_type, date, link_html]
+    """
+    if len(record) < 5:
+        return None
+
+    try:
+        first_name = record[0] if record[0] else ""
+        last_name = record[1] if record[1] else ""
+        full_name = f"{first_name} {last_name}".strip()
+        report_type = record[3] if len(record) > 3 else ""
+        filing_date_str = record[4] if len(record) > 4 else ""
+        link_html = record[5] if len(record) > 5 else ""
+
+        # Only process PTR (Periodic Transaction Reports)
+        if "Periodic" not in report_type:
+            return None
+
+        # Parse link from HTML
+        link_match = re.search(r'href="([^"]+)"', link_html)
+        if not link_match:
+            return None
+
+        href = link_match.group(1)
+        report_url = f"{SENATE_BASE_URL}{href}" if not href.startswith("http") else href
+
+        # Extract UUID from URL like /search/view/ptr/83de647b-ddf0-49c3-bd56-8b32f23c0e78/
+        uuid_match = re.search(r'/ptr/([a-f0-9-]+)/', href)
+        doc_id = uuid_match.group(1) if uuid_match else None
+
+        # Parse filing date
+        filing_date = None
+        if filing_date_str:
+            try:
+                filing_date = datetime.strptime(filing_date_str, "%m/%d/%Y").isoformat()
+            except ValueError:
+                pass
+
+        return {
+            "politician_name": full_name or senator.get("full_name"),
+            "politician_id": senator.get("politician_id"),  # If we have it
+            "report_type": "PTR",
+            "filing_date": filing_date,
+            "source_url": report_url,
+            "doc_id": doc_id,
+        }
+
+    except Exception as e:
+        logger.debug(f"Error parsing DataTables record: {e}")
+        return None
+
+
+async def fetch_senate_ptr_list(
+    client: httpx.AsyncClient,
+    senators: List[Dict[str, Any]],
+    lookback_days: int = 30,
+) -> List[Dict[str, Any]]:
+    """
+    Fetch list of Senate PTR filings for all senators.
+
+    Iterates through each senator and searches for their disclosures.
+    Returns a combined list of all disclosures found.
+    """
+    all_disclosures = []
+
+    # First, accept the usage agreement
+    if not await accept_senate_agreement(client):
+        logger.warning("Could not accept Senate EFD agreement, proceeding anyway")
+
+    # Search for each senator
+    for i, senator in enumerate(senators):
+        try:
+            logger.info(f"Searching disclosures for {senator['full_name']} ({i+1}/{len(senators)})")
+
+            disclosures = await search_senator_disclosures(
+                client, senator, lookback_days
+            )
+            all_disclosures.extend(disclosures)
+
+            # Rate limit between senators
+            await asyncio.sleep(1.0)
+
+        except Exception as e:
+            logger.error(f"Error searching for {senator['full_name']}: {e}")
+            continue
+
+    logger.info(f"Total: {len(all_disclosures)} PTR disclosures from {len(senators)} senators")
+    return all_disclosures
 
 
 async def parse_ptr_page(
@@ -722,10 +1057,12 @@ async def process_senate_disclosure(
         rate_limiter.record_success()
         return 0
 
-    # Find or create politician
-    politician_id = find_or_create_politician(
-        supabase, disclosure.get("politician_name")
-    )
+    # Use politician_id from disclosure if already set, otherwise find/create
+    politician_id = disclosure.get("politician_id")
+    if not politician_id:
+        politician_id = find_or_create_politician(
+            supabase, disclosure.get("politician_name")
+        )
 
     if not politician_id:
         logger.warning(f"Could not find/create politician: {disclosure.get('politician_name')}")
@@ -757,29 +1094,63 @@ async def run_senate_etl(
     """
     Run the Senate ETL pipeline.
 
+    Pipeline:
+    1. Fetch current senators from Senate.gov XML feed
+    2. Upsert senators to politicians table
+    3. For each senator, search EFD for PTR disclosures
+    4. Parse PTR pages and upload transactions
+
     Args:
         job_id: Unique job identifier for status tracking
         lookback_days: How many days back to search for disclosures
-        limit: Maximum number of disclosures to process
+        limit: Maximum number of senators to process (for testing)
         update_mode: If True, upsert instead of skip existing
     """
     JOB_STATUS[job_id]["status"] = "running"
-    JOB_STATUS[job_id]["message"] = "Fetching Senate PTR list..."
+    JOB_STATUS[job_id]["message"] = "Fetching senators from Senate.gov..."
 
     total_transactions = 0
     disclosures_processed = 0
+    senators_processed = 0
     errors = 0
 
     try:
         # Get Supabase client
         supabase = get_supabase_client()
 
+        # Step 1: Fetch senators from XML
+        senators = await fetch_senators_from_xml()
+        if not senators:
+            JOB_STATUS[job_id]["status"] = "error"
+            JOB_STATUS[job_id]["message"] = "Failed to fetch senators list"
+            return
+
+        # Apply limit if specified (for testing)
+        if limit and limit < len(senators):
+            logger.info(f"Limiting to first {limit} senators")
+            senators = senators[:limit]
+
+        JOB_STATUS[job_id]["message"] = f"Upserting {len(senators)} senators to database..."
+        logger.info(f"[Senate ETL] Upserting {len(senators)} senators to database")
+
+        # Step 2: Upsert senators to database
+        senator_ids = {}
+        for senator in senators:
+            politician_id = upsert_senator_to_db(supabase, senator)
+            if politician_id:
+                senator["politician_id"] = politician_id
+                senator_ids[senator["last_name"]] = politician_id
+
+        logger.info(f"[Senate ETL] Upserted {len(senator_ids)} senators")
+
         async with httpx.AsyncClient() as client:
-            # Fetch list of disclosures
+            # Step 3: Fetch disclosures for all senators
+            JOB_STATUS[job_id]["message"] = f"Searching EFD for disclosures..."
+
             disclosures = await fetch_senate_ptr_list(
                 client,
+                senators=senators,
                 lookback_days=lookback_days,
-                limit=limit or 100,
             )
 
             JOB_STATUS[job_id]["total"] = len(disclosures)
@@ -787,9 +1158,17 @@ async def run_senate_etl(
 
             logger.info(f"[Senate ETL] Processing {len(disclosures)} disclosures")
 
-            # Process each disclosure
+            # Step 4: Process each disclosure
             for i, disclosure in enumerate(disclosures):
                 try:
+                    # Use politician_id from senator search if available
+                    if not disclosure.get("politician_id"):
+                        # Try to match by name
+                        politician_id = find_or_create_politician(
+                            supabase, disclosure.get("politician_name")
+                        )
+                        disclosure["politician_id"] = politician_id
+
                     transactions = await process_senate_disclosure(
                         client, supabase, disclosure
                     )
@@ -810,14 +1189,13 @@ async def run_senate_etl(
         # Update final status
         JOB_STATUS[job_id]["status"] = "completed"
         JOB_STATUS[job_id]["message"] = (
-            f"Completed: {disclosures_processed} disclosures processed, "
-            f"{total_transactions} transactions uploaded, "
-            f"{errors} errors"
+            f"Completed: {len(senators)} senators, {disclosures_processed} disclosures, "
+            f"{total_transactions} transactions, {errors} errors"
         )
         JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
 
         logger.info(
-            f"[Senate ETL] Completed: {disclosures_processed} disclosures, "
+            f"[Senate ETL] Completed: {len(senators)} senators, {disclosures_processed} disclosures, "
             f"{total_transactions} transactions, {errors} errors"
         )
 
