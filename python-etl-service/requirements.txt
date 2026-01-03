@@ -10,6 +10,13 @@ pdfplumber>=0.10.3
 requests>=2.31.0
 httpx>=0.26.0
 
+# Browser automation (for anti-bot protected sites)
+playwright>=1.40.0
+
+# HTML parsing
+beautifulsoup4>=4.12.0
+lxml>=5.1.0
+
 # Supabase client
 supabase>=2.3.0
 

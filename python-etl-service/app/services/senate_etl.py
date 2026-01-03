@@ -22,6 +22,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
+from supabase import Client as SupabaseClient
 from urllib.parse import quote
 
 import httpx
@@ -496,245 +497,356 @@ def parse_transaction_from_row(row: List[str], disclosure: Dict[str, Any]) -> Op
 
 
 # =============================================================================
-# SENATE SCRAPING FUNCTIONS
+# PLAYWRIGHT-BASED SENATE SCRAPING (bypasses anti-bot protection)
 # =============================================================================
 
 
-async def accept_senate_agreement(client: httpx.AsyncClient) -> bool:
-    """
-    Accept the Senate EFD usage agreement.
-
-    The Senate EFD site requires accepting terms before searching.
-    This function visits the home page, gets the CSRF token, and submits the agreement.
-    """
-    try:
-        # Visit home page to get cookies and CSRF token
-        response = await client.get(
-            f"{SENATE_BASE_URL}/search/home/",
-            headers={"User-Agent": USER_AGENT},
-            follow_redirects=True,
-            timeout=30.0,
-        )
-
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        # Look for CSRF token
-        csrf_input = soup.find("input", {"name": "csrfmiddlewaretoken"})
-        csrf_token = csrf_input.get("value") if csrf_input else None
-
-        # Submit agreement form
-        form_data = {
-            "prohibition_agreement": "1",  # Checkbox checked
-        }
-        if csrf_token:
-            form_data["csrfmiddlewaretoken"] = csrf_token
-
-        # Submit the agreement
-        agree_response = await client.post(
-            f"{SENATE_BASE_URL}/search/home/",
-            data=form_data,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Referer": f"{SENATE_BASE_URL}/search/home/",
-            },
-            follow_redirects=True,
-            timeout=30.0,
-        )
-
-        # Check if we now have access to search
-        if agree_response.status_code == 200:
-            # Look for search form elements to verify we have access
-            agree_soup = BeautifulSoup(agree_response.text, "html.parser")
-
-            # Check if we're now on the search page (has first_name input)
-            if agree_soup.find("input", {"name": "first_name"}):
-                logger.info("Successfully accepted Senate EFD agreement")
-                return True
-
-            # Check if there's still an agreement checkbox
-            if agree_soup.find("input", {"name": "prohibition_agreement"}):
-                logger.warning("Agreement not accepted - checkbox still present")
-                return False
-
-            # Assume success if no obvious failure
-            logger.info("Senate EFD agreement likely accepted")
-            return True
-
-        logger.warning(f"Failed to accept agreement: {agree_response.status_code}")
-        return False
-
-    except Exception as e:
-        logger.error(f"Error accepting Senate agreement: {e}")
-        return False
-
-
-async def search_senator_disclosures(
-    client: httpx.AsyncClient,
-    senator: Dict[str, Any],
+async def search_all_ptr_disclosures_playwright(
     lookback_days: int = 30,
+    limit: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Search for a senator's disclosures using the two-step EFD search flow.
+    Search for all PTR disclosures using Playwright browser automation.
 
-    Step 1: POST to /search/ with last_name to set up session
-    Step 2: POST to /search/report/data/ with DataTables params to get results
-    Step 3: Handle pagination if needed
+    The Senate EFD site has anti-bot protection that blocks programmatic AJAX requests.
+    Using a real browser (Playwright) bypasses this protection.
 
-    Returns list of disclosure metadata (source_url, filing_date, etc.)
+    Returns list of disclosure metadata (source_url, filing_date, politician_name, etc.)
     """
+    from playwright.async_api import async_playwright
+
     disclosures = []
-    last_name = senator.get("last_name", "")
-
-    if not last_name:
-        return []
-
-    # Calculate date range
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=lookback_days)
-
-    # Use a long date range to get historical data
-    # The EFD site has data going back to 2012
-    start_date_str = "01/01/2012 00:00:00"
-    end_date_str = end_date.strftime("%m/%d/%Y %H:%M:%S")
 
     try:
-        # Get CSRF token from cookie
-        csrf_token = client.cookies.get("csrftoken", "")
-
-        # Step 1: POST to /search/ to set up session with last_name filter
-        search_data = {
-            "first_name": "",
-            "last_name": last_name,
-            "submitted_start_date": "",
-            "submitted_end_date": "",
-            "csrfmiddlewaretoken": csrf_token,
-        }
-
-        search_response = await client.post(
-            SENATE_SEARCH_URL,
-            data=search_data,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Referer": SENATE_SEARCH_URL,
-                "Origin": SENATE_BASE_URL,
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            follow_redirects=True,
-            timeout=30.0,
-        )
-
-        if search_response.status_code != 200:
-            logger.warning(f"Search POST failed for {last_name}: {search_response.status_code}")
-            return []
-
-        # Update CSRF token if it changed
-        csrf_token = client.cookies.get("csrftoken", csrf_token)
-
-        # Step 2: POST to DataTables endpoint with pagination
-        page_start = 0
-        page_size = 100
-        total_records = None
-
-        while total_records is None or page_start < total_records:
-            # DataTables AJAX request format
-            ajax_data = {
-                "draw": str(page_start // page_size + 1),
-                "columns[0][data]": "0",
-                "columns[0][name]": "",
-                "columns[0][searchable]": "true",
-                "columns[0][orderable]": "true",
-                "columns[1][data]": "1",
-                "columns[1][name]": "",
-                "columns[1][searchable]": "true",
-                "columns[1][orderable]": "true",
-                "columns[2][data]": "2",
-                "columns[2][name]": "",
-                "columns[2][searchable]": "true",
-                "columns[2][orderable]": "true",
-                "columns[3][data]": "3",
-                "columns[3][name]": "",
-                "columns[3][searchable]": "true",
-                "columns[3][orderable]": "true",
-                "columns[4][data]": "4",
-                "columns[4][name]": "",
-                "columns[4][searchable]": "true",
-                "columns[4][orderable]": "true",
-                "columns[5][data]": "5",
-                "columns[5][name]": "",
-                "columns[5][searchable]": "false",
-                "columns[5][orderable]": "false",
-                "order[0][column]": "4",  # Order by date
-                "order[0][dir]": "desc",  # Newest first
-                "start": str(page_start),
-                "length": str(page_size),
-                "search[value]": "",
-                "search[regex]": "false",
-                "report_types": '["11"]',  # 11 = PTR (Periodic Transaction Report)
-                "filer_types": '["1","2","3","4","5"]',  # All filer types
-                "submitted_start_date": start_date_str,
-                "submitted_end_date": end_date_str,
-                "candidate_state": "",
-                "senator_state": "",
-                "office_id": "",
-                "first_name": "",
-                "last_name": last_name,
-            }
-
-            ajax_response = await client.post(
-                f"{SENATE_BASE_URL}/search/report/data/",
-                data=ajax_data,
-                headers={
-                    "User-Agent": USER_AGENT,
-                    "Referer": SENATE_SEARCH_URL,
-                    "Origin": SENATE_BASE_URL,
-                    "X-Requested-With": "XMLHttpRequest",
-                    "X-CSRFToken": csrf_token,
-                    "Accept": "application/json, text/javascript, */*; q=0.01",
-                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                },
-                timeout=60.0,
+        async with async_playwright() as p:
+            # Launch headless browser
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                user_agent=USER_AGENT,
+                viewport={"width": 1280, "height": 720},
             )
+            page = await context.new_page()
 
-            if ajax_response.status_code == 503:
-                logger.warning(f"EFD AJAX endpoint under maintenance for {last_name}")
-                break
+            # Step 1: Navigate to home page and accept agreement
+            logger.info("[Playwright] Navigating to Senate EFD home page")
+            await page.goto(f"{SENATE_BASE_URL}/search/home/", wait_until="networkidle")
 
-            if ajax_response.status_code != 200:
-                logger.warning(f"AJAX search failed for {last_name}: {ajax_response.status_code}")
-                break
+            # Accept agreement by clicking checkbox
+            checkbox = page.locator("input[name='prohibition_agreement']")
+            if await checkbox.count() > 0:
+                await checkbox.click()
+                logger.info("[Playwright] Accepted usage agreement")
+                await page.wait_for_url("**/search/", timeout=10000)
 
-            try:
-                data = ajax_response.json()
-                records = data.get("data", [])
-                total_records = data.get("recordsTotal", 0)
+            # Step 2: Fill search form
+            logger.info("[Playwright] Filling search form for PTRs")
 
-                logger.debug(f"Page {page_start//page_size + 1}: {len(records)} records for {last_name}")
+            # Check "Senator" checkbox
+            await page.locator("text=Senator").first.click()
 
-                for record in records:
-                    disclosure = parse_datatables_record(record, senator)
-                    if disclosure:
-                        disclosures.append(disclosure)
+            # Check "Periodic Transactions" checkbox
+            await page.locator("text=Periodic Transactions").click()
 
-                # Move to next page
-                page_start += page_size
+            # Click Search button
+            await page.locator("button:has-text('Search Reports')").click()
 
-                # Limit to recent records based on lookback_days
-                if page_start >= min(total_records, 500):  # Cap at 500 records per senator
+            # Wait for results to load
+            await page.wait_for_selector("table#filedReports tbody tr", timeout=30000)
+
+            # Step 3: Parse ALL pages of results (handle pagination)
+            page_num = 1
+            total_pages = None
+
+            while True:
+                logger.info(f"[Playwright] Parsing results page {page_num}")
+
+                # Wait for table to be populated
+                await page.wait_for_selector("table#filedReports tbody tr", timeout=10000)
+
+                # Get the status text to know total records
+                status_text = await page.locator(".dataTables_info").text_content()
+                logger.debug(f"[Playwright] Status: {status_text}")
+
+                # Parse the table rows
+                rows = await page.locator("table#filedReports tbody tr").all()
+
+                for row in rows:
+                    cells = await row.locator("td").all()
+                    if len(cells) >= 5:
+                        first_name = await cells[0].text_content()
+                        last_name = await cells[1].text_content()
+                        office = await cells[2].text_content()
+                        report_cell = cells[3]
+                        date_filed = await cells[4].text_content()
+
+                        # Get the link from report cell
+                        link = report_cell.locator("a")
+                        if await link.count() > 0:
+                            href = await link.get_attribute("href")
+                            report_text = await link.text_content()
+
+                            # Only include PTRs
+                            if "Periodic" in (report_text or ""):
+                                full_name = f"{first_name.strip()} {last_name.strip()}"
+
+                                # Parse filing date
+                                filing_date = None
+                                if date_filed:
+                                    try:
+                                        filing_date = datetime.strptime(
+                                            date_filed.strip(), "%m/%d/%Y"
+                                        ).isoformat()
+                                    except ValueError:
+                                        pass
+
+                                # Build full URL
+                                if href and not href.startswith("http"):
+                                    href = f"{SENATE_BASE_URL}{href}"
+
+                                # Extract doc_id from URL
+                                doc_id = None
+                                uuid_match = re.search(r'/(?:ptr|paper)/([a-f0-9-]+)/', href or "")
+                                if uuid_match:
+                                    doc_id = uuid_match.group(1)
+
+                                disclosures.append({
+                                    "politician_name": full_name,
+                                    "first_name": first_name.strip() if first_name else "",
+                                    "last_name": last_name.strip() if last_name else "",
+                                    "report_type": "PTR",
+                                    "filing_date": filing_date,
+                                    "source_url": href,
+                                    "doc_id": doc_id,
+                                    "is_paper": "/paper/" in (href or ""),
+                                })
+
+                # Check limit
+                if limit and len(disclosures) >= limit:
+                    logger.info(f"[Playwright] Reached limit of {limit} disclosures")
                     break
 
-                # Rate limit between pages
-                await asyncio.sleep(0.5)
+                # Check if there's a next page (pagination)
+                next_button = page.locator(".paginate_button.next:not(.disabled)")
+                if await next_button.count() > 0:
+                    await next_button.click()
+                    # Wait for table to update (AJAX reload)
+                    await page.wait_for_timeout(500)
+                    await page.wait_for_load_state("networkidle")
+                    page_num += 1
 
-            except Exception as e:
-                logger.warning(f"Failed to parse AJAX response for {last_name}: {e}")
-                break
+                    # Safety limit to avoid infinite loops
+                    if page_num > 100:
+                        logger.warning("[Playwright] Reached max page limit (100)")
+                        break
+                else:
+                    logger.info(f"[Playwright] No more pages (processed {page_num} pages)")
+                    break
 
-        logger.info(f"Found {len(disclosures)} PTR disclosures for {senator['full_name']}")
+            await browser.close()
 
     except Exception as e:
-        logger.error(f"Error searching disclosures for {last_name}: {e}")
+        logger.error(f"[Playwright] Error during search: {e}", exc_info=True)
 
+    logger.info(f"[Playwright] Found {len(disclosures)} total PTR disclosures")
     return disclosures
+
+
+async def parse_ptr_page_playwright(
+    page,  # Playwright page object
+    url: str,
+) -> List[Dict[str, Any]]:
+    """
+    Parse a PTR page using Playwright (required for session-protected pages).
+
+    PTR pages have a table with transactions:
+    #, Transaction Date, Owner, Ticker, Asset Name, Asset Type, Type, Amount, Comment
+    """
+    transactions = []
+
+    try:
+        await page.goto(url, wait_until="networkidle", timeout=30000)
+
+        # Check if we got redirected to agreement page
+        if "/home/" in page.url:
+            logger.warning(f"Redirected to home page when accessing {url}")
+            return []
+
+        # Wait for page to load
+        await page.wait_for_load_state("domcontentloaded")
+
+        # Get filing date from page title/header
+        h1 = await page.locator("h1").first.text_content()
+        filing_date = None
+        if h1:
+            date_match = re.search(r"for\s+(\d{1,2}/\d{1,2}/\d{4})", h1)
+            if date_match:
+                try:
+                    filing_date = datetime.strptime(date_match.group(1), "%m/%d/%Y").isoformat()
+                except ValueError:
+                    pass
+
+        # Find the transaction table
+        table = page.locator("table.table-striped")
+        if await table.count() == 0:
+            table = page.locator("table").first
+
+        if await table.count() == 0:
+            logger.debug(f"No table found on PTR page {url}")
+            return []
+
+        # Parse table rows
+        rows = await table.locator("tbody tr").all()
+        if not rows:
+            rows = await table.locator("tr").all()
+
+        for row in rows:
+            cells = await row.locator("td").all()
+            if len(cells) < 6:
+                continue
+
+            # Get cell texts
+            cell_texts = []
+            for cell in cells:
+                text = await cell.text_content()
+                cell_texts.append(text.strip() if text else "")
+
+            # Skip header rows
+            if any(h in cell_texts[0].lower() for h in ["#", "transaction", "date", "owner"]):
+                continue
+
+            # Parse transaction fields (typical column order)
+            # #, Transaction Date, Owner, Ticker, Asset Name, Asset Type, Type, Amount, Comment
+            transaction_date_str = cell_texts[1] if len(cell_texts) > 1 else ""
+            ticker = cell_texts[3] if len(cell_texts) > 3 else ""
+            asset_name = cell_texts[4] if len(cell_texts) > 4 else ""
+            asset_type = cell_texts[5] if len(cell_texts) > 5 else ""
+            tx_type_str = cell_texts[6] if len(cell_texts) > 6 else ""
+            amount_str = cell_texts[7] if len(cell_texts) > 7 else ""
+
+            # Clean ticker
+            if ticker in ["--", "N/A", ""]:
+                ticker = None
+
+            # Parse transaction date
+            transaction_date = None
+            if transaction_date_str:
+                try:
+                    transaction_date = datetime.strptime(transaction_date_str, "%m/%d/%Y").isoformat()
+                except ValueError:
+                    pass
+
+            # Parse transaction type
+            transaction_type = "unknown"
+            if tx_type_str:
+                type_lower = tx_type_str.lower()
+                if "purchase" in type_lower or "buy" in type_lower:
+                    transaction_type = "purchase"
+                elif "sale" in type_lower or "sell" in type_lower or "sold" in type_lower:
+                    transaction_type = "sale"
+                elif "exchange" in type_lower:
+                    transaction_type = "exchange"
+
+            # Parse amount
+            value_info = parse_value_range(amount_str)
+
+            if asset_name and asset_name not in ["--", ""]:
+                transactions.append({
+                    "asset_name": sanitize_string(asset_name),
+                    "ticker": ticker,
+                    "asset_type": asset_type if asset_type not in ["--", ""] else None,
+                    "transaction_type": transaction_type,
+                    "transaction_date": transaction_date,
+                    "notification_date": filing_date,
+                    "value_low": value_info.get("value_low"),
+                    "value_high": value_info.get("value_high"),
+                })
+
+        logger.debug(f"Parsed {len(transactions)} transactions from PTR page")
+
+    except Exception as e:
+        logger.error(f"Error parsing PTR page {url}: {e}")
+
+    return transactions
+
+
+async def process_disclosures_playwright(
+    disclosures: List[Dict[str, Any]],
+    supabase: Client,
+) -> Tuple[int, int]:
+    """
+    Process disclosures using a single Playwright browser session.
+
+    Returns (transactions_uploaded, errors)
+    """
+    from playwright.async_api import async_playwright
+
+    total_transactions = 0
+    errors = 0
+
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(user_agent=USER_AGENT)
+            page = await context.new_page()
+
+            # Accept agreement first
+            await page.goto(f"{SENATE_BASE_URL}/search/home/", wait_until="networkidle")
+            checkbox = page.locator("input[name='prohibition_agreement']")
+            if await checkbox.count() > 0:
+                await checkbox.click()
+                await page.wait_for_url("**/search/", timeout=10000)
+            logger.info("[Playwright] Session established for processing")
+
+            # Process each disclosure
+            for i, disclosure in enumerate(disclosures):
+                try:
+                    # Skip paper filings (images, can't parse)
+                    if disclosure.get("is_paper"):
+                        logger.debug(f"Skipping paper filing: {disclosure.get('source_url')}")
+                        continue
+
+                    source_url = disclosure.get("source_url")
+                    if not source_url:
+                        continue
+
+                    # Parse PTR page
+                    transactions = await parse_ptr_page_playwright(page, source_url)
+
+                    if not transactions:
+                        continue
+
+                    politician_id = disclosure.get("politician_id")
+                    if not politician_id:
+                        politician_id = find_or_create_politician(
+                            supabase, disclosure.get("politician_name")
+                        )
+
+                    if not politician_id:
+                        logger.warning(f"Could not find politician: {disclosure.get('politician_name')}")
+                        continue
+
+                    # Upload transactions
+                    for transaction in transactions:
+                        result = upload_transaction_to_supabase(
+                            supabase, politician_id, transaction, disclosure
+                        )
+                        if result:
+                            total_transactions += 1
+
+                    # Rate limit
+                    await page.wait_for_timeout(500)
+
+                except Exception as e:
+                    errors += 1
+                    logger.error(f"Error processing disclosure {i}: {e}")
+
+            await browser.close()
+
+    except Exception as e:
+        logger.error(f"[Playwright] Error in process_disclosures: {e}", exc_info=True)
+        errors += 1
+
+    return total_transactions, errors
 
 
 def parse_datatables_record(record: List, senator: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -792,42 +904,58 @@ def parse_datatables_record(record: List, senator: Dict[str, Any]) -> Optional[D
         return None
 
 
-async def fetch_senate_ptr_list(
-    client: httpx.AsyncClient,
+async def fetch_senate_ptr_list_playwright(
     senators: List[Dict[str, Any]],
     lookback_days: int = 30,
+    limit: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Fetch list of Senate PTR filings for all senators.
+    Fetch list of Senate PTR filings using Playwright browser automation.
 
-    Iterates through each senator and searches for their disclosures.
+    Uses a single browser session to search for all PTRs, then matches
+    them to senators based on name.
+
     Returns a combined list of all disclosures found.
     """
-    all_disclosures = []
+    # Get all PTR disclosures in one batch search
+    all_disclosures = await search_all_ptr_disclosures_playwright(
+        lookback_days=lookback_days,
+        limit=limit,
+    )
 
-    # First, accept the usage agreement
-    if not await accept_senate_agreement(client):
-        logger.warning("Could not accept Senate EFD agreement, proceeding anyway")
+    # Create a lookup for senators by last name
+    senator_lookup = {}
+    for senator in senators:
+        last_name = senator.get("last_name", "").upper()
+        if last_name:
+            if last_name not in senator_lookup:
+                senator_lookup[last_name] = []
+            senator_lookup[last_name].append(senator)
 
-    # Search for each senator
-    for i, senator in enumerate(senators):
-        try:
-            logger.info(f"Searching disclosures for {senator['full_name']} ({i+1}/{len(senators)})")
+    # Match disclosures to senators
+    matched_disclosures = []
+    for disclosure in all_disclosures:
+        last_name = disclosure.get("last_name", "").upper()
+        first_name = disclosure.get("first_name", "").upper()
 
-            disclosures = await search_senator_disclosures(
-                client, senator, lookback_days
-            )
-            all_disclosures.extend(disclosures)
+        if last_name in senator_lookup:
+            # Find best match by first name
+            best_match = None
+            for senator in senator_lookup[last_name]:
+                senator_first = senator.get("first_name", "").upper()
+                if senator_first and first_name.startswith(senator_first[:3]):
+                    best_match = senator
+                    break
+            if not best_match:
+                best_match = senator_lookup[last_name][0]
 
-            # Rate limit between senators
-            await asyncio.sleep(1.0)
+            disclosure["politician_id"] = best_match.get("politician_id")
+            disclosure["politician_name"] = best_match.get("full_name")
 
-        except Exception as e:
-            logger.error(f"Error searching for {senator['full_name']}: {e}")
-            continue
+        matched_disclosures.append(disclosure)
 
-    logger.info(f"Total: {len(all_disclosures)} PTR disclosures from {len(senators)} senators")
-    return all_disclosures
+    logger.info(f"Matched {len(matched_disclosures)} disclosures to senators")
+    return matched_disclosures
 
 
 async def parse_ptr_page(
@@ -1079,18 +1207,18 @@ async def run_senate_etl(
     update_mode: bool = False,
 ) -> None:
     """
-    Run the Senate ETL pipeline.
+    Run the Senate ETL pipeline using Playwright for anti-bot protection.
 
     Pipeline:
     1. Fetch current senators from Senate.gov XML feed
     2. Upsert senators to politicians table
-    3. For each senator, search EFD for PTR disclosures
+    3. Use Playwright to search EFD for all PTR disclosures
     4. Parse PTR pages and upload transactions
 
     Args:
         job_id: Unique job identifier for status tracking
         lookback_days: How many days back to search for disclosures
-        limit: Maximum number of senators to process (for testing)
+        limit: Maximum number of disclosures to process (for testing)
         update_mode: If True, upsert instead of skip existing
     """
     JOB_STATUS[job_id]["status"] = "running"
@@ -1098,7 +1226,6 @@ async def run_senate_etl(
 
     total_transactions = 0
     disclosures_processed = 0
-    senators_processed = 0
     errors = 0
 
     try:
@@ -1111,11 +1238,6 @@ async def run_senate_etl(
             JOB_STATUS[job_id]["status"] = "error"
             JOB_STATUS[job_id]["message"] = "Failed to fetch senators list"
             return
-
-        # Apply limit if specified (for testing)
-        if limit and limit < len(senators):
-            logger.info(f"Limiting to first {limit} senators")
-            senators = senators[:limit]
 
         JOB_STATUS[job_id]["message"] = f"Upserting {len(senators)} senators to database..."
         logger.info(f"[Senate ETL] Upserting {len(senators)} senators to database")
@@ -1130,48 +1252,29 @@ async def run_senate_etl(
 
         logger.info(f"[Senate ETL] Upserted {len(senator_ids)} senators")
 
-        async with httpx.AsyncClient() as client:
-            # Step 3: Fetch disclosures for all senators
-            JOB_STATUS[job_id]["message"] = f"Searching EFD for disclosures..."
+        # Step 3: Fetch disclosures using Playwright (bypasses anti-bot protection)
+        JOB_STATUS[job_id]["message"] = "Searching EFD for disclosures (using browser)..."
 
-            disclosures = await fetch_senate_ptr_list(
-                client,
-                senators=senators,
-                lookback_days=lookback_days,
-            )
+        disclosures = await fetch_senate_ptr_list_playwright(
+            senators=senators,
+            lookback_days=lookback_days,
+            limit=limit,
+        )
 
-            JOB_STATUS[job_id]["total"] = len(disclosures)
-            JOB_STATUS[job_id]["message"] = f"Processing {len(disclosures)} disclosures..."
+        # Filter to electronic PTRs only (paper filings are images)
+        electronic_disclosures = [d for d in disclosures if not d.get("is_paper")]
+        paper_count = len(disclosures) - len(electronic_disclosures)
 
-            logger.info(f"[Senate ETL] Processing {len(disclosures)} disclosures")
+        JOB_STATUS[job_id]["total"] = len(electronic_disclosures)
+        JOB_STATUS[job_id]["message"] = f"Processing {len(electronic_disclosures)} electronic disclosures ({paper_count} paper skipped)..."
 
-            # Step 4: Process each disclosure
-            for i, disclosure in enumerate(disclosures):
-                try:
-                    # Use politician_id from senator search if available
-                    if not disclosure.get("politician_id"):
-                        # Try to match by name
-                        politician_id = find_or_create_politician(
-                            supabase, disclosure.get("politician_name")
-                        )
-                        disclosure["politician_id"] = politician_id
+        logger.info(f"[Senate ETL] Processing {len(electronic_disclosures)} electronic disclosures ({paper_count} paper skipped)")
 
-                    transactions = await process_senate_disclosure(
-                        client, supabase, disclosure
-                    )
-                    total_transactions += transactions
-                    disclosures_processed += 1
-
-                    JOB_STATUS[job_id]["progress"] = i + 1
-                    JOB_STATUS[job_id]["message"] = (
-                        f"Processed {i + 1}/{len(disclosures)} disclosures, "
-                        f"{total_transactions} transactions uploaded"
-                    )
-
-                except Exception as e:
-                    errors += 1
-                    logger.error(f"Error processing disclosure: {e}")
-                    continue
+        # Step 4: Process disclosures using Playwright (PTR pages also need session)
+        total_transactions, errors = await process_disclosures_playwright(
+            electronic_disclosures, supabase
+        )
+        disclosures_processed = len(electronic_disclosures) - errors
 
         # Update final status
         JOB_STATUS[job_id]["status"] = "completed"
