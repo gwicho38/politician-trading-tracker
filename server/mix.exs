@@ -61,7 +61,11 @@ defmodule Server.MixProject do
       {:quantum, "~> 3.5"},
 
       # CORS support
-      {:corsica, "~> 2.1"}
+      {:corsica, "~> 2.1"},
+
+      # Email (Swoosh with Resend adapter)
+      {:swoosh, "~> 1.16"},
+      {:req, "~> 0.5"}
     ]
   end
 

@@ -102,6 +102,27 @@ if config_env() == :prod do
       """
 
   config :server, :supabase_service_key, supabase_service_key
+
+  # ---------------------------------------------------------------------------
+  # Email Configuration (Resend)
+  # ---------------------------------------------------------------------------
+  #
+  # RESEND_API_KEY is required for sending data quality alerts
+  # Get this from Resend Dashboard > API Keys
+
+  if resend_api_key = System.get_env("RESEND_API_KEY") do
+    config :server, Server.Mailer,
+      adapter: Swoosh.Adapters.Resend,
+      api_key: resend_api_key
+
+    config :server, :email_enabled, true
+    config :server, :email_from, System.get_env("EMAIL_FROM", "alerts@politiciantrading.app")
+    config :server, :email_admin, System.get_env("EMAIL_ADMIN", "admin@politiciantrading.app")
+  else
+    # Email disabled if no API key
+    config :server, Server.Mailer, adapter: Swoosh.Adapters.Local
+    config :server, :email_enabled, false
+  end
 end
 
 # =============================================================================

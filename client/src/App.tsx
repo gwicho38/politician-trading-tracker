@@ -9,6 +9,7 @@ import SignalPlayground from "./pages/SignalPlayground";
 import Showcase from "./pages/Showcase";
 import Trading from "./pages/Trading";
 import TradingSignals from "./pages/TradingSignals";
+import DataQuality from "./pages/DataQuality";
 // COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready
 // import Admin from "./pages/Admin";
 // import AdminDataCollection from "./pages/AdminDataCollection";
@@ -29,6 +30,7 @@ const App = () => (
           <Route path="/showcase" element={<Showcase />} />
           <Route path="/trading" element={<Trading />} />
           <Route path="/trading-signals" element={<TradingSignals />} />
+          <Route path="/admin/data-quality" element={<DataQuality />} />
           {/* COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready */}
           {/* <Route path="/admin" element={<Admin />} /> */}
           {/* <Route path="/admin/data-collection" element={<AdminDataCollection />} /> */}
