@@ -119,12 +119,13 @@ const Index = () => {
             <div className="container px-4 text-center text-sm text-muted-foreground">
               <p>
                 Data sourced from official government disclosures •
-                <span className="mx-2">|</span>
-                <a href="https://www.congress.gov/members" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">US Congress</a>
+                <a href="https://www.congress.gov/members" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline ml-2">US Congress</a>
+                {/* COMMENTED OUT - Multi-jurisdiction support not yet implemented
                 <span className="mx-2">•</span>
                 <a href="https://www.europarl.europa.eu/meps/en/home" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">EU Parliament</a>
                 <span className="mx-2">•</span>
                 <a href="https://www.parliament.uk/mps-lords-and-offices/mps/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">UK Parliament</a>
+                */}
               </p>
             </div>
           </footer>
