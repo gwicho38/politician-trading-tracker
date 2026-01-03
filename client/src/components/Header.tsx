@@ -17,7 +17,7 @@ import { GlobalSearch } from '@/components/GlobalSearch';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface HeaderProps {
-  onMenuClick: () => void;
+  onMenuClick?: () => void;
 }
 
 const Header = ({ onMenuClick }: HeaderProps) => {
@@ -60,14 +60,17 @@ const Header = ({ onMenuClick }: HeaderProps) => {
     <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-xl">
       <div className="container flex h-16 items-center justify-between px-4">
         <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="lg:hidden"
-            onClick={onMenuClick}
-          >
-            <Menu className="h-5 w-5" />
-          </Button>
+          {onMenuClick && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              onClick={onMenuClick}
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+          )}
 
           <Link to="/" className="flex items-center gap-3">
             <div className="relative">

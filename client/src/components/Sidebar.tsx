@@ -1,23 +1,15 @@
 import {
   LayoutDashboard,
   Users,
-  TrendingUp,
   FileText,
-  Target,
-  Briefcase,
-  BarChart3,
-  ClipboardList,
-  Clock,
-  Settings,
   X,
   ChevronRight,
-  Loader2,
   Sliders,
   Sparkles,
+  Wallet,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { useJurisdictions } from '@/hooks/useSupabaseData';
 import { Link } from 'react-router-dom';
 import { SidebarSyncStatus } from '@/components/SyncStatus';
 
@@ -26,37 +18,27 @@ interface SidebarProps {
   onClose: () => void;
   activeSection: string;
   onSectionChange: (section: string) => void;
-  selectedJurisdiction?: string;
-  onJurisdictionChange: (jurisdiction: string | undefined) => void;
 }
 
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'politicians', label: 'Politicians', icon: Users },
   { id: 'filings', label: 'Filings', icon: FileText },
-  // COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready
-  // { id: 'trading-signals', label: 'Trading Signals', icon: Target },
-  // { id: 'trading-operations', label: 'Trading Operations', icon: Briefcase },
-  // { id: 'portfolio', label: 'Portfolio', icon: BarChart3 },
-  // { id: 'orders', label: 'Orders', icon: ClipboardList },
-  // { id: 'scheduled-jobs', label: 'Scheduled Jobs', icon: Clock },
-  // { id: 'trades', label: 'Recent Trades', icon: TrendingUp },
 ];
 
 // Standalone pages with their own routes
 const standalonePages = [
+  { path: '/trading', label: 'Trading', icon: Wallet },
   { path: '/playground', label: 'Signal Playground', icon: Sliders },
   { path: '/showcase', label: 'Strategy Showcase', icon: Sparkles },
 ];
 
-const Sidebar = ({ isOpen, onClose, activeSection, onSectionChange, selectedJurisdiction, onJurisdictionChange }: SidebarProps) => {
-  const { data: jurisdictions, isLoading } = useJurisdictions();
-
+const Sidebar = ({ isOpen, onClose, activeSection, onSectionChange }: SidebarProps) => {
   return (
     <>
       {/* Mobile overlay */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
           onClick={onClose}
         />
@@ -119,51 +101,10 @@ const Sidebar = ({ isOpen, onClose, activeSection, onSectionChange, selectedJuri
                 </Link>
               ))}
             </div>
-
-            {/* Jurisdictions Filter */}
-            <div className="mt-4">
-              <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Filter by Chamber
-              </p>
-              <div className="space-y-1">
-                {isLoading ? (
-                  <div className="flex items-center justify-center py-4">
-                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  </div>
-                ) : (
-                  jurisdictions?.map((j) => (
-                    <button
-                      key={j.id}
-                      onClick={() => {
-                        onJurisdictionChange(selectedJurisdiction === j.id ? undefined : j.id);
-                        onClose();
-                      }}
-                      className={cn(
-                        "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200",
-                        selectedJurisdiction === j.id
-                          ? 'bg-primary/20 text-primary border border-primary/30'
-                          : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-                      )}
-                    >
-                      <span className="text-base">{j.flag}</span>
-                      {j.name}
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
           </nav>
 
           {/* Footer */}
           <div className="border-t border-border/50 p-4">
-            {/* COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready */}
-            {/* <Link
-              to="/admin"
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-all duration-200 hover:bg-secondary hover:text-foreground"
-            >
-              <Settings className="h-4 w-4" />
-              Settings
-            </Link> */}
             <SidebarSyncStatus />
           </div>
         </div>

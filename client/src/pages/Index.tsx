@@ -5,19 +5,11 @@ import Sidebar from '@/components/Sidebar';
 import Dashboard from '@/components/Dashboard';
 import PoliticiansView from '@/components/PoliticiansView';
 import FilingsView from '@/components/FilingsView';
-// COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready
-// import TradingSignals from '@/pages/TradingSignals';
-// import TradingOperations from '@/pages/TradingOperations';
-// import Portfolio from '@/pages/Portfolio';
-// import Orders from '@/pages/Orders';
-// import ScheduledJobs from '@/pages/ScheduledJobs';
-// import TradesView from '@/components/TradesView';
 
 const Index = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('dashboard');
-  const [selectedJurisdiction, setSelectedJurisdiction] = useState<string | undefined>(undefined);
   const [selectedPoliticianId, setSelectedPoliticianId] = useState<string | null>(null);
   const [tickerFilter, setTickerFilter] = useState<string | undefined>(undefined);
 
@@ -81,30 +73,15 @@ const Index = () => {
       case 'politicians':
         return (
           <PoliticiansView
-            jurisdictionId={selectedJurisdiction}
             initialPoliticianId={selectedPoliticianId}
             onPoliticianSelected={() => setSelectedPoliticianId(null)}
           />
         );
       case 'filings':
-        return <FilingsView jurisdictionId={selectedJurisdiction} />;
-      // COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready
-      // case 'trading-signals':
-      //   return <TradingSignals />;
-      // case 'trading-operations':
-      //   return <TradingOperations />;
-      // case 'portfolio':
-      //   return <Portfolio />;
-      // case 'orders':
-      //   return <Orders />;
-      // case 'scheduled-jobs':
-      //   return <ScheduledJobs />;
-      // case 'trades':
-      //   return <TradesView jurisdictionId={selectedJurisdiction} searchQuery={searchQuery} />;
+        return <FilingsView />;
       default:
         return (
           <Dashboard
-            jurisdictionId={selectedJurisdiction}
             initialTickerSearch={tickerFilter}
             onTickerSearchClear={() => setTickerFilter(undefined)}
           />
@@ -126,8 +103,6 @@ const Index = () => {
           onClose={() => setSidebarOpen(false)}
           activeSection={activeSection}
           onSectionChange={handleSectionChange}
-          selectedJurisdiction={selectedJurisdiction}
-          onJurisdictionChange={setSelectedJurisdiction}
         />
 
         <div className="flex-1 flex flex-col min-h-screen">
@@ -143,7 +118,7 @@ const Index = () => {
           <footer className="border-t border-border/50 bg-background/50 backdrop-blur-xl py-4">
             <div className="container px-4 text-center text-sm text-muted-foreground">
               <p>
-                Data sourced from official government disclosures • 
+                Data sourced from official government disclosures •
                 <span className="mx-2">|</span>
                 <a href="https://www.congress.gov/members" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">US Congress</a>
                 <span className="mx-2">•</span>

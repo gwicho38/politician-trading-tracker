@@ -1,0 +1,235 @@
+import { useState } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Loader2, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+
+interface OrderRequest {
+  ticker: string;
+  side: 'buy' | 'sell';
+  quantity: number;
+  order_type: 'market' | 'limit';
+  limit_price?: number;
+  signal_id?: string;
+}
+
+interface OrderConfirmationModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  orders: OrderRequest[];
+  tradingMode: 'paper' | 'live';
+  onSuccess?: () => void;
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+export function OrderConfirmationModal({
+  open,
+  onOpenChange,
+  orders,
+  tradingMode,
+  onSuccess,
+}: OrderConfirmationModalProps) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [liveConfirmed, setLiveConfirmed] = useState(false);
+
+  const totalShares = orders.reduce((sum, order) => sum + order.quantity, 0);
+  const buyOrders = orders.filter((o) => o.side === 'buy');
+  const sellOrders = orders.filter((o) => o.side === 'sell');
+
+  const handleSubmit = async () => {
+    if (tradingMode === 'live' && !liveConfirmed) {
+      toast.error('Please confirm you understand the risks of live trading');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Call the orders edge function
+      const { data, error } = await supabase.functions.invoke('orders', {
+        body: {
+          action: 'place-orders',
+          orders,
+          tradingMode,
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (data.success) {
+        toast.success(data.message || 'Orders placed successfully');
+        onSuccess?.();
+        onOpenChange(false);
+      } else {
+        // Partial success or failure
+        const failedOrders = data.results?.filter((r: any) => !r.success) || [];
+        if (failedOrders.length > 0) {
+          toast.error(`${failedOrders.length} orders failed`);
+        }
+        if (data.summary?.success > 0) {
+          toast.success(`${data.summary.success} orders placed successfully`);
+          onSuccess?.();
+        }
+        onOpenChange(false);
+      }
+    } catch (error: any) {
+      console.error('Error placing orders:', error);
+      toast.error(error.message || 'Failed to place orders');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            Confirm Orders
+            <Badge variant={tradingMode === 'paper' ? 'secondary' : 'destructive'}>
+              {tradingMode === 'paper' ? 'Paper Trading' : 'Live Trading'}
+            </Badge>
+          </DialogTitle>
+          <DialogDescription>
+            Review your orders before submitting
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {/* Order Summary */}
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Total Orders</span>
+            <span className="font-medium">{orders.length}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Total Shares</span>
+            <span className="font-medium">{totalShares.toLocaleString()}</span>
+          </div>
+          <div className="flex items-center gap-4 text-sm">
+            {buyOrders.length > 0 && (
+              <Badge variant="outline" className="text-green-600 border-green-600">
+                <TrendingUp className="h-3 w-3 mr-1" />
+                {buyOrders.length} Buy
+              </Badge>
+            )}
+            {sellOrders.length > 0 && (
+              <Badge variant="outline" className="text-red-600 border-red-600">
+                <TrendingDown className="h-3 w-3 mr-1" />
+                {sellOrders.length} Sell
+              </Badge>
+            )}
+          </div>
+
+          {/* Order List */}
+          <div className="max-h-60 overflow-y-auto border rounded-lg">
+            <table className="w-full text-sm">
+              <thead className="bg-muted sticky top-0">
+                <tr>
+                  <th className="text-left p-2">Ticker</th>
+                  <th className="text-left p-2">Side</th>
+                  <th className="text-right p-2">Qty</th>
+                  <th className="text-left p-2">Type</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((order, idx) => (
+                  <tr key={idx} className="border-t">
+                    <td className="p-2 font-medium">{order.ticker}</td>
+                    <td className="p-2">
+                      <Badge
+                        variant="outline"
+                        className={
+                          order.side === 'buy'
+                            ? 'text-green-600 border-green-600'
+                            : 'text-red-600 border-red-600'
+                        }
+                      >
+                        {order.side.toUpperCase()}
+                      </Badge>
+                    </td>
+                    <td className="p-2 text-right font-mono">{order.quantity}</td>
+                    <td className="p-2">{order.order_type}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Live Trading Warning */}
+          {tradingMode === 'live' && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                <p className="font-medium mb-2">This will execute real trades with real money!</p>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="live-confirm"
+                    checked={liveConfirmed}
+                    onCheckedChange={(checked) => setLiveConfirmed(checked === true)}
+                  />
+                  <label htmlFor="live-confirm" className="text-sm cursor-pointer">
+                    I understand and accept the risks of live trading
+                  </label>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Paper Trading Info */}
+          {tradingMode === 'paper' && (
+            <Alert>
+              <AlertDescription>
+                Paper trading uses simulated money. No real trades will be executed.
+              </AlertDescription>
+            </Alert>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isSubmitting || (tradingMode === 'live' && !liveConfirmed)}
+            variant={tradingMode === 'live' ? 'destructive' : 'default'}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Placing Orders...
+              </>
+            ) : (
+              `Place ${orders.length} Order${orders.length > 1 ? 's' : ''}`
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

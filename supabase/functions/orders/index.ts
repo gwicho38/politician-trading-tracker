@@ -17,6 +17,51 @@ function isServiceRoleRequest(req: Request): boolean {
   return token === serviceRoleKey
 }
 
+// Get Alpaca credentials - supports per-user credentials or environment variables
+async function getAlpacaCredentials(
+  supabase: any,
+  userEmail: string | null,
+  tradingMode: 'paper' | 'live'
+): Promise<{ apiKey: string; secretKey: string; baseUrl: string } | null> {
+  // 1. Try user-specific credentials from user_api_keys table
+  if (userEmail) {
+    try {
+      const { data, error } = await supabase
+        .from('user_api_keys')
+        .select('paper_api_key, paper_secret_key, live_api_key, live_secret_key')
+        .eq('user_email', userEmail)
+        .maybeSingle();
+
+      if (!error && data) {
+        const apiKey = tradingMode === 'paper' ? data.paper_api_key : data.live_api_key;
+        const secretKey = tradingMode === 'paper' ? data.paper_secret_key : data.live_secret_key;
+
+        if (apiKey && secretKey) {
+          const baseUrl = tradingMode === 'paper'
+            ? 'https://paper-api.alpaca.markets'
+            : 'https://api.alpaca.markets';
+          return { apiKey, secretKey, baseUrl };
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch user credentials:', err);
+    }
+  }
+
+  // 2. Fallback to environment variables (for system operations)
+  const envApiKey = Deno.env.get('ALPACA_API_KEY');
+  const envSecretKey = Deno.env.get('ALPACA_SECRET_KEY');
+  const envPaper = Deno.env.get('ALPACA_PAPER') === 'true';
+  const envBaseUrl = Deno.env.get('ALPACA_BASE_URL');
+
+  if (envApiKey && envSecretKey) {
+    const baseUrl = envBaseUrl || (envPaper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets');
+    return { apiKey: envApiKey, secretKey: envSecretKey, baseUrl };
+  }
+
+  return null;
+}
+
 // Structured logging utility
 const log = {
   info: (message: string, metadata?: any) => {
@@ -272,6 +317,7 @@ async function handleGetOrders(supabaseClient: any, req: Request, requestId: str
       let query = supabaseClient
         .from('trading_orders')
         .select('*')
+        .eq('user_id', user.id)  // Filter by current user
         .eq('trading_mode', tradingMode)
         .order('submitted_at', { ascending: false })
         .range(offset, offset + limit - 1)
@@ -299,6 +345,7 @@ async function handleGetOrders(supabaseClient: any, req: Request, requestId: str
       let countQuery = supabaseClient
         .from('trading_orders')
         .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)  // Filter by current user
         .eq('trading_mode', tradingMode)
 
       if (statusFilter && statusFilter !== 'all') {
@@ -400,10 +447,11 @@ async function handleGetOrderStats(supabaseClient: any, req: Request) {
       )
     }
 
-    // Get order statistics
+    // Get order statistics (filtered by user)
     const { data: orders, error } = await supabaseClient
       .from('trading_orders')
       .select('status, side, filled_avg_price, quantity, submitted_at')
+      .eq('user_id', user.id)  // Filter by current user
       .eq('trading_mode', tradingMode)
 
     if (error) {
@@ -503,8 +551,10 @@ async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: st
       )
     }
 
+    const userEmail = user.email || null;
+
     // Validate required fields
-    const { ticker, side, quantity, order_type = 'market', limit_price, signal_id } = bodyParams
+    const { ticker, side, quantity, order_type = 'market', limit_price, signal_id, tradingMode = 'paper' } = bodyParams
 
     if (!ticker || !side || !quantity) {
       return new Response(
@@ -534,19 +584,18 @@ async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: st
       quantity,
       order_type,
       limit_price,
-      userId: user.id
+      tradingMode,
+      userId: user.id,
+      userEmail
     })
 
-    // Get Alpaca API credentials from environment
-    const alpacaApiKey = Deno.env.get('ALPACA_API_KEY')
-    const alpacaSecretKey = Deno.env.get('ALPACA_SECRET_KEY')
-    const alpacaPaper = Deno.env.get('ALPACA_PAPER') === 'true'
-    const alpacaBaseUrl = Deno.env.get('ALPACA_BASE_URL') || (alpacaPaper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets')
+    // Get Alpaca API credentials (per-user or environment)
+    const credentials = await getAlpacaCredentials(supabaseClient, userEmail, tradingMode);
 
-    if (!alpacaApiKey || !alpacaSecretKey) {
+    if (!credentials) {
       return new Response(
-        JSON.stringify({ error: 'Alpaca API credentials not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'No Alpaca credentials configured. Please connect your Alpaca account.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -565,15 +614,15 @@ async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: st
     }
 
     // Call Alpaca API to place order
-    const alpacaUrl = `${alpacaBaseUrl}/v2/orders`
+    const alpacaUrl = `${credentials.baseUrl}/v2/orders`
 
-    log.info('Calling Alpaca API to place order', { requestId, url: alpacaUrl, order: orderRequest })
+    log.info('Calling Alpaca API to place order', { requestId, url: alpacaUrl, order: orderRequest, tradingMode })
 
     const response = await fetch(alpacaUrl, {
       method: 'POST',
       headers: {
-        'APCA-API-KEY-ID': alpacaApiKey,
-        'APCA-API-SECRET-KEY': alpacaSecretKey,
+        'APCA-API-KEY-ID': credentials.apiKey,
+        'APCA-API-SECRET-KEY': credentials.secretKey,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(orderRequest)
@@ -602,7 +651,7 @@ async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: st
       order_type: order_type,
       limit_price: limit_price || null,
       status: alpacaResponse.status || 'pending',
-      trading_mode: alpacaPaper ? 'paper' : 'live',
+      trading_mode: tradingMode,
       signal_id: signal_id || null,
       submitted_at: alpacaResponse.submitted_at || new Date().toISOString(),
       filled_quantity: parseFloat(alpacaResponse.filled_qty) || 0,
@@ -688,7 +737,8 @@ async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: s
       )
     }
 
-    const { orders } = bodyParams
+    const userEmail = user.email || null;
+    const { orders, tradingMode = 'paper' } = bodyParams
 
     if (!orders || !Array.isArray(orders) || orders.length === 0) {
       return new Response(
@@ -697,23 +747,20 @@ async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: s
       )
     }
 
-    log.info('Placing multiple orders', { requestId, orderCount: orders.length, userId: user.id })
+    log.info('Placing multiple orders', { requestId, orderCount: orders.length, userId: user.id, tradingMode, userEmail })
 
-    // Get Alpaca API credentials
-    const alpacaApiKey = Deno.env.get('ALPACA_API_KEY')
-    const alpacaSecretKey = Deno.env.get('ALPACA_SECRET_KEY')
-    const alpacaPaper = Deno.env.get('ALPACA_PAPER') === 'true'
-    const alpacaBaseUrl = Deno.env.get('ALPACA_BASE_URL') || (alpacaPaper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets')
+    // Get Alpaca API credentials (per-user or environment)
+    const credentials = await getAlpacaCredentials(supabaseClient, userEmail, tradingMode);
 
-    if (!alpacaApiKey || !alpacaSecretKey) {
+    if (!credentials) {
       return new Response(
-        JSON.stringify({ error: 'Alpaca API credentials not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'No Alpaca credentials configured. Please connect your Alpaca account.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     const results: any[] = []
-    const alpacaUrl = `${alpacaBaseUrl}/v2/orders`
+    const alpacaUrl = `${credentials.baseUrl}/v2/orders`
 
     // Process each order
     for (const order of orders) {
@@ -756,8 +803,8 @@ async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: s
         const response = await fetch(alpacaUrl, {
           method: 'POST',
           headers: {
-            'APCA-API-KEY-ID': alpacaApiKey,
-            'APCA-API-SECRET-KEY': alpacaSecretKey,
+            'APCA-API-KEY-ID': credentials.apiKey,
+            'APCA-API-SECRET-KEY': credentials.secretKey,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify(orderRequest)
@@ -785,7 +832,7 @@ async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: s
           order_type,
           limit_price: limit_price || null,
           status: alpacaResponse.status || 'pending',
-          trading_mode: alpacaPaper ? 'paper' : 'live',
+          trading_mode: tradingMode,
           signal_id: signal_id || null,
           submitted_at: alpacaResponse.submitted_at || new Date().toISOString(),
           filled_quantity: parseFloat(alpacaResponse.filled_qty) || 0,
@@ -860,63 +907,55 @@ async function handleSyncOrders(supabaseClient: any, req: Request, requestId: st
   const handlerStartTime = Date.now()
 
   try {
-    // Check if this is a service role request (scheduled job)
-    const isServerRequest = isServiceRoleRequest(req)
-    let userId: string | null = null
+    const tradingMode: 'paper' | 'live' = bodyParams.tradingMode || 'paper'
 
-    if (isServerRequest) {
-      log.info('Service role request (scheduled job) - syncing all orders', { requestId })
-    } else {
-      // Validate authentication for client requests
-      const authHeader = req.headers.get('authorization')
-      if (!authHeader) {
-        return new Response(
-          JSON.stringify({ error: 'Authentication required' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      // Get user from JWT
-      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(
-        authHeader.replace('Bearer ', '')
+    // Sync requires user authentication - no service role sync to prevent orphaned orders
+    const authHeader = req.headers.get('authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
-
-      if (authError || !user) {
-        return new Response(
-          JSON.stringify({ error: 'Invalid authentication' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      userId = user.id
-      log.info('Syncing orders from Alpaca', { requestId, userId })
     }
 
-    // Get Alpaca API credentials
-    const alpacaApiKey = Deno.env.get('ALPACA_API_KEY')
-    const alpacaSecretKey = Deno.env.get('ALPACA_SECRET_KEY')
-    const alpacaPaper = Deno.env.get('ALPACA_PAPER') === 'true'
-    const alpacaBaseUrl = Deno.env.get('ALPACA_BASE_URL') || (alpacaPaper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets')
+    // Get user from JWT
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    )
 
-    if (!alpacaApiKey || !alpacaSecretKey) {
+    if (authError || !user) {
       return new Response(
-        JSON.stringify({ error: 'Alpaca API credentials not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Invalid authentication' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const userId = user.id
+    const userEmail = user.email || null
+    log.info('Syncing orders from Alpaca', { requestId, userId, tradingMode })
+
+    // Get Alpaca API credentials (per-user or environment)
+    const credentials = await getAlpacaCredentials(supabaseClient, userEmail, tradingMode);
+
+    if (!credentials) {
+      return new Response(
+        JSON.stringify({ error: 'No Alpaca credentials configured. Please connect your Alpaca account.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     // Fetch orders from Alpaca
     const status = bodyParams.status || 'all' // all, open, closed
     const limit = bodyParams.limit || 100
-    const alpacaUrl = `${alpacaBaseUrl}/v2/orders?status=${status}&limit=${limit}`
+    const alpacaUrl = `${credentials.baseUrl}/v2/orders?status=${status}&limit=${limit}`
 
-    log.info('Fetching orders from Alpaca', { requestId, url: alpacaUrl })
+    log.info('Fetching orders from Alpaca', { requestId, url: alpacaUrl, tradingMode })
 
     const response = await fetch(alpacaUrl, {
       method: 'GET',
       headers: {
-        'APCA-API-KEY-ID': alpacaApiKey,
-        'APCA-API-SECRET-KEY': alpacaSecretKey,
+        'APCA-API-KEY-ID': credentials.apiKey,
+        'APCA-API-SECRET-KEY': credentials.secretKey,
         'Content-Type': 'application/json'
       }
     })
@@ -940,15 +979,16 @@ async function handleSyncOrders(supabaseClient: any, req: Request, requestId: st
 
     for (const order of alpacaOrders) {
       try {
-        // Check if order already exists
+        // Check if order already exists FOR THIS USER
         const { data: existing } = await supabaseClient
           .from('trading_orders')
           .select('id')
           .eq('alpaca_order_id', order.id)
+          .eq('user_id', userId)  // Filter by current user
           .maybeSingle()
 
         if (existing) {
-          // Update existing order
+          // Update existing order (only if it belongs to this user)
           const { error: updateError } = await supabaseClient
             .from('trading_orders')
             .update({
@@ -961,6 +1001,7 @@ async function handleSyncOrders(supabaseClient: any, req: Request, requestId: st
               updated_at: new Date().toISOString()
             })
             .eq('alpaca_order_id', order.id)
+            .eq('user_id', userId)  // Only update user's own orders
 
           if (updateError) {
             log.warn('Failed to update order', { orderId: order.id, error: updateError.message })
@@ -969,9 +1010,9 @@ async function handleSyncOrders(supabaseClient: any, req: Request, requestId: st
             skipped++ // Updated existing
           }
         } else {
-          // Insert new order
+          // Insert new order with user_id
           const orderRecord = {
-            user_id: userId,  // null for service role (scheduled job) requests
+            user_id: userId,  // Always set user_id for data isolation
             alpaca_order_id: order.id,
             alpaca_client_order_id: order.client_order_id || null,
             ticker: order.symbol,
@@ -981,7 +1022,7 @@ async function handleSyncOrders(supabaseClient: any, req: Request, requestId: st
             limit_price: parseFloat(order.limit_price) || null,
             stop_price: parseFloat(order.stop_price) || null,
             status: order.status,
-            trading_mode: alpacaPaper ? 'paper' : 'live',
+            trading_mode: tradingMode,
             submitted_at: order.submitted_at || null,
             filled_quantity: parseFloat(order.filled_qty) || 0,
             filled_avg_price: parseFloat(order.filled_avg_price) || null,
