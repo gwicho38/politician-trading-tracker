@@ -10,6 +10,7 @@ import { Wallet, TrendingUp, ClipboardList, ArrowLeft, Loader2 } from 'lucide-re
 import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import { AlpacaConnectionCard } from '@/components/trading/AlpacaConnectionCard';
+import { AlpacaConnectionStatus } from '@/components/trading/AlpacaConnectionStatus';
 import { AccountDashboard } from '@/components/trading/AccountDashboard';
 import { PositionsTable } from '@/components/trading/PositionsTable';
 import { OrderHistory } from '@/components/trading/OrderHistory';
@@ -142,6 +143,11 @@ const Trading = () => {
                 {/* Alpaca Connection Card */}
                 <AlpacaConnectionCard tradingMode={tradingMode} />
               </div>
+
+              {/* Connection Status (shown when connected) */}
+              {connected && (
+                <AlpacaConnectionStatus tradingMode={tradingMode} />
+              )}
 
               {/* Account Dashboard */}
               {connected && (

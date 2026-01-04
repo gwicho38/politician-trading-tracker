@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAccount, useSignMessage } from 'wagmi';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchWithRetry } from '@/lib/fetchWithRetry';
 
 const SUPABASE_URL = "https://ogdwavsrcyleoxfsswbt.supabase.co";
 
@@ -26,9 +27,9 @@ export const useWalletAuth = () => {
     setError(null);
 
     try {
-      // Step 1: Get nonce from edge function
+      // Step 1: Get nonce from edge function (with retry for network issues)
       console.log('Requesting nonce for wallet:', address);
-      const nonceResponse = await fetch(
+      const nonceResponse = await fetchWithRetry(
         `${SUPABASE_URL}/functions/v1/wallet-auth?action=nonce`,
         {
           method: 'POST',
@@ -36,6 +37,7 @@ export const useWalletAuth = () => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ wallet_address: address }),
+          maxRetries: 2,
         }
       );
 
@@ -51,8 +53,8 @@ export const useWalletAuth = () => {
       const signature = await signMessageAsync({ message, account: address });
       console.log('Message signed');
 
-      // Step 3: Verify signature and get auth token
-      const verifyResponse = await fetch(
+      // Step 3: Verify signature and get auth token (with retry for network issues)
+      const verifyResponse = await fetchWithRetry(
         `${SUPABASE_URL}/functions/v1/wallet-auth?action=verify`,
         {
           method: 'POST',
@@ -64,6 +66,7 @@ export const useWalletAuth = () => {
             signature,
             message,
           }),
+          maxRetries: 2,
         }
       );
 
