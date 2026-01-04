@@ -7,6 +7,7 @@ import {
   Sliders,
   Sparkles,
   Wallet,
+  Activity,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ const navItems = [
 // Standalone pages with their own routes
 const standalonePages = [
   { path: '/trading', label: 'Trading', icon: Wallet },
+  { path: '/reference-portfolio', label: 'Reference Strategy', icon: Activity },
   { path: '/playground', label: 'Signal Playground', icon: Sliders },
   { path: '/showcase', label: 'Strategy Showcase', icon: Sparkles },
 ];
