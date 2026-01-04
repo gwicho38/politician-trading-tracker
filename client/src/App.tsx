@@ -15,6 +15,7 @@ import Showcase from "./pages/Showcase";
 import Trading from "./pages/Trading";
 import TradingSignals from "./pages/TradingSignals";
 import DataQuality from "./pages/DataQuality";
+import ReferencePortfolio from "./pages/ReferencePortfolio";
 // COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready
 // import Admin from "./pages/Admin";
 // import AdminDataCollection from "./pages/AdminDataCollection";
@@ -65,6 +66,11 @@ const App = () => (
               <Route path="/admin/data-quality" element={
                 <ErrorBoundary name="Data Quality">
                   <DataQuality />
+                </ErrorBoundary>
+              } />
+              <Route path="/reference-portfolio" element={
+                <ErrorBoundary name="Reference Portfolio">
+                  <ReferencePortfolio />
                 </ErrorBoundary>
               } />
               {/* COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready */}
