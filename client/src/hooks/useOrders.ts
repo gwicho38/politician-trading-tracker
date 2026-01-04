@@ -101,6 +101,46 @@ export function useSyncOrders(tradingMode: 'paper' | 'live') {
   });
 }
 
+export interface PlaceOrderParams {
+  ticker: string;
+  side: 'buy' | 'sell';
+  quantity: number;
+  order_type?: 'market' | 'limit';
+  limit_price?: number;
+  signal_id?: string;
+}
+
+export function usePlaceOrder(tradingMode: 'paper' | 'live') {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: PlaceOrderParams): Promise<{ success: boolean; order?: any; error?: string }> => {
+      const { data, error } = await supabase.functions.invoke('orders', {
+        body: {
+          action: 'place-order',
+          tradingMode,
+          ...params,
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to place order');
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      // Invalidate orders and positions queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['orders', tradingMode] });
+      queryClient.invalidateQueries({ queryKey: ['alpaca-positions', tradingMode] });
+    },
+  });
+}
+
 export function useCancelOrder(tradingMode: 'paper' | 'live') {
   const queryClient = useQueryClient();
 
