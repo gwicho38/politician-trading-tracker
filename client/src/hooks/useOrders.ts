@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchWithRetry } from '@/lib/fetchWithRetry';
 
 export interface Order {
   id: string;
@@ -101,6 +102,46 @@ export function useSyncOrders(tradingMode: 'paper' | 'live') {
   });
 }
 
+export interface PlaceOrderParams {
+  ticker: string;
+  side: 'buy' | 'sell';
+  quantity: number;
+  order_type?: 'market' | 'limit';
+  limit_price?: number;
+  signal_id?: string;
+}
+
+export function usePlaceOrder(tradingMode: 'paper' | 'live') {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: PlaceOrderParams): Promise<{ success: boolean; order?: any; error?: string }> => {
+      const { data, error } = await supabase.functions.invoke('orders', {
+        body: {
+          action: 'place-order',
+          tradingMode,
+          ...params,
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to place order');
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      // Invalidate orders and positions queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['orders', tradingMode] });
+      queryClient.invalidateQueries({ queryKey: ['alpaca-positions', tradingMode] });
+    },
+  });
+}
+
 export function useCancelOrder(tradingMode: 'paper' | 'live') {
   const queryClient = useQueryClient();
 
@@ -133,13 +174,14 @@ export function useCancelOrder(tradingMode: 'paper' | 'live') {
         throw new Error(`No ${tradingMode} trading credentials found`);
       }
 
-      // Cancel order via Alpaca API
-      const response = await fetch(`${baseUrl}/v2/orders/${orderId}`, {
+      // Cancel order via Alpaca API (with retry for network issues)
+      const response = await fetchWithRetry(`${baseUrl}/v2/orders/${orderId}`, {
         method: 'DELETE',
         headers: {
           'APCA-API-KEY-ID': apiKey,
           'APCA-API-SECRET-KEY': secretKey,
         },
+        maxRetries: 2,
       });
 
       if (!response.ok) {
