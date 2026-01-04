@@ -6,6 +6,66 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Reference portfolio configuration
+const REFERENCE_PORTFOLIO_MIN_CONFIDENCE = 0.70
+const REFERENCE_PORTFOLIO_SIGNAL_TYPES = ['buy', 'strong_buy', 'sell', 'strong_sell']
+
+// Queue high-confidence signals for reference portfolio processing
+async function queueSignalsForReferencePortfolio(supabaseClient: any, signals: any[], requestId: string) {
+  if (!signals || signals.length === 0) return
+
+  // Filter signals that meet reference portfolio criteria
+  const eligibleSignals = signals.filter(signal =>
+    signal.confidence_score >= REFERENCE_PORTFOLIO_MIN_CONFIDENCE &&
+    REFERENCE_PORTFOLIO_SIGNAL_TYPES.includes(signal.signal_type)
+  )
+
+  if (eligibleSignals.length === 0) {
+    console.log(JSON.stringify({
+      level: 'INFO',
+      timestamp: new Date().toISOString(),
+      service: 'trading-signals',
+      message: 'No signals eligible for reference portfolio',
+      requestId,
+      totalSignals: signals.length,
+      minConfidence: REFERENCE_PORTFOLIO_MIN_CONFIDENCE
+    }))
+    return
+  }
+
+  // Queue signals for reference portfolio processing
+  const queueEntries = eligibleSignals.map(signal => ({
+    signal_id: signal.id,
+    status: 'pending'
+  }))
+
+  const { error } = await supabaseClient
+    .from('reference_portfolio_signal_queue')
+    .upsert(queueEntries, { onConflict: 'signal_id', ignoreDuplicates: true })
+
+  if (error) {
+    console.error(JSON.stringify({
+      level: 'ERROR',
+      timestamp: new Date().toISOString(),
+      service: 'trading-signals',
+      message: 'Failed to queue signals for reference portfolio',
+      requestId,
+      error: error.message,
+      signalCount: eligibleSignals.length
+    }))
+  } else {
+    console.log(JSON.stringify({
+      level: 'INFO',
+      timestamp: new Date().toISOString(),
+      service: 'trading-signals',
+      message: 'Signals queued for reference portfolio',
+      requestId,
+      queuedCount: eligibleSignals.length,
+      tickers: eligibleSignals.map(s => s.ticker)
+    }))
+  }
+}
+
 // Structured logging utility
 const log = {
   info: (message: string, metadata?: any) => {
@@ -662,6 +722,9 @@ async function handleGenerateSignals(supabaseClient: any, req: Request, requestI
       duration: Date.now() - handlerStartTime
     })
 
+    // Queue high-confidence signals for reference portfolio
+    await queueSignalsForReferencePortfolio(supabaseClient, insertedSignals || [], requestId)
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -1184,6 +1247,9 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
       insertedCount: insertedSignals?.length || 0,
       duration: Date.now() - handlerStartTime
     })
+
+    // Queue high-confidence signals for reference portfolio
+    await queueSignalsForReferencePortfolio(supabaseClient, insertedSignals || [], requestId)
 
     return new Response(
       JSON.stringify({
