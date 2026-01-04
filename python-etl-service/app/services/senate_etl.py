@@ -258,11 +258,18 @@ def find_or_create_politician(
         if response.data:
             return response.data[0]["id"]
 
-        # Create new politician
+        # Create new politician - split name into first and last
+        name_parts = clean_name.split()
+        first_name = name_parts[0] if name_parts else clean_name
+        last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
+
         new_politician = {
             "name": clean_name,
-            "jurisdiction": "Federal",
-            "position": "Senator",
+            "full_name": clean_name,
+            "first_name": first_name,
+            "last_name": last_name,
+            "chamber": "senate",
+            "role": "Senator",
             "party": None,
             "state": state,
         }
@@ -278,6 +285,27 @@ def find_or_create_politician(
     return None
 
 
+def clean_asset_name(raw_name: Optional[str]) -> str:
+    """Clean up asset name by removing excess whitespace and truncating."""
+    if not raw_name:
+        return "Unknown"
+
+    # Normalize whitespace (replace multiple spaces/newlines with single space)
+    import re
+    cleaned = re.sub(r'\s+', ' ', raw_name).strip()
+
+    # If still too long, try to extract just the first meaningful part
+    # (before "Company:" or "Description:" markers)
+    if len(cleaned) > 200:
+        for marker in ["Company:", "Description:"]:
+            if marker in cleaned:
+                cleaned = cleaned.split(marker)[0].strip()
+                break
+
+    # Truncate to 200 chars max (database limit)
+    return cleaned[:200] if len(cleaned) > 200 else cleaned
+
+
 def upload_transaction_to_supabase(
     supabase: Client,
     politician_id: str,
@@ -286,17 +314,38 @@ def upload_transaction_to_supabase(
 ) -> Optional[str]:
     """Upload a transaction to Supabase trading_disclosures table."""
     try:
+        asset_name = clean_asset_name(transaction.get("asset_name"))
+        transaction_date = transaction.get("transaction_date")
+        source_url = disclosure_info.get("source_url")
+
+        # Check if record already exists (manual duplicate check)
+        existing = (
+            supabase.table("trading_disclosures")
+            .select("id")
+            .eq("politician_id", politician_id)
+            .eq("asset_name", asset_name)
+            .eq("transaction_date", transaction_date)
+            .eq("source_url", source_url)
+            .limit(1)
+            .execute()
+        )
+
+        if existing.data:
+            logger.debug(f"Transaction already exists: {asset_name} on {transaction_date}")
+            return existing.data[0]["id"]
+
+        # Insert new record
         record = {
             "politician_id": politician_id,
-            "asset_name": transaction.get("asset_name"),
+            "asset_name": asset_name,
             "asset_ticker": transaction.get("ticker"),
             "asset_type": transaction.get("asset_type"),
             "transaction_type": transaction.get("transaction_type", "unknown"),
-            "transaction_date": transaction.get("transaction_date"),
+            "transaction_date": transaction_date,
             "disclosure_date": transaction.get("notification_date") or disclosure_info.get("filing_date"),
             "amount_range_min": transaction.get("value_low"),
             "amount_range_max": transaction.get("value_high"),
-            "source_url": disclosure_info.get("source_url"),
+            "source_url": source_url,
             "raw_data": {
                 "doc_id": disclosure_info.get("doc_id"),
                 "filing_date": disclosure_info.get("filing_date"),
@@ -304,12 +353,7 @@ def upload_transaction_to_supabase(
             },
         }
 
-        # Upsert using unique constraint on (politician_id, asset_name, transaction_date, source_url)
-        response = (
-            supabase.table("trading_disclosures")
-            .upsert(record, on_conflict="politician_id,asset_name,transaction_date,source_url")
-            .execute()
-        )
+        response = supabase.table("trading_disclosures").insert(record).execute()
 
         if response.data:
             return response.data[0]["id"]
@@ -532,6 +576,14 @@ async def search_all_ptr_disclosures_playwright(
                     "--disable-extensions",
                     "--no-first-run",
                     "--no-zygote",
+                    "--disable-software-rasterizer",
+                    "--disable-background-networking",
+                    "--disable-default-apps",
+                    "--disable-sync",
+                    "--disable-translate",
+                    "--mute-audio",
+                    "--hide-scrollbars",
+                    "--metrics-recording-only",
                 ],
             )
             logger.info("[Playwright] Browser launched successfully")
@@ -540,8 +592,13 @@ async def search_all_ptr_disclosures_playwright(
                 viewport={"width": 1280, "height": 720},
             )
             logger.info("[Playwright] Created browser context")
-            page = await context.new_page()
-            logger.info("[Playwright] Created new page")
+            logger.info("[Playwright] Creating new page (with 60s timeout)...")
+            try:
+                page = await asyncio.wait_for(context.new_page(), timeout=60.0)
+            except asyncio.TimeoutError:
+                logger.error("[Playwright] TIMEOUT: new_page() took longer than 60s")
+                raise Exception("Failed to create new page - timeout after 60s")
+            logger.info("[Playwright] Created new page successfully")
 
             # Step 1: Navigate to home page and accept agreement
             logger.info("[Playwright] Navigating to Senate EFD home page...")
@@ -813,11 +870,24 @@ async def process_disclosures_playwright(
                     "--disable-extensions",
                     "--no-first-run",
                     "--no-zygote",
+                    "--disable-software-rasterizer",
+                    "--disable-background-networking",
+                    "--disable-default-apps",
+                    "--disable-sync",
+                    "--disable-translate",
+                    "--mute-audio",
+                    "--hide-scrollbars",
+                    "--metrics-recording-only",
                 ],
             )
             logger.info("[Playwright] Browser launched for disclosure processing")
             context = await browser.new_context(user_agent=USER_AGENT)
-            page = await context.new_page()
+            logger.info("[Playwright] Creating page for disclosure processing...")
+            try:
+                page = await asyncio.wait_for(context.new_page(), timeout=60.0)
+            except asyncio.TimeoutError:
+                logger.error("[Playwright] TIMEOUT: new_page() took longer than 60s")
+                raise Exception("Failed to create new page - timeout after 60s")
             logger.info("[Playwright] Page created for disclosure processing")
 
             # Accept agreement first
