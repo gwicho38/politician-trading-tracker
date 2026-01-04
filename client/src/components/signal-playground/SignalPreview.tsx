@@ -19,6 +19,8 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  ShoppingCart,
+  X,
 } from 'lucide-react';
 import {
   Select,
@@ -46,6 +48,8 @@ import {
 } from '@/components/ui/chart';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Legend, ResponsiveContainer } from 'recharts';
 import { SIGNAL_TYPE_CONFIG } from '@/lib/signal-weights';
+import { useCart } from '@/contexts/CartContext';
+import type { CartSignal } from '@/types/cart';
 import type {
   PreviewSignal,
   PreviewStats,
@@ -617,8 +621,25 @@ function SignalTypeBadge({ type }: { type: SignalType }) {
   );
 }
 
-type SortField = 'ticker' | 'signal_type' | 'confidence_score' | 'politician_activity_count' | 'total_transaction_volume' | 'bipartisan';
+type SortField = 'ticker' | 'signal_type' | 'confidence_score' | 'politician_activity_count' | 'buy_sell_ratio' | 'total_transaction_volume';
 type SortDirection = 'asc' | 'desc';
+
+/**
+ * Convert PreviewSignal to CartSignal for cart integration
+ */
+function toCartSignal(signal: PreviewSignal): CartSignal {
+  return {
+    id: signal.ticker, // Use ticker as ID for preview signals
+    ticker: signal.ticker,
+    signal_type: signal.signal_type,
+    confidence_score: signal.confidence_score,
+    politician_activity_count: signal.politician_activity_count,
+    buy_sell_ratio: signal.buy_sell_ratio,
+    source: 'playground',
+    total_transaction_volume: signal.total_transaction_volume,
+    bipartisan: signal.bipartisan,
+  };
+}
 
 /**
  * Sortable column header
@@ -663,9 +684,11 @@ function SortableHeader({
 }
 
 /**
- * Table showing individual signals with sortable columns and pagination
+ * Table showing individual signals with sortable columns, pagination, and cart actions
+ * Columns match the trading-signals page table for consistency
  */
 function SignalsTable({ signals }: { signals: PreviewSignal[] }) {
+  const { addToCart, removeFromCart, isInCart } = useCart();
   const [sortField, setSortField] = useState<SortField>('confidence_score');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [currentPage, setCurrentPage] = useState(1);
@@ -686,16 +709,18 @@ function SignalsTable({ signals }: { signals: PreviewSignal[] }) {
     setCurrentPage(1);
   };
 
+  const handleCartAction = (signal: PreviewSignal) => {
+    if (isInCart(signal.ticker)) {
+      removeFromCart(signal.ticker);
+    } else {
+      addToCart(toCartSignal(signal));
+    }
+  };
+
   const sortedSignals = useMemo(() => {
     return [...signals].sort((a, b) => {
-      let aVal: any = a[sortField];
-      let bVal: any = b[sortField];
-
-      // Handle special cases
-      if (sortField === 'bipartisan') {
-        aVal = aVal ? 1 : 0;
-        bVal = bVal ? 1 : 0;
-      }
+      const aVal: any = a[sortField];
+      const bVal: any = b[sortField];
 
       if (typeof aVal === 'string') {
         return sortDirection === 'asc'
@@ -759,6 +784,14 @@ function SignalsTable({ signals }: { signals: PreviewSignal[] }) {
               className="text-right"
             />
             <SortableHeader
+              label="B/S Ratio"
+              field="buy_sell_ratio"
+              currentField={sortField}
+              direction={sortDirection}
+              onSort={handleSort}
+              className="text-right"
+            />
+            <SortableHeader
               label="Volume"
               field="total_transaction_volume"
               currentField={sortField}
@@ -766,13 +799,7 @@ function SignalsTable({ signals }: { signals: PreviewSignal[] }) {
               onSort={handleSort}
               className="text-right"
             />
-            <SortableHeader
-              label="Bipartisan"
-              field="bipartisan"
-              currentField={sortField}
-              direction={sortDirection}
-              onSort={handleSort}
-            />
+            <TableHead className="text-center">Action</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -791,15 +818,23 @@ function SignalsTable({ signals }: { signals: PreviewSignal[] }) {
                 {signal.politician_activity_count}
               </TableCell>
               <TableCell className="text-right font-mono">
+                {signal.buy_sell_ratio.toFixed(2)}
+              </TableCell>
+              <TableCell className="text-right font-mono">
                 ${(signal.total_transaction_volume / 1000).toFixed(0)}k
               </TableCell>
-              <TableCell>
-                <Badge
-                  variant={signal.bipartisan ? "secondary" : "outline"}
-                  className="text-xs"
+              <TableCell className="text-center">
+                <Button
+                  variant={isInCart(signal.ticker) ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleCartAction(signal)}
                 >
-                  {signal.bipartisan ? "Yes" : "No"}
-                </Badge>
+                  {isInCart(signal.ticker) ? (
+                    <X className="h-3 w-3" />
+                  ) : (
+                    <ShoppingCart className="h-3 w-3" />
+                  )}
+                </Button>
               </TableCell>
             </TableRow>
           ))}
