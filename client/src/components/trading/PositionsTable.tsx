@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader2, RefreshCw, TrendingUp, TrendingDown, Package } from 'lucide-react';
 import { useAlpacaPositions, calculatePositionMetrics } from '@/hooks/useAlpacaPositions';
 import { cn } from '@/lib/utils';
+import { QuickTradeDialog } from './QuickTradeDialog';
 
 interface PositionsTableProps {
   tradingMode: 'paper' | 'live';
@@ -23,9 +25,32 @@ function formatPercent(value: number): string {
   return `${sign}${(value * 100).toFixed(2)}%`;
 }
 
+interface Position {
+  asset_id: string;
+  symbol: string;
+  qty: number;
+  side: 'long' | 'short';
+  avg_entry_price: number;
+  current_price: number;
+  market_value: number;
+  unrealized_pl: number;
+  unrealized_plpc: number;
+  unrealized_intraday_pl: number;
+}
+
 export function PositionsTable({ tradingMode }: PositionsTableProps) {
   const { data: positions, isLoading, error, refetch, isRefetching } = useAlpacaPositions(tradingMode);
   const metrics = positions ? calculatePositionMetrics(positions) : null;
+
+  const [tradeDialogOpen, setTradeDialogOpen] = useState(false);
+  const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
+  const [defaultTradeSide, setDefaultTradeSide] = useState<'buy' | 'sell'>('sell');
+
+  const openTradeDialog = (position: Position, side: 'buy' | 'sell') => {
+    setSelectedPosition(position);
+    setDefaultTradeSide(side);
+    setTradeDialogOpen(true);
+  };
 
   if (isLoading) {
     return (
@@ -111,6 +136,7 @@ export function PositionsTable({ tradingMode }: PositionsTableProps) {
                 <th className="pb-2 font-medium text-right">P&L</th>
                 <th className="pb-2 font-medium text-right">P&L %</th>
                 <th className="pb-2 font-medium text-right">Today</th>
+                <th className="pb-2 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -161,12 +187,42 @@ export function PositionsTable({ tradingMode }: PositionsTableProps) {
                   )}>
                     {formatCurrency(position.unrealized_intraday_pl)}
                   </td>
+                  <td className="py-3 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
+                        onClick={() => openTradeDialog(position as Position, 'buy')}
+                      >
+                        <TrendingUp className="h-3 w-3 mr-1" />
+                        Buy
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => openTradeDialog(position as Position, 'sell')}
+                      >
+                        <TrendingDown className="h-3 w-3 mr-1" />
+                        Sell
+                      </Button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </CardContent>
+
+      <QuickTradeDialog
+        open={tradeDialogOpen}
+        onOpenChange={setTradeDialogOpen}
+        position={selectedPosition}
+        tradingMode={tradingMode}
+        defaultSide={defaultTradeSide}
+      />
     </Card>
   );
 }
