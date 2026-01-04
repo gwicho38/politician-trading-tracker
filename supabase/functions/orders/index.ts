@@ -62,6 +62,142 @@ async function getAlpacaCredentials(
   return null;
 }
 
+// =============================================================================
+// ORDER STATE MACHINE AND AUDIT FUNCTIONS
+// =============================================================================
+
+// Generate idempotency key for an order
+function generateIdempotencyKey(
+  userId: string,
+  ticker: string,
+  side: string,
+  quantity: number,
+  signalId: string | null
+): string {
+  const timestamp = Math.floor(Date.now() / 60000) // Minute-level granularity
+  const components = [userId, ticker.toUpperCase(), side, quantity.toString(), signalId || 'no-signal', timestamp.toString()]
+  return `order_${components.join('_')}_${crypto.randomUUID().substring(0, 8)}`
+}
+
+// Check if an order with the same idempotency key exists
+async function checkIdempotency(
+  supabaseClient: any,
+  idempotencyKey: string
+): Promise<{ exists: boolean; existingOrder?: any }> {
+  try {
+    const { data, error } = await supabaseClient
+      .from('trading_orders')
+      .select('*')
+      .eq('idempotency_key', idempotencyKey)
+      .maybeSingle()
+
+    if (error) {
+      console.warn('Idempotency check error:', error.message)
+      return { exists: false }
+    }
+
+    return { exists: !!data, existingOrder: data }
+  } catch {
+    return { exists: false }
+  }
+}
+
+// Record order state transition
+async function recordOrderStateTransition(
+  supabaseClient: any,
+  orderId: string,
+  previousStatus: string | null,
+  newStatus: string,
+  source: 'user_action' | 'alpaca_webhook' | 'alpaca_poll' | 'system_timeout' | 'scheduler' | 'unknown',
+  details?: {
+    filledQty?: number
+    avgPrice?: number
+    errorCode?: string
+    errorMessage?: string
+    alpacaEventId?: string
+    alpacaEventTimestamp?: string
+    rawEvent?: any
+  }
+): Promise<void> {
+  try {
+    const { error } = await supabaseClient
+      .from('order_state_log')
+      .insert({
+        order_id: orderId,
+        previous_status: previousStatus,
+        new_status: newStatus,
+        source,
+        filled_qty_at_state: details?.filledQty || null,
+        avg_price_at_state: details?.avgPrice || null,
+        error_code: details?.errorCode || null,
+        error_message: details?.errorMessage || null,
+        alpaca_event_id: details?.alpacaEventId || null,
+        alpaca_event_timestamp: details?.alpacaEventTimestamp || null,
+        raw_event: details?.rawEvent || null,
+      })
+
+    if (error) {
+      console.warn('Failed to record order state transition:', error.message)
+    }
+  } catch (err) {
+    console.warn('Error recording order state transition:', err)
+  }
+}
+
+// Update signal lifecycle when order is placed
+async function recordSignalLifecycleOnOrder(
+  supabaseClient: any,
+  signalId: string,
+  orderId: string,
+  previousState: string,
+  newState: string,
+  reason: string,
+  transitionedBy: string
+): Promise<void> {
+  try {
+    const { error } = await supabaseClient
+      .from('signal_lifecycle')
+      .insert({
+        signal_id: signalId,
+        order_id: orderId,
+        previous_state: previousState,
+        current_state: newState,
+        transition_reason: reason,
+        transitioned_by: transitionedBy,
+      })
+
+    if (error) {
+      console.warn('Failed to record signal lifecycle:', error.message)
+    }
+  } catch (err) {
+    console.warn('Error recording signal lifecycle:', err)
+  }
+}
+
+// Get current signal lifecycle state
+async function getCurrentSignalState(
+  supabaseClient: any,
+  signalId: string
+): Promise<string | null> {
+  try {
+    const { data, error } = await supabaseClient
+      .from('signal_lifecycle')
+      .select('current_state')
+      .eq('signal_id', signalId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error || !data) {
+      return 'generated' // Default state if no lifecycle entry exists
+    }
+
+    return data.current_state
+  } catch {
+    return 'generated'
+  }
+}
+
 // Structured logging utility
 const log = {
   info: (message: string, metadata?: any) => {
@@ -577,6 +713,28 @@ async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: st
       )
     }
 
+    // Generate idempotency key to prevent duplicate orders
+    const idempotencyKey = generateIdempotencyKey(user.id, ticker, side, quantity, signal_id)
+
+    // Check if this order was already submitted
+    const { exists: duplicateExists, existingOrder } = await checkIdempotency(supabaseClient, idempotencyKey)
+    if (duplicateExists && existingOrder) {
+      log.info('Duplicate order detected, returning existing order', {
+        requestId,
+        idempotencyKey,
+        existingOrderId: existingOrder.id
+      })
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Order already exists',
+          order: existingOrder,
+          duplicate: true
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     log.info('Placing order', {
       requestId,
       ticker,
@@ -586,7 +744,8 @@ async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: st
       limit_price,
       tradingMode,
       userId: user.id,
-      userEmail
+      userEmail,
+      idempotencyKey
     })
 
     // Get Alpaca API credentials (per-user or environment)
@@ -640,7 +799,7 @@ async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: st
 
     log.info('Alpaca order placed successfully', { requestId, orderId: alpacaResponse.id, status: alpacaResponse.status })
 
-    // Save order to database
+    // Save order to database with idempotency key
     const orderRecord = {
       user_id: user.id,
       alpaca_order_id: alpacaResponse.id,
@@ -656,7 +815,8 @@ async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: st
       submitted_at: alpacaResponse.submitted_at || new Date().toISOString(),
       filled_quantity: parseFloat(alpacaResponse.filled_qty) || 0,
       filled_avg_price: parseFloat(alpacaResponse.filled_avg_price) || null,
-      broker: 'alpaca'
+      broker: 'alpaca',
+      idempotency_key: idempotencyKey
     }
 
     log.info('Saving order to database', { requestId, orderRecord })
@@ -672,6 +832,35 @@ async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: st
       // Don't fail the request - order was placed successfully with Alpaca
     } else {
       log.info('Order saved to database', { requestId, savedOrderId: savedOrder?.id })
+
+      // Record initial state transition
+      await recordOrderStateTransition(
+        supabaseClient,
+        savedOrder.id,
+        null, // No previous status
+        alpacaResponse.status || 'pending',
+        'user_action',
+        {
+          filledQty: parseFloat(alpacaResponse.filled_qty) || 0,
+          avgPrice: parseFloat(alpacaResponse.filled_avg_price) || null,
+          rawEvent: alpacaResponse
+        }
+      )
+
+      // If this order is from a signal, update signal lifecycle
+      if (signal_id) {
+        const previousState = await getCurrentSignalState(supabaseClient, signal_id)
+        await recordSignalLifecycleOnOrder(
+          supabaseClient,
+          signal_id,
+          savedOrder.id,
+          previousState || 'generated',
+          'ordered',
+          `Order placed via ${tradingMode} trading`,
+          `user:${user.email || user.id}`
+        )
+        log.info('Signal lifecycle updated', { requestId, signalId: signal_id, newState: 'ordered' })
+      }
     }
 
     const duration = Date.now() - handlerStartTime
@@ -786,6 +975,22 @@ async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: s
       }
 
       try {
+        // Generate idempotency key for this order
+        const orderIdempotencyKey = generateIdempotencyKey(user.id, ticker, side, quantity, signal_id)
+
+        // Check for duplicate
+        const { exists: duplicateExists, existingOrder } = await checkIdempotency(supabaseClient, orderIdempotencyKey)
+        if (duplicateExists && existingOrder) {
+          results.push({
+            ticker: ticker.toUpperCase(),
+            success: true,
+            order_id: existingOrder.alpaca_order_id,
+            status: existingOrder.status,
+            duplicate: true
+          })
+          continue
+        }
+
         // Build Alpaca order request
         const orderRequest: any = {
           symbol: ticker.toUpperCase(),
@@ -821,7 +1026,7 @@ async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: s
           continue
         }
 
-        // Save order to database
+        // Save order to database with idempotency key
         const orderRecord = {
           user_id: user.id,
           alpaca_order_id: alpacaResponse.id,
@@ -837,12 +1042,46 @@ async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: s
           submitted_at: alpacaResponse.submitted_at || new Date().toISOString(),
           filled_quantity: parseFloat(alpacaResponse.filled_qty) || 0,
           filled_avg_price: parseFloat(alpacaResponse.filled_avg_price) || null,
-          broker: 'alpaca'
+          broker: 'alpaca',
+          idempotency_key: orderIdempotencyKey
         }
 
-        const { error: insertError } = await supabaseClient.from('trading_orders').insert(orderRecord)
+        const { data: savedOrder, error: insertError } = await supabaseClient
+          .from('trading_orders')
+          .insert(orderRecord)
+          .select()
+          .single()
+
         if (insertError) {
           log.warn('Failed to save order to database', { ticker, error: insertError.message })
+        } else {
+          // Record state transition
+          await recordOrderStateTransition(
+            supabaseClient,
+            savedOrder.id,
+            null,
+            alpacaResponse.status || 'pending',
+            'user_action',
+            {
+              filledQty: parseFloat(alpacaResponse.filled_qty) || 0,
+              avgPrice: parseFloat(alpacaResponse.filled_avg_price) || null,
+              rawEvent: alpacaResponse
+            }
+          )
+
+          // Update signal lifecycle if from signal
+          if (signal_id) {
+            const previousState = await getCurrentSignalState(supabaseClient, signal_id)
+            await recordSignalLifecycleOnOrder(
+              supabaseClient,
+              signal_id,
+              savedOrder.id,
+              previousState || 'generated',
+              'ordered',
+              `Order placed from cart checkout (${tradingMode})`,
+              `user:${user.email || user.id}`
+            )
+          }
         }
 
         results.push({
@@ -988,6 +1227,17 @@ async function handleSyncOrders(supabaseClient: any, req: Request, requestId: st
           .maybeSingle()
 
         if (existing) {
+          // Get current status before update
+          const { data: currentOrder } = await supabaseClient
+            .from('trading_orders')
+            .select('id, status')
+            .eq('alpaca_order_id', order.id)
+            .eq('user_id', userId)
+            .single()
+
+          const previousStatus = currentOrder?.status
+          const newStatus = order.status
+
           // Update existing order (only if it belongs to this user)
           const { error: updateError } = await supabaseClient
             .from('trading_orders')
@@ -1007,6 +1257,44 @@ async function handleSyncOrders(supabaseClient: any, req: Request, requestId: st
             log.warn('Failed to update order', { orderId: order.id, error: updateError.message })
             errors++
           } else {
+            // Record state transition if status changed
+            if (currentOrder && previousStatus !== newStatus) {
+              await recordOrderStateTransition(
+                supabaseClient,
+                currentOrder.id,
+                previousStatus,
+                newStatus,
+                'alpaca_poll',
+                {
+                  filledQty: parseFloat(order.filled_qty) || 0,
+                  avgPrice: parseFloat(order.filled_avg_price) || null,
+                  alpacaEventId: order.id,
+                  rawEvent: order
+                }
+              )
+
+              // If order is filled and has signal_id, update signal lifecycle
+              if (newStatus === 'filled' && currentOrder) {
+                const { data: fullOrder } = await supabaseClient
+                  .from('trading_orders')
+                  .select('signal_id')
+                  .eq('id', currentOrder.id)
+                  .single()
+
+                if (fullOrder?.signal_id) {
+                  const previousState = await getCurrentSignalState(supabaseClient, fullOrder.signal_id)
+                  await recordSignalLifecycleOnOrder(
+                    supabaseClient,
+                    fullOrder.signal_id,
+                    currentOrder.id,
+                    previousState || 'ordered',
+                    'filled',
+                    'Order filled via Alpaca sync',
+                    'alpaca_poll'
+                  )
+                }
+              }
+            }
             skipped++ // Updated existing
           }
         } else {

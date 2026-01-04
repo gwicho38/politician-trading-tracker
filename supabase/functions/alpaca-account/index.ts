@@ -17,6 +17,84 @@ function isServiceRoleRequest(req: Request): boolean {
   return token === serviceRoleKey
 }
 
+// =============================================================================
+// CIRCUIT BREAKER PATTERN
+// =============================================================================
+
+interface CircuitBreakerState {
+  failures: number
+  lastFailure: number
+  state: 'closed' | 'open' | 'half-open'
+  lastSuccess: number
+}
+
+// In-memory circuit breaker (resets on function cold start)
+const circuitBreaker: CircuitBreakerState = {
+  failures: 0,
+  lastFailure: 0,
+  state: 'closed',
+  lastSuccess: Date.now()
+}
+
+const CIRCUIT_BREAKER_CONFIG = {
+  failureThreshold: 5,      // Open circuit after 5 failures
+  resetTimeout: 30000,      // Try again after 30 seconds
+  halfOpenRequests: 2       // Allow 2 requests in half-open state
+}
+
+function checkCircuitBreaker(): { allowed: boolean; reason?: string } {
+  const now = Date.now()
+
+  if (circuitBreaker.state === 'closed') {
+    return { allowed: true }
+  }
+
+  if (circuitBreaker.state === 'open') {
+    // Check if we should transition to half-open
+    if (now - circuitBreaker.lastFailure > CIRCUIT_BREAKER_CONFIG.resetTimeout) {
+      circuitBreaker.state = 'half-open'
+      circuitBreaker.failures = 0
+      return { allowed: true }
+    }
+    return {
+      allowed: false,
+      reason: `Circuit breaker open. Retry after ${Math.ceil((CIRCUIT_BREAKER_CONFIG.resetTimeout - (now - circuitBreaker.lastFailure)) / 1000)}s`
+    }
+  }
+
+  // half-open state - allow limited requests
+  return { allowed: true }
+}
+
+function recordSuccess() {
+  circuitBreaker.failures = 0
+  circuitBreaker.state = 'closed'
+  circuitBreaker.lastSuccess = Date.now()
+}
+
+function recordFailure() {
+  circuitBreaker.failures++
+  circuitBreaker.lastFailure = Date.now()
+
+  if (circuitBreaker.failures >= CIRCUIT_BREAKER_CONFIG.failureThreshold) {
+    circuitBreaker.state = 'open'
+  }
+}
+
+function getCircuitBreakerStatus(): {
+  state: string
+  failures: number
+  lastSuccess: string
+  lastFailure: string | null
+} {
+  return {
+    state: circuitBreaker.state,
+    failures: circuitBreaker.failures,
+    lastSuccess: new Date(circuitBreaker.lastSuccess).toISOString(),
+    lastFailure: circuitBreaker.lastFailure ? new Date(circuitBreaker.lastFailure).toISOString() : null
+  }
+}
+
 // Structured logging utility
 const log = {
   info: (message: string, metadata?: any) => {
@@ -103,6 +181,258 @@ async function getAlpacaCredentials(
   }
 
   return null;
+}
+
+// =============================================================================
+// HANDLER FUNCTIONS
+// =============================================================================
+
+async function handleHealthCheck(
+  supabaseClient: any,
+  credentials: { apiKey: string; secretKey: string; baseUrl: string },
+  tradingMode: 'paper' | 'live',
+  requestId: string
+): Promise<Response> {
+  const startTime = Date.now()
+
+  try {
+    // Test Alpaca API connectivity
+    const alpacaUrl = `${credentials.baseUrl}/v2/account`
+    const response = await fetch(alpacaUrl, {
+      method: 'GET',
+      headers: {
+        'APCA-API-KEY-ID': credentials.apiKey,
+        'APCA-API-SECRET-KEY': credentials.secretKey,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    const latency = Date.now() - startTime
+    const isHealthy = response.ok
+
+    if (isHealthy) {
+      recordSuccess()
+    } else {
+      recordFailure()
+    }
+
+    // Log health check to connection_health_log
+    try {
+      await supabaseClient
+        .from('connection_health_log')
+        .insert({
+          service_name: 'alpaca',
+          endpoint: '/v2/account',
+          status: isHealthy ? 'healthy' : 'unhealthy',
+          latency_ms: latency,
+          response_code: response.status,
+          trading_mode: tradingMode,
+          metadata: {
+            requestId,
+            circuitBreaker: getCircuitBreakerStatus()
+          }
+        })
+    } catch (logError) {
+      log.warn('Failed to log health check', { error: logError.message })
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        healthy: isHealthy,
+        latency,
+        status: response.status,
+        tradingMode,
+        circuitBreaker: getCircuitBreakerStatus(),
+        timestamp: new Date().toISOString()
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch (error) {
+    recordFailure()
+    const latency = Date.now() - startTime
+
+    // Log failed health check
+    try {
+      await supabaseClient
+        .from('connection_health_log')
+        .insert({
+          service_name: 'alpaca',
+          endpoint: '/v2/account',
+          status: 'error',
+          latency_ms: latency,
+          error_message: error.message,
+          trading_mode: tradingMode,
+          metadata: {
+            requestId,
+            circuitBreaker: getCircuitBreakerStatus()
+          }
+        })
+    } catch (logError) {
+      log.warn('Failed to log health check error', { error: logError.message })
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        healthy: false,
+        error: error.message,
+        latency,
+        tradingMode,
+        circuitBreaker: getCircuitBreakerStatus(),
+        timestamp: new Date().toISOString()
+      }),
+      { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+}
+
+async function handleValidateCredentials(
+  supabaseClient: any,
+  credentials: { apiKey: string; secretKey: string; baseUrl: string },
+  tradingMode: 'paper' | 'live',
+  requestId: string,
+  userEmail: string | null
+): Promise<Response> {
+  try {
+    // Test credentials by calling account endpoint
+    const alpacaUrl = `${credentials.baseUrl}/v2/account`
+    const response = await fetch(alpacaUrl, {
+      method: 'GET',
+      headers: {
+        'APCA-API-KEY-ID': credentials.apiKey,
+        'APCA-API-SECRET-KEY': credentials.secretKey,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      log.warn('Credential validation failed', { requestId, status: response.status, error: errorText })
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          valid: false,
+          error: `Invalid credentials (${response.status})`,
+          tradingMode
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const accountData = await response.json()
+
+    // Update last_validated_at in user_api_keys if user email provided
+    if (userEmail) {
+      try {
+        await supabaseClient
+          .from('user_api_keys')
+          .update({
+            last_validated_at: new Date().toISOString(),
+            validation_status: 'valid'
+          })
+          .eq('user_email', userEmail)
+      } catch (updateError) {
+        log.warn('Failed to update credential validation status', { error: updateError.message })
+      }
+    }
+
+    log.info('Credentials validated successfully', { requestId, accountId: accountData.id })
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        valid: true,
+        accountStatus: accountData.status,
+        tradingMode,
+        timestamp: new Date().toISOString()
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch (error) {
+    log.error('Credential validation error', error, { requestId })
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        valid: false,
+        error: error.message,
+        tradingMode
+      }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+}
+
+async function handleConnectionStatus(
+  supabaseClient: any,
+  requestId: string
+): Promise<Response> {
+  try {
+    // Get recent health check logs
+    const { data: healthLogs, error: healthError } = await supabaseClient
+      .from('connection_health_log')
+      .select('*')
+      .eq('service_name', 'alpaca')
+      .order('created_at', { ascending: false })
+      .limit(10)
+
+    if (healthError) {
+      log.warn('Failed to fetch health logs', { error: healthError.message })
+    }
+
+    // Calculate connection statistics
+    const recentLogs = healthLogs || []
+    const healthyCount = recentLogs.filter((l: any) => l.status === 'healthy').length
+    const avgLatency = recentLogs.length > 0
+      ? recentLogs.reduce((sum: number, l: any) => sum + (l.latency_ms || 0), 0) / recentLogs.length
+      : null
+
+    // Determine overall status
+    let overallStatus: 'connected' | 'degraded' | 'disconnected' = 'disconnected'
+    if (recentLogs.length > 0) {
+      const healthRate = healthyCount / recentLogs.length
+      if (healthRate >= 0.8) {
+        overallStatus = 'connected'
+      } else if (healthRate >= 0.5) {
+        overallStatus = 'degraded'
+      }
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        status: overallStatus,
+        circuitBreaker: getCircuitBreakerStatus(),
+        statistics: {
+          recentChecks: recentLogs.length,
+          healthyChecks: healthyCount,
+          healthRate: recentLogs.length > 0 ? (healthyCount / recentLogs.length * 100).toFixed(1) + '%' : 'N/A',
+          avgLatencyMs: avgLatency ? Math.round(avgLatency) : null
+        },
+        recentLogs: recentLogs.slice(0, 5).map((l: any) => ({
+          status: l.status,
+          latencyMs: l.latency_ms,
+          responseCode: l.response_code,
+          createdAt: l.created_at
+        })),
+        timestamp: new Date().toISOString()
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch (error) {
+    log.error('Connection status error', error, { requestId })
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: error.message,
+        circuitBreaker: getCircuitBreakerStatus()
+      }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
 }
 
 serve(async (req) => {
@@ -207,60 +537,97 @@ serve(async (req) => {
     }
 
     // Handle different actions
+
+    // Health check endpoint
+    if (action === 'health-check') {
+      return await handleHealthCheck(supabaseClient, credentials, tradingMode, requestId)
+    }
+
+    // Validate credentials endpoint
+    if (action === 'validate-credentials') {
+      return await handleValidateCredentials(supabaseClient, credentials, tradingMode, requestId, userEmail)
+    }
+
+    // Connection status endpoint
+    if (action === 'connection-status') {
+      return await handleConnectionStatus(supabaseClient, requestId)
+    }
+
+    // Check circuit breaker before making API calls
+    const circuitCheck = checkCircuitBreaker()
+    if (!circuitCheck.allowed) {
+      log.warn('Circuit breaker blocking request', { requestId, reason: circuitCheck.reason })
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: circuitCheck.reason,
+          circuitBreaker: getCircuitBreakerStatus()
+        }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     if (action === 'get-positions') {
       // Fetch positions from Alpaca
       const positionsUrl = `${credentials.baseUrl}/v2/positions`;
       log.info('Fetching positions from Alpaca', { requestId, url: positionsUrl, tradingMode });
 
-      const posResponse = await fetch(positionsUrl, {
-        method: 'GET',
-        headers: {
-          'APCA-API-KEY-ID': credentials.apiKey,
-          'APCA-API-SECRET-KEY': credentials.secretKey,
-          'Content-Type': 'application/json'
+      try {
+        const posResponse = await fetch(positionsUrl, {
+          method: 'GET',
+          headers: {
+            'APCA-API-KEY-ID': credentials.apiKey,
+            'APCA-API-SECRET-KEY': credentials.secretKey,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!posResponse.ok) {
+          recordFailure()
+          const errorText = await posResponse.text();
+          log.error('Alpaca positions API error', { requestId, status: posResponse.status, error: errorText });
+          return new Response(
+            JSON.stringify({ success: false, error: `Failed to fetch positions (${posResponse.status})` }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
         }
-      });
 
-      if (!posResponse.ok) {
-        const errorText = await posResponse.text();
-        log.error('Alpaca positions API error', { requestId, status: posResponse.status, error: errorText });
+        recordSuccess()
+        const positions = await posResponse.json();
+        log.info('Positions fetched', { requestId, count: positions.length });
+
+        // Format positions
+        const formattedPositions = positions.map((pos: any) => ({
+          asset_id: pos.asset_id,
+          symbol: pos.symbol,
+          exchange: pos.exchange,
+          asset_class: pos.asset_class,
+          avg_entry_price: parseFloat(pos.avg_entry_price) || 0,
+          qty: parseFloat(pos.qty) || 0,
+          side: pos.side,
+          market_value: parseFloat(pos.market_value) || 0,
+          cost_basis: parseFloat(pos.cost_basis) || 0,
+          unrealized_pl: parseFloat(pos.unrealized_pl) || 0,
+          unrealized_plpc: parseFloat(pos.unrealized_plpc) || 0,
+          unrealized_intraday_pl: parseFloat(pos.unrealized_intraday_pl) || 0,
+          unrealized_intraday_plpc: parseFloat(pos.unrealized_intraday_plpc) || 0,
+          current_price: parseFloat(pos.current_price) || 0,
+          lastday_price: parseFloat(pos.lastday_price) || 0,
+          change_today: parseFloat(pos.change_today) || 0,
+        }));
+
         return new Response(
-          JSON.stringify({ success: false, error: `Failed to fetch positions (${posResponse.status})` }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({
+            success: true,
+            positions: formattedPositions,
+            tradingMode,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
+      } catch (fetchError) {
+        recordFailure()
+        throw fetchError
       }
-
-      const positions = await posResponse.json();
-      log.info('Positions fetched', { requestId, count: positions.length });
-
-      // Format positions
-      const formattedPositions = positions.map((pos: any) => ({
-        asset_id: pos.asset_id,
-        symbol: pos.symbol,
-        exchange: pos.exchange,
-        asset_class: pos.asset_class,
-        avg_entry_price: parseFloat(pos.avg_entry_price) || 0,
-        qty: parseFloat(pos.qty) || 0,
-        side: pos.side,
-        market_value: parseFloat(pos.market_value) || 0,
-        cost_basis: parseFloat(pos.cost_basis) || 0,
-        unrealized_pl: parseFloat(pos.unrealized_pl) || 0,
-        unrealized_plpc: parseFloat(pos.unrealized_plpc) || 0,
-        unrealized_intraday_pl: parseFloat(pos.unrealized_intraday_pl) || 0,
-        unrealized_intraday_plpc: parseFloat(pos.unrealized_intraday_plpc) || 0,
-        current_price: parseFloat(pos.current_price) || 0,
-        lastday_price: parseFloat(pos.lastday_price) || 0,
-        change_today: parseFloat(pos.change_today) || 0,
-      }));
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          positions: formattedPositions,
-          tradingMode,
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
     }
 
     // Call Alpaca API to get account information
@@ -278,6 +645,7 @@ serve(async (req) => {
     })
 
     if (!response.ok) {
+      recordFailure()
       const errorText = await response.text()
       log.error('Alpaca API error', { requestId, status: response.status, error: errorText })
 
@@ -304,6 +672,7 @@ serve(async (req) => {
       )
     }
 
+    recordSuccess()
     const accountData = await response.json()
     log.info('Alpaca account data retrieved', { requestId, accountId: accountData.id, status: accountData.status })
 
@@ -345,14 +714,20 @@ serve(async (req) => {
     )
 
   } catch (error) {
+    recordFailure()
     const duration = Date.now() - startTime
     log.error('Edge function error', error, {
       requestId,
-      duration
+      duration,
+      circuitBreaker: getCircuitBreakerStatus()
     })
 
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({
+        success: false,
+        error: error.message,
+        circuitBreaker: getCircuitBreakerStatus()
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

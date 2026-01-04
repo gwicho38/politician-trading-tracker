@@ -168,6 +168,12 @@ serve(async (req) => {
       case 'place-order':
         response = await handlePlaceOrder(supabaseClient, req, requestId, bodyParams)
         break
+      case 'reconcile-positions':
+        response = await handleReconcilePositions(supabaseClient, req, requestId, bodyParams)
+        break
+      case 'sync-positions':
+        response = await handleSyncPositions(supabaseClient, req, requestId, bodyParams)
+        break
       default:
         log.warn('Invalid endpoint requested', { requestId, path, action })
         response = new Response(
@@ -578,6 +584,467 @@ async function handleGetAccountInfo(supabaseClient: any, req: Request, requestId
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
+    )
+  }
+}
+
+// =============================================================================
+// POSITION SYNC HANDLER - Syncs positions from Alpaca to local database
+// =============================================================================
+
+async function handleSyncPositions(supabaseClient: any, req: Request, requestId: string, bodyParams: any) {
+  const handlerStartTime = Date.now()
+
+  try {
+    const tradingMode: 'paper' | 'live' = bodyParams.tradingMode || 'paper'
+
+    // Check if this is a service role request (scheduled job)
+    const isServerRequest = isServiceRoleRequest(req)
+
+    let userId: string | null = null
+    let userEmail: string | null = null
+
+    if (!isServerRequest) {
+      // Validate authentication for client requests
+      const authHeader = req.headers.get('authorization')
+      if (!authHeader) {
+        return new Response(
+          JSON.stringify({ error: 'Authentication required' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(
+        authHeader.replace('Bearer ', '')
+      )
+
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid authentication' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      userId = user.id
+      userEmail = user.email || null
+    }
+
+    log.info('Syncing positions from Alpaca', { requestId, userId, tradingMode })
+
+    // Get Alpaca API credentials
+    const alpacaApiKey = Deno.env.get('ALPACA_API_KEY')
+    const alpacaSecretKey = Deno.env.get('ALPACA_SECRET_KEY')
+    const alpacaPaper = Deno.env.get('ALPACA_PAPER') === 'true'
+    const alpacaBaseUrl = Deno.env.get('ALPACA_BASE_URL')
+
+    if (!alpacaApiKey || !alpacaSecretKey) {
+      return new Response(
+        JSON.stringify({ error: 'Alpaca API credentials not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const baseUrl = alpacaBaseUrl || (alpacaPaper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets')
+
+    // Fetch positions from Alpaca
+    const alpacaResponse = await fetch(`${baseUrl}/v2/positions`, {
+      method: 'GET',
+      headers: {
+        'APCA-API-KEY-ID': alpacaApiKey,
+        'APCA-API-SECRET-KEY': alpacaSecretKey,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (!alpacaResponse.ok) {
+      const errorText = await alpacaResponse.text()
+      log.error('Alpaca API error fetching positions', { requestId, status: alpacaResponse.status, error: errorText })
+      return new Response(
+        JSON.stringify({ error: `Alpaca API error: ${alpacaResponse.status}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const alpacaPositions = await alpacaResponse.json()
+    log.info('Fetched positions from Alpaca', { requestId, count: alpacaPositions.length })
+
+    // Sync each position
+    let synced = 0
+    let updated = 0
+    let errors = 0
+
+    for (const position of alpacaPositions) {
+      try {
+        const positionRecord = {
+          user_id: userId,
+          ticker: position.symbol,
+          quantity: parseFloat(position.qty) || 0,
+          avg_entry_price: parseFloat(position.avg_entry_price) || 0,
+          market_value: parseFloat(position.market_value) || 0,
+          cost_basis: parseFloat(position.cost_basis) || 0,
+          unrealized_pl: parseFloat(position.unrealized_pl) || 0,
+          unrealized_plpc: parseFloat(position.unrealized_plpc) || 0,
+          current_price: parseFloat(position.current_price) || 0,
+          side: position.side,
+          trading_mode: tradingMode,
+          is_open: true,
+          alpaca_asset_id: position.asset_id,
+          last_synced_at: new Date().toISOString()
+        }
+
+        // Check if position exists
+        const { data: existing } = await supabaseClient
+          .from('positions')
+          .select('id')
+          .eq('ticker', position.symbol)
+          .eq('trading_mode', tradingMode)
+          .eq('user_id', userId)
+          .maybeSingle()
+
+        if (existing) {
+          // Update existing
+          const { error: updateError } = await supabaseClient
+            .from('positions')
+            .update(positionRecord)
+            .eq('id', existing.id)
+
+          if (updateError) {
+            log.warn('Failed to update position', { ticker: position.symbol, error: updateError.message })
+            errors++
+          } else {
+            updated++
+          }
+        } else {
+          // Insert new
+          const { error: insertError } = await supabaseClient
+            .from('positions')
+            .insert(positionRecord)
+
+          if (insertError) {
+            log.warn('Failed to insert position', { ticker: position.symbol, error: insertError.message })
+            errors++
+          } else {
+            synced++
+          }
+        }
+      } catch (e) {
+        log.error('Error processing position', { ticker: position.symbol, error: e.message })
+        errors++
+      }
+    }
+
+    // Mark positions as closed if not in Alpaca response
+    const alpacaSymbols = alpacaPositions.map((p: any) => p.symbol)
+    if (userId) {
+      const { error: closeError } = await supabaseClient
+        .from('positions')
+        .update({ is_open: false, closed_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('trading_mode', tradingMode)
+        .eq('is_open', true)
+        .not('ticker', 'in', `(${alpacaSymbols.map((s: string) => `'${s}'`).join(',')})`)
+
+      if (closeError) {
+        log.warn('Failed to close stale positions', { error: closeError.message })
+      }
+    }
+
+    const duration = Date.now() - handlerStartTime
+
+    log.info('Position sync completed', {
+      requestId,
+      total: alpacaPositions.length,
+      synced,
+      updated,
+      errors,
+      duration
+    })
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: `Synced ${synced} new positions, updated ${updated}, ${errors} errors`,
+        summary: { total: alpacaPositions.length, synced, updated, errors }
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+
+  } catch (error) {
+    log.error('Error syncing positions', error, { requestId, duration: Date.now() - handlerStartTime })
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+}
+
+// =============================================================================
+// POSITION RECONCILIATION HANDLER - Detects drift between Alpaca and local
+// =============================================================================
+
+interface PositionDrift {
+  ticker: string
+  field: string
+  localValue: any
+  alpacaValue: any
+  difference?: number
+}
+
+async function handleReconcilePositions(supabaseClient: any, req: Request, requestId: string, bodyParams: any) {
+  const handlerStartTime = Date.now()
+
+  try {
+    const tradingMode: 'paper' | 'live' = bodyParams.tradingMode || 'paper'
+    const autoCorrect = bodyParams.autoCorrect === true
+
+    // Check if this is a service role request (scheduled job)
+    const isServerRequest = isServiceRoleRequest(req)
+
+    let userId: string | null = null
+
+    if (!isServerRequest) {
+      const authHeader = req.headers.get('authorization')
+      if (!authHeader) {
+        return new Response(
+          JSON.stringify({ error: 'Authentication required' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(
+        authHeader.replace('Bearer ', '')
+      )
+
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid authentication' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      userId = user.id
+    }
+
+    log.info('Reconciling positions', { requestId, userId, tradingMode, autoCorrect })
+
+    // Get Alpaca credentials
+    const alpacaApiKey = Deno.env.get('ALPACA_API_KEY')
+    const alpacaSecretKey = Deno.env.get('ALPACA_SECRET_KEY')
+    const alpacaPaper = Deno.env.get('ALPACA_PAPER') === 'true'
+    const alpacaBaseUrl = Deno.env.get('ALPACA_BASE_URL')
+
+    if (!alpacaApiKey || !alpacaSecretKey) {
+      return new Response(
+        JSON.stringify({ error: 'Alpaca API credentials not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const baseUrl = alpacaBaseUrl || (alpacaPaper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets')
+
+    // Fetch positions from Alpaca
+    const alpacaResponse = await fetch(`${baseUrl}/v2/positions`, {
+      method: 'GET',
+      headers: {
+        'APCA-API-KEY-ID': alpacaApiKey,
+        'APCA-API-SECRET-KEY': alpacaSecretKey,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (!alpacaResponse.ok) {
+      const errorText = await alpacaResponse.text()
+      return new Response(
+        JSON.stringify({ error: `Alpaca API error: ${alpacaResponse.status}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const alpacaPositions = await alpacaResponse.json()
+
+    // Get local positions
+    let localPositionsQuery = supabaseClient
+      .from('positions')
+      .select('*')
+      .eq('trading_mode', tradingMode)
+      .eq('is_open', true)
+
+    if (userId) {
+      localPositionsQuery = localPositionsQuery.eq('user_id', userId)
+    }
+
+    const { data: localPositions, error: localError } = await localPositionsQuery
+
+    if (localError) {
+      log.warn('Could not fetch local positions', { error: localError.message })
+    }
+
+    // Build maps for comparison
+    const alpacaMap = new Map(alpacaPositions.map((p: any) => [p.symbol, p]))
+    const localMap = new Map((localPositions || []).map((p: any) => [p.ticker, p]))
+
+    const drifts: PositionDrift[] = []
+    const missingLocal: string[] = []
+    const missingAlpaca: string[] = []
+    let correctedCount = 0
+
+    // Check for drift and missing positions
+    for (const [symbol, alpacaPos] of alpacaMap) {
+      const localPos = localMap.get(symbol)
+
+      if (!localPos) {
+        missingLocal.push(symbol)
+        continue
+      }
+
+      // Compare key fields
+      const alpacaQty = parseFloat(alpacaPos.qty) || 0
+      const localQty = localPos.quantity || 0
+      if (Math.abs(alpacaQty - localQty) > 0.001) {
+        drifts.push({
+          ticker: symbol,
+          field: 'quantity',
+          localValue: localQty,
+          alpacaValue: alpacaQty,
+          difference: alpacaQty - localQty
+        })
+      }
+
+      const alpacaAvgPrice = parseFloat(alpacaPos.avg_entry_price) || 0
+      const localAvgPrice = localPos.avg_entry_price || 0
+      if (Math.abs(alpacaAvgPrice - localAvgPrice) > 0.01) {
+        drifts.push({
+          ticker: symbol,
+          field: 'avg_entry_price',
+          localValue: localAvgPrice,
+          alpacaValue: alpacaAvgPrice,
+          difference: alpacaAvgPrice - localAvgPrice
+        })
+      }
+
+      const alpacaMarketValue = parseFloat(alpacaPos.market_value) || 0
+      const localMarketValue = localPos.market_value || 0
+      if (Math.abs(alpacaMarketValue - localMarketValue) > 1) {
+        drifts.push({
+          ticker: symbol,
+          field: 'market_value',
+          localValue: localMarketValue,
+          alpacaValue: alpacaMarketValue,
+          difference: alpacaMarketValue - localMarketValue
+        })
+      }
+    }
+
+    // Check for positions in local but not in Alpaca
+    for (const [ticker, localPos] of localMap) {
+      if (!alpacaMap.has(ticker)) {
+        missingAlpaca.push(ticker)
+      }
+    }
+
+    // Auto-correct if requested
+    if (autoCorrect && (drifts.length > 0 || missingLocal.length > 0 || missingAlpaca.length > 0)) {
+      // Sync positions to correct drift
+      for (const [symbol, alpacaPos] of alpacaMap) {
+        const positionRecord = {
+          user_id: userId,
+          ticker: symbol,
+          quantity: parseFloat(alpacaPos.qty) || 0,
+          avg_entry_price: parseFloat(alpacaPos.avg_entry_price) || 0,
+          market_value: parseFloat(alpacaPos.market_value) || 0,
+          cost_basis: parseFloat(alpacaPos.cost_basis) || 0,
+          unrealized_pl: parseFloat(alpacaPos.unrealized_pl) || 0,
+          unrealized_plpc: parseFloat(alpacaPos.unrealized_plpc) || 0,
+          current_price: parseFloat(alpacaPos.current_price) || 0,
+          side: alpacaPos.side,
+          trading_mode: tradingMode,
+          is_open: true,
+          alpaca_asset_id: alpacaPos.asset_id,
+          last_synced_at: new Date().toISOString()
+        }
+
+        const { error: upsertError } = await supabaseClient
+          .from('positions')
+          .upsert(positionRecord, { onConflict: 'ticker,trading_mode,user_id' })
+
+        if (!upsertError) {
+          correctedCount++
+        }
+      }
+
+      // Mark missing-in-Alpaca positions as closed
+      if (missingAlpaca.length > 0 && userId) {
+        await supabaseClient
+          .from('positions')
+          .update({ is_open: false, closed_at: new Date().toISOString() })
+          .eq('user_id', userId)
+          .eq('trading_mode', tradingMode)
+          .in('ticker', missingAlpaca)
+      }
+
+      log.info('Auto-corrected position drift', { requestId, correctedCount })
+    }
+
+    // Log health check result
+    const healthStatus = drifts.length === 0 && missingLocal.length === 0 && missingAlpaca.length === 0
+      ? 'healthy'
+      : 'degraded'
+
+    try {
+      await supabaseClient
+        .from('connection_health_log')
+        .insert({
+          connection_type: 'alpaca_trading',
+          status: healthStatus,
+          endpoint_url: `${baseUrl}/v2/positions`,
+          diagnostics: {
+            driftCount: drifts.length,
+            missingLocalCount: missingLocal.length,
+            missingAlpacaCount: missingAlpaca.length,
+            corrected: autoCorrect,
+            correctedCount
+          },
+          checked_by: isServerRequest ? 'scheduler' : 'user'
+        })
+    } catch (e) {
+      log.warn('Failed to log health check', { error: e.message })
+    }
+
+    const duration = Date.now() - handlerStartTime
+
+    log.info('Position reconciliation completed', {
+      requestId,
+      driftCount: drifts.length,
+      missingLocal: missingLocal.length,
+      missingAlpaca: missingAlpaca.length,
+      corrected: autoCorrect ? correctedCount : 0,
+      duration
+    })
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        healthy: healthStatus === 'healthy',
+        summary: {
+          alpacaPositions: alpacaPositions.length,
+          localPositions: localPositions?.length || 0,
+          driftCount: drifts.length,
+          missingInLocal: missingLocal.length,
+          missingInAlpaca: missingAlpaca.length,
+          corrected: autoCorrect ? correctedCount : 0
+        },
+        drifts,
+        missingLocal,
+        missingAlpaca
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+
+  } catch (error) {
+    log.error('Error reconciling positions', error, { requestId, duration: Date.now() - handlerStartTime })
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 }

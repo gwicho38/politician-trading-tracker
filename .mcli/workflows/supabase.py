@@ -608,3 +608,174 @@ def functions(remote: bool):
     console.print(table)
     console.print(f"\n[dim]Functions directory: {functions_dir}[/dim]")
     console.print(f"[dim]Project: {SUPABASE_PROJECT_REF}[/dim]")
+
+
+# =============================================================================
+# Migration Commands
+# =============================================================================
+
+@supabase.command(name="migrate")
+@click.argument("migration_file", required=False)
+@click.option("--all", "-a", "run_all", is_flag=True, help="Run all pending migrations")
+@click.option("--list", "-l", "list_only", is_flag=True, help="List available migrations")
+@click.option("--project", "-p", default=None, help="Override project reference")
+@click.option("--dry-run", is_flag=True, help="Show migration SQL without executing")
+@click.option("--yes", "-y", "auto_confirm", is_flag=True, help="Auto-confirm prompts")
+def migrate(migration_file: str | None, run_all: bool, list_only: bool, project: str | None, dry_run: bool, auto_confirm: bool):
+    """Run database migrations.
+
+    Examples:
+        mcli run supabase migrate --list                           # List all migrations
+        mcli run supabase migrate 20260104_signal_audit_system.sql # Run specific migration
+        mcli run supabase migrate --all                            # Run all pending migrations
+        mcli run supabase migrate <file> --dry-run                 # Preview SQL without executing
+    """
+    migrations_dir = PROJECT_ROOT / "supabase" / "migrations"
+    project_ref = project or SUPABASE_PROJECT_REF
+
+    if not migrations_dir.exists():
+        console.print(f"[red]✗ Migrations directory not found: {migrations_dir}[/red]")
+        return
+
+    # List migrations
+    migrations = sorted([f for f in migrations_dir.iterdir() if f.suffix == ".sql"])
+
+    if list_only:
+        console.print("[cyan]📋 Available Migrations[/cyan]\n")
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("#", style="dim", justify="right")
+        table.add_column("Migration File", style="white")
+        table.add_column("Size", style="yellow", justify="right")
+
+        for i, mig in enumerate(migrations, 1):
+            size = mig.stat().st_size
+            size_str = f"{size / 1024:.1f} KB" if size > 1024 else f"{size} B"
+            table.add_row(str(i), mig.name, size_str)
+
+        console.print(table)
+        console.print(f"\n[dim]Total: {len(migrations)} migrations[/dim]")
+        return
+
+    # Determine which migration(s) to run
+    if run_all:
+        files_to_run = migrations
+    elif migration_file:
+        # Support both filename and full path
+        if "/" in migration_file or migration_file.startswith("."):
+            mig_path = Path(migration_file)
+        else:
+            mig_path = migrations_dir / migration_file
+
+        if not mig_path.exists():
+            console.print(f"[red]✗ Migration file not found: {mig_path}[/red]")
+            console.print("\n[dim]Available migrations:[/dim]")
+            for m in migrations[-5:]:  # Show last 5
+                console.print(f"  • {m.name}")
+            return
+
+        files_to_run = [mig_path]
+    else:
+        console.print("[yellow]⚠ No migration specified. Use filename, --all, or --list[/yellow]")
+        console.print("\n[dim]Recent migrations:[/dim]")
+        for m in migrations[-5:]:
+            console.print(f"  • {m.name}")
+        return
+
+    console.print(f"[cyan]🗃️  Running migrations on project: {project_ref}[/cyan]\n")
+
+    for mig_file in files_to_run:
+        console.print(f"[dim]→ {mig_file.name}[/dim]")
+
+        if dry_run:
+            # Show SQL content
+            sql_content = mig_file.read_text()
+            console.print("\n[yellow]Dry run - SQL preview:[/yellow]")
+            # Show first 100 lines
+            lines = sql_content.split("\n")[:100]
+            for line in lines:
+                console.print(f"  [dim]{line}[/dim]")
+            if len(sql_content.split("\n")) > 100:
+                console.print(f"  [dim]... and {len(sql_content.split(chr(10))) - 100} more lines[/dim]")
+            continue
+
+    # Use supabase db push for pending migrations
+    if run_all:
+        console.print("[dim]Using 'supabase db push' for all pending migrations...[/dim]")
+        try:
+            cmd = ["supabase", "db", "push"]
+            if auto_confirm:
+                cmd.append("--include-all")
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=PROJECT_ROOT,
+                timeout=300,
+                input="y\n" if not auto_confirm else None,
+            )
+
+            if result.returncode == 0:
+                console.print(f"[green]✓ Migrations applied successfully[/green]")
+                if result.stdout.strip():
+                    for line in result.stdout.strip().split("\n"):
+                        if line.strip() and not line.startswith("A new version"):
+                            console.print(f"  [dim]{line}[/dim]")
+            else:
+                console.print(f"[red]✗ Migration failed[/red]")
+                if result.stderr:
+                    for line in result.stderr.split("\n")[:15]:
+                        if line.strip():
+                            console.print(f"  [red]{line}[/red]")
+
+        except subprocess.TimeoutExpired:
+            console.print(f"[red]✗ Timeout: Migration took too long[/red]")
+        except FileNotFoundError:
+            console.print("[red]✗ supabase CLI not found. Install with: brew install supabase/tap/supabase[/red]")
+        except Exception as e:
+            console.print(f"[red]✗ Error: {e}[/red]")
+        return
+
+    # For single file, we use db push (which pushes all pending)
+    # Note: supabase db push doesn't support single file, so this will push all pending
+    for mig_file in files_to_run:
+        try:
+            cmd = ["supabase", "db", "push"]
+            if auto_confirm:
+                cmd.append("--include-all")
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=PROJECT_ROOT,
+                timeout=300,
+                input="y\n" if not auto_confirm else None,
+            )
+
+            if result.returncode == 0:
+                console.print(f"[green]✓ Applied: {mig_file.name}[/green]")
+                if result.stdout.strip():
+                    for line in result.stdout.strip().split("\n"):
+                        if line.strip() and not line.startswith("A new version"):
+                            console.print(f"  [dim]{line}[/dim]")
+            else:
+                console.print(f"[red]✗ Failed: {mig_file.name}[/red]")
+                if result.stderr:
+                    for line in result.stderr.split("\n")[:15]:
+                        if line.strip():
+                            console.print(f"  [red]{line}[/red]")
+                return
+
+        except subprocess.TimeoutExpired:
+            console.print(f"[red]✗ Timeout: Migration took too long[/red]")
+            return
+        except FileNotFoundError:
+            console.print("[red]✗ supabase CLI not found. Install with: brew install supabase/tap/supabase[/red]")
+            return
+        except Exception as e:
+            console.print(f"[red]✗ Error: {e}[/red]")
+            return
+
+    console.print(f"\n[green]✓ Migration complete[/green]")
+    console.print(f"[dim]Dashboard: https://supabase.com/dashboard/project/{project_ref}/editor[/dim]")

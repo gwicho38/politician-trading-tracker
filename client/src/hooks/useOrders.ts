@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchWithRetry } from '@/lib/fetchWithRetry';
 
 export interface Order {
   id: string;
@@ -133,13 +134,14 @@ export function useCancelOrder(tradingMode: 'paper' | 'live') {
         throw new Error(`No ${tradingMode} trading credentials found`);
       }
 
-      // Cancel order via Alpaca API
-      const response = await fetch(`${baseUrl}/v2/orders/${orderId}`, {
+      // Cancel order via Alpaca API (with retry for network issues)
+      const response = await fetchWithRetry(`${baseUrl}/v2/orders/${orderId}`, {
         method: 'DELETE',
         headers: {
           'APCA-API-KEY-ID': apiKey,
           'APCA-API-SECRET-KEY': secretKey,
         },
+        maxRetries: 2,
       });
 
       if (!response.ok) {

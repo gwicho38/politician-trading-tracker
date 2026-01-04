@@ -140,10 +140,19 @@ CREATE INDEX IF NOT EXISTS idx_dq_corrections_type ON public.data_quality_correc
 CREATE INDEX IF NOT EXISTS idx_dq_corrections_created ON public.data_quality_corrections(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_dq_corrections_issue ON public.data_quality_corrections(issue_id);
 
--- Add foreign key back to issues table
-ALTER TABLE public.data_quality_issues
-  ADD CONSTRAINT fk_dq_issues_correction
-  FOREIGN KEY (correction_id) REFERENCES public.data_quality_corrections(id) ON DELETE SET NULL;
+-- Add foreign key back to issues table (if not exists)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'fk_dq_issues_correction'
+      AND table_name = 'data_quality_issues'
+  ) THEN
+    ALTER TABLE public.data_quality_issues
+      ADD CONSTRAINT fk_dq_issues_correction
+      FOREIGN KEY (correction_id) REFERENCES public.data_quality_corrections(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 -- ============================================================================
 -- 5. DATA QUALITY QUARANTINE
@@ -404,7 +413,15 @@ ALTER TABLE public.data_quality_quarantine ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.email_alert_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.email_alert_log ENABLE ROW LEVEL SECURITY;
 
--- Service role has full access
+-- Service role has full access (drop first to make idempotent)
+DROP POLICY IF EXISTS "Service role full access" ON public.data_quality_checks;
+DROP POLICY IF EXISTS "Service role full access" ON public.data_quality_results;
+DROP POLICY IF EXISTS "Service role full access" ON public.data_quality_issues;
+DROP POLICY IF EXISTS "Service role full access" ON public.data_quality_corrections;
+DROP POLICY IF EXISTS "Service role full access" ON public.data_quality_quarantine;
+DROP POLICY IF EXISTS "Service role full access" ON public.email_alert_config;
+DROP POLICY IF EXISTS "Service role full access" ON public.email_alert_log;
+
 CREATE POLICY "Service role full access" ON public.data_quality_checks FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON public.data_quality_results FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON public.data_quality_issues FOR ALL TO service_role USING (true) WITH CHECK (true);
@@ -413,7 +430,13 @@ CREATE POLICY "Service role full access" ON public.data_quality_quarantine FOR A
 CREATE POLICY "Service role full access" ON public.email_alert_config FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON public.email_alert_log FOR ALL TO service_role USING (true) WITH CHECK (true);
 
--- Authenticated users can read
+-- Authenticated users can read (drop first to make idempotent)
+DROP POLICY IF EXISTS "Authenticated read" ON public.data_quality_checks;
+DROP POLICY IF EXISTS "Authenticated read" ON public.data_quality_results;
+DROP POLICY IF EXISTS "Authenticated read" ON public.data_quality_issues;
+DROP POLICY IF EXISTS "Authenticated read" ON public.data_quality_corrections;
+DROP POLICY IF EXISTS "Authenticated read" ON public.data_quality_quarantine;
+
 CREATE POLICY "Authenticated read" ON public.data_quality_checks FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Authenticated read" ON public.data_quality_results FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Authenticated read" ON public.data_quality_issues FOR SELECT TO authenticated USING (true);
