@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -211,10 +212,16 @@ const DataQuality = () => {
 
   const rollbackCorrection = async (correctionId: string) => {
     try {
-      // Call the ETL service to rollback
-      const response = await fetch(
+      // Call the ETL service to rollback with retry
+      const response = await fetchWithRetry(
         `${import.meta.env.VITE_ETL_URL || 'https://politician-trading-etl.fly.dev'}/quality/rollback/${correctionId}`,
-        { method: 'POST' }
+        {
+          method: 'POST',
+          maxRetries: 2,
+          onRetry: (attempt, err, delay) => {
+            toast.info(`Retrying rollback (attempt ${attempt})...`);
+          },
+        }
       );
 
       if (!response.ok) throw new Error('Rollback failed');

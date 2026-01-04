@@ -66,13 +66,16 @@ dependencies = [
   "humanize>=4.9.0",
   # Scheduling
   "APScheduler==3.10.4",
-   # React UI Dependencies (managed in submodules/capital-trades/package.json)
-   # All UI dependencies are now in the React app
-   "stripe>=11.0.0",
+  # React UI Dependencies (managed in submodules/capital-trades/package.json)
+  # All UI dependencies are now in the React app
+  "stripe>=11.0.0",
   "pdf2image>=1.17.0",
   "pytesseract>=0.3.13",
   "pdfplumber>=0.11.8",
   "rapidfuzz>=3.13.0",
+  "cloudscraper>=1.2.71",
+  "curl-cffi>=0.13.0",
+  "playwright>=1.57.0",
 ]
 
 [project.urls]

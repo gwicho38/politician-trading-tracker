@@ -5,6 +5,7 @@ import Sidebar from '@/components/Sidebar';
 import Dashboard from '@/components/Dashboard';
 import PoliticiansView from '@/components/PoliticiansView';
 import FilingsView from '@/components/FilingsView';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const Index = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -72,19 +73,27 @@ const Index = () => {
     switch (activeSection) {
       case 'politicians':
         return (
-          <PoliticiansView
-            initialPoliticianId={selectedPoliticianId}
-            onPoliticianSelected={() => setSelectedPoliticianId(null)}
-          />
+          <ErrorBoundary name="Politicians View" resetKeys={[activeSection]}>
+            <PoliticiansView
+              initialPoliticianId={selectedPoliticianId}
+              onPoliticianSelected={() => setSelectedPoliticianId(null)}
+            />
+          </ErrorBoundary>
         );
       case 'filings':
-        return <FilingsView />;
+        return (
+          <ErrorBoundary name="Filings View" resetKeys={[activeSection]}>
+            <FilingsView />
+          </ErrorBoundary>
+        );
       default:
         return (
-          <Dashboard
-            initialTickerSearch={tickerFilter}
-            onTickerSearchClear={() => setTickerFilter(undefined)}
-          />
+          <ErrorBoundary name="Dashboard" resetKeys={[activeSection]}>
+            <Dashboard
+              initialTickerSearch={tickerFilter}
+              onTickerSearchClear={() => setTickerFilter(undefined)}
+            />
+          </ErrorBoundary>
         );
     }
   };

@@ -9,6 +9,7 @@ import LandingTradesTable from '@/components/LandingTradesTable';
 import { useDashboardStats, useChartData } from '@/hooks/useSupabaseData';
 import { formatCurrency } from '@/lib/mockData';
 import { Badge } from '@/components/ui/badge';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface DashboardProps {
   initialTickerSearch?: string;
@@ -108,22 +109,34 @@ const Dashboard = ({ initialTickerSearch, onTickerSearchClear }: DashboardProps)
       ) : null}
 
       {/* Main Trades Table */}
-      <LandingTradesTable
-        initialSearchQuery={initialTickerSearch}
-        onSearchClear={onTickerSearchClear}
-      />
+      <ErrorBoundary name="Trades Table" minimal>
+        <LandingTradesTable
+          initialSearchQuery={initialTickerSearch}
+          onSearchClear={onTickerSearchClear}
+        />
+      </ErrorBoundary>
 
       {/* Charts Row */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <TradeChart />
-        <VolumeChart />
+        <ErrorBoundary name="Trade Chart" minimal>
+          <TradeChart />
+        </ErrorBoundary>
+        <ErrorBoundary name="Volume Chart" minimal>
+          <VolumeChart />
+        </ErrorBoundary>
       </div>
 
       {/* Top Traders, Top Tickers & Party Breakdown */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <TopTraders />
-        <TopTickers />
-        <PartyBreakdown />
+        <ErrorBoundary name="Top Traders" minimal>
+          <TopTraders />
+        </ErrorBoundary>
+        <ErrorBoundary name="Top Tickers" minimal>
+          <TopTickers />
+        </ErrorBoundary>
+        <ErrorBoundary name="Party Breakdown" minimal>
+          <PartyBreakdown />
+        </ErrorBoundary>
       </div>
     </div>
   );

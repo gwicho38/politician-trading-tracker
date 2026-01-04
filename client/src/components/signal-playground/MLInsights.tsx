@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { Brain, BarChart3, Sparkles, RefreshCw, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import {
   Card,
   CardContent,
@@ -98,7 +99,12 @@ export function MLInsights({ mlEnhancedCount, totalSignals }: MLInsightsProps) {
     setError(null);
 
     try {
-      const response = await fetch(`${PHOENIX_API_URL}/api/ml/models/active`);
+      const response = await fetchWithRetry(`${PHOENIX_API_URL}/api/ml/models/active`, {
+        maxRetries: 3,
+        onRetry: (attempt, err, delay) => {
+          console.log(`[MLInsights] Retry ${attempt} after ${delay}ms: ${err.message}`);
+        },
+      });
 
       if (response.status === 404) {
         setActiveModel(null);

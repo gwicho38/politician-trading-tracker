@@ -1,10 +1,12 @@
 /**
  * CartContext
- * Global cart state management with localStorage persistence
+ * Global cart state management with Supabase persistence for authenticated users
+ * Falls back to localStorage for unauthenticated users
  */
 
-import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 import type { CartItem, CartSignal, CartContextValue, CartState } from '@/types/cart';
 import { CART_STORAGE_KEY } from '@/types/cart';
 
@@ -98,12 +100,60 @@ function cartReducer(state: CartState, action: CartAction): CartState {
 // Context
 const CartContext = createContext<CartContextValue | null>(null);
 
+// Helper: Convert CartItem to Supabase row
+function cartItemToRow(item: CartItem, userId: string) {
+  return {
+    user_id: userId,
+    signal_id: item.signal.id,
+    ticker: item.signal.ticker,
+    asset_name: item.signal.asset_name,
+    signal_type: item.signal.signal_type,
+    confidence_score: item.signal.confidence_score,
+    politician_activity_count: item.signal.politician_activity_count,
+    buy_sell_ratio: item.signal.buy_sell_ratio,
+    target_price: item.signal.target_price,
+    source: item.signal.source,
+    quantity: item.quantity,
+    total_transaction_volume: item.signal.total_transaction_volume,
+    bipartisan: item.signal.bipartisan,
+    signal_strength: item.signal.signal_strength,
+    generated_at: item.signal.generated_at,
+    added_at: item.addedAt,
+  };
+}
+
+// Helper: Convert Supabase row to CartItem
+function rowToCartItem(row: any): CartItem {
+  return {
+    signal: {
+      id: row.signal_id,
+      ticker: row.ticker,
+      asset_name: row.asset_name,
+      signal_type: row.signal_type,
+      confidence_score: parseFloat(row.confidence_score),
+      politician_activity_count: row.politician_activity_count,
+      buy_sell_ratio: row.buy_sell_ratio ? parseFloat(row.buy_sell_ratio) : undefined,
+      target_price: row.target_price ? parseFloat(row.target_price) : undefined,
+      source: row.source,
+      total_transaction_volume: row.total_transaction_volume ? parseFloat(row.total_transaction_volume) : undefined,
+      bipartisan: row.bipartisan,
+      signal_strength: row.signal_strength,
+      generated_at: row.generated_at,
+    },
+    quantity: row.quantity,
+    addedAt: row.added_at,
+  };
+}
+
 // Provider
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, initialState);
+  const [userId, setUserId] = React.useState<string | null>(null);
+  const syncingRef = useRef(false);
+  const initialLoadRef = useRef(false);
 
-  // Load cart from localStorage on mount
-  useEffect(() => {
+  // Load cart from localStorage (defined first for use in other callbacks)
+  const loadCartFromLocalStorage = useCallback(() => {
     try {
       const savedCart = localStorage.getItem(CART_STORAGE_KEY);
       if (savedCart) {
@@ -117,14 +167,125 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Save cart to localStorage when items change
+  // Sync cart to Supabase
+  const syncCartToSupabase = useCallback(async (items: CartItem[], uid: string) => {
+    if (syncingRef.current) return;
+
+    try {
+      syncingRef.current = true;
+
+      // Delete existing cart items for this user
+      await supabase
+        .from('user_carts')
+        .delete()
+        .eq('user_id', uid);
+
+      // Insert new cart items
+      if (items.length > 0) {
+        const rows = items.map((item) => cartItemToRow(item, uid));
+        const { error } = await supabase
+          .from('user_carts')
+          .insert(rows);
+
+        if (error) {
+          console.error('Failed to sync cart to Supabase:', error);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to sync cart to Supabase:', e);
+    } finally {
+      syncingRef.current = false;
+    }
+  }, []);
+
+  // Load cart from Supabase
+  const loadCartFromSupabase = useCallback(async (uid: string) => {
+    try {
+      syncingRef.current = true;
+      const { data, error } = await supabase
+        .from('user_carts')
+        .select('*')
+        .eq('user_id', uid)
+        .order('added_at', { ascending: true });
+
+      if (error) {
+        console.error('Failed to load cart from Supabase:', error);
+        // Fall back to localStorage
+        loadCartFromLocalStorage();
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const items = data.map(rowToCartItem);
+        dispatch({ type: 'LOAD_CART', payload: { items } });
+      } else {
+        // No server cart - check localStorage for items to migrate
+        const savedCart = localStorage.getItem(CART_STORAGE_KEY);
+        if (savedCart) {
+          const parsed = JSON.parse(savedCart);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            // Migrate localStorage items to Supabase
+            dispatch({ type: 'LOAD_CART', payload: { items: parsed } });
+            await syncCartToSupabase(parsed, uid);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load cart from Supabase:', e);
+      loadCartFromLocalStorage();
+    } finally {
+      syncingRef.current = false;
+    }
+  }, [loadCartFromLocalStorage, syncCartToSupabase]);
+
+  // Listen for auth changes
   useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const newUserId = session?.user?.id || null;
+      setUserId(newUserId);
+
+      if (newUserId && !initialLoadRef.current) {
+        // User logged in - load cart from Supabase
+        await loadCartFromSupabase(newUserId);
+        initialLoadRef.current = true;
+      } else if (!newUserId) {
+        // User logged out - load from localStorage
+        initialLoadRef.current = false;
+        loadCartFromLocalStorage();
+      }
+    });
+
+    // Initial check
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const currentUserId = session?.user?.id || null;
+      setUserId(currentUserId);
+      if (currentUserId) {
+        loadCartFromSupabase(currentUserId);
+        initialLoadRef.current = true;
+      } else {
+        loadCartFromLocalStorage();
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [loadCartFromLocalStorage, loadCartFromSupabase]);
+
+  // Save cart when items change
+  useEffect(() => {
+    // Always save to localStorage as backup
     try {
       localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(state.items));
     } catch (e) {
       console.error('Failed to save cart to localStorage:', e);
     }
-  }, [state.items]);
+
+    // Sync to Supabase if authenticated
+    if (userId && initialLoadRef.current) {
+      syncCartToSupabase(state.items, userId);
+    }
+  }, [state.items, userId, syncCartToSupabase]);
 
   // Actions
   const addToCart = useCallback((signal: CartSignal, quantity: number = 1) => {

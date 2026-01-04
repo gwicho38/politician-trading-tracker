@@ -45,7 +45,11 @@ Note:
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, List, Any, Optional
+from uuid import uuid4
+import hashlib
+import json
 import logging
+import pickle
 
 import pandas as pd
 import numpy as np
@@ -61,6 +65,25 @@ from models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Feature keys used for ML training (consistent ordering)
+FEATURE_KEYS = [
+    "total_transactions",
+    "unique_politicians",
+    "buy_count",
+    "sell_count",
+    "buy_sell_ratio",
+    "recent_activity_30d",
+    "democrat_buy_count",
+    "democrat_sell_count",
+    "republican_buy_count",
+    "republican_sell_count",
+    "net_sentiment",
+    "net_volume",
+    "bipartisan_agreement",
+    "buying_momentum",
+    "frequency_momentum",
+]
 
 
 class SignalGenerator:
@@ -376,26 +399,7 @@ class SignalGenerator:
 
     def _prepare_feature_vector(self, features: Dict[str, Any]) -> List[float]:
         """Prepare feature vector for ML model."""
-        # Define feature order (should match training data)
-        feature_keys = [
-            "total_transactions",
-            "unique_politicians",
-            "buy_count",
-            "sell_count",
-            "buy_sell_ratio",
-            "recent_activity_30d",
-            "democrat_buy_count",
-            "democrat_sell_count",
-            "republican_buy_count",
-            "republican_sell_count",
-            "net_sentiment",
-            "net_volume",
-            "bipartisan_agreement",
-            "buying_momentum",
-            "frequency_momentum",
-        ]
-
-        vector = [features.get(key, 0) for key in feature_keys]
+        vector = [features.get(key, 0) for key in FEATURE_KEYS]
         return vector
 
     def _fetch_market_data(self, ticker: str, period: str = "3mo") -> pd.DataFrame:
@@ -464,40 +468,32 @@ class SignalGenerator:
             logger.error(f"Error calculating price targets for {ticker}: {e}")
             return None, None, None
 
-    def train_model(self, training_data: pd.DataFrame, labels: np.ndarray):
+    def train_model(
+        self,
+        training_data: pd.DataFrame,
+        labels: np.ndarray,
+        supabase_client: Optional[Any] = None,
+        save_to_db: bool = True,
+    ) -> Optional[str]:
         """
-        Train the ML model on historical data.
+        Train the ML model on historical data and optionally save weights to Supabase.
 
         Args:
             training_data: DataFrame with features
             labels: Array of labels (-2: strong sell, -1: sell, 0: hold, 1: buy, 2: strong buy)
+            supabase_client: Optional Supabase client for saving model to database
+            save_to_db: Whether to save model metadata and weights to Supabase
+
+        Returns:
+            Model ID if saved to database, None otherwise
         """
         if not self.use_ml:
             logger.warning("ML is disabled, cannot train model")
-            return
+            return None
 
         logger.info(f"Training model on {len(training_data)} samples")
 
-        # Prepare features
-        feature_keys = [
-            "total_transactions",
-            "unique_politicians",
-            "buy_count",
-            "sell_count",
-            "buy_sell_ratio",
-            "recent_activity_30d",
-            "democrat_buy_count",
-            "democrat_sell_count",
-            "republican_buy_count",
-            "republican_sell_count",
-            "net_sentiment",
-            "net_volume",
-            "bipartisan_agreement",
-            "buying_momentum",
-            "frequency_momentum",
-        ]
-
-        X = training_data[feature_keys].values
+        X = training_data[FEATURE_KEYS].values
 
         # Scale features
         X_scaled = self.scaler.fit_transform(X)
@@ -506,3 +502,242 @@ class SignalGenerator:
         self.classifier.fit(X_scaled, labels)
 
         logger.info("Model training completed")
+
+        # Extract feature importance
+        feature_importance = dict(zip(FEATURE_KEYS, self.classifier.feature_importances_.tolist()))
+
+        # Calculate training metrics
+        train_predictions = self.classifier.predict(X_scaled)
+        train_accuracy = (train_predictions == labels).mean()
+        train_proba = self.classifier.predict_proba(X_scaled)
+        train_confidence = train_proba.max(axis=1).mean()
+
+        metrics = {
+            "train_accuracy": float(train_accuracy),
+            "train_confidence_mean": float(train_confidence),
+            "train_samples": len(training_data),
+            "unique_labels": len(np.unique(labels)),
+            "label_distribution": {int(k): int(v) for k, v in zip(*np.unique(labels, return_counts=True))},
+        }
+
+        logger.info(f"Training metrics: accuracy={train_accuracy:.4f}, confidence={train_confidence:.4f}")
+
+        # Save to Supabase if client provided and save_to_db is True
+        model_id = None
+        if save_to_db and supabase_client:
+            model_id = self._save_model_to_supabase(
+                supabase_client,
+                feature_importance,
+                metrics,
+                len(training_data),
+            )
+
+        return model_id
+
+    def _save_model_to_supabase(
+        self,
+        supabase_client: Any,
+        feature_importance: Dict[str, float],
+        metrics: Dict[str, Any],
+        training_samples: int,
+    ) -> Optional[str]:
+        """
+        Save trained model metadata and weights to Supabase.
+
+        Args:
+            supabase_client: Supabase client instance
+            feature_importance: Dictionary of feature importance scores
+            metrics: Training metrics
+            training_samples: Number of training samples
+
+        Returns:
+            Model ID if saved successfully, None otherwise
+        """
+        try:
+            model_id = str(uuid4())
+            now = datetime.now(timezone.utc).isoformat()
+
+            # Serialize model and scaler for storage
+            model_blob = pickle.dumps({
+                "classifier": self.classifier,
+                "scaler": self.scaler,
+                "feature_keys": FEATURE_KEYS,
+            })
+
+            # Compute hash of weights for integrity verification
+            weights_hash = hashlib.sha256(model_blob).hexdigest()
+
+            # Create model record
+            model_data = {
+                "id": model_id,
+                "model_name": "politician-trading-signals",
+                "model_version": self.model_version,
+                "model_type": "gradient_boosting",
+                "status": "active",
+                "training_completed_at": now,
+                "metrics": metrics,
+                "feature_importance": feature_importance,
+                "training_samples": training_samples,
+                "hyperparameters": {
+                    "n_estimators": self.classifier.n_estimators,
+                    "learning_rate": self.classifier.learning_rate,
+                    "max_depth": self.classifier.max_depth,
+                },
+            }
+
+            # Deactivate previous active models
+            try:
+                supabase_client.table("ml_models").update({
+                    "status": "archived",
+                }).eq("model_name", "politician-trading-signals").eq("status", "active").execute()
+                logger.info("Deactivated previous active models")
+            except Exception as e:
+                logger.warning(f"Could not deactivate previous models: {e}")
+
+            # Insert new model record
+            result = supabase_client.table("ml_models").insert(model_data).execute()
+            if not result.data:
+                logger.error("Failed to insert model record")
+                return None
+
+            logger.info(f"Created model record: {model_id}")
+
+            # Create weights snapshot
+            weights_snapshot_id = str(uuid4())
+            weights_data = {
+                "id": weights_snapshot_id,
+                "model_id": model_id,
+                "weights_hash": weights_hash,
+                "weights_blob": model_blob.hex(),  # Store as hex string
+                "scaler_state": {
+                    "mean": self.scaler.mean_.tolist() if hasattr(self.scaler, 'mean_') else [],
+                    "scale": self.scaler.scale_.tolist() if hasattr(self.scaler, 'scale_') else [],
+                    "var": self.scaler.var_.tolist() if hasattr(self.scaler, 'var_') else [],
+                },
+                "validation_metrics": metrics,
+                "sample_predictions": {
+                    "feature_keys": FEATURE_KEYS,
+                    "created_at": now,
+                },
+            }
+
+            result = supabase_client.table("model_weights_snapshots").insert(weights_data).execute()
+            if not result.data:
+                logger.warning("Failed to insert weights snapshot")
+            else:
+                logger.info(f"Created weights snapshot: {weights_snapshot_id}")
+
+            # Create or update feature definition
+            feature_def_id = self._ensure_feature_definition(supabase_client)
+            if feature_def_id:
+                # Link model to feature definition by updating model record
+                supabase_client.table("ml_models").update({
+                    "feature_importance": {
+                        **feature_importance,
+                        "feature_definition_id": feature_def_id,
+                    }
+                }).eq("id", model_id).execute()
+
+            return model_id
+
+        except Exception as e:
+            logger.error(f"Failed to save model to Supabase: {e}")
+            return None
+
+    def _ensure_feature_definition(self, supabase_client: Any) -> Optional[str]:
+        """
+        Ensure feature definition exists in database.
+
+        Returns:
+            Feature definition ID if exists or created, None otherwise
+        """
+        try:
+            version = "v1.0"
+
+            # Check if feature definition already exists
+            result = supabase_client.table("feature_definitions").select("id").eq("version", version).execute()
+            if result.data:
+                return result.data[0]["id"]
+
+            # Create new feature definition
+            feature_def_id = str(uuid4())
+            feature_def_data = {
+                "id": feature_def_id,
+                "version": version,
+                "feature_names": FEATURE_KEYS,
+                "feature_schema": {
+                    "type": "object",
+                    "properties": {key: {"type": "number"} for key in FEATURE_KEYS},
+                },
+                "computation_config": {
+                    "lookback_periods": [7, 14, 30],
+                    "normalization": "standard_scaler",
+                },
+                "default_weights": {key: 1.0 / len(FEATURE_KEYS) for key in FEATURE_KEYS},
+                "is_active": True,
+                "activated_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+            result = supabase_client.table("feature_definitions").insert(feature_def_data).execute()
+            if result.data:
+                logger.info(f"Created feature definition: {feature_def_id}")
+                return feature_def_id
+
+            return None
+
+        except Exception as e:
+            logger.warning(f"Could not ensure feature definition: {e}")
+            return None
+
+    def load_model_from_supabase(self, supabase_client: Any, model_id: Optional[str] = None) -> bool:
+        """
+        Load a trained model from Supabase.
+
+        Args:
+            supabase_client: Supabase client instance
+            model_id: Specific model ID to load, or None to load active model
+
+        Returns:
+            True if model loaded successfully, False otherwise
+        """
+        try:
+            # Get model record
+            if model_id:
+                result = supabase_client.table("ml_models").select("*").eq("id", model_id).execute()
+            else:
+                result = supabase_client.table("ml_models").select("*").eq(
+                    "model_name", "politician-trading-signals"
+                ).eq("status", "active").order("training_completed_at", desc=True).limit(1).execute()
+
+            if not result.data:
+                logger.warning("No model found in database")
+                return False
+
+            model_record = result.data[0]
+            model_id = model_record["id"]
+
+            # Get weights snapshot
+            weights_result = supabase_client.table("model_weights_snapshots").select("*").eq(
+                "model_id", model_id
+            ).order("created_at", desc=True).limit(1).execute()
+
+            if not weights_result.data:
+                logger.warning(f"No weights snapshot found for model {model_id}")
+                return False
+
+            weights_record = weights_result.data[0]
+
+            # Deserialize model
+            weights_blob = bytes.fromhex(weights_record["weights_blob"])
+            model_data = pickle.loads(weights_blob)
+
+            self.classifier = model_data["classifier"]
+            self.scaler = model_data["scaler"]
+            self.model_version = model_record["model_version"]
+
+            logger.info(f"Loaded model {model_id} (version {self.model_version})")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to load model from Supabase: {e}")
+            return False
