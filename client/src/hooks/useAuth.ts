@@ -29,6 +29,14 @@ export const useAuth = () => {
         }
       } catch (error) {
         console.error('[useAuth] Failed to get session:', error);
+        // Clear potentially corrupted session from localStorage to prevent repeated timeouts
+        // scope: 'local' clears storage without making a network request
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+          console.log('[useAuth] Cleared stale session from localStorage');
+        } catch (signOutError) {
+          console.error('[useAuth] Failed to clear session:', signOutError);
+        }
         setUser(null);
       } finally {
         setLoading(false);

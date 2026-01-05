@@ -34,8 +34,12 @@ const Header = ({ onMenuClick }: HeaderProps) => {
         }
         setUser(session?.user ?? null);
       })
-      .catch((error) => {
+      .catch(async (error) => {
         console.error('[Header] Failed to get session:', error);
+        // Clear potentially corrupted session
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+        } catch {}
         setUser(null);
       });
 
