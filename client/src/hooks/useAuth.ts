@@ -12,7 +12,7 @@ export const useAuth = () => {
       try {
         // Add timeout to prevent hanging on slow/failed auth requests
         const timeoutPromise = new Promise<null>((_, reject) => {
-          setTimeout(() => reject(new Error('Session fetch timeout')), 10000);
+          setTimeout(() => reject(new Error('Session fetch timeout')), 5000);
         });
 
         const sessionPromise = supabase.auth.getSession();
@@ -29,13 +29,16 @@ export const useAuth = () => {
         }
       } catch (error) {
         console.error('[useAuth] Failed to get session:', error);
-        // Clear potentially corrupted session from localStorage to prevent repeated timeouts
-        // scope: 'local' clears storage without making a network request
+        // Clear corrupted session directly from localStorage to prevent repeated timeouts
+        // This is more reliable than signOut which may also hang
         try {
-          await supabase.auth.signOut({ scope: 'local' });
-          console.log('[useAuth] Cleared stale session from localStorage');
-        } catch (signOutError) {
-          console.error('[useAuth] Failed to clear session:', signOutError);
+          const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-'));
+          keys.forEach(k => localStorage.removeItem(k));
+          if (keys.length > 0) {
+            console.log('[useAuth] Cleared stale Supabase session from localStorage:', keys);
+          }
+        } catch (clearError) {
+          console.error('[useAuth] Failed to clear localStorage:', clearError);
         }
         setUser(null);
       } finally {

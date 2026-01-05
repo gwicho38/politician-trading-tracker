@@ -34,11 +34,11 @@ const Header = ({ onMenuClick }: HeaderProps) => {
         }
         setUser(session?.user ?? null);
       })
-      .catch(async (error) => {
+      .catch((error) => {
         console.error('[Header] Failed to get session:', error);
-        // Clear potentially corrupted session
+        // Clear corrupted session directly from localStorage
         try {
-          await supabase.auth.signOut({ scope: 'local' });
+          Object.keys(localStorage).filter(k => k.startsWith('sb-')).forEach(k => localStorage.removeItem(k));
         } catch {}
         setUser(null);
       });
