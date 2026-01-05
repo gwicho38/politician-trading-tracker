@@ -34,6 +34,10 @@ export const useAdmin = () => {
         }
       } catch (error) {
         console.error('[useAdmin] Failed to check admin status:', error);
+        // Clear potentially corrupted session
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+        } catch {}
         setIsAdmin(false);
       } finally {
         setIsLoading(false);
