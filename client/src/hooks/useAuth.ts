@@ -7,11 +7,32 @@ export const useAuth = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
+    // Get initial session with timeout to prevent infinite loading
     const getInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      setLoading(false);
+      try {
+        // Add timeout to prevent hanging on slow/failed auth requests
+        const timeoutPromise = new Promise<null>((_, reject) => {
+          setTimeout(() => reject(new Error('Session fetch timeout')), 10000);
+        });
+
+        const sessionPromise = supabase.auth.getSession();
+        const result = await Promise.race([sessionPromise, timeoutPromise]);
+
+        if (result && 'data' in result) {
+          const { data: { session }, error } = result;
+          if (error) {
+            console.error('[useAuth] Session fetch error:', error.message);
+          }
+          setUser(session?.user ?? null);
+        } else {
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('[useAuth] Failed to get session:', error);
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
     };
 
     getInitialSession();

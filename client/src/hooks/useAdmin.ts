@@ -7,26 +7,37 @@ export const useAdmin = () => {
 
   useEffect(() => {
     const checkAdmin = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session?.user) {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.error('[useAdmin] Session fetch error:', sessionError.message);
+          setIsAdmin(false);
+          return;
+        }
+
+        if (!session?.user) {
+          setIsAdmin(false);
+          return;
+        }
+
+        const { data, error } = await supabase.rpc('has_role', {
+          _user_id: session.user.id,
+          _role: 'admin'
+        });
+
+        if (error) {
+          console.error('[useAdmin] Error checking admin status:', error);
+          setIsAdmin(false);
+        } else {
+          setIsAdmin(!!data);
+        }
+      } catch (error) {
+        console.error('[useAdmin] Failed to check admin status:', error);
         setIsAdmin(false);
+      } finally {
         setIsLoading(false);
-        return;
       }
-
-      const { data, error } = await supabase.rpc('has_role', {
-        _user_id: session.user.id,
-        _role: 'admin'
-      });
-
-      if (error) {
-        console.error('Error checking admin status:', error);
-        setIsAdmin(false);
-      } else {
-        setIsAdmin(!!data);
-      }
-      setIsLoading(false);
     };
 
     checkAdmin();

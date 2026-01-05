@@ -26,10 +26,18 @@ const Header = ({ onMenuClick }: HeaderProps) => {
   const { isAdmin } = useAdmin();
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-    });
+    // Get initial session with error handling
+    supabase.auth.getSession()
+      .then(({ data: { session }, error }) => {
+        if (error) {
+          console.error('[Header] Session fetch error:', error.message);
+        }
+        setUser(session?.user ?? null);
+      })
+      .catch((error) => {
+        console.error('[Header] Failed to get session:', error);
+        setUser(null);
+      });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
