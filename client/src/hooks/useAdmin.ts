@@ -34,9 +34,9 @@ export const useAdmin = () => {
         }
       } catch (error) {
         console.error('[useAdmin] Failed to check admin status:', error);
-        // Clear potentially corrupted session
+        // Clear corrupted session directly from localStorage
         try {
-          await supabase.auth.signOut({ scope: 'local' });
+          Object.keys(localStorage).filter(k => k.startsWith('sb-')).forEach(k => localStorage.removeItem(k));
         } catch {}
         setIsAdmin(false);
       } finally {
