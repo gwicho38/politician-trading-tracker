@@ -221,14 +221,14 @@ async function handleHealthCheck(
       await supabaseClient
         .from('connection_health_log')
         .insert({
-          service_name: 'alpaca',
-          endpoint: '/v2/account',
+          connection_type: tradingMode === 'paper' ? 'alpaca_trading' : 'alpaca_trading',
+          endpoint_url: '/v2/account',
           status: isHealthy ? 'healthy' : 'unhealthy',
-          latency_ms: latency,
-          response_code: response.status,
-          trading_mode: tradingMode,
-          metadata: {
+          response_time_ms: latency,
+          http_status_code: response.status,
+          diagnostics: {
             requestId,
+            tradingMode,
             circuitBreaker: getCircuitBreakerStatus()
           }
         })
@@ -257,14 +257,14 @@ async function handleHealthCheck(
       await supabaseClient
         .from('connection_health_log')
         .insert({
-          service_name: 'alpaca',
-          endpoint: '/v2/account',
-          status: 'error',
-          latency_ms: latency,
+          connection_type: 'alpaca_trading',
+          endpoint_url: '/v2/account',
+          status: 'unhealthy',
+          response_time_ms: latency,
           error_message: error.message,
-          trading_mode: tradingMode,
-          metadata: {
+          diagnostics: {
             requestId,
+            tradingMode,
             circuitBreaker: getCircuitBreakerStatus()
           }
         })
@@ -374,8 +374,8 @@ async function handleConnectionStatus(
     const { data: healthLogs, error: healthError } = await supabaseClient
       .from('connection_health_log')
       .select('*')
-      .eq('service_name', 'alpaca')
-      .order('created_at', { ascending: false })
+      .eq('connection_type', 'alpaca_trading')
+      .order('checked_at', { ascending: false })
       .limit(10)
 
     if (healthError) {
@@ -386,7 +386,7 @@ async function handleConnectionStatus(
     const recentLogs = healthLogs || []
     const healthyCount = recentLogs.filter((l: any) => l.status === 'healthy').length
     const avgLatency = recentLogs.length > 0
-      ? recentLogs.reduce((sum: number, l: any) => sum + (l.latency_ms || 0), 0) / recentLogs.length
+      ? recentLogs.reduce((sum: number, l: any) => sum + (l.response_time_ms || 0), 0) / recentLogs.length
       : null
 
     // Determine overall status
@@ -413,9 +413,9 @@ async function handleConnectionStatus(
         },
         recentLogs: recentLogs.slice(0, 5).map((l: any) => ({
           status: l.status,
-          latencyMs: l.latency_ms,
-          responseCode: l.response_code,
-          createdAt: l.created_at
+          latencyMs: l.response_time_ms,
+          responseCode: l.http_status_code,
+          createdAt: l.checked_at
         })),
         timestamp: new Date().toISOString()
       }),

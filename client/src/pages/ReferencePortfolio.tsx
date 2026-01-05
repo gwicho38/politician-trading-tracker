@@ -1,4 +1,6 @@
-import { Activity, Info, Clock, CheckCircle2 } from 'lucide-react';
+import { Activity, Info, Clock, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -12,6 +14,7 @@ import {
 import { useReferencePortfolioState, useMarketStatus } from '@/hooks/useReferencePortfolio';
 
 export default function ReferencePortfolio() {
+  const navigate = useNavigate();
   const { data: state } = useReferencePortfolioState();
   const { data: marketStatus } = useMarketStatus();
 
@@ -38,6 +41,14 @@ export default function ReferencePortfolio() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate('/')}
+                className="h-9 w-9"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
               <div className="p-2 rounded-lg bg-primary/10">
                 <Activity className="h-6 w-6 text-primary" />
               </div>
