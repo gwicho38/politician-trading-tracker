@@ -21,6 +21,25 @@ interface ChartDataPoint {
   volume: number;
 }
 
+// Custom tooltip component for better dark mode readability
+const CustomVolumeTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload as ChartDataPoint;
+    return (
+      <div className="bg-popover/95 backdrop-blur-sm border border-border rounded-lg p-3 shadow-lg">
+        <p className="text-sm font-medium text-foreground mb-2">{label}</p>
+        <div className="space-y-1 text-xs">
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">Volume:</span>
+            <span className="font-medium text-primary">{formatCurrency(data.volume)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 const VolumeChart = () => {
   const [timeRange, setTimeRange] = useState<ChartTimeRange>('trailing12');
   const { data: chartData, isLoading } = useChartData(timeRange);
@@ -113,16 +132,7 @@ const VolumeChart = () => {
                 axisLine={{ stroke: 'hsl(var(--border))' }}
                 tickFormatter={(value) => formatCurrency(value)}
               />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                }}
-                labelStyle={{ color: 'hsl(var(--foreground))' }}
-                formatter={(value: number) => [formatCurrency(value), 'Volume']}
-              />
+              <Tooltip content={<CustomVolumeTooltip />} />
               <Area 
                 type="monotone" 
                 dataKey="volume" 
