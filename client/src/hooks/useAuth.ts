@@ -41,8 +41,11 @@ export const useAuth = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session with timeout to prevent infinite loading
-    const getInitialSession = async () => {
+    // Get initial session with timeout and retry to prevent infinite loading
+    const getInitialSession = async (retryCount = 0) => {
+      const MAX_RETRIES = 2;
+      const TIMEOUT_MS = 5000;
+
       // Pre-check: if session is expired, clear it before getSession() tries to refresh
       if (hasStaleSession()) {
         clearSupabaseSession();
@@ -54,7 +57,7 @@ export const useAuth = () => {
       try {
         // Add timeout to prevent hanging on slow/failed auth requests
         const timeoutPromise = new Promise<null>((_, reject) => {
-          setTimeout(() => reject(new Error('Session fetch timeout')), 5000);
+          setTimeout(() => reject(new Error('Session fetch timeout')), TIMEOUT_MS);
         });
 
         const sessionPromise = supabase.auth.getSession();
@@ -66,15 +69,29 @@ export const useAuth = () => {
             console.error('[useAuth] Session fetch error:', error.message);
           }
           setUser(session?.user ?? null);
+          setLoading(false);
         } else {
           setUser(null);
+          setLoading(false);
         }
       } catch (error) {
-        console.error('[useAuth] Failed to get session:', error);
-        clearSupabaseSession();
+        console.warn('[useAuth] Session fetch attempt failed:', error);
+
+        // Retry on timeout (don't clear session yet - it might be valid)
+        if (retryCount < MAX_RETRIES) {
+          console.log(`[useAuth] Retrying session fetch (attempt ${retryCount + 2}/${MAX_RETRIES + 1})...`);
+          // Small delay before retry to let Supabase initialize
+          await new Promise(resolve => setTimeout(resolve, 500));
+          return getInitialSession(retryCount + 1);
+        }
+
+        // After all retries failed, don't clear session - let onAuthStateChange handle it
+        // The user will see as logged out, but if session becomes available, they'll be logged in
+        console.error('[useAuth] All session fetch attempts failed, falling back to auth listener');
         setUser(null);
-      } finally {
         setLoading(false);
+        // Note: We don't clear the session here anymore - the onAuthStateChange listener
+        // will update the user if the session becomes available
       }
     };
 
