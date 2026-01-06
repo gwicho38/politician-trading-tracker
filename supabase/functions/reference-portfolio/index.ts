@@ -90,17 +90,19 @@ interface TradingSignal {
 }
 
 // Get Alpaca credentials from environment (reference portfolio uses app-level credentials)
-function getAlpacaCredentials(): { apiKey: string; secretKey: string; baseUrl: string } | null {
+function getAlpacaCredentials(): { apiKey: string; secretKey: string; baseUrl: string; dataUrl: string } | null {
   const apiKey = Deno.env.get('ALPACA_API_KEY')
   const secretKey = Deno.env.get('ALPACA_SECRET_KEY')
   const paper = Deno.env.get('ALPACA_PAPER') === 'true'
   const baseUrl = Deno.env.get('ALPACA_BASE_URL') || (paper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets')
+  // Market data API is separate from trading API
+  const dataUrl = 'https://data.alpaca.markets'
 
   if (!apiKey || !secretKey) {
     return null
   }
 
-  return { apiKey, secretKey, baseUrl }
+  return { apiKey, secretKey, baseUrl, dataUrl }
 }
 
 // Calculate position size based on confidence (confidence-weighted)
@@ -564,8 +566,8 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
       }
 
       try {
-        // Get current price from Alpaca
-        const quoteUrl = `${credentials.baseUrl}/v2/stocks/${signal.ticker}/quotes/latest`
+        // Get current price from Alpaca (market data uses separate API)
+        const quoteUrl = `${credentials.dataUrl}/v2/stocks/${signal.ticker}/quotes/latest`
         const quoteResponse = await fetch(quoteUrl, {
           headers: {
             'APCA-API-KEY-ID': credentials.apiKey,
@@ -964,7 +966,7 @@ async function handleTakeSnapshot(supabaseClient: any, requestId: string) {
     const credentials = getAlpacaCredentials()
     if (credentials) {
       try {
-        const spyUrl = `${credentials.baseUrl}/v2/stocks/SPY/quotes/latest`
+        const spyUrl = `${credentials.dataUrl}/v2/stocks/SPY/quotes/latest`
         const spyResponse = await fetch(spyUrl, {
           headers: {
             'APCA-API-KEY-ID': credentials.apiKey,
