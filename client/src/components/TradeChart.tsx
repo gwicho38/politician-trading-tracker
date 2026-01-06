@@ -20,6 +20,29 @@ interface ChartDataPoint {
   volume: number;
 }
 
+// Custom tooltip component for better dark mode readability
+const CustomChartTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload as ChartDataPoint;
+    return (
+      <div className="bg-popover/95 backdrop-blur-sm border border-border rounded-lg p-3 shadow-lg">
+        <p className="text-sm font-medium text-foreground mb-2">{label}</p>
+        <div className="space-y-1 text-xs">
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">Buys:</span>
+            <span className="font-medium text-success">{data.buys}</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">Sells:</span>
+            <span className="font-medium text-destructive">{data.sells}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 const TradeChart = () => {
   const [timeRange, setTimeRange] = useState<ChartTimeRange>('trailing12');
   const { data: chartData, isLoading } = useChartData(timeRange);
@@ -119,14 +142,7 @@ const TradeChart = () => {
                   axisLine={{ stroke: 'hsl(var(--border))' }}
                 />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                  }}
-                  labelStyle={{ color: 'hsl(var(--foreground))' }}
-                  itemStyle={{ color: 'hsl(var(--muted-foreground))' }}
+                  content={<CustomChartTooltip />}
                   cursor={{ fill: 'hsl(var(--muted)/0.2)' }}
                 />
                 <Bar
