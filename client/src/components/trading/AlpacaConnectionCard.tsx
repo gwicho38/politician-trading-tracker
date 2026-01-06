@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, CheckCircle2, XCircle, Eye, EyeOff, ExternalLink, Trash2 } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Eye, EyeOff, ExternalLink, Trash2, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAlpacaCredentials } from '@/hooks/useAlpacaCredentials';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -30,6 +30,7 @@ export function AlpacaConnectionCard({ tradingMode, onConnectionChange }: Alpaca
   const [apiKey, setApiKey] = useState('');
   const [secretKey, setSecretKey] = useState('');
   const [showSecret, setShowSecret] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
     message: string;
@@ -247,16 +248,113 @@ export function AlpacaConnectionCard({ tradingMode, onConnectionChange }: Alpaca
               </Button>
             </div>
 
-            {/* Help Link */}
-            <a
-              href="https://alpaca.markets/docs/trading/getting_started/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors"
-            >
-              <ExternalLink className="h-3 w-3" />
-              Get your Alpaca API keys
-            </a>
+            {/* Setup Guide */}
+            <div className="border rounded-lg overflow-hidden">
+              <button
+                onClick={() => setShowGuide(!showGuide)}
+                className="w-full flex items-center justify-between p-3 text-sm text-left hover:bg-muted/50 transition-colors"
+              >
+                <span className="flex items-center gap-2 font-medium">
+                  <HelpCircle className="h-4 w-4 text-primary" />
+                  How to get your Alpaca API keys
+                </span>
+                {showGuide ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+              </button>
+
+              {showGuide && (
+                <div className="p-4 pt-0 space-y-4 text-sm">
+                  <div className="space-y-3">
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center">
+                        1
+                      </div>
+                      <div>
+                        <p className="font-medium">Create a free Alpaca account</p>
+                        <p className="text-muted-foreground mt-0.5">
+                          Go to{' '}
+                          <a
+                            href="https://app.alpaca.markets/signup"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline inline-flex items-center gap-1"
+                          >
+                            alpaca.markets/signup <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center">
+                        2
+                      </div>
+                      <div>
+                        <p className="font-medium">Go to API Keys page</p>
+                        <p className="text-muted-foreground mt-0.5">
+                          After signing in, click the menu icon (☰) and select{' '}
+                          <span className="font-medium text-foreground">"API Keys"</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center">
+                        3
+                      </div>
+                      <div>
+                        <p className="font-medium">Generate new keys</p>
+                        <p className="text-muted-foreground mt-0.5">
+                          Click <span className="font-medium text-foreground">"Generate New Key"</span>.
+                          {tradingMode === 'paper' ? (
+                            <> Make sure you're in <Badge variant="secondary" className="mx-1 text-xs">Paper Trading</Badge> mode.</>
+                          ) : (
+                            <> Make sure you're in <Badge variant="destructive" className="mx-1 text-xs">Live Trading</Badge> mode.</>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center">
+                        4
+                      </div>
+                      <div>
+                        <p className="font-medium">Copy both keys</p>
+                        <p className="text-muted-foreground mt-0.5">
+                          Copy the <span className="font-medium text-foreground">API Key</span> (starts with PK or AK)
+                          and <span className="font-medium text-foreground">Secret Key</span> (only shown once!)
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center">
+                        5
+                      </div>
+                      <div>
+                        <p className="font-medium">Paste keys above</p>
+                        <p className="text-muted-foreground mt-0.5">
+                          Enter both keys in the fields above and click{' '}
+                          <span className="font-medium text-foreground">"Connect & Save"</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Alert>
+                    <HelpCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      <span className="font-medium">Tip:</span> Start with Paper Trading to practice without risking real money.
+                      Your paper account comes with $100,000 in virtual funds!
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
