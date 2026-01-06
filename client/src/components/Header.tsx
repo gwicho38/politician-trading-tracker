@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Menu, LogOut, User, Shield } from 'lucide-react';
+import { Menu, LogOut, User, UserX, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -148,10 +148,12 @@ const Header = ({ onMenuClick }: HeaderProps) => {
             <Button
               variant="outline"
               size="sm"
-              className="hidden sm:flex"
+              className="gap-2"
               onClick={() => navigate('/auth')}
+              title="Sign in to access all features"
             >
-              Sign In
+              <UserX className="h-4 w-4 text-muted-foreground" />
+              <span className="hidden sm:inline">Sign In</span>
             </Button>
           )}
         </div>
