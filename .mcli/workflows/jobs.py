@@ -467,3 +467,237 @@ def portfolio_snapshot():
     except httpx.HTTPError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
+
+
+@app.command("alpaca-status")
+def alpaca_status():
+    """
+    Show Alpaca account status and credential usage.
+
+    Displays which Alpaca accounts are configured for:
+    - Reference Portfolio (env vars)
+    - User accounts (user_api_keys table)
+
+    Example: mcli run jobs alpaca-status
+    """
+    import subprocess
+
+    service_key = get_supabase_key()
+
+    click.echo("Alpaca Account Status")
+    click.echo("=" * 60)
+
+    # Get env var credentials
+    try:
+        alpaca_key = subprocess.run(
+            ["lsh", "get", "ALPACA_API_KEY"],
+            capture_output=True, text=True
+        ).stdout.strip()
+        alpaca_secret = subprocess.run(
+            ["lsh", "get", "ALPACA_SECRET_KEY"],
+            capture_output=True, text=True
+        ).stdout.strip()
+
+        if alpaca_key and alpaca_secret:
+            # Get account info from Alpaca
+            response = httpx.get(
+                "https://paper-api.alpaca.markets/v2/account",
+                headers={
+                    "APCA-API-KEY-ID": alpaca_key,
+                    "APCA-API-SECRET-KEY": alpaca_secret
+                },
+                timeout=10.0
+            )
+
+            if response.status_code == 200:
+                acct = response.json()
+                click.echo(f"\n[Reference Portfolio - ENV VARS]")
+                click.echo(f"  API Key: {alpaca_key[:8]}...{alpaca_key[-4:]}")
+                click.echo(f"  Account: {acct.get('account_number', '?')}")
+                click.echo(f"  Equity:  ${float(acct.get('equity', 0)):,.2f}")
+                click.echo(f"  Cash:    ${float(acct.get('cash', 0)):,.2f}")
+                click.echo(f"  Status:  {acct.get('status', '?')}")
+            else:
+                click.echo(f"\n[Reference Portfolio - ENV VARS]")
+                click.echo(f"  API Key: {alpaca_key[:8]}... (invalid)")
+        else:
+            click.echo("\n[Reference Portfolio - ENV VARS]")
+            click.echo("  Not configured")
+    except Exception as e:
+        click.echo(f"\n[Reference Portfolio - ENV VARS]")
+        click.echo(f"  Error: {e}")
+
+    # Get user credentials from database
+    if service_key:
+        try:
+            response = httpx.get(
+                f"{SUPABASE_URL}/rest/v1/user_api_keys?select=user_email,paper_api_key",
+                headers={
+                    "apikey": service_key,
+                    "Authorization": f"Bearer {service_key}"
+                },
+                timeout=10.0
+            )
+
+            if response.status_code == 200:
+                users = response.json()
+                click.echo(f"\n[User Accounts - Database]")
+
+                if not users:
+                    click.echo("  No user accounts configured")
+                else:
+                    for user in users:
+                        email = user.get("user_email", "?")
+                        key = user.get("paper_api_key")
+                        if key:
+                            # Check if same as env var
+                            same_as_ref = " (SAME AS REFERENCE!)" if key == alpaca_key else ""
+                            click.echo(f"  {email}: {key[:8]}...{key[-4:]}{same_as_ref}")
+                        else:
+                            click.echo(f"  {email}: Not connected")
+        except Exception as e:
+            click.echo(f"\n[User Accounts - Database]")
+            click.echo(f"  Error: {e}")
+
+    click.echo("\n" + "=" * 60)
+    click.echo("To separate accounts:")
+    click.echo("  1. Create new Alpaca paper account at https://app.alpaca.markets")
+    click.echo("  2. Run: mcli run jobs alpaca-set-reference <api_key> <secret_key>")
+    click.echo("  3. Run: mcli run jobs alpaca-reset-portfolio")
+
+
+@app.command("alpaca-set-reference")
+@click.argument("api_key")
+@click.argument("secret_key")
+def alpaca_set_reference(api_key: str, secret_key: str):
+    """
+    Set new Alpaca credentials for the Reference Portfolio.
+
+    Creates/updates the ALPACA_API_KEY and ALPACA_SECRET_KEY in lsh.
+
+    Example: mcli run jobs alpaca-set-reference PKABC123 secretkey456
+    """
+    import subprocess
+
+    click.echo("Validating new credentials...")
+
+    # Test the new credentials
+    response = httpx.get(
+        "https://paper-api.alpaca.markets/v2/account",
+        headers={
+            "APCA-API-KEY-ID": api_key,
+            "APCA-API-SECRET-KEY": secret_key
+        },
+        timeout=10.0
+    )
+
+    if response.status_code != 200:
+        click.echo(f"Error: Invalid credentials (HTTP {response.status_code})", err=True)
+        raise SystemExit(1)
+
+    acct = response.json()
+    click.echo(f"✓ Valid credentials for account {acct.get('account_number')}")
+    click.echo(f"  Equity: ${float(acct.get('equity', 0)):,.2f}")
+
+    # Store in lsh
+    click.echo("\nStoring credentials in lsh...")
+    subprocess.run(["lsh", "set", "ALPACA_API_KEY", api_key], check=True)
+    subprocess.run(["lsh", "set", "ALPACA_SECRET_KEY", secret_key], check=True)
+
+    click.echo("✓ Credentials stored")
+    click.echo("\nNext steps:")
+    click.echo("  1. Redeploy edge functions: supabase functions deploy reference-portfolio")
+    click.echo("  2. Reset portfolio state: mcli run jobs alpaca-reset-portfolio")
+
+
+@app.command("alpaca-reset-portfolio")
+@click.option("--initial-capital", "-c", type=float, default=100000.0, help="Initial capital amount")
+@click.confirmation_option(prompt="This will reset all portfolio data. Continue?")
+def alpaca_reset_portfolio(initial_capital: float):
+    """
+    Reset the reference portfolio to initial state.
+
+    Clears all positions, snapshots, and resets state to initial capital.
+    Use after switching to a new Alpaca account.
+
+    Example: mcli run jobs alpaca-reset-portfolio -c 100000
+    """
+    service_key = get_supabase_key()
+    if not service_key:
+        click.echo("Error: Could not get Supabase service key", err=True)
+        raise SystemExit(1)
+
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json"
+    }
+
+    click.echo(f"Resetting portfolio to ${initial_capital:,.2f}...")
+
+    # Clear positions
+    response = httpx.delete(
+        f"{SUPABASE_URL}/rest/v1/reference_portfolio_positions?is_open=eq.true",
+        headers=headers,
+        timeout=30.0
+    )
+    click.echo(f"  Cleared open positions: HTTP {response.status_code}")
+
+    # Clear snapshots
+    response = httpx.delete(
+        f"{SUPABASE_URL}/rest/v1/reference_portfolio_snapshots?snapshot_date=gte.2020-01-01",
+        headers=headers,
+        timeout=30.0
+    )
+    click.echo(f"  Cleared snapshots: HTTP {response.status_code}")
+
+    # Reset state
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    response = httpx.patch(
+        f"{SUPABASE_URL}/rest/v1/reference_portfolio_state?id=eq.13a769e8-b323-408b-a3e0-548b5256d215",
+        headers=headers,
+        json={
+            "cash": initial_capital,
+            "portfolio_value": initial_capital,
+            "positions_value": 0,
+            "buying_power": initial_capital,
+            "total_return": 0,
+            "total_return_pct": 0,
+            "day_return": 0,
+            "day_return_pct": 0,
+            "max_drawdown": 0,
+            "current_drawdown": 0,
+            "total_trades": 0,
+            "trades_today": 0,
+            "winning_trades": 0,
+            "losing_trades": 0,
+            "open_positions": 0,
+            "peak_portfolio_value": initial_capital
+        },
+        timeout=30.0
+    )
+    click.echo(f"  Reset state: HTTP {response.status_code}")
+
+    # Create initial snapshot
+    response = httpx.post(
+        f"{SUPABASE_URL}/rest/v1/reference_portfolio_snapshots",
+        headers=headers,
+        json={
+            "snapshot_date": today,
+            "snapshot_time": datetime.now(timezone.utc).isoformat(),
+            "portfolio_value": initial_capital,
+            "cash": initial_capital,
+            "positions_value": 0,
+            "day_return": 0,
+            "day_return_pct": 0,
+            "cumulative_return": 0,
+            "cumulative_return_pct": 0,
+            "open_positions": 0,
+            "total_trades": 0
+        },
+        timeout=30.0
+    )
+    click.echo(f"  Created initial snapshot: HTTP {response.status_code}")
+
+    click.echo(f"\n✓ Portfolio reset to ${initial_capital:,.2f}")
+    click.echo("\nThe reference portfolio is now ready to trade with new credentials.")
