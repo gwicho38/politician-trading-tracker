@@ -530,6 +530,253 @@ def execute_signals():
         raise SystemExit(1)
 
 
+@app.command("record-outcomes")
+def record_outcomes():
+    """
+    Record trading outcomes for closed positions.
+
+    Links closed positions to their original signals and calculates:
+    - Win/loss/breakeven classification
+    - Return percentage and dollars
+    - Holding period
+    - Feature snapshot for correlation analysis
+
+    Example: mcli run jobs record-outcomes
+    """
+    service_key = get_supabase_key()
+    if not service_key:
+        click.echo("Error: Could not get Supabase service key", err=True)
+        raise SystemExit(1)
+
+    click.echo("Recording signal outcomes...")
+
+    try:
+        response = httpx.post(
+            f"{SUPABASE_URL}/functions/v1/signal-feedback",
+            json={"action": "record-outcomes"},
+            headers={
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": "application/json"
+            },
+            timeout=60.0
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                recorded = data.get("recorded", 0)
+                summary = data.get("summary", {})
+                click.echo(f"\n✓ Outcomes recorded: {recorded}")
+                if summary:
+                    click.echo(f"  Wins: {summary.get('wins', 0)}")
+                    click.echo(f"  Losses: {summary.get('losses', 0)}")
+                    click.echo(f"  Win Rate: {summary.get('winRate', 0)}%")
+                    click.echo(f"  Avg Return: {summary.get('avgReturnPct', 0):.2f}%")
+            else:
+                click.echo(f"Error: {data.get('error', 'Unknown')}", err=True)
+                raise SystemExit(1)
+        else:
+            click.echo(f"Failed: HTTP {response.status_code}", err=True)
+            raise SystemExit(1)
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@app.command("analyze-features")
+def analyze_features():
+    """
+    Analyze feature importance from trade outcomes.
+
+    Calculates correlation between signal features and actual returns:
+    - bipartisan → correlation with returns
+    - politician_count → lift when high vs low
+    - buy_sell_ratio → win rate comparison
+
+    Results are stored for model weight adjustment recommendations.
+
+    Example: mcli run jobs analyze-features
+    """
+    service_key = get_supabase_key()
+    if not service_key:
+        click.echo("Error: Could not get Supabase service key", err=True)
+        raise SystemExit(1)
+
+    click.echo("Analyzing feature importance...")
+
+    try:
+        response = httpx.post(
+            f"{SUPABASE_URL}/functions/v1/signal-feedback",
+            json={"action": "analyze-features", "windowDays": 90},
+            headers={
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": "application/json"
+            },
+            timeout=120.0
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                features = data.get("features", [])
+                sample_size = data.get("sampleSize", 0)
+                click.echo(f"\n✓ Feature Analysis Complete (sample size: {sample_size})")
+                click.echo("\nFeature Importance:")
+                click.echo("-" * 70)
+                click.echo(f"{'Feature':<20} {'Correlation':<12} {'Lift %':<10} {'Useful':<8} {'Rec. Weight':<12}")
+                click.echo("-" * 70)
+                for f in features:
+                    useful = "Yes" if f.get('feature_useful') else "No"
+                    click.echo(
+                        f"{f.get('feature_name', '?'):<20} "
+                        f"{f.get('correlation_with_return', 0):>10.4f}  "
+                        f"{f.get('lift_pct', 0):>8.2f}%  "
+                        f"{useful:<8} "
+                        f"{f.get('recommended_weight', 0):>10.4f}"
+                    )
+            else:
+                msg = data.get("message", data.get("error", "Unknown"))
+                click.echo(f"Note: {msg}")
+        else:
+            click.echo(f"Failed: HTTP {response.status_code}", err=True)
+            raise SystemExit(1)
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@app.command("evaluate-model")
+def evaluate_model():
+    """
+    Evaluate ML model performance from actual trade outcomes.
+
+    Calculates performance metrics:
+    - Win rate, average return, Sharpe ratio
+    - Confidence calibration (high vs low confidence win rates)
+    - Max drawdown
+
+    Example: mcli run jobs evaluate-model
+    """
+    service_key = get_supabase_key()
+    if not service_key:
+        click.echo("Error: Could not get Supabase service key", err=True)
+        raise SystemExit(1)
+
+    click.echo("Evaluating model performance...")
+
+    try:
+        response = httpx.post(
+            f"{SUPABASE_URL}/functions/v1/signal-feedback",
+            json={"action": "evaluate-model", "windowDays": 30},
+            headers={
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": "application/json"
+            },
+            timeout=60.0
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                perf = data.get("performance", {})
+                breakdown = data.get("breakdown", {})
+                click.echo(f"\n✓ Model Evaluation Complete")
+                click.echo(f"\nModel: {perf.get('model_version', 'Unknown')}")
+                click.echo(f"Evaluation Period: {perf.get('evaluation_window_days', 30)} days")
+                click.echo("\nPerformance Metrics:")
+                click.echo(f"  Win Rate: {perf.get('win_rate', 0) * 100:.1f}%")
+                click.echo(f"  Avg Return: {perf.get('avg_return_pct', 0):.2f}%")
+                click.echo(f"  Total Return: {perf.get('total_return_pct', 0):.2f}%")
+                click.echo(f"  Sharpe Ratio: {perf.get('sharpe_ratio', 0):.2f}")
+                click.echo(f"  Max Drawdown: {perf.get('max_drawdown_pct', 0):.2f}%")
+                click.echo("\nConfidence Calibration:")
+                click.echo(f"  High Confidence (>80%) Win Rate: {perf.get('high_confidence_win_rate', 0) * 100:.1f}%")
+                click.echo(f"  Low Confidence (<70%) Win Rate: {perf.get('low_confidence_win_rate', 0) * 100:.1f}%")
+                click.echo("\nBreakdown:")
+                click.echo(f"  Wins: {breakdown.get('wins', 0)}")
+                click.echo(f"  Losses: {breakdown.get('losses', 0)}")
+                click.echo(f"  ML Enhanced: {breakdown.get('mlEnhancedCount', 0)}")
+            else:
+                msg = data.get("message", data.get("error", "Unknown"))
+                click.echo(f"Note: {msg}")
+        else:
+            click.echo(f"Failed: HTTP {response.status_code}", err=True)
+            raise SystemExit(1)
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@app.command("feedback-summary")
+def feedback_summary():
+    """
+    Get summary of the ML feedback loop.
+
+    Shows overall statistics:
+    - Total outcomes recorded
+    - Win/loss breakdown
+    - Latest feature importance
+    - Latest model performance
+
+    Example: mcli run jobs feedback-summary
+    """
+    service_key = get_supabase_key()
+    if not service_key:
+        click.echo("Error: Could not get Supabase service key", err=True)
+        raise SystemExit(1)
+
+    click.echo("Getting feedback loop summary...")
+
+    try:
+        response = httpx.post(
+            f"{SUPABASE_URL}/functions/v1/signal-feedback",
+            json={"action": "get-summary"},
+            headers={
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": "application/json"
+            },
+            timeout=30.0
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                summary = data.get("summary", {})
+                features = data.get("latestFeatureImportance", [])
+                perf = data.get("latestModelPerformance")
+
+                click.echo("\n" + "=" * 60)
+                click.echo("ML FEEDBACK LOOP SUMMARY")
+                click.echo("=" * 60)
+
+                click.echo("\nOutcome Tracking:")
+                click.echo(f"  Total Outcomes: {summary.get('totalOutcomes', 0)}")
+                click.echo(f"  Closed Trades: {summary.get('closedTrades', 0)}")
+                click.echo(f"  Wins: {summary.get('wins', 0)}")
+                click.echo(f"  Losses: {summary.get('losses', 0)}")
+                click.echo(f"  Win Rate: {summary.get('winRate', 0)}%")
+                click.echo(f"  Open Positions: {summary.get('openPositions', 0)}")
+
+                if features:
+                    click.echo("\nTop Predictive Features:")
+                    for f in features[:3]:
+                        useful = "✓" if f.get('feature_useful') else "✗"
+                        click.echo(f"  {useful} {f.get('feature_name')}: correlation={f.get('correlation_with_return', 0):.3f}")
+
+                if perf:
+                    click.echo(f"\nLatest Model Performance ({perf.get('evaluation_date', '?')}):")
+                    click.echo(f"  Win Rate: {perf.get('win_rate', 0) * 100:.1f}%")
+                    click.echo(f"  Sharpe Ratio: {perf.get('sharpe_ratio', 0):.2f}")
+            else:
+                click.echo(f"Error: {data.get('error', 'Unknown')}", err=True)
+        else:
+            click.echo(f"Failed: HTTP {response.status_code}", err=True)
+            raise SystemExit(1)
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
 @app.command("alpaca-status")
 def alpaca_status():
     """
