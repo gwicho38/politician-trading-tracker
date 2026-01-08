@@ -62,6 +62,7 @@ defmodule Server.Application do
       Server.Scheduler.Jobs.AlpacaAccountJob,
       Server.Scheduler.Jobs.OrdersJob,
       Server.Scheduler.Jobs.PortfolioJob,
+      Server.Scheduler.Jobs.PortfolioSnapshotJob,
       # Politician trading collection (split by source to avoid timeouts)
       Server.Scheduler.Jobs.PoliticianTradingHouseJob,
       Server.Scheduler.Jobs.PoliticianTradingSenateJob,

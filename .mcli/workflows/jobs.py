@@ -418,3 +418,52 @@ def health():
     else:
         click.echo("\nSome services have issues.")
         raise SystemExit(1)
+
+
+@app.command("portfolio-snapshot")
+def portfolio_snapshot():
+    """
+    Take a manual portfolio snapshot.
+
+    Records the current portfolio value to the snapshots table
+    for the performance chart. Normally runs daily at 5:30 PM EST.
+
+    Example: mcli run jobs portfolio-snapshot
+    """
+    service_key = get_supabase_key()
+    if not service_key:
+        click.echo("Error: Could not get Supabase service key", err=True)
+        raise SystemExit(1)
+
+    click.echo("Taking portfolio snapshot...")
+
+    try:
+        response = httpx.post(
+            f"{SUPABASE_URL}/functions/v1/reference-portfolio",
+            json={"action": "take-snapshot"},
+            headers={
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": "application/json"
+            },
+            timeout=30.0
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                snapshot = data.get("snapshot", {})
+                click.echo(f"\n✓ Snapshot saved!")
+                click.echo(f"  Date: {snapshot.get('date', '?')}")
+                click.echo(f"  Value: ${snapshot.get('portfolio_value', 0):,.2f}")
+                click.echo(f"  Day Return: {snapshot.get('day_return_pct', 0):.2f}%")
+                click.echo(f"  Cumulative Return: {snapshot.get('cumulative_return_pct', 0):.2f}%")
+            else:
+                click.echo(f"Error: {data.get('error', 'Unknown error')}", err=True)
+                raise SystemExit(1)
+        else:
+            click.echo(f"Failed: HTTP {response.status_code}", err=True)
+            click.echo(response.text[:200], err=True)
+            raise SystemExit(1)
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
