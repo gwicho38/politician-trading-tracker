@@ -9,7 +9,7 @@ import os
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
-from app.routes import health, etl, enrichment, ml, quality, error_reports
+from app.routes import health, etl, enrichment, ml, quality, error_reports, dedup
 
 
 @asynccontextmanager
@@ -36,6 +36,7 @@ app.include_router(enrichment.router, prefix="/enrichment", tags=["enrichment"])
 app.include_router(ml.router, prefix="/ml", tags=["ml"])
 app.include_router(quality.router, prefix="/quality", tags=["quality"])
 app.include_router(error_reports.router, prefix="/error-reports", tags=["error-reports"])
+app.include_router(dedup.router, tags=["deduplication"])
 
 
 @app.get("/")
@@ -63,5 +64,7 @@ async def root():
             "error_reports_process_one": "POST /error-reports/process-one",
             "error_reports_stats": "GET /error-reports/stats",
             "error_reports_health": "GET /error-reports/health",
+            "dedup_preview": "GET /dedup/preview",
+            "dedup_process": "POST /dedup/process",
         },
     }

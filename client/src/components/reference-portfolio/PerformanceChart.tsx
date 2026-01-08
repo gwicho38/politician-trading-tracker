@@ -194,8 +194,8 @@ export function PerformanceChart() {
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Period Return</p>
-            <p className={`text-sm font-semibold ${(chartData[chartData.length - 1]?.cumulativeReturnPct || 0) >= 0 ? 'text-success' : 'text-destructive'}`}>
-              {formatPercent(chartData[chartData.length - 1]?.cumulativeReturnPct || null)}
+            <p className={`text-sm font-semibold ${(chartData[chartData.length - 1]?.cumulativeReturnPct ?? 0) >= 0 ? 'text-success' : 'text-destructive'}`}>
+              {formatPercent(chartData[chartData.length - 1]?.cumulativeReturnPct ?? 0)}
             </p>
           </div>
           <div>
