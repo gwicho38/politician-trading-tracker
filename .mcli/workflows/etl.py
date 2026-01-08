@@ -1048,6 +1048,84 @@ def suggestion_reanalyze(report_id: str, threshold: float, dry_run: bool):
         raise SystemExit(1)
 
 
+@etl.command(name="suggestion-generate")
+@click.argument("report_id")
+@click.option("--model", "-m", default="llama3.1:8b", help="Ollama model to use")
+def suggestion_generate(report_id: str, model: str):
+    """
+    Force Ollama to generate suggested corrections for a report.
+
+    Analyzes the report using the specified Ollama model and shows
+    what corrections it would suggest, WITHOUT applying them.
+
+    Examples:
+        mcli run etl suggestion-generate abc123
+        mcli run etl suggestion-generate abc123 --model llama3.2:3b
+    """
+    click.echo(f"Generating suggestions for report {report_id[:8]}... using {model}")
+
+    try:
+        response = httpx.post(
+            f"{ETL_SERVICE_URL}/error-reports/generate-suggestion",
+            json={"report_id": report_id, "model": model},
+            timeout=120.0
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        status = data.get("status", "unknown")
+
+        # Show report summary
+        summary = data.get("report_summary", {})
+        click.echo(f"\n{'='*60}")
+        click.echo(f"Report: {report_id[:8]}...")
+        click.echo(f"  Type: {summary.get('error_type', 'unknown')}")
+        click.echo(f"  Politician: {summary.get('politician', 'Unknown')}")
+        click.echo(f"  Asset: {summary.get('asset', 'Unknown')[:50]}")
+        click.echo(f"  Description: {summary.get('description', '')[:80]}")
+        click.echo(f"  Current Status: {summary.get('current_status', 'unknown')}")
+
+        if status == "no_corrections":
+            click.echo(f"\n⚠ Ollama could not determine any corrections for this report.")
+            return
+
+        # Show corrections
+        corrections = data.get("corrections", [])
+        stats = data.get("summary", {})
+
+        click.echo(f"\n{'─'*60}")
+        click.echo(f"Suggested Corrections ({stats.get('total_suggestions', 0)} total):")
+        click.echo(f"  High confidence (≥{stats.get('confidence_threshold', '80%')}): {stats.get('high_confidence', 0)}")
+        click.echo(f"  Low confidence: {stats.get('low_confidence', 0)}")
+        click.echo(f"{'─'*60}")
+
+        for c in corrections:
+            conf = c.get("confidence", 0) * 100
+            field = c.get("field", "?")
+            old_val = c.get("old_value", "?")
+            new_val = c.get("new_value", "?")
+            reasoning = c.get("reasoning", "")[:60]
+            auto = "✓ auto" if c.get("would_auto_apply") else "○ manual"
+
+            click.echo(f"\n  [{auto}] {field}: {old_val} → {new_val}")
+            click.echo(f"         Confidence: {conf:.0f}%")
+            if reasoning:
+                click.echo(f"         Reason: {reasoning}")
+
+        click.echo(f"\n{'='*60}")
+        click.echo("Next steps:")
+        click.echo(f"  To apply with lower threshold:")
+        click.echo(f"    mcli run etl suggestion-reanalyze {report_id} -t 0.5")
+        click.echo(f"  To manually apply a specific correction:")
+        click.echo(f"    mcli run etl suggestion-apply {report_id} <field> <new_value>")
+
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        if hasattr(e, 'response') and e.response is not None:
+            click.echo(f"Details: {e.response.text}", err=True)
+        raise SystemExit(1)
+
+
 @etl.command(name="cleanup-all")
 @click.option("--dry-run", "-d", is_flag=True, help="Show what would be deleted without deleting")
 def cleanup_all(dry_run: bool):
