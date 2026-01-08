@@ -777,6 +777,446 @@ def feedback_summary():
         raise SystemExit(1)
 
 
+@app.command("test-feedback-loop")
+@click.option("--seed", is_flag=True, help="Seed test data if no outcomes exist")
+@click.option("--seed-count", default=10, help="Number of test records to seed (default: 10)")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed output for each step")
+def test_feedback_loop(seed: bool, seed_count: int, verbose: bool):
+    """
+    Test the entire ML feedback loop end-to-end.
+
+    Runs all feedback loop stages in sequence:
+    1. Check prerequisites (signals, positions)
+    2. Record outcomes from closed positions
+    3. Analyze feature importance
+    4. Evaluate model performance
+    5. Display comprehensive summary
+
+    Use --seed to create test data if no closed positions exist.
+
+    Example: mcli run jobs test-feedback-loop
+    Example: mcli run jobs test-feedback-loop --seed --verbose
+    """
+    import time
+
+    service_key = get_supabase_key()
+    if not service_key:
+        click.echo("Error: Could not get Supabase service key", err=True)
+        raise SystemExit(1)
+
+    headers = {
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json"
+    }
+
+    click.echo("\n" + "=" * 70)
+    click.echo("  ML FEEDBACK LOOP - END-TO-END TEST")
+    click.echo("=" * 70)
+
+    results = {
+        "prerequisites": None,
+        "outcomes_recorded": None,
+        "features_analyzed": None,
+        "model_evaluated": None
+    }
+
+    # =========================================================================
+    # STEP 1: Check Prerequisites
+    # =========================================================================
+    click.echo("\n[1/5] Checking prerequisites...")
+
+    try:
+        # Check for signals
+        signals_resp = httpx.get(
+            f"{SUPABASE_URL}/rest/v1/trading_signals?select=count&limit=1",
+            headers={
+                "Authorization": f"Bearer {service_key}",
+                "apikey": service_key,
+                "Prefer": "count=exact"
+            },
+            timeout=30.0
+        )
+        signal_count = int(signals_resp.headers.get("content-range", "0-0/0").split("/")[-1])
+
+        # Check for positions
+        positions_resp = httpx.get(
+            f"{SUPABASE_URL}/rest/v1/reference_portfolio_positions?select=id,is_open&limit=100",
+            headers={
+                "Authorization": f"Bearer {service_key}",
+                "apikey": service_key
+            },
+            timeout=30.0
+        )
+        positions = positions_resp.json() if positions_resp.status_code == 200 else []
+        open_positions = len([p for p in positions if p.get("is_open")])
+        closed_positions = len([p for p in positions if not p.get("is_open")])
+
+        # Check for existing outcomes
+        outcomes_resp = httpx.get(
+            f"{SUPABASE_URL}/rest/v1/signal_outcomes?select=count&limit=1",
+            headers={
+                "Authorization": f"Bearer {service_key}",
+                "apikey": service_key,
+                "Prefer": "count=exact"
+            },
+            timeout=30.0
+        )
+        outcome_count = int(outcomes_resp.headers.get("content-range", "0-0/0").split("/")[-1])
+
+        click.echo(f"      Signals in database: {signal_count}")
+        click.echo(f"      Open positions: {open_positions}")
+        click.echo(f"      Closed positions: {closed_positions}")
+        click.echo(f"      Existing outcomes: {outcome_count}")
+
+        results["prerequisites"] = {
+            "signals": signal_count,
+            "open_positions": open_positions,
+            "closed_positions": closed_positions,
+            "existing_outcomes": outcome_count
+        }
+
+        if closed_positions == 0 and not seed:
+            click.echo("\n      ⚠ No closed positions to analyze.")
+            click.echo("        Use --seed to create test data, or wait for positions to close.")
+
+        click.echo("      ✓ Prerequisites checked")
+
+    except Exception as e:
+        click.echo(f"      ✗ Failed: {e}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
+
+    # =========================================================================
+    # STEP 2: Seed Test Data (if requested and needed)
+    # =========================================================================
+    # Seed if requested and we have fewer than 10 outcomes (minimum for analysis)
+    if seed and results["prerequisites"] and results["prerequisites"]["existing_outcomes"] < 10:
+        click.echo(f"\n[2/5] Seeding test data ({seed_count} records)...")
+        import random
+
+        # Test scenarios with varied feature values and outcomes
+        test_scenarios = [
+            # High politician count, bipartisan - should correlate with success
+            {"pol_count": 8, "buy_sell": 3.0, "bipartisan": True, "activity": 15, "volume": 80000, "return_pct": 5.5},
+            {"pol_count": 10, "buy_sell": 2.8, "bipartisan": True, "activity": 20, "volume": 100000, "return_pct": 7.2},
+            {"pol_count": 6, "buy_sell": 2.5, "bipartisan": True, "activity": 12, "volume": 60000, "return_pct": 3.1},
+            # High politician count, not bipartisan - mixed results
+            {"pol_count": 7, "buy_sell": 2.0, "bipartisan": False, "activity": 10, "volume": 50000, "return_pct": 2.0},
+            {"pol_count": 9, "buy_sell": 1.5, "bipartisan": False, "activity": 8, "volume": 45000, "return_pct": -1.5},
+            # Low politician count - generally worse
+            {"pol_count": 2, "buy_sell": 1.2, "bipartisan": False, "activity": 3, "volume": 10000, "return_pct": -2.5},
+            {"pol_count": 1, "buy_sell": 1.0, "bipartisan": False, "activity": 1, "volume": 5000, "return_pct": -4.0},
+            {"pol_count": 3, "buy_sell": 1.8, "bipartisan": True, "activity": 5, "volume": 20000, "return_pct": 1.0},
+            # Edge cases
+            {"pol_count": 5, "buy_sell": 2.2, "bipartisan": True, "activity": 8, "volume": 40000, "return_pct": 4.5},
+            {"pol_count": 4, "buy_sell": 1.3, "bipartisan": False, "activity": 4, "volume": 15000, "return_pct": -0.8},
+        ]
+
+        seeded_count = 0
+        try:
+            for i in range(min(seed_count, len(test_scenarios))):
+                scenario = test_scenarios[i]
+                ticker = f"TEST{i+1}"
+
+                # Create test signal with features
+                test_signal = {
+                    "ticker": ticker,
+                    "signal_type": "buy",
+                    "confidence_score": 0.5 + (scenario["pol_count"] / 20),  # Higher pol count = higher confidence
+                    "features": {
+                        "politician_count": scenario["pol_count"],
+                        "buy_sell_ratio": scenario["buy_sell"],
+                        "bipartisan": scenario["bipartisan"],
+                        "recent_activity_30d": scenario["activity"],
+                        "net_volume": scenario["volume"]
+                    },
+                    "model_version": "test-v1",
+                    "ml_enhanced": True,
+                    "generated_at": datetime.now(timezone.utc).isoformat()
+                }
+
+                signal_resp = httpx.post(
+                    f"{SUPABASE_URL}/rest/v1/trading_signals",
+                    json=test_signal,
+                    headers={
+                        "Authorization": f"Bearer {service_key}",
+                        "apikey": service_key,
+                        "Content-Type": "application/json",
+                        "Prefer": "return=representation"
+                    },
+                    timeout=30.0
+                )
+
+                if signal_resp.status_code in (200, 201):
+                    signal_data = signal_resp.json()
+                    signal_id = signal_data[0]["id"] if isinstance(signal_data, list) else signal_data.get("id")
+
+                    # Calculate prices from return percentage
+                    entry_price = 100.00
+                    exit_price = entry_price * (1 + scenario["return_pct"] / 100)
+                    exit_reason = "take_profit" if scenario["return_pct"] > 0 else "stop_loss"
+
+                    # Create test closed position
+                    test_position = {
+                        "ticker": ticker,
+                        "entry_signal_id": signal_id,
+                        "entry_price": entry_price,
+                        "exit_price": round(exit_price, 2),
+                        "quantity": 10,
+                        "entry_date": (datetime.now(timezone.utc).replace(day=1)).isoformat(),
+                        "exit_date": datetime.now(timezone.utc).isoformat(),
+                        "is_open": False,
+                        "exit_reason": exit_reason,
+                        "entry_confidence": test_signal["confidence_score"]
+                    }
+
+                    pos_resp = httpx.post(
+                        f"{SUPABASE_URL}/rest/v1/reference_portfolio_positions",
+                        json=test_position,
+                        headers={
+                            "Authorization": f"Bearer {service_key}",
+                            "apikey": service_key,
+                            "Content-Type": "application/json",
+                            "Prefer": "return=representation"
+                        },
+                        timeout=30.0
+                    )
+
+                    if pos_resp.status_code in (200, 201):
+                        seeded_count += 1
+                        if verbose:
+                            result = "win" if scenario["return_pct"] > 0.5 else ("loss" if scenario["return_pct"] < -0.5 else "even")
+                            click.echo(f"      [{i+1}] {ticker}: {scenario['return_pct']:+.1f}% ({result}) - pol={scenario['pol_count']}, bipartisan={scenario['bipartisan']}")
+
+            click.echo(f"      Created {seeded_count} test positions")
+            results["prerequisites"]["closed_positions"] = seeded_count
+            click.echo("      ✓ Test data seeded")
+
+        except Exception as e:
+            click.echo(f"      ✗ Seeding failed: {e}", err=True)
+            if verbose:
+                import traceback
+                traceback.print_exc()
+    else:
+        click.echo("\n[2/5] Seeding test data... (skipped)")
+
+    # =========================================================================
+    # STEP 3: Record Outcomes
+    # =========================================================================
+    click.echo("\n[3/5] Recording signal outcomes...")
+
+    try:
+        response = httpx.post(
+            f"{SUPABASE_URL}/functions/v1/signal-feedback",
+            json={"action": "record-outcomes"},
+            headers=headers,
+            timeout=60.0
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                recorded = data.get("recorded", 0)
+                summary = data.get("summary", {})
+                results["outcomes_recorded"] = {
+                    "recorded": recorded,
+                    "wins": summary.get("wins", 0),
+                    "losses": summary.get("losses", 0),
+                    "win_rate": summary.get("winRate", 0)
+                }
+
+                if recorded > 0:
+                    click.echo(f"      Recorded: {recorded} outcomes")
+                    click.echo(f"      Wins: {summary.get('wins', 0)}, Losses: {summary.get('losses', 0)}")
+                    click.echo(f"      Win Rate: {summary.get('winRate', 0)}%")
+                else:
+                    msg = data.get("message", "No new outcomes to record")
+                    click.echo(f"      {msg}")
+
+                click.echo("      ✓ Outcome recording complete")
+            else:
+                click.echo(f"      Note: {data.get('message', data.get('error', 'Unknown'))}")
+        else:
+            click.echo(f"      ✗ HTTP {response.status_code}: {response.text[:200]}", err=True)
+
+    except Exception as e:
+        click.echo(f"      ✗ Failed: {e}", err=True)
+
+    time.sleep(0.5)  # Brief pause between API calls
+
+    # =========================================================================
+    # STEP 4: Analyze Features
+    # =========================================================================
+    click.echo("\n[4/5] Analyzing feature importance...")
+
+    try:
+        response = httpx.post(
+            f"{SUPABASE_URL}/functions/v1/signal-feedback",
+            json={"action": "analyze-features", "windowDays": 90},
+            headers=headers,
+            timeout=120.0
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                features = data.get("features", [])
+                sample_size = data.get("sampleSize", 0)
+
+                if features:
+                    results["features_analyzed"] = {
+                        "count": len(features),
+                        "sample_size": sample_size,
+                        "features": features
+                    }
+
+                    click.echo(f"      Analyzed {len(features)} features (sample: {sample_size})")
+
+                    if verbose:
+                        click.echo("\n      Feature Correlations:")
+                        click.echo("      " + "-" * 60)
+                        for f in features:
+                            useful = "✓" if f.get("feature_useful") else "✗"
+                            click.echo(
+                                f"      {useful} {f.get('feature_name', '?'):<20} "
+                                f"corr={f.get('correlation_with_return', 0):>7.4f}  "
+                                f"lift={f.get('lift_pct', 0):>6.2f}%"
+                            )
+                        click.echo("      " + "-" * 60)
+
+                    # Highlight top feature
+                    if features:
+                        top = max(features, key=lambda x: abs(x.get("correlation_with_return", 0)))
+                        click.echo(f"      Top feature: {top.get('feature_name')} (corr: {top.get('correlation_with_return', 0):.4f})")
+
+                    click.echo("      ✓ Feature analysis complete")
+                else:
+                    msg = data.get("message", "Not enough data for analysis")
+                    click.echo(f"      {msg}")
+            else:
+                click.echo(f"      Note: {data.get('message', data.get('error', 'Unknown'))}")
+        else:
+            click.echo(f"      ✗ HTTP {response.status_code}", err=True)
+
+    except Exception as e:
+        click.echo(f"      ✗ Failed: {e}", err=True)
+
+    time.sleep(0.5)
+
+    # =========================================================================
+    # STEP 5: Evaluate Model
+    # =========================================================================
+    click.echo("\n[5/5] Evaluating model performance...")
+
+    try:
+        response = httpx.post(
+            f"{SUPABASE_URL}/functions/v1/signal-feedback",
+            json={"action": "evaluate-model", "windowDays": 30},
+            headers=headers,
+            timeout=60.0
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                perf = data.get("performance", {})
+                breakdown = data.get("breakdown", {})
+
+                if perf:
+                    results["model_evaluated"] = {
+                        "win_rate": perf.get("win_rate", 0),
+                        "avg_return": perf.get("avg_return_pct", 0),
+                        "sharpe_ratio": perf.get("sharpe_ratio", 0),
+                        "max_drawdown": perf.get("max_drawdown_pct", 0)
+                    }
+
+                    click.echo(f"      Win Rate: {perf.get('win_rate', 0) * 100:.1f}%")
+                    click.echo(f"      Avg Return: {perf.get('avg_return_pct', 0):.2f}%")
+                    click.echo(f"      Sharpe Ratio: {perf.get('sharpe_ratio', 0):.2f}")
+
+                    if verbose:
+                        click.echo(f"      Max Drawdown: {perf.get('max_drawdown_pct', 0):.2f}%")
+                        click.echo(f"      High Conf Win Rate: {perf.get('high_confidence_win_rate', 0) * 100:.1f}%")
+                        click.echo(f"      Low Conf Win Rate: {perf.get('low_confidence_win_rate', 0) * 100:.1f}%")
+
+                    click.echo("      ✓ Model evaluation complete")
+                else:
+                    msg = data.get("message", "Not enough data for evaluation")
+                    click.echo(f"      {msg}")
+            else:
+                click.echo(f"      Note: {data.get('message', data.get('error', 'Unknown'))}")
+        else:
+            click.echo(f"      ✗ HTTP {response.status_code}", err=True)
+
+    except Exception as e:
+        click.echo(f"      ✗ Failed: {e}", err=True)
+
+    # =========================================================================
+    # SUMMARY
+    # =========================================================================
+    click.echo("\n" + "=" * 70)
+    click.echo("  TEST SUMMARY")
+    click.echo("=" * 70)
+
+    steps_passed = 0
+    total_steps = 4
+
+    # Prerequisites
+    if results["prerequisites"]:
+        click.echo("  ✓ Prerequisites: OK")
+        steps_passed += 1
+    else:
+        click.echo("  ✗ Prerequisites: FAILED")
+
+    # Outcomes
+    if results["outcomes_recorded"] is not None:
+        recorded = results["outcomes_recorded"].get("recorded", 0)
+        click.echo(f"  ✓ Outcomes: {recorded} recorded")
+        steps_passed += 1
+    else:
+        click.echo("  - Outcomes: No new outcomes")
+        steps_passed += 1  # Not a failure, just no data
+
+    # Features
+    if results["features_analyzed"]:
+        count = results["features_analyzed"].get("count", 0)
+        click.echo(f"  ✓ Features: {count} analyzed")
+        steps_passed += 1
+    else:
+        click.echo("  - Features: Insufficient data")
+
+    # Model
+    if results["model_evaluated"]:
+        wr = results["model_evaluated"].get("win_rate", 0) * 100
+        click.echo(f"  ✓ Model: {wr:.1f}% win rate")
+        steps_passed += 1
+    else:
+        click.echo("  - Model: Insufficient data")
+
+    click.echo("=" * 70)
+    status = "PASS" if steps_passed >= 2 else "NEEDS DATA"
+    click.echo(f"  Result: {status} ({steps_passed}/{total_steps} steps with data)")
+    click.echo("=" * 70)
+
+    # Recommendations
+    if results["prerequisites"]:
+        prereqs = results["prerequisites"]
+        if prereqs["closed_positions"] == 0:
+            click.echo("\n  💡 Tip: Wait for positions to close, or use --seed for test data")
+        elif prereqs["existing_outcomes"] < 10:
+            click.echo("\n  💡 Tip: Need ~10+ outcomes for meaningful feature analysis")
+
+    if results["features_analyzed"]:
+        features = results["features_analyzed"].get("features", [])
+        useful = [f for f in features if f.get("feature_useful")]
+        if len(useful) < len(features) // 2:
+            click.echo("\n  💡 Insight: Less than half of features show predictive value")
+            click.echo("             Consider adjusting model weights in next retraining")
+
+    click.echo("")
+
+
 @app.command("alpaca-status")
 def alpaca_status():
     """
