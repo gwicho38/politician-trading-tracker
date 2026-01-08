@@ -260,25 +260,74 @@ Respond with ONLY the JSON object, no other text."""
             admin_notes=f"Applied {len(corrections)} correction(s)"
         )
 
+    # Fields that belong to politicians table (not trading_disclosures)
+    POLITICIAN_FIELDS = {"politician_party", "politician_name", "state", "chamber"}
+
     def _apply_corrections(self, disclosure_id: str, corrections: list[CorrectionProposal]) -> bool:
-        """Apply corrections to the disclosure."""
+        """Apply corrections to the appropriate table(s)."""
         if not self.supabase or not disclosure_id:
             return False
 
         try:
-            update_data = {}
-            for c in corrections:
-                update_data[c.field] = c.new_value
-            update_data["updated_at"] = datetime.utcnow().isoformat()
+            # Separate corrections by target table
+            disclosure_updates = {}
+            politician_updates = {}
 
-            self.supabase.table("trading_disclosures").update(
-                update_data
-            ).eq("id", disclosure_id).execute()
+            for c in corrections:
+                # Map correction field to actual database field
+                field = c.field
+                value = c.new_value
+
+                # Handle politician_party -> party mapping
+                if field == "politician_party":
+                    # Convert full name to abbreviation if needed
+                    if isinstance(value, str):
+                        value = self._normalize_party(value)
+                    politician_updates["party"] = value
+                elif field in self.POLITICIAN_FIELDS:
+                    politician_updates[field] = value
+                else:
+                    disclosure_updates[field] = value
+
+            # Apply disclosure updates
+            if disclosure_updates:
+                disclosure_updates["updated_at"] = datetime.utcnow().isoformat()
+                self.supabase.table("trading_disclosures").update(
+                    disclosure_updates
+                ).eq("id", disclosure_id).execute()
+
+            # Apply politician updates (need to get politician_id first)
+            if politician_updates:
+                # Get politician_id from the disclosure
+                disclosure = self.supabase.table("trading_disclosures").select(
+                    "politician_id"
+                ).eq("id", disclosure_id).single().execute()
+
+                if disclosure.data and disclosure.data.get("politician_id"):
+                    politician_id = disclosure.data["politician_id"]
+                    politician_updates["updated_at"] = datetime.utcnow().isoformat()
+                    self.supabase.table("politicians").update(
+                        politician_updates
+                    ).eq("id", politician_id).execute()
+                else:
+                    print(f"No politician_id found for disclosure {disclosure_id}")
+                    return False
 
             return True
         except Exception as e:
             print(f"Failed to apply corrections: {e}")
             return False
+
+    def _normalize_party(self, party: str) -> str:
+        """Normalize party name to abbreviation."""
+        party_lower = party.lower().strip()
+        if party_lower in ("democrat", "democratic", "dem", "d"):
+            return "D"
+        elif party_lower in ("republican", "gop", "rep", "r"):
+            return "R"
+        elif party_lower in ("independent", "ind", "i"):
+            return "I"
+        return party  # Return as-is if not recognized
 
     def _update_report_status(self, report_id: str, status: str, admin_notes: str):
         """Update error report status."""

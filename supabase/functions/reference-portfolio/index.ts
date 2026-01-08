@@ -785,15 +785,7 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
   try {
     log.info('Updating positions', { requestId })
 
-    const credentials = getAlpacaCredentials()
-    if (!credentials) {
-      return new Response(
-        JSON.stringify({ error: 'Alpaca credentials not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Get open positions from database
+    // Get open positions from database FIRST (this is our source of truth for position count)
     const { data: positions, error: positionsError } = await supabaseClient
       .from('reference_portfolio_positions')
       .select('*')
@@ -807,7 +799,20 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
       )
     }
 
+    // Always count open positions from database (fix for position count mismatch)
+    const openPositionsCount = positions?.length || 0
+
     if (!positions || positions.length === 0) {
+      // No positions - update state to reflect this
+      await supabaseClient
+        .from('reference_portfolio_state')
+        .update({
+          open_positions: 0,
+          positions_value: 0,
+          last_sync_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+
       log.info('No positions to update', { requestId })
       return new Response(
         JSON.stringify({ success: true, message: 'No positions to update', updated: 0 }),
@@ -815,60 +820,87 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
       )
     }
 
-    // Fetch positions from Alpaca
-    const alpacaPositionsUrl = `${credentials.baseUrl}/v2/positions`
-    const alpacaResponse = await fetch(alpacaPositionsUrl, {
-      headers: {
-        'APCA-API-KEY-ID': credentials.apiKey,
-        'APCA-API-SECRET-KEY': credentials.secretKey
-      }
-    })
-
-    if (!alpacaResponse.ok) {
-      log.error('Failed to fetch Alpaca positions', { status: alpacaResponse.status }, { requestId })
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch positions from Alpaca' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    const alpacaPositions = await alpacaResponse.json()
-    const alpacaPositionMap = new Map(alpacaPositions.map((p: any) => [p.symbol, p]))
-
-    let updated = 0
+    // Calculate positions value from database as fallback
     let totalPositionsValue = 0
     let totalUnrealizedPL = 0
+    let updated = 0
 
+    // First, calculate from database positions (as fallback)
     for (const position of positions) {
-      const alpacaPosition = alpacaPositionMap.get(position.ticker.toUpperCase())
-
-      if (alpacaPosition) {
-        const currentPrice = parseFloat(alpacaPosition.current_price)
-        const marketValue = parseFloat(alpacaPosition.market_value)
-        const unrealizedPL = parseFloat(alpacaPosition.unrealized_pl)
-        const unrealizedPLPct = parseFloat(alpacaPosition.unrealized_plpc) * 100
-
-        await supabaseClient
-          .from('reference_portfolio_positions')
-          .update({
-            current_price: currentPrice,
-            market_value: marketValue,
-            unrealized_pl: unrealizedPL,
-            unrealized_pl_pct: unrealizedPLPct,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', position.id)
-
-        totalPositionsValue += marketValue
-        totalUnrealizedPL += unrealizedPL
-        updated++
-      } else {
-        // Position not found in Alpaca - might have been closed
-        log.warn('Position not found in Alpaca', { requestId, ticker: position.ticker })
-      }
+      const marketValue = position.market_value || (position.quantity * (position.current_price || position.entry_price))
+      totalPositionsValue += marketValue
+      totalUnrealizedPL += position.unrealized_pl || 0
     }
 
-    // Update portfolio state
+    const dbPositionsValue = totalPositionsValue // Save for fallback
+
+    // Try to update from Alpaca if credentials available
+    const credentials = getAlpacaCredentials()
+    let alpacaSyncSuccess = false
+
+    if (credentials) {
+      try {
+        const alpacaPositionsUrl = `${credentials.baseUrl}/v2/positions`
+        const alpacaResponse = await fetch(alpacaPositionsUrl, {
+          headers: {
+            'APCA-API-KEY-ID': credentials.apiKey,
+            'APCA-API-SECRET-KEY': credentials.secretKey
+          }
+        })
+
+        if (alpacaResponse.ok) {
+          const alpacaPositions = await alpacaResponse.json()
+          const alpacaPositionMap = new Map(alpacaPositions.map((p: any) => [p.symbol, p]))
+
+          // Reset totals for Alpaca data
+          totalPositionsValue = 0
+          totalUnrealizedPL = 0
+
+          for (const position of positions) {
+            const alpacaPosition = alpacaPositionMap.get(position.ticker.toUpperCase())
+
+            if (alpacaPosition) {
+              const currentPrice = parseFloat(alpacaPosition.current_price)
+              const marketValue = parseFloat(alpacaPosition.market_value)
+              const unrealizedPL = parseFloat(alpacaPosition.unrealized_pl)
+              const unrealizedPLPct = parseFloat(alpacaPosition.unrealized_plpc) * 100
+
+              await supabaseClient
+                .from('reference_portfolio_positions')
+                .update({
+                  current_price: currentPrice,
+                  market_value: marketValue,
+                  unrealized_pl: unrealizedPL,
+                  unrealized_pl_pct: unrealizedPLPct,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', position.id)
+
+              totalPositionsValue += marketValue
+              totalUnrealizedPL += unrealizedPL
+              updated++
+              alpacaSyncSuccess = true
+            } else {
+              // Position not in Alpaca - use database value
+              const dbMarketValue = position.market_value || (position.quantity * (position.current_price || position.entry_price))
+              totalPositionsValue += dbMarketValue
+              totalUnrealizedPL += position.unrealized_pl || 0
+              log.warn('Position not found in Alpaca, using DB value', { requestId, ticker: position.ticker, value: dbMarketValue })
+            }
+          }
+        } else {
+          log.warn('Alpaca API failed, using database values', { requestId, status: alpacaResponse.status })
+          totalPositionsValue = dbPositionsValue
+        }
+      } catch (alpacaError) {
+        log.warn('Alpaca sync failed, using database values', { requestId, error: alpacaError.message })
+        totalPositionsValue = dbPositionsValue
+      }
+    } else {
+      log.info('No Alpaca credentials, using database values', { requestId })
+    }
+
+    // Update portfolio state with correct position count and value
     const { data: state } = await supabaseClient
       .from('reference_portfolio_state')
       .select('*')
@@ -894,19 +926,33 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
           peak_portfolio_value: peakValue,
           current_drawdown: currentDrawdown,
           max_drawdown: maxDrawdown,
+          open_positions: openPositionsCount, // FIX: Always update from actual position count
           last_sync_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
         .eq('id', state.id)
     }
 
-    log.info('Positions updated', { requestId, updated, totalPositionsValue, totalUnrealizedPL })
+    log.info('Positions updated', {
+      requestId,
+      updated,
+      openPositionsCount,
+      totalPositionsValue,
+      totalUnrealizedPL,
+      alpacaSyncSuccess
+    })
 
     return new Response(
       JSON.stringify({
         success: true,
         message: `Updated ${updated} positions`,
-        summary: { updated, totalPositionsValue, totalUnrealizedPL }
+        summary: {
+          updated,
+          openPositionsCount,
+          totalPositionsValue,
+          totalUnrealizedPL,
+          alpacaSyncSuccess
+        }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

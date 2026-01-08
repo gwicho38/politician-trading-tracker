@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "generated_at": "2025-12-31T13:41:21.441788Z",
+  "generated_at": "2026-01-08T11:00:18.888890Z",
   "commands": {
     "00_orchestrator": {
       "file": "00_orchestrator.ipynb",
@@ -109,7 +109,7 @@
     "backfill": {
       "file": "backfill.py",
       "language": "python",
-      "content_hash": "sha256:595fb995c3a4a99b9db137ef915d1e3861f78779923fce70b98b107b7bb748b0",
+      "content_hash": "sha256:837ffa421303f72bb22605fe18bd9551665146d02fbb9e426078d6ee92ff6a41",
       "version": "1.0.0",
       "group": "workflows",
       "description": "backfill command",
@@ -117,7 +117,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2025-12-29T10:36:22.862967Z"
+      "last_modified": "2026-01-04T18:05:15.581967Z"
     },
     "client": {
       "file": "client.py",
@@ -135,7 +135,7 @@
     "etl": {
       "file": "etl.py",
       "language": "python",
-      "content_hash": "sha256:4ffcbeb495105b3b5ecf873d1845a5e4eebd0f738909a6e4569541c790677d59",
+      "content_hash": "sha256:bf84065de21287fff0b0921730fb01aaa6abb931aaef2ae9a6ec0dbd2ac178c0",
       "version": "1.0.0",
       "group": "workflows",
       "description": "etl command",
@@ -143,7 +143,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2025-12-30T11:03:13.817048Z"
+      "last_modified": "2026-01-08T11:54:16.114408Z"
     },
     "ingest": {
       "file": "ingest.ipynb",
@@ -158,10 +158,23 @@
       "shell": null,
       "last_modified": "2025-11-28T17:56:17.912728Z"
     },
+    "jobs": {
+      "file": "jobs.py",
+      "language": "python",
+      "content_hash": "sha256:6c30a0c7a2f3a078fbfba1fac94a7cf95079bdb8225fa392987743a7166e60a2",
+      "version": "1.0.0",
+      "group": "workflows",
+      "description": "Jobs command",
+      "author": "",
+      "requires": [],
+      "tags": [],
+      "shell": null,
+      "last_modified": "2026-01-08T12:00:18.888113Z"
+    },
     "ml": {
       "file": "ml.py",
       "language": "python",
-      "content_hash": "sha256:1d42e2b2ab6c3f16bbf92710221fb213c9f6a54c20700d7882c99318de14f5a1",
+      "content_hash": "sha256:c0c076f6dc9065aecc5418f5ec0921e31be8147bbfa702db91cd65890ffb2ef8",
       "version": "1.0.0",
       "group": "workflows",
       "description": "ml command",
@@ -169,7 +182,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2025-12-30T10:59:57.133708Z"
+      "last_modified": "2025-12-31T14:42:35.973657Z"
     },
     "politician_trading_tracker": {
       "file": "politician_trading_tracker.py",
@@ -213,7 +226,7 @@
     "supabase": {
       "file": "supabase.py",
       "language": "python",
-      "content_hash": "sha256:63c5ebb7d7c6e60874d8284d5b5e2631e6a16b983cd224e105bb584ea09cfad9",
+      "content_hash": "sha256:8fd634299dc7c72575ec608f3934ce61ea64f1d7c14a99d04412cc130ce688fa",
       "version": "1.0.0",
       "group": "workflows",
       "description": "Supabase database management for politician-trading-tracker",
@@ -221,7 +234,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2025-12-30T12:06:47.826630Z"
+      "last_modified": "2026-01-04T13:01:05.781235Z"
     }
   }
 }

@@ -81,7 +81,9 @@ defmodule Server.Application do
       Server.Scheduler.Jobs.DataQualityTier3Job,
       Server.Scheduler.Jobs.EmailDigestJob,
       # User feedback processing
-      Server.Scheduler.Jobs.ErrorReportsJob
+      Server.Scheduler.Jobs.ErrorReportsJob,
+      # Data cleanup
+      Server.Scheduler.Jobs.PoliticianDedupJob
     ]
 
     Enum.each(jobs, fn job_module ->
