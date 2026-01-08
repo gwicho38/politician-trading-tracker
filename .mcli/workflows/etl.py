@@ -852,7 +852,9 @@ def suggestions(show_all: bool, status: str | None, limit: int):
                 "reviewing": "👁"
             }.get(report_status, "?")
 
+            report_id = r.get("id", "unknown")
             click.echo(f"\n{status_icon} [{report_status.upper():8}] {created}")
+            click.echo(f"   ID: {report_id}")
             click.echo(f"   Politician: {politician}")
             click.echo(f"   Asset: [{ticker:5}] {asset}")
             click.echo(f"   Type: {error_type}")
