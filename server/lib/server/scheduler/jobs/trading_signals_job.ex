@@ -3,7 +3,10 @@ defmodule Server.Scheduler.Jobs.TradingSignalsJob do
   Generates trading signals from politician trades.
 
   Invokes the trading-signals edge function to analyze politician
-  trading patterns and generate actionable trading signals.
+  trading patterns and generate ML-enhanced actionable trading signals.
+
+  Runs hourly during US market hours to keep signals fresh for
+  the reference portfolio execution job.
   """
 
   @behaviour Server.Scheduler.Job
@@ -17,8 +20,9 @@ defmodule Server.Scheduler.Jobs.TradingSignalsJob do
   def job_name, do: "Trading Signals Generation"
 
   @impl true
-  # Every 6 hours (0:00, 6:00, 12:00, 18:00 UTC)
-  def schedule, do: "0 */6 * * *"
+  # Hourly during market hours: 14:00-20:00 UTC (9 AM - 3 PM EST), Monday-Friday
+  # This ensures fresh ML-enhanced signals for each trading window
+  def schedule, do: "0 14-20 * * 1-5"
 
   @impl true
   def run do
@@ -50,8 +54,9 @@ defmodule Server.Scheduler.Jobs.TradingSignalsJob do
   @impl true
   def metadata do
     %{
-      description: "Generates trading signals from politician trading patterns",
-      edge_function: "trading-signals"
+      description: "Generates ML-enhanced trading signals from politician trading patterns",
+      edge_function: "trading-signals",
+      schedule_note: "Runs hourly during market hours (9 AM - 3 PM EST, Mon-Fri)"
     }
   end
 end

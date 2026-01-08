@@ -1020,12 +1020,12 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
   const handlerStartTime = Date.now()
   try {
     const body = await req.json().catch(() => ({}))
-    const { lookbackDays = 90, minConfidence = 0.60, clearOld = true } = body
+    const { lookbackDays = 90, minConfidence = 0.60, clearOld = true, useML = ML_ENABLED } = body
 
     log.info('Regenerating signals (service-level) - handler started', {
       requestId,
       handler: 'regenerate-signals',
-      params: { lookbackDays, minConfidence, clearOld }
+      params: { lookbackDays, minConfidence, clearOld, useML }
     })
 
     // Clear old signals if requested
@@ -1173,6 +1173,8 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
 
     // Generate signals - relaxed criteria for more signals
     const generatedSignals: any[] = []
+    const mlFeaturesList: MlFeatures[] = []
+    const signalDataMap = new Map<string, { signal: any; heuristicType: string; heuristicConfidence: number }>()
     const MIN_POLITICIANS = 1  // Relaxed from 2
     const MIN_TRANSACTIONS = 2  // Relaxed from 3
 
@@ -1249,7 +1251,7 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
         continue
       }
 
-      generatedSignals.push({
+      const signal = {
         ticker,
         asset_name: data.assetName,
         signal_type: signalType,
@@ -1261,6 +1263,7 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
         generated_at: new Date().toISOString(),
         is_active: true,
         model_version: 'v2.1-service',
+        ml_enhanced: false,
         features: {
           buys: data.buys,
           sells: data.sells,
@@ -1270,13 +1273,61 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
           bipartisan: data.parties.has('D') && data.parties.has('R')
         },
         notes: `Generated from ${totalTx} transactions by ${politicianCount} politicians over ${lookbackDays} days`
-      })
+      }
+
+      generatedSignals.push(signal)
+
+      // Collect ML features for batch prediction
+      if (useML) {
+        mlFeaturesList.push({
+          ticker,
+          politician_count: politicianCount,
+          buy_sell_ratio: buySellRatio,
+          recent_activity_30d: data.recentActivity,
+          bipartisan: data.parties.has('D') && data.parties.has('R'),
+          net_volume: netVolume,
+        })
+        signalDataMap.set(ticker, {
+          signal,
+          heuristicType: signalType,
+          heuristicConfidence: confidence,
+        })
+      }
     }
 
-    log.info('Signals generated', {
+    log.info('Signals generated (heuristic)', {
       requestId,
-      signalCount: generatedSignals.length
+      signalCount: generatedSignals.length,
+      mlFeaturesCount: mlFeaturesList.length
     })
+
+    // Single batch ML prediction call (instead of N sequential calls)
+    let mlPredictionCount = 0
+    let mlEnhancedCount = 0
+    if (useML && mlFeaturesList.length > 0) {
+      log.info('Starting batch ML prediction for regenerate', { requestId, tickerCount: mlFeaturesList.length })
+      const mlPredictions = await getBatchMlPredictions(mlFeaturesList)
+      mlPredictionCount = mlPredictions.size
+      log.info('ML predictions received for regenerate', { requestId, count: mlPredictionCount })
+
+      // Apply ML predictions to signals
+      for (const [ticker, mlResult] of mlPredictions) {
+        const data = signalDataMap.get(ticker)
+        if (data) {
+          const blended = blendSignals(
+            data.heuristicType,
+            data.heuristicConfidence,
+            mlResult.prediction,
+            mlResult.confidence
+          )
+          data.signal.signal_type = blended.signalType
+          data.signal.confidence_score = Math.round(blended.confidence * 100) / 100
+          data.signal.ml_enhanced = blended.mlEnhanced
+          if (blended.mlEnhanced) mlEnhancedCount++
+        }
+      }
+      log.info('ML blending completed for regenerate', { requestId, mlEnhancedCount })
+    }
 
     if (generatedSignals.length === 0) {
       return new Response(
@@ -1297,7 +1348,7 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
     const topSignals = generatedSignals.slice(0, 100)
 
     // Get or create model reference for lineage tracking
-    const modelVersion = 'v2.1-service'
+    const modelVersion = useML && mlEnhancedCount > 0 ? 'v2.1-ml-enhanced' : 'v2.1-service'
     let modelId: string | null = null
     const activeModel = await getActiveModel(supabaseClient)
     if (activeModel) {
@@ -1313,11 +1364,13 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
     const signalsWithLineage = topSignals.map(signal => ({
       ...signal,
       model_id: modelId,
+      model_version: modelVersion,
       generation_context: {
         lookbackDays,
         minConfidence,
         source: 'regenerate-signals',
         timestamp: new Date().toISOString(),
+        mlEnabled: useML,
       },
       reproducibility_hash: computeReproducibilityHash(signal.features, modelId),
     }))
@@ -1391,6 +1444,9 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
           signalsGenerated: insertedSignals?.length || 0,
           modelId,
           modelVersion,
+          mlEnabled: useML,
+          mlPredictionCount,
+          mlEnhancedCount,
         }
       }),
       {

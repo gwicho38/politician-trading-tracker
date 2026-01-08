@@ -275,41 +275,53 @@ ALTER TABLE public.reference_portfolio_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reference_portfolio_signal_queue ENABLE ROW LEVEL SECURITY;
 
 -- Public READ access for all reference portfolio tables (transparency)
+DROP POLICY IF EXISTS "public_read_ref_config" ON public.reference_portfolio_config;
 CREATE POLICY "public_read_ref_config" ON public.reference_portfolio_config
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "public_read_ref_state" ON public.reference_portfolio_state;
 CREATE POLICY "public_read_ref_state" ON public.reference_portfolio_state
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "public_read_ref_positions" ON public.reference_portfolio_positions;
 CREATE POLICY "public_read_ref_positions" ON public.reference_portfolio_positions
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "public_read_ref_transactions" ON public.reference_portfolio_transactions;
 CREATE POLICY "public_read_ref_transactions" ON public.reference_portfolio_transactions
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "public_read_ref_snapshots" ON public.reference_portfolio_snapshots;
 CREATE POLICY "public_read_ref_snapshots" ON public.reference_portfolio_snapshots
   FOR SELECT USING (true);
 
 -- Signal queue is internal only - service role access
+DROP POLICY IF EXISTS "service_read_signal_queue" ON public.reference_portfolio_signal_queue;
 CREATE POLICY "service_read_signal_queue" ON public.reference_portfolio_signal_queue
   FOR SELECT USING (auth.role() = 'service_role');
 
 -- Service role WRITE access for all tables (automated trading)
+DROP POLICY IF EXISTS "service_write_ref_config" ON public.reference_portfolio_config;
 CREATE POLICY "service_write_ref_config" ON public.reference_portfolio_config
   FOR ALL USING (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "service_write_ref_state" ON public.reference_portfolio_state;
 CREATE POLICY "service_write_ref_state" ON public.reference_portfolio_state
   FOR ALL USING (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "service_write_ref_positions" ON public.reference_portfolio_positions;
 CREATE POLICY "service_write_ref_positions" ON public.reference_portfolio_positions
   FOR ALL USING (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "service_write_ref_transactions" ON public.reference_portfolio_transactions;
 CREATE POLICY "service_write_ref_transactions" ON public.reference_portfolio_transactions
   FOR ALL USING (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "service_write_ref_snapshots" ON public.reference_portfolio_snapshots;
 CREATE POLICY "service_write_ref_snapshots" ON public.reference_portfolio_snapshots
   FOR ALL USING (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "service_write_signal_queue" ON public.reference_portfolio_signal_queue;
 CREATE POLICY "service_write_signal_queue" ON public.reference_portfolio_signal_queue
   FOR ALL USING (auth.role() = 'service_role');
 
