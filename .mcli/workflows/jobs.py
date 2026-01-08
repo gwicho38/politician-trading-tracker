@@ -469,6 +469,67 @@ def portfolio_snapshot():
         raise SystemExit(1)
 
 
+@app.command("execute-signals")
+def execute_signals():
+    """
+    Execute pending signals for the reference portfolio.
+
+    Processes queued trading signals and executes trades via Alpaca.
+    Only executes during market hours. The reference portfolio trades
+    based on high-confidence ML-enhanced signals.
+
+    Example: mcli run jobs execute-signals
+    """
+    service_key = get_supabase_key()
+    if not service_key:
+        click.echo("Error: Could not get Supabase service key", err=True)
+        raise SystemExit(1)
+
+    click.echo("Executing reference portfolio signals...")
+
+    try:
+        response = httpx.post(
+            f"{SUPABASE_URL}/functions/v1/reference-portfolio",
+            json={"action": "execute-signals"},
+            headers={
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": "application/json"
+            },
+            timeout=60.0
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                executed = data.get("executed", 0)
+                skipped = data.get("skipped", 0)
+                failed = data.get("failed", 0)
+                message = data.get("message", "")
+
+                if message:
+                    click.echo(f"\n{message}")
+                else:
+                    click.echo(f"\n✓ Signal execution complete!")
+                    click.echo(f"  Executed: {executed}")
+                    click.echo(f"  Skipped: {skipped}")
+                    click.echo(f"  Failed: {failed}")
+
+                if data.get("results"):
+                    click.echo("\nTrades executed:")
+                    for result in data["results"][:10]:
+                        click.echo(f"  {result.get('ticker')}: {result.get('shares')} shares @ ${result.get('price', 0):.2f}")
+            else:
+                click.echo(f"Error: {data.get('error', 'Unknown error')}", err=True)
+                raise SystemExit(1)
+        else:
+            click.echo(f"Failed: HTTP {response.status_code}", err=True)
+            click.echo(response.text[:200], err=True)
+            raise SystemExit(1)
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
 @app.command("alpaca-status")
 def alpaca_status():
     """
