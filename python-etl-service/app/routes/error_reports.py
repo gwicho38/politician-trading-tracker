@@ -353,6 +353,113 @@ async def reanalyze_report(request: ReanalyzeRequest):
         processor.CONFIDENCE_THRESHOLD = original_threshold
 
 
+class GenerateSuggestionRequest(BaseModel):
+    """Request to generate a suggestion for a report using Ollama."""
+    report_id: str
+    model: str = "llama3.1:8b"
+
+
+@router.post("/generate-suggestion")
+async def generate_suggestion(request: GenerateSuggestionRequest):
+    """
+    Force Ollama to analyze a report and generate suggested corrections.
+
+    This is useful for:
+    - Generating suggestions for reports that haven't been processed yet
+    - Re-generating suggestions with a different model
+    - Testing Ollama's interpretation of a specific report
+
+    Returns the suggested corrections WITHOUT applying them.
+    """
+    processor = ErrorReportProcessor(model=request.model)
+
+    if not processor.test_connection():
+        raise HTTPException(status_code=503, detail="Cannot connect to Ollama service")
+
+    if not processor.supabase:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    try:
+        # Fetch the report
+        response = (
+            processor.supabase.table("user_error_reports")
+            .select("*")
+            .eq("id", request.report_id)
+            .single()
+            .execute()
+        )
+
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Report not found")
+
+        report = response.data
+
+        # Call Ollama to interpret corrections
+        corrections = processor.interpret_corrections(report)
+
+        if not corrections:
+            return {
+                "report_id": request.report_id,
+                "model": request.model,
+                "status": "no_corrections",
+                "message": "Ollama could not determine any corrections for this report",
+                "report_summary": {
+                    "error_type": report.get("error_type"),
+                    "description": report.get("description"),
+                    "politician": report.get("disclosure_snapshot", {}).get("politician_name"),
+                    "asset": report.get("disclosure_snapshot", {}).get("asset_name"),
+                },
+                "corrections": []
+            }
+
+        # Format corrections for response
+        formatted_corrections = [
+            {
+                "field": c.field,
+                "old_value": c.old_value,
+                "new_value": c.new_value,
+                "confidence": c.confidence,
+                "confidence_pct": f"{c.confidence * 100:.0f}%",
+                "reasoning": c.reasoning,
+                "would_auto_apply": c.confidence >= processor.CONFIDENCE_THRESHOLD
+            }
+            for c in corrections
+        ]
+
+        # Determine overall status
+        high_confidence = [c for c in corrections if c.confidence >= processor.CONFIDENCE_THRESHOLD]
+        low_confidence = [c for c in corrections if c.confidence < processor.CONFIDENCE_THRESHOLD]
+
+        return {
+            "report_id": request.report_id,
+            "model": request.model,
+            "status": "suggestions_generated",
+            "report_summary": {
+                "error_type": report.get("error_type"),
+                "description": report.get("description"),
+                "politician": report.get("disclosure_snapshot", {}).get("politician_name"),
+                "asset": report.get("disclosure_snapshot", {}).get("asset_name"),
+                "current_status": report.get("status"),
+            },
+            "corrections": formatted_corrections,
+            "summary": {
+                "total_suggestions": len(corrections),
+                "high_confidence": len(high_confidence),
+                "low_confidence": len(low_confidence),
+                "confidence_threshold": f"{processor.CONFIDENCE_THRESHOLD * 100:.0f}%"
+            },
+            "next_steps": {
+                "to_apply_all": f"POST /error-reports/reanalyze with report_id={request.report_id}",
+                "to_apply_manual": f"POST /error-reports/force-apply with specific corrections"
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/health")
 async def check_ollama_health():
     """Check if Ollama service is available."""
