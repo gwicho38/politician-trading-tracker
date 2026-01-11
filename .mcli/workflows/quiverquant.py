@@ -1224,6 +1224,118 @@ def coverage_report():
         console.print("\n[green]Data quality is healthy[/green]")
 
 
+@app.command("politician-trades")
+@click.argument("name")
+@click.option("--limit", "-l", default=50, help="Maximum trades to return")
+@click.option("--output", "-o", type=click.Choice(["table", "json"]), default="table")
+def politician_trades(name: str, limit: int, output: str):
+    """
+    Fetch all trades for a specific politician from QuiverQuant.
+
+    NAME can be a partial match (case-insensitive).
+
+    Examples:
+        mcli run quiverquant politician-trades "Maria Elvira Salazar"
+        mcli run quiverquant politician-trades pelosi --limit 100
+        mcli run quiverquant politician-trades "Salazar" -o json
+    """
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    console.print(f"[cyan]Searching for trades by '{name}'...[/cyan]\n")
+
+    # Fetch all data (QuiverQuant API doesn't support filtering by name)
+    qq_data = fetch_quiverquant_data(api_key, limit=5000)
+
+    if not qq_data:
+        console.print("[red]Failed to fetch data from QuiverQuant[/red]")
+        raise SystemExit(1)
+
+    # Filter by politician name (case-insensitive partial match)
+    name_lower = name.lower()
+    matching_trades = []
+    for trade in qq_data:
+        rep = trade.get("Representative", "")
+        if name_lower in rep.lower():
+            matching_trades.append(trade)
+
+    if not matching_trades:
+        console.print(f"[yellow]No trades found for '{name}'[/yellow]")
+        console.print("\n[dim]Try a different name or partial match (e.g., last name only)[/dim]")
+        raise SystemExit(1)
+
+    # Get unique politician names that matched
+    matched_names = set(t.get("Representative", "") for t in matching_trades)
+    if len(matched_names) > 1:
+        console.print(f"[yellow]Multiple politicians matched:[/yellow]")
+        for n in sorted(matched_names):
+            count = sum(1 for t in matching_trades if t.get("Representative") == n)
+            console.print(f"  - {n} ({count} trades)")
+        console.print()
+
+    # Limit results
+    trades_to_show = matching_trades[:limit]
+
+    if output == "json":
+        import json
+        console.print(json.dumps(trades_to_show, indent=2, default=str))
+    else:
+        # Get politician info from first trade
+        first_trade = trades_to_show[0]
+        console.print(f"[bold]Politician: {first_trade.get('Representative', 'Unknown')}[/bold]")
+        console.print(f"Party: {first_trade.get('Party', '?')}")
+        console.print(f"Chamber: {first_trade.get('House', '?')}")
+        console.print(f"BioGuide ID: {first_trade.get('BioGuideID', 'N/A')}")
+        console.print(f"\n[bold]Total trades found: {len(matching_trades)}[/bold]")
+        console.print(f"Showing: {len(trades_to_show)}\n")
+
+        table = Table(title=f"Trades for {first_trade.get('Representative', name)}")
+        table.add_column("Date", style="cyan", width=12)
+        table.add_column("Ticker", style="yellow", width=8)
+        table.add_column("Asset", width=30)
+        table.add_column("Type", width=15)
+        table.add_column("Amount", width=20)
+
+        for trade in trades_to_show:
+            tx_date = (trade.get("TransactionDate") or "")[:10]
+            ticker = trade.get("Ticker", "-")
+            asset = (trade.get("Asset") or trade.get("Description") or "-")[:28]
+            tx_type = trade.get("Transaction", "-")
+            amount = trade.get("Range", trade.get("Amount", "-"))
+
+            table.add_row(tx_date, ticker, asset, tx_type, str(amount))
+
+        console.print(table)
+
+        # Summary stats
+        tickers = {}
+        tx_types = {"Purchase": 0, "Sale": 0, "Other": 0}
+        for t in matching_trades:
+            ticker = t.get("Ticker", "")
+            if ticker:
+                tickers[ticker] = tickers.get(ticker, 0) + 1
+
+            tx = t.get("Transaction", "").lower()
+            if "purchase" in tx:
+                tx_types["Purchase"] += 1
+            elif "sale" in tx:
+                tx_types["Sale"] += 1
+            else:
+                tx_types["Other"] += 1
+
+        console.print(f"\n[bold]Summary:[/bold]")
+        console.print(f"  Purchases: {tx_types['Purchase']}")
+        console.print(f"  Sales: {tx_types['Sale']}")
+        if tx_types['Other']:
+            console.print(f"  Other: {tx_types['Other']}")
+
+        console.print(f"\n[bold]Top Tickers:[/bold]")
+        for ticker, count in sorted(tickers.items(), key=lambda x: -x[1])[:10]:
+            console.print(f"  {ticker}: {count}")
+
+
 @app.command("missing-trades")
 @click.option("--days", "-d", default=30, help="Number of days to check")
 @click.option("--limit", "-l", default=20, help="Maximum trades to show")
