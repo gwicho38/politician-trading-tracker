@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Save, Calendar, User, LogOut, Sparkles } from 'lucide-react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Save, Calendar, User, LogOut, Sparkles } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -49,6 +49,7 @@ import {
   PresetManager,
   MLInsights,
 } from '@/components/signal-playground';
+import { SidebarLayout } from '@/components/layouts/SidebarLayout';
 
 const LOOKBACK_OPTIONS = [
   { value: '30', label: 'Last 30 days' },
@@ -229,95 +230,88 @@ export default function SignalPlayground() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-xl">
-        <div className="container flex h-14 items-center justify-between px-4">
-          <div className="flex items-center gap-4">
-            <Link to={fromShowcase ? '/showcase' : '/'}>
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-lg font-semibold">Signal Playground</h1>
-              <p className="text-xs text-muted-foreground">
-                {fromShowcase ? (
-                  <span className="flex items-center gap-1">
-                    <Sparkles className="h-3 w-3" />
-                    Trying strategy from showcase
-                  </span>
-                ) : (
-                  'Experiment with signal generation weights'
-                )}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Lookback period selector */}
+    <SidebarLayout>
+      <div className="flex flex-col h-full">
+        {/* Page Toolbar */}
+        <div className="border-b border-border/50 bg-background/80 backdrop-blur-xl">
+          <div className="container flex h-12 items-center justify-between px-4">
             <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <Select
-                value={String(lookbackDays)}
-                onValueChange={(value) => setLookbackDays(Number(value))}
-              >
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {LOOKBACK_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Sparkles className="h-5 w-5 text-primary" />
+              <div>
+                <h1 className="text-lg font-semibold">Signal Playground</h1>
+              </div>
+              {fromShowcase && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1 ml-2">
+                  <Sparkles className="h-3 w-3" />
+                  Trying strategy from showcase
+                </span>
+              )}
             </div>
 
-            {/* Preset selector */}
-            <PresetManager
-              presets={presets}
-              userPresets={userPresets}
-              systemPresets={systemPresets}
-              selectedPresetId={selectedPresetId}
-              onSelect={handlePresetSelect}
-              onDelete={handleDeletePreset}
-              isLoading={presetsLoading}
-            />
+            <div className="flex items-center gap-3">
+              {/* Lookback period selector */}
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <Select
+                  value={String(lookbackDays)}
+                  onValueChange={(value) => setLookbackDays(Number(value))}
+                >
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LOOKBACK_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            {/* User profile */}
-            {user ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <User className="h-4 w-4" />
-                    <span className="hidden sm:inline">{getDisplayName()}</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem className="text-muted-foreground text-xs">
-                    {user.email}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate('/auth')}
-              >
-                Sign In
-              </Button>
-            )}
+              {/* Preset selector */}
+              <PresetManager
+                presets={presets}
+                userPresets={userPresets}
+                systemPresets={systemPresets}
+                selectedPresetId={selectedPresetId}
+                onSelect={handlePresetSelect}
+                onDelete={handleDeletePreset}
+                isLoading={presetsLoading}
+              />
+
+              {/* User profile */}
+              {user ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="gap-2">
+                      <User className="h-4 w-4" />
+                      <span className="hidden sm:inline">{getDisplayName()}</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem className="text-muted-foreground text-xs">
+                      {user.email}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate('/auth')}
+                >
+                  Sign In
+                </Button>
+              )}
+            </div>
           </div>
         </div>
-      </header>
 
       {/* Main content - resizable panels */}
       <div className="flex-1 overflow-hidden">
@@ -420,6 +414,7 @@ export default function SignalPlayground() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </SidebarLayout>
   );
 }

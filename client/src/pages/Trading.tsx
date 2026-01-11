@@ -6,9 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Wallet, TrendingUp, ClipboardList, ArrowLeft, Loader2 } from 'lucide-react';
+import { Wallet, TrendingUp, ClipboardList, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import Header from '@/components/Header';
+import { SidebarLayout } from '@/components/layouts/SidebarLayout';
 import { AlpacaConnectionCard } from '@/components/trading/AlpacaConnectionCard';
 import { AlpacaConnectionStatus } from '@/components/trading/AlpacaConnectionStatus';
 import { AccountDashboard } from '@/components/trading/AccountDashboard';
@@ -23,41 +23,33 @@ const Trading = () => {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
+      <SidebarLayout>
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </SidebarLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-
+    <SidebarLayout>
       <main className="container mx-auto px-4 py-6 max-w-7xl">
-        {/* Header */}
+        {/* Page Header */}
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <Link to="/">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-            </Link>
+          <div className="flex items-center gap-3">
+            <Wallet className="h-6 w-6 text-primary" />
             <div>
-              <div className="flex items-center gap-3">
-                <Wallet className="h-6 w-6 text-primary" />
-                <h1 className="text-2xl font-bold">Trading</h1>
-                <Badge
-                  variant={tradingMode === 'paper' ? 'secondary' : 'destructive'}
-                  className="ml-2"
-                >
-                  {tradingMode === 'paper' ? '📄 Paper Trading' : '💰 Live Trading'}
-                </Badge>
-              </div>
-              <p className="text-muted-foreground mt-1">
+              <h1 className="text-2xl font-bold">Trading</h1>
+              <p className="text-muted-foreground">
                 Execute trades based on politician trading signals
               </p>
             </div>
+            <Badge
+              variant={tradingMode === 'paper' ? 'secondary' : 'destructive'}
+              className="ml-2"
+            >
+              {tradingMode === 'paper' ? '📄 Paper Trading' : '💰 Live Trading'}
+            </Badge>
           </div>
         </div>
 
@@ -207,7 +199,7 @@ const Trading = () => {
           </Tabs>
         )}
       </main>
-    </div>
+    </SidebarLayout>
   );
 };
 

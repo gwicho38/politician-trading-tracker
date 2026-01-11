@@ -221,20 +221,11 @@ defmodule Server.Scheduler.API do
 
   defp execute_job(module, job_record) do
     job_id = job_record.job_id
-
-    # Create execution record
-    {:ok, execution} =
-      %JobExecution{}
-      |> JobExecution.changeset(%{
-        job_id: job_id,
-        started_at: DateTime.utc_now(),
-        status: "running"
-      })
-      |> Repo.insert()
+    started_at = DateTime.utc_now()
 
     # Update job's last_attempted_run
     job_record
-    |> ScheduledJob.update_execution_changeset(%{last_attempted_run: DateTime.utc_now()})
+    |> ScheduledJob.update_execution_changeset(%{last_attempted_run: started_at})
     |> Repo.update()
 
     # Execute the job
@@ -253,41 +244,43 @@ defmodule Server.Scheduler.API do
       end
 
     duration = (System.monotonic_time(:millisecond) - start_time) / 1000
+    completed_at = DateTime.utc_now()
 
-    # Update execution record
-    {status, records, error} =
+    # Create execution record with final status (avoid 'running' status due to DB constraint)
+    {status, metadata, error} =
       case result do
-        :ok -> {"success", 0, nil}
-        {:ok, count} when is_integer(count) -> {"success", count, nil}
-        {:ok, _other} -> {"success", 0, nil}
-        {:error, reason} -> {"failed", 0, inspect(reason)}
+        :ok -> {"success", %{}, nil}
+        {:ok, count} when is_integer(count) -> {"success", %{records_processed: count}, nil}
+        {:ok, _other} -> {"success", %{}, nil}
+        {:error, reason} -> {"failed", %{}, inspect(reason)}
       end
 
-    execution
+    # Insert execution record at completion
+    %JobExecution{}
     |> JobExecution.changeset(%{
-      completed_at: DateTime.utc_now(),
+      job_id: job_id,
+      started_at: started_at,
+      completed_at: completed_at,
       status: status,
       duration_seconds: duration,
-      records_processed: records,
+      metadata: metadata,
       error_message: error
     })
-    |> Repo.update()
+    |> Repo.insert()
 
     # Update job record
-    now = DateTime.utc_now()
-
     job_updates =
       case status do
         "success" ->
           %{
-            last_run_at: now,
-            last_successful_run: now,
+            last_run_at: completed_at,
+            last_successful_run: completed_at,
             consecutive_failures: 0
           }
 
         "failed" ->
           %{
-            last_run_at: now,
+            last_run_at: completed_at,
             consecutive_failures: job_record.consecutive_failures + 1
           }
       end

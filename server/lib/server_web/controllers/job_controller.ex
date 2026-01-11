@@ -83,7 +83,18 @@ defmodule ServerWeb.JobController do
     jobs = Scheduler.list_jobs()
 
     # Find the most recent successful run across data collection jobs
-    data_jobs = ["politician-trading-house", "sync-data", "trading-signals"]
+    # Include all ETL and data collection jobs for accurate sync status
+    data_jobs = [
+      "politician-trading-house",
+      "politician-trading-senate",
+      "politician-trading-quiver",
+      "sync-data",
+      "trading-signals",
+      "data_collection",
+      "data_collection_daily",
+      "daily-scheduled-sync",
+      "signal-generation"
+    ]
 
     last_sync =
       jobs

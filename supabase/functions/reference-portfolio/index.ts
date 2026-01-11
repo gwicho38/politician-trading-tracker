@@ -360,57 +360,160 @@ async function handleGetTrades(supabaseClient: any, requestId: string, bodyParam
 }
 
 // =============================================================================
-// GET PERFORMANCE - Public endpoint to get performance snapshots
+// GET PERFORMANCE - Fetch portfolio history directly from Alpaca API
 // =============================================================================
 async function handleGetPerformance(supabaseClient: any, requestId: string, bodyParams: any) {
   try {
     const timeframe = bodyParams.timeframe || '1m' // 1d, 1w, 1m, 3m, ytd, 1y
-    const now = new Date()
-    let startDate: Date
+
+    // Map our timeframe to Alpaca's period format
+    let alpacaPeriod: string
+    let alpacaTimeframe: string
 
     switch (timeframe) {
       case '1d':
-        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+        alpacaPeriod = '1D'
+        alpacaTimeframe = '15Min'
         break
       case '1w':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        alpacaPeriod = '1W'
+        alpacaTimeframe = '1H'
         break
       case '1m':
-        startDate = new Date(now.setMonth(now.getMonth() - 1))
+        alpacaPeriod = '1M'
+        alpacaTimeframe = '1D'
         break
       case '3m':
-        startDate = new Date(now.setMonth(now.getMonth() - 3))
+        alpacaPeriod = '3M'
+        alpacaTimeframe = '1D'
         break
       case 'ytd':
-        startDate = new Date(now.getFullYear(), 0, 1)
+        // Calculate days since Jan 1
+        const now = new Date()
+        const startOfYear = new Date(now.getFullYear(), 0, 1)
+        const daysSinceYearStart = Math.ceil((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24))
+        alpacaPeriod = `${daysSinceYearStart}D`
+        alpacaTimeframe = '1D'
         break
       case '1y':
-        startDate = new Date(now.setFullYear(now.getFullYear() - 1))
+        alpacaPeriod = '1A'
+        alpacaTimeframe = '1D'
         break
       default:
-        startDate = new Date(now.setMonth(now.getMonth() - 1))
+        alpacaPeriod = '1M'
+        alpacaTimeframe = '1D'
     }
 
-    const { data: snapshots, error } = await supabaseClient
-      .from('reference_portfolio_snapshots')
-      .select('*')
-      .gte('snapshot_date', startDate.toISOString().split('T')[0])
-      .order('snapshot_date', { ascending: true })
-
-    if (error) {
-      log.error('Failed to fetch performance data', error, { requestId })
+    const credentials = getAlpacaCredentials()
+    if (!credentials) {
+      log.error('Alpaca credentials not configured', null, { requestId })
       return new Response(
-        JSON.stringify({ error: 'Failed to fetch performance data' }),
+        JSON.stringify({ error: 'Alpaca credentials not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    // Fetch portfolio history from Alpaca
+    const historyUrl = `${credentials.baseUrl}/v2/account/portfolio/history?period=${alpacaPeriod}&timeframe=${alpacaTimeframe}&extended_hours=true`
+    log.info('Fetching Alpaca portfolio history', { requestId, url: historyUrl, period: alpacaPeriod, timeframe: alpacaTimeframe })
+
+    const response = await fetch(historyUrl, {
+      headers: {
+        'APCA-API-KEY-ID': credentials.apiKey,
+        'APCA-API-SECRET-KEY': credentials.secretKey
+      }
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      log.error('Alpaca portfolio history failed', { status: response.status, error: errorText }, { requestId })
+      return new Response(
+        JSON.stringify({ error: `Alpaca API error: ${response.status}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const alpacaHistory = await response.json()
+
+    // Get config for initial capital
+    const { data: config } = await supabaseClient
+      .from('reference_portfolio_config')
+      .select('initial_capital')
+      .single()
+    const initialCapital = config?.initial_capital || 100000
+
+    // Transform Alpaca response to our snapshot format
+    const snapshots = []
+    const timestamps = alpacaHistory.timestamp || []
+    const equities = alpacaHistory.equity || []
+    const profitLoss = alpacaHistory.profit_loss || []
+    const profitLossPct = alpacaHistory.profit_loss_pct || []
+    const baseValue = alpacaHistory.base_value || initialCapital
+
+    for (let i = 0; i < timestamps.length; i++) {
+      const timestamp = timestamps[i]
+      const equity = equities[i]
+      const pl = profitLoss[i]
+      const plPct = profitLossPct[i]
+
+      // Skip null or zero values (market closed periods or before account was funded)
+      if (equity === null || equity === 0) continue
+
+      const date = new Date(timestamp * 1000) // Alpaca returns epoch seconds
+      const snapshotDate = date.toISOString().split('T')[0]
+
+      // Calculate day return (difference from previous point)
+      const prevEquity = i > 0 ? equities[i - 1] : baseValue
+      const dayReturn = prevEquity !== null ? equity - prevEquity : 0
+      const dayReturnPct = prevEquity !== null && prevEquity > 0 ? (dayReturn / prevEquity) * 100 : 0
+
+      // Calculate cumulative return from initial capital
+      const cumulativeReturn = equity - initialCapital
+      const cumulativeReturnPct = (cumulativeReturn / initialCapital) * 100
+
+      snapshots.push({
+        id: `alpaca-${timestamp}`,
+        snapshot_date: snapshotDate,
+        snapshot_time: date.toISOString(),
+        portfolio_value: equity,
+        cash: null, // Not provided by Alpaca history
+        positions_value: null, // Not provided by Alpaca history
+        day_return: dayReturn,
+        day_return_pct: dayReturnPct,
+        cumulative_return: cumulativeReturn,
+        cumulative_return_pct: cumulativeReturnPct,
+        // Alpaca's P&L is relative to base_value (account value at start of period)
+        alpaca_pl: pl,
+        alpaca_pl_pct: plPct !== null ? plPct * 100 : null, // Convert to percentage
+        open_positions: null,
+        total_trades: null,
+        sharpe_ratio: null,
+        max_drawdown: null,
+        current_drawdown: null,
+        win_rate: null,
+        benchmark_value: null,
+        benchmark_return: null,
+        benchmark_return_pct: null,
+        alpha: null
+      })
+    }
+
+    log.info('Alpaca portfolio history fetched', {
+      requestId,
+      dataPoints: snapshots.length,
+      baseValue,
+      latestEquity: equities[equities.length - 1]
+    })
 
     return new Response(
       JSON.stringify({
         success: true,
         timeframe,
-        snapshots: snapshots || [],
-        count: snapshots?.length || 0
+        source: 'alpaca',
+        base_value: baseValue,
+        initial_capital: initialCapital,
+        snapshots,
+        count: snapshots.length
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
@@ -785,6 +888,14 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
   try {
     log.info('Updating positions', { requestId })
 
+    // Get config for initial_capital
+    const { data: config } = await supabaseClient
+      .from('reference_portfolio_config')
+      .select('initial_capital')
+      .single()
+
+    const initialCapital = config?.initial_capital || 100000
+
     // Get open positions from database FIRST (this is our source of truth for position count)
     const { data: positions, error: positionsError } = await supabaseClient
       .from('reference_portfolio_positions')
@@ -908,11 +1019,11 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
 
     if (state) {
       const portfolioValue = state.cash + totalPositionsValue
-      const totalReturn = portfolioValue - 100000 // Assuming $100k initial
-      const totalReturnPct = (totalReturn / 100000) * 100
+      const totalReturn = portfolioValue - initialCapital
+      const totalReturnPct = (totalReturn / initialCapital) * 100
 
       // Check for new peak (for drawdown calculation)
-      const peakValue = Math.max(state.peak_portfolio_value || 100000, portfolioValue)
+      const peakValue = Math.max(state.peak_portfolio_value || initialCapital, portfolioValue)
       const currentDrawdown = ((peakValue - portfolioValue) / peakValue) * 100
       const maxDrawdown = Math.max(state.max_drawdown || 0, currentDrawdown)
 
@@ -967,13 +1078,184 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
 }
 
 // =============================================================================
+// SYNC POSITIONS WITH ALPACA - Helper function for position value updates
+// =============================================================================
+async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, initialCapital: number) {
+  try {
+    // Get open positions from database
+    const { data: positions, error: positionsError } = await supabaseClient
+      .from('reference_portfolio_positions')
+      .select('*')
+      .eq('is_open', true)
+
+    if (positionsError) {
+      log.error('Failed to fetch positions for sync', positionsError, { requestId })
+      return
+    }
+
+    const openPositionsCount = positions?.length || 0
+
+    if (!positions || positions.length === 0) {
+      // No positions - update state to reflect this
+      await supabaseClient
+        .from('reference_portfolio_state')
+        .update({
+          open_positions: 0,
+          positions_value: 0,
+          last_sync_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+      log.info('No positions to sync', { requestId })
+      return
+    }
+
+    // Calculate positions value from database as fallback
+    let totalPositionsValue = 0
+    let totalUnrealizedPL = 0
+
+    for (const position of positions) {
+      const marketValue = position.market_value || (position.quantity * (position.current_price || position.entry_price))
+      totalPositionsValue += marketValue
+      totalUnrealizedPL += position.unrealized_pl || 0
+    }
+
+    const dbPositionsValue = totalPositionsValue
+
+    // Try to update from Alpaca if credentials available
+    const credentials = getAlpacaCredentials()
+
+    if (credentials) {
+      try {
+        const alpacaPositionsUrl = `${credentials.baseUrl}/v2/positions`
+        const alpacaResponse = await fetch(alpacaPositionsUrl, {
+          headers: {
+            'APCA-API-KEY-ID': credentials.apiKey,
+            'APCA-API-SECRET-KEY': credentials.secretKey
+          }
+        })
+
+        if (alpacaResponse.ok) {
+          const alpacaPositions = await alpacaResponse.json()
+          const alpacaPositionMap = new Map(alpacaPositions.map((p: any) => [p.symbol, p]))
+
+          // Reset totals for Alpaca data
+          totalPositionsValue = 0
+          totalUnrealizedPL = 0
+
+          for (const position of positions) {
+            const alpacaPosition = alpacaPositionMap.get(position.ticker.toUpperCase())
+
+            if (alpacaPosition) {
+              const currentPrice = parseFloat(alpacaPosition.current_price)
+              const marketValue = parseFloat(alpacaPosition.market_value)
+              const unrealizedPL = parseFloat(alpacaPosition.unrealized_pl)
+              const unrealizedPLPct = parseFloat(alpacaPosition.unrealized_plpc) * 100
+
+              await supabaseClient
+                .from('reference_portfolio_positions')
+                .update({
+                  current_price: currentPrice,
+                  market_value: marketValue,
+                  unrealized_pl: unrealizedPL,
+                  unrealized_pl_pct: unrealizedPLPct,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', position.id)
+
+              totalPositionsValue += marketValue
+              totalUnrealizedPL += unrealizedPL
+            } else {
+              // Position not in Alpaca - use database value
+              const dbMarketValue = position.market_value || (position.quantity * (position.current_price || position.entry_price))
+              totalPositionsValue += dbMarketValue
+              totalUnrealizedPL += position.unrealized_pl || 0
+            }
+          }
+        } else {
+          log.warn('Alpaca API failed during sync, using database values', { requestId, status: alpacaResponse.status })
+          totalPositionsValue = dbPositionsValue
+        }
+      } catch (alpacaError) {
+        log.warn('Alpaca sync failed, using database values', { requestId, error: alpacaError.message })
+        totalPositionsValue = dbPositionsValue
+      }
+    } else {
+      log.info('No Alpaca credentials, using database values', { requestId })
+    }
+
+    // Update portfolio state with correct position count and value
+    const { data: state } = await supabaseClient
+      .from('reference_portfolio_state')
+      .select('*')
+      .single()
+
+    if (state) {
+      const portfolioValue = state.cash + totalPositionsValue
+      const totalReturn = portfolioValue - initialCapital
+      const totalReturnPct = (totalReturn / initialCapital) * 100
+
+      // Check for new peak (for drawdown calculation)
+      const peakValue = Math.max(state.peak_portfolio_value || initialCapital, portfolioValue)
+      const currentDrawdown = ((peakValue - portfolioValue) / peakValue) * 100
+      const maxDrawdown = Math.max(state.max_drawdown || 0, currentDrawdown)
+
+      await supabaseClient
+        .from('reference_portfolio_state')
+        .update({
+          positions_value: totalPositionsValue,
+          portfolio_value: portfolioValue,
+          total_return: totalReturn,
+          total_return_pct: totalReturnPct,
+          peak_portfolio_value: peakValue,
+          current_drawdown: currentDrawdown,
+          max_drawdown: maxDrawdown,
+          open_positions: openPositionsCount,
+          last_sync_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', state.id)
+
+      log.info('Positions synced for snapshot', {
+        requestId,
+        openPositionsCount,
+        totalPositionsValue,
+        portfolioValue,
+        totalReturn,
+        totalReturnPct
+      })
+    }
+  } catch (error) {
+    log.error('Error syncing positions', error, { requestId })
+  }
+}
+
+// =============================================================================
 // TAKE SNAPSHOT - Record daily performance snapshot
 // =============================================================================
 async function handleTakeSnapshot(supabaseClient: any, requestId: string) {
   try {
     log.info('Taking performance snapshot', { requestId })
 
-    // Get current state
+    // First, get the config to know initial_capital
+    const { data: config, error: configError } = await supabaseClient
+      .from('reference_portfolio_config')
+      .select('*')
+      .single()
+
+    if (configError || !config) {
+      return new Response(
+        JSON.stringify({ error: 'Portfolio config not found' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const initialCapital = config.initial_capital || 100000
+
+    // Sync positions with Alpaca BEFORE taking snapshot
+    log.info('Syncing positions before snapshot', { requestId })
+    await syncPositionsWithAlpaca(supabaseClient, requestId, initialCapital)
+
+    // Get current state (now freshly updated)
     const { data: state, error: stateError } = await supabaseClient
       .from('reference_portfolio_state')
       .select('*')
@@ -996,12 +1278,12 @@ async function handleTakeSnapshot(supabaseClient: any, requestId: string) {
       .limit(1)
       .single()
 
-    const previousValue = lastSnapshot?.portfolio_value || 100000
+    const previousValue = lastSnapshot?.portfolio_value || initialCapital
     const dayReturn = state.portfolio_value - previousValue
     const dayReturnPct = (dayReturn / previousValue) * 100
 
-    const cumulativeReturn = state.portfolio_value - 100000
-    const cumulativeReturnPct = (cumulativeReturn / 100000) * 100
+    const cumulativeReturn = state.portfolio_value - initialCapital
+    const cumulativeReturnPct = (cumulativeReturn / initialCapital) * 100
 
     // Fetch S&P 500 benchmark (SPY) for comparison
     let benchmarkValue = null

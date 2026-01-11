@@ -1,6 +1,4 @@
-import { Activity, Info, Clock, CheckCircle2, ArrowLeft } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
+import { Activity, Info, Clock, CheckCircle2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -12,9 +10,9 @@ import {
   RiskMetrics,
 } from '@/components/reference-portfolio';
 import { useReferencePortfolioState, useMarketStatus } from '@/hooks/useReferencePortfolio';
+import { SidebarLayout } from '@/components/layouts/SidebarLayout';
 
 export default function ReferencePortfolio() {
-  const navigate = useNavigate();
   const { data: state } = useReferencePortfolioState();
   const { data: marketStatus } = useMarketStatus();
 
@@ -35,20 +33,12 @@ export default function ReferencePortfolio() {
     : null;
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border/50 bg-card/40 backdrop-blur-xl sticky top-0 z-10">
+    <SidebarLayout>
+      {/* Page Header */}
+      <div className="border-b border-border/50 bg-card/40 backdrop-blur-xl sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/')}
-                className="h-9 w-9"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
               <div className="p-2 rounded-lg bg-primary/10">
                 <Activity className="h-6 w-6 text-primary" />
               </div>
@@ -98,7 +88,7 @@ export default function ReferencePortfolio() {
             </div>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6 space-y-6">
@@ -209,6 +199,6 @@ export default function ReferencePortfolio() {
           </p>
         </div>
       </main>
-    </div>
+    </SidebarLayout>
   );
 }

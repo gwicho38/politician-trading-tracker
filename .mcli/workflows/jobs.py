@@ -391,17 +391,18 @@ def health():
 
     Example: mcli run jobs health
     """
-    services = [
-        ("Phoenix Server", PHOENIX_SERVER_URL, "/health"),
-        ("ETL Service", ETL_SERVICE_URL, "/health"),
-        ("Supabase", SUPABASE_URL, "/rest/v1/"),
-    ]
-
     click.echo("Service Health Check")
     click.echo("-" * 40)
 
     all_healthy = True
-    for name, base_url, path in services:
+
+    # Check Phoenix and ETL services (public health endpoints)
+    public_services = [
+        ("Phoenix Server", PHOENIX_SERVER_URL, "/health"),
+        ("ETL Service", ETL_SERVICE_URL, "/health"),
+    ]
+
+    for name, base_url, path in public_services:
         try:
             response = httpx.get(f"{base_url}{path}", timeout=5.0)
             if response.status_code == 200:
@@ -412,6 +413,30 @@ def health():
         except Exception as e:
             click.echo(f"✗ {name:20} {str(e)[:30]}")
             all_healthy = False
+
+    # Check Supabase (requires authentication)
+    service_key = get_supabase_key()
+    if service_key:
+        try:
+            response = httpx.get(
+                f"{SUPABASE_URL}/rest/v1/dashboard_stats?select=id&limit=1",
+                headers={
+                    "apikey": service_key,
+                    "Authorization": f"Bearer {service_key}"
+                },
+                timeout=5.0
+            )
+            if response.status_code == 200:
+                click.echo(f"✓ {'Supabase':20} healthy")
+            else:
+                click.echo(f"✗ {'Supabase':20} HTTP {response.status_code}")
+                all_healthy = False
+        except Exception as e:
+            click.echo(f"✗ {'Supabase':20} {str(e)[:30]}")
+            all_healthy = False
+    else:
+        click.echo(f"✗ {'Supabase':20} No service key")
+        all_healthy = False
 
     if all_healthy:
         click.echo("\nAll services healthy!")

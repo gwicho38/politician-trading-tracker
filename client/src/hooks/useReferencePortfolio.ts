@@ -258,28 +258,31 @@ export function useReferencePortfolioTrades(limit = 50, offset = 0) {
 }
 
 /**
- * Hook to fetch reference portfolio performance snapshots
+ * Hook to fetch reference portfolio performance from Alpaca's portfolio history API
  * @param timeframe - Time period to fetch data for
  */
 export function useReferencePortfolioPerformance(timeframe: Timeframe = '1m') {
   return useQuery({
     queryKey: ['reference-portfolio', 'performance', timeframe],
     queryFn: async (): Promise<ReferencePortfolioSnapshot[]> => {
-      const startDate = getStartDateForTimeframe(timeframe);
-
-      const { data, error } = await supabase
-        .from('reference_portfolio_snapshots')
-        .select('*')
-        .gte('snapshot_date', startDate)
-        .order('snapshot_date', { ascending: true });
+      // Call the edge function which fetches from Alpaca's portfolio history API
+      const { data, error } = await supabase.functions.invoke('reference-portfolio', {
+        body: { action: 'get-performance', timeframe }
+      });
 
       if (error) {
         console.error('Error fetching reference portfolio performance:', error);
         throw error;
       }
 
-      return (data || []) as ReferencePortfolioSnapshot[];
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to fetch performance data');
+      }
+
+      return (data.snapshots || []) as ReferencePortfolioSnapshot[];
     },
+    // Alpaca data is real-time, refresh every 5 minutes during market hours
+    refetchInterval: 5 * 60 * 1000,
   });
 }
 

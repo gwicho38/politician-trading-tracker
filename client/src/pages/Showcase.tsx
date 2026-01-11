@@ -4,8 +4,8 @@
  */
 
 import { useState } from 'react';
-import { ArrowLeft, Sparkles, TrendingUp, Clock, AlertCircle } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Sparkles, TrendingUp, Clock, AlertCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -19,6 +19,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { useStrategyShowcase, SortOption } from '@/hooks/useStrategyShowcase';
 import { StrategyCard } from '@/components/showcase';
+import { SidebarLayout } from '@/components/layouts/SidebarLayout';
 
 export default function Showcase() {
   const navigate = useNavigate();
@@ -53,25 +54,18 @@ export default function Showcase() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-xl">
-        <div className="container flex h-14 items-center justify-between px-4">
-          <div className="flex items-center gap-4">
-            <Link to="/">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
-              <div>
-                <h1 className="text-lg font-semibold">Strategy Showcase</h1>
-                <p className="text-xs text-muted-foreground">
-                  Community-created signal strategies
-                </p>
-              </div>
+    <SidebarLayout>
+      {/* Page Toolbar */}
+      <div className="border-b border-border/50 bg-background/80 backdrop-blur-xl">
+        <div className="container flex h-12 items-center justify-between px-4">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            <div>
+              <h1 className="text-lg font-semibold">Strategy Showcase</h1>
             </div>
+            <span className="text-xs text-muted-foreground ml-2">
+              Community-created signal strategies
+            </span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -102,7 +96,7 @@ export default function Showcase() {
             </Button>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Main content */}
       <main className="container px-4 py-8">
@@ -170,6 +164,6 @@ export default function Showcase() {
           </p>
         </div>
       </footer>
-    </div>
+    </SidebarLayout>
   );
 }
