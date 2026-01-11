@@ -1148,7 +1148,7 @@ async function handleSyncOrders(supabaseClient: any, req: Request, requestId: st
   try {
     const tradingMode: 'paper' | 'live' = bodyParams.tradingMode || 'paper'
 
-    // Sync requires user authentication - no service role sync to prevent orphaned orders
+    // Check if this is a service role request (scheduled job)
     const authHeader = req.headers.get('authorization')
     if (!authHeader) {
       return new Response(
@@ -1157,7 +1157,14 @@ async function handleSyncOrders(supabaseClient: any, req: Request, requestId: st
       )
     }
 
-    // Get user from JWT
+    // Check if using service role key (scheduled jobs)
+    if (isServiceRoleRequest(req)) {
+      // For scheduled jobs, sync orders for ALL users who have Alpaca credentials
+      log.info('Service role sync - syncing orders for all users with credentials', { requestId, tradingMode })
+      return await handleServiceRoleSyncOrders(supabaseClient, requestId, bodyParams, handlerStartTime)
+    }
+
+    // Get user from JWT for user-specific sync
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(
       authHeader.replace('Bearer ', '')
     )
@@ -1364,6 +1371,165 @@ async function handleSyncOrders(supabaseClient: any, req: Request, requestId: st
 
   } catch (error) {
     log.error('Error syncing orders', error, { requestId, duration: Date.now() - handlerStartTime })
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+}
+
+// =============================================================================
+// SERVICE ROLE SYNC ORDERS (for scheduled jobs)
+// =============================================================================
+
+async function handleServiceRoleSyncOrders(
+  supabaseClient: any,
+  requestId: string,
+  bodyParams: any,
+  handlerStartTime: number
+): Promise<Response> {
+  const tradingMode: 'paper' | 'live' = bodyParams.tradingMode || 'paper'
+
+  try {
+    // For scheduled jobs, use environment credentials to sync ALL existing orders
+    const envApiKey = Deno.env.get('ALPACA_API_KEY')
+    const envSecretKey = Deno.env.get('ALPACA_SECRET_KEY')
+    const envPaper = Deno.env.get('ALPACA_PAPER') === 'true'
+    const envBaseUrl = Deno.env.get('ALPACA_BASE_URL')
+
+    if (!envApiKey || !envSecretKey) {
+      // No environment credentials - return success with no action
+      log.info('No environment Alpaca credentials configured, skipping scheduled sync', { requestId })
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'No environment credentials configured for scheduled sync',
+          summary: { total: 0, synced: 0, updated: 0, errors: 0 }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const baseUrl = envBaseUrl || (envPaper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets')
+
+    // Fetch orders from Alpaca using environment credentials
+    const status = bodyParams.status || 'all'
+    const limit = bodyParams.limit || 100
+    const alpacaUrl = `${baseUrl}/v2/orders?status=${status}&limit=${limit}`
+
+    log.info('Fetching orders from Alpaca (scheduled sync)', { requestId, url: alpacaUrl, tradingMode })
+
+    const response = await fetch(alpacaUrl, {
+      method: 'GET',
+      headers: {
+        'APCA-API-KEY-ID': envApiKey,
+        'APCA-API-SECRET-KEY': envSecretKey,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      log.error('Alpaca API error (scheduled sync)', { requestId, status: response.status, error: errorText })
+      return new Response(
+        JSON.stringify({ error: `Alpaca API error: ${response.status}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const alpacaOrders = await response.json()
+    log.info('Fetched orders from Alpaca (scheduled sync)', { requestId, count: alpacaOrders.length })
+
+    // Sync each order - update existing orders by alpaca_order_id (no user filter)
+    let synced = 0
+    let updated = 0
+    let errors = 0
+
+    for (const order of alpacaOrders) {
+      try {
+        // Check if order exists (by alpaca_order_id, any user)
+        const { data: existing } = await supabaseClient
+          .from('trading_orders')
+          .select('id, status, user_id')
+          .eq('alpaca_order_id', order.id)
+          .maybeSingle()
+
+        if (existing) {
+          const previousStatus = existing.status
+          const newStatus = order.status
+
+          // Update existing order
+          const { error: updateError } = await supabaseClient
+            .from('trading_orders')
+            .update({
+              status: order.status,
+              filled_quantity: parseFloat(order.filled_qty) || 0,
+              filled_avg_price: parseFloat(order.filled_avg_price) || null,
+              filled_at: order.filled_at || null,
+              canceled_at: order.canceled_at || null,
+              expired_at: order.expired_at || null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('alpaca_order_id', order.id)
+
+          if (updateError) {
+            log.warn('Failed to update order (scheduled)', { orderId: order.id, error: updateError.message })
+            errors++
+          } else {
+            // Record state transition if status changed
+            if (previousStatus !== newStatus) {
+              await recordOrderStateTransition(
+                supabaseClient,
+                existing.id,
+                previousStatus,
+                newStatus,
+                'scheduler',
+                {
+                  filledQty: parseFloat(order.filled_qty) || 0,
+                  avgPrice: parseFloat(order.filled_avg_price) || null,
+                  alpacaEventId: order.id,
+                  rawEvent: order
+                }
+              )
+            }
+            updated++
+          }
+        }
+        // Note: We don't create new orders in scheduled sync - only update existing ones
+        // New orders should only be created through user-initiated actions
+      } catch (orderError) {
+        log.error('Error processing order (scheduled)', { orderId: order.id, error: orderError.message })
+        errors++
+      }
+    }
+
+    const duration = Date.now() - handlerStartTime
+
+    log.info('Scheduled orders sync completed', {
+      requestId,
+      total: alpacaOrders.length,
+      synced,
+      updated,
+      errors,
+      duration
+    })
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: `Scheduled sync: updated ${updated} orders, ${errors} errors`,
+        summary: {
+          total: alpacaOrders.length,
+          synced,
+          updated,
+          errors
+        }
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+
+  } catch (error) {
+    log.error('Error in scheduled orders sync', error, { requestId, duration: Date.now() - handlerStartTime })
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
