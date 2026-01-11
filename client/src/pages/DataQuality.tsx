@@ -13,8 +13,7 @@ import {
   Activity, Shield, Clock, Database, ChevronRight, Undo2
 } from 'lucide-react';
 import { toast } from 'sonner';
-import Header from '@/components/Header';
-import Sidebar from '@/components/Sidebar';
+import { SidebarLayout } from '@/components/layouts/SidebarLayout';
 
 interface QualityCheck {
   id: string;
@@ -269,11 +268,8 @@ const DataQuality = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header />
-        <main className="flex-1 p-6">
+    <SidebarLayout>
+      <main className="flex-1 p-6">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -605,9 +601,8 @@ const DataQuality = () => {
               </Card>
             </TabsContent>
           </Tabs>
-        </main>
-      </div>
-    </div>
+      </main>
+    </SidebarLayout>
   );
 };
 

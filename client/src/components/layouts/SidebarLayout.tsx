@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation, Link } from 'react-router-dom';
+import { useLocation, useSearchParams, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
@@ -38,7 +38,15 @@ interface SidebarLayoutProps {
 export function SidebarLayout({ children }: SidebarLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const currentPath = location.pathname;
+  const currentView = searchParams.get('view');
+
+  const isNavItemActive = (item: typeof navItems[0]) => {
+    if (currentPath !== '/') return false;
+    if (item.view === null) return currentView === null || currentView === 'dashboard';
+    return currentView === item.view;
+  };
 
   const isStandaloneActive = (path: string) => {
     return currentPath === path;
@@ -83,10 +91,16 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
                   key={item.path}
                   to={item.path}
                   onClick={() => setSidebarOpen(false)}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                    isNavItemActive(item)
+                      ? "bg-primary/20 text-primary border border-primary/30"
+                      : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  )}
                 >
                   <item.icon className="h-4 w-4" />
                   {item.label}
+                  {isNavItemActive(item) && <ChevronRight className="ml-auto h-4 w-4" />}
                 </Link>
               ))}
 
