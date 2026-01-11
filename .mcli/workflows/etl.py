@@ -1398,6 +1398,328 @@ def dedup_preview(limit: int):
         raise SystemExit(1)
 
 
+# =============================================================================
+# Record Testing Commands
+# =============================================================================
+
+@etl.command(name="test-record")
+@click.argument("record_id")
+@click.option("--type", "-t", "record_type", type=click.Choice(["disclosure", "politician"]),
+              default="disclosure", help="Type of record ID")
+@click.option("--dry-run", "-d", is_flag=True, help="Parse without uploading")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
+def test_record(record_id: str, record_type: str, dry_run: bool, verbose: bool):
+    """
+    Test extraction capabilities on a single record by ID.
+
+    Looks up the record in Supabase and attempts to re-extract data from
+    the source URL. Useful for debugging extraction issues.
+
+    Examples:
+        mcli run etl test-record abc123-disclosure-id
+        mcli run etl test-record abc123-politician-id --type politician
+        mcli run etl test-record abc123 --dry-run -v
+    """
+    load_env()
+    url, service_key = get_supabase_keys()
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+    }
+
+    if record_type == "disclosure":
+        # Look up disclosure
+        query_url = f"{url}/rest/v1/trading_disclosures?select=*,politicians(full_name,party,state)&id=eq.{record_id}"
+        try:
+            response = httpx.get(query_url, headers=headers, timeout=30.0)
+            response.raise_for_status()
+            records = response.json()
+
+            if not records:
+                click.echo(f"Disclosure {record_id} not found", err=True)
+                raise SystemExit(1)
+
+            disclosure = records[0]
+            click.echo(f"\n{'='*60}")
+            click.echo(f"Disclosure: {record_id[:8]}...")
+            click.echo(f"{'='*60}")
+
+            politician = disclosure.get("politicians") or {}
+            click.echo(f"Politician: {politician.get('full_name', 'Unknown')}")
+            click.echo(f"Party: {politician.get('party', '?')} | State: {politician.get('state', '?')}")
+            click.echo(f"Asset: {disclosure.get('asset_name', 'Unknown')[:60]}")
+            click.echo(f"Ticker: {disclosure.get('asset_ticker') or '-'}")
+            click.echo(f"Type: {disclosure.get('transaction_type', 'unknown')}")
+            click.echo(f"Date: {disclosure.get('transaction_date', '-')}")
+
+            low = disclosure.get("amount_range_min")
+            high = disclosure.get("amount_range_max")
+            if low and high:
+                click.echo(f"Amount: ${low:,.0f} - ${high:,.0f}")
+            else:
+                click.echo(f"Amount: Not disclosed")
+
+            source_url = disclosure.get("source_url")
+            click.echo(f"\nSource: {source_url or 'N/A'}")
+
+            raw_data = disclosure.get("raw_data") or {}
+            source_type = raw_data.get("source", "unknown")
+            click.echo(f"Source Type: {source_type}")
+
+            if verbose and raw_data:
+                click.echo(f"\n{'─'*60}")
+                click.echo("Raw Data:")
+                import json
+                click.echo(json.dumps(raw_data, indent=2)[:1000])
+
+            # If we have a source URL, offer to re-extract
+            if source_url:
+                click.echo(f"\n{'─'*60}")
+                click.echo("To re-extract this disclosure:")
+                if source_type == "us_house":
+                    click.echo(f"  mcli run etl ingest {source_url} --dry-run")
+                elif source_type == "us_senate":
+                    click.echo(f"  mcli run etl test-senate-url {source_url} --dry-run")
+                else:
+                    click.echo(f"  Source type '{source_type}' not supported for re-extraction")
+
+        except httpx.HTTPError as e:
+            click.echo(f"Error: {e}", err=True)
+            raise SystemExit(1)
+
+    else:  # politician
+        # Look up politician and their disclosures
+        query_url = f"{url}/rest/v1/politicians?select=*&id=eq.{record_id}"
+        try:
+            response = httpx.get(query_url, headers=headers, timeout=30.0)
+            response.raise_for_status()
+            records = response.json()
+
+            if not records:
+                click.echo(f"Politician {record_id} not found", err=True)
+                raise SystemExit(1)
+
+            politician = records[0]
+            click.echo(f"\n{'='*60}")
+            click.echo(f"Politician: {politician.get('full_name', 'Unknown')}")
+            click.echo(f"{'='*60}")
+            click.echo(f"ID: {record_id}")
+            click.echo(f"Party: {politician.get('party', '?')}")
+            click.echo(f"State: {politician.get('state') or politician.get('state_or_country', '?')}")
+            click.echo(f"Chamber: {politician.get('chamber', '?')}")
+            click.echo(f"Role: {politician.get('role', '?')}")
+            click.echo(f"BioGuide ID: {politician.get('bioguide_id') or 'N/A'}")
+
+            # Get disclosure count and sample
+            disc_url = f"{url}/rest/v1/trading_disclosures?select=id,asset_name,asset_ticker,transaction_type,source_url,raw_data&politician_id=eq.{record_id}&limit=10"
+            disc_response = httpx.get(disc_url, headers=headers, timeout=30.0)
+            disc_response.raise_for_status()
+            disclosures = disc_response.json()
+
+            click.echo(f"\n{'─'*60}")
+            click.echo(f"Recent Disclosures (showing up to 10):")
+
+            # Identify source types
+            sources = set()
+            for d in disclosures:
+                raw = d.get("raw_data") or {}
+                sources.add(raw.get("source", "unknown"))
+
+            click.echo(f"Source types: {', '.join(sources)}")
+            click.echo()
+
+            for d in disclosures:
+                ticker = d.get("asset_ticker") or "-"
+                asset = d.get("asset_name", "?")[:40]
+                tx_type = d.get("transaction_type", "?")
+                click.echo(f"  [{ticker:5}] {asset:40} ({tx_type})")
+
+            if not disclosures:
+                click.echo("  No disclosures found")
+
+        except httpx.HTTPError as e:
+            click.echo(f"Error: {e}", err=True)
+            raise SystemExit(1)
+
+
+@etl.command(name="test-senate-url")
+@click.argument("url")
+@click.option("--dry-run", "-d", is_flag=True, help="Parse only, don't upload")
+@click.option("--verbose", "-v", is_flag=True, help="Show full transaction details")
+def test_senate_url(url: str, dry_run: bool, verbose: bool):
+    """
+    Test Senate ETL extraction on a single PTR page URL.
+
+    Senate disclosures are HTML pages (not PDFs) that require special
+    parsing. This command tests the extraction logic on a specific page.
+
+    Examples:
+        mcli run etl test-senate-url https://efdsearch.senate.gov/search/view/ptr/abc123/
+        mcli run etl test-senate-url URL --dry-run -v
+    """
+    click.echo(f"Testing Senate extraction: {url}")
+    click.echo(f"Mode: {'DRY RUN' if dry_run else 'LIVE'}")
+
+    payload = {"url": url, "dry_run": dry_run}
+
+    try:
+        response = httpx.post(
+            f"{ETL_SERVICE_URL}/etl/test-senate",
+            json=payload,
+            timeout=120.0  # Senate parsing uses Playwright, can be slow
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        click.echo(f"\n{'='*60}")
+        click.echo(f"URL: {data.get('url', url)}")
+        click.echo(f"Politician: {data.get('politician_name', 'Unknown')}")
+        click.echo(f"Filing Date: {data.get('filing_date', 'Unknown')}")
+        click.echo(f"{'='*60}")
+        click.echo(f"Transactions found: {data.get('transactions_found', 0)}")
+
+        if not dry_run:
+            click.echo(f"Transactions uploaded: {data.get('transactions_uploaded', 0)}")
+
+        transactions = data.get("transactions", [])
+        if transactions:
+            click.echo(f"\n{'─'*60}")
+            click.echo("Transactions:")
+            for i, txn in enumerate(transactions, 1):
+                ticker = txn.get("ticker") or "-"
+                asset = txn.get("asset_name", "Unknown")[:40]
+                tx_type = txn.get("transaction_type", "unknown")
+                value_low = txn.get("value_low")
+                value_high = txn.get("value_high")
+
+                if value_low and value_high:
+                    value_str = f"${value_low:,.0f} - ${value_high:,.0f}"
+                else:
+                    value_str = "-"
+
+                click.echo(f"  {i:2}. [{ticker:5}] {asset:40} {tx_type:8} {value_str}")
+
+                if verbose:
+                    tx_date = txn.get("transaction_date", "-")
+                    asset_type = txn.get("asset_type", "-")
+                    click.echo(f"      Date: {tx_date}, Type: {asset_type}")
+        else:
+            click.echo("\nNo transactions found in page.")
+
+        if data.get("error"):
+            click.echo(f"\nError: {data['error']}", err=True)
+
+    except httpx.HTTPStatusError as e:
+        try:
+            detail = e.response.json().get("detail", str(e))
+        except Exception:
+            detail = str(e)
+        click.echo(f"Error: {detail}", err=True)
+        raise SystemExit(1)
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@etl.command(name="list-senators")
+@click.option("--refresh", "-r", is_flag=True, help="Refresh list from Senate.gov XML")
+def list_senators(refresh: bool):
+    """
+    List current senators and their disclosure status.
+
+    Fetches the current list of senators from Senate.gov and shows
+    which ones have disclosures in our database.
+
+    Examples:
+        mcli run etl list-senators
+        mcli run etl list-senators --refresh
+    """
+    click.echo("Fetching senators...")
+
+    try:
+        response = httpx.get(
+            f"{ETL_SERVICE_URL}/etl/senators",
+            params={"refresh": refresh},
+            timeout=60.0
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        senators = data.get("senators", [])
+        click.echo(f"\nCurrent Senators: {len(senators)}")
+        click.echo(f"With disclosures: {data.get('with_disclosures', 0)}")
+        click.echo(f"Total disclosures: {data.get('total_disclosures', 0)}")
+        click.echo(f"\n{'='*70}")
+
+        # Sort by party then state
+        senators.sort(key=lambda s: (s.get("party", ""), s.get("state", "")))
+
+        for s in senators:
+            party = s.get("party", "?")
+            state = s.get("state", "??")
+            name = s.get("full_name", "Unknown")[:40]
+            disc_count = s.get("disclosure_count", 0)
+            bioguide = s.get("bioguide_id", "")[:10] if s.get("bioguide_id") else ""
+
+            disc_str = f"{disc_count:3} disclosures" if disc_count else "no disclosures"
+            click.echo(f"  [{party}] {state:2} {name:40} {disc_str}")
+
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@etl.command(name="senate-trigger")
+@click.option("--lookback", "-l", type=int, default=30, help="Days to look back for disclosures")
+@click.option("--limit", type=int, default=None, help="Limit number of disclosures to process")
+@click.option("--wait", "-w", is_flag=True, help="Wait for job to complete")
+def senate_trigger(lookback: int, limit: int | None, wait: bool):
+    """
+    Trigger Senate ETL job.
+
+    Scrapes the Senate EFD website for Periodic Transaction Reports and
+    uploads transactions to Supabase.
+
+    Note: This uses Playwright browser automation to bypass anti-bot protection.
+
+    Examples:
+        mcli run etl senate-trigger                    # Last 30 days
+        mcli run etl senate-trigger --lookback 90     # Last 90 days
+        mcli run etl senate-trigger --limit 10 -w     # Test with 10 disclosures
+    """
+    click.echo(f"Triggering Senate ETL (lookback: {lookback} days)...")
+
+    payload = {
+        "source": "senate",
+        "lookback_days": lookback,
+    }
+    if limit:
+        payload["limit"] = limit
+
+    try:
+        response = httpx.post(
+            f"{ETL_SERVICE_URL}/etl/trigger",
+            json=payload,
+            timeout=30.0
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        job_id = data["job_id"]
+        click.echo(f"Job started: {job_id}")
+        click.echo(f"Message: {data['message']}")
+
+        if wait:
+            click.echo("\nWaiting for completion...")
+            _wait_for_job(job_id)
+        else:
+            click.echo(f"\nTo check status: mcli run etl status {job_id}")
+
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
 @etl.command(name="dedup")
 @click.option("--dry-run", "-d", is_flag=True, help="Preview without making changes")
 @click.option("--limit", "-l", type=int, default=50, help="Maximum groups to process")

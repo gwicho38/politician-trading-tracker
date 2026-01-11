@@ -20,7 +20,12 @@ from app.services.house_etl import (
     find_or_create_politician,
     upload_transaction_to_supabase,
 )
-from app.services.senate_etl import run_senate_etl
+from app.services.senate_etl import (
+    run_senate_etl,
+    parse_ptr_page,
+    fetch_senators_from_xml,
+    get_supabase_client as get_senate_supabase_client,
+)
 from app.services.ticker_backfill import run_ticker_backfill, run_transaction_type_backfill
 from app.services.bioguide_enrichment import run_bioguide_enrichment
 
@@ -410,4 +415,166 @@ async def ingest_single_url(request: IngestUrlRequest):
         transactions_uploaded=transactions_uploaded,
         transactions=transactions,
         dry_run=False,
+    )
+
+
+# =============================================================================
+# Senate Testing Endpoints
+# =============================================================================
+
+
+class TestSenateRequest(BaseModel):
+    """Request body for testing Senate URL extraction."""
+    url: str
+    dry_run: bool = True
+    politician_name: Optional[str] = None
+
+
+class TestSenateResponse(BaseModel):
+    """Response from Senate URL test."""
+    url: str
+    politician_name: Optional[str]
+    filing_date: Optional[str]
+    transactions_found: int
+    transactions_uploaded: int
+    transactions: List[Dict[str, Any]]
+    dry_run: bool
+    error: Optional[str] = None
+
+
+@router.post("/test-senate", response_model=TestSenateResponse)
+async def test_senate_url(request: TestSenateRequest):
+    """
+    Test Senate ETL extraction on a single PTR page URL.
+
+    This endpoint parses a Senate EFD PTR page and extracts transactions.
+    Useful for testing Senate extraction capabilities before running full ETL.
+
+    Note: This uses httpx (not Playwright) so may be blocked by anti-bot
+    protection on some pages. For production, use the full Senate ETL.
+
+    Example URL: https://efdsearch.senate.gov/search/view/ptr/{uuid}/
+    """
+    url = request.url.strip()
+
+    # Validate URL
+    if "efdsearch.senate.gov" not in url:
+        raise HTTPException(
+            status_code=400,
+            detail="URL must be from efdsearch.senate.gov"
+        )
+
+    transactions = []
+    error_msg = None
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=60.0,
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+        ) as client:
+            transactions = await parse_ptr_page(client, url)
+
+    except Exception as e:
+        error_msg = str(e)
+
+    # Extract filing info from transactions if available
+    filing_date = None
+    if transactions:
+        filing_date = transactions[0].get("notification_date")
+
+    transactions_uploaded = 0
+
+    # If not dry run, upload to Supabase
+    if not request.dry_run and transactions:
+        try:
+            supabase = get_senate_supabase_client()
+
+            # Find or create politician
+            politician_name = request.politician_name or "Unknown Senator"
+            from app.services.senate_etl import find_or_create_politician as senate_find_politician
+            politician_id = senate_find_politician(supabase, politician_name)
+
+            if politician_id:
+                from app.services.senate_etl import upload_transaction_to_supabase as senate_upload
+                disclosure_info = {
+                    "source_url": url,
+                    "filing_date": filing_date,
+                }
+
+                for txn in transactions:
+                    result = senate_upload(supabase, politician_id, txn, disclosure_info)
+                    if result:
+                        transactions_uploaded += 1
+
+        except Exception as e:
+            error_msg = f"Upload failed: {e}"
+
+    return TestSenateResponse(
+        url=url,
+        politician_name=request.politician_name,
+        filing_date=filing_date,
+        transactions_found=len(transactions),
+        transactions_uploaded=transactions_uploaded,
+        transactions=transactions,
+        dry_run=request.dry_run,
+        error=error_msg,
+    )
+
+
+class SenatorsResponse(BaseModel):
+    """Response for senator list."""
+    senators: List[Dict[str, Any]]
+    with_disclosures: int
+    total_disclosures: int
+
+
+@router.get("/senators", response_model=SenatorsResponse)
+async def get_senators(refresh: bool = False):
+    """
+    Get list of current senators with disclosure counts.
+
+    Args:
+        refresh: If true, fetch fresh list from Senate.gov XML
+    """
+    senators = await fetch_senators_from_xml()
+
+    # Get disclosure counts from Supabase
+    try:
+        supabase = get_senate_supabase_client()
+
+        # For each senator, count their disclosures
+        with_disclosures = 0
+        total_disclosures = 0
+
+        for senator in senators:
+            bioguide = senator.get("bioguide_id")
+            if bioguide:
+                # Find politician by bioguide
+                result = supabase.table("politicians").select("id").eq(
+                    "bioguide_id", bioguide
+                ).limit(1).execute()
+
+                if result.data:
+                    pol_id = result.data[0]["id"]
+
+                    # Count disclosures
+                    disc_result = supabase.table("trading_disclosures").select(
+                        "id", count="exact"
+                    ).eq("politician_id", pol_id).limit(0).execute()
+
+                    count = disc_result.count or 0
+                    senator["disclosure_count"] = count
+
+                    if count > 0:
+                        with_disclosures += 1
+                        total_disclosures += count
+
+    except Exception as e:
+        # If Supabase fails, just return senators without counts
+        pass
+
+    return SenatorsResponse(
+        senators=senators,
+        with_disclosures=with_disclosures,
+        total_disclosures=total_disclosures,
     )
