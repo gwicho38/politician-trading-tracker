@@ -340,15 +340,44 @@ def sync_status():
         if response.status_code == 200:
             data = response.json()
             last_sync = data.get("last_sync")
+            last_sync_ago = format_time_ago(last_sync)
 
-            click.echo(f"Last data sync: {format_time_ago(last_sync)}")
+            # Calculate days since last sync
+            days_since_sync = None
+            if last_sync:
+                try:
+                    sync_dt = datetime.fromisoformat(last_sync.replace("Z", "+00:00"))
+                    days_since_sync = (datetime.now(timezone.utc) - sync_dt).days
+                except (ValueError, TypeError):
+                    pass
+
+            # Header with status indicator
+            if days_since_sync and days_since_sync > 7:
+                click.echo(f"⚠️  Last data sync: {last_sync_ago}")
+                click.echo(click.style(f"   Warning: No successful sync in {days_since_sync} days!", fg="yellow"))
+            else:
+                click.echo(f"Last data sync: {last_sync_ago}")
 
             if data.get("jobs"):
                 click.echo("\nData collection jobs:")
+                never_run = 0
                 for job in data["jobs"]:
                     job_name = job.get("job_name", job.get("job_id", "?"))
                     last_run = format_time_ago(job.get("last_successful_run"))
+                    if last_run == "never":
+                        never_run += 1
                     click.echo(f"  {job_name:40} {last_run}")
+
+                # Show warning if many jobs never ran
+                if never_run > len(data["jobs"]) // 2:
+                    click.echo(click.style(f"\n⚠️  {never_run}/{len(data['jobs'])} jobs have never run successfully", fg="yellow"))
+
+            # Show suggestions if sync is stale
+            if days_since_sync and days_since_sync > 7:
+                click.echo("\nTroubleshooting:")
+                click.echo("  1. Check Phoenix server logs: mcli run server logs --lines 50")
+                click.echo("  2. Try running a job manually: mcli run jobs run sync-data")
+                click.echo("  3. Check Supabase pg_cron jobs are enabled")
         else:
             click.echo(f"Failed to get sync status: HTTP {response.status_code}")
     except Exception as e:
