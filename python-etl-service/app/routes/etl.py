@@ -22,6 +22,7 @@ from app.services.house_etl import (
 )
 from app.services.senate_etl import run_senate_etl
 from app.services.ticker_backfill import run_ticker_backfill, run_transaction_type_backfill
+from app.services.bioguide_enrichment import run_bioguide_enrichment
 
 router = APIRouter()
 
@@ -206,6 +207,45 @@ async def trigger_transaction_type_backfill(
         job_id=job_id,
         status="started",
         message=f"Transaction type backfill job started, processing {limit_msg} disclosures",
+    )
+
+
+@router.post("/enrich-bioguide", response_model=ETLTriggerResponse)
+async def trigger_bioguide_enrichment(
+    request: BackfillRequest,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Trigger bioguide ID enrichment job.
+
+    Fetches current Congress members from Congress.gov API and matches them
+    to politicians in our database by name. Updates the bioguide_id column
+    for matched politicians.
+
+    Requires CONGRESS_API_KEY environment variable.
+    """
+    job_id = str(uuid.uuid4())
+
+    JOB_STATUS[job_id] = {
+        "status": "queued",
+        "progress": 0,
+        "total": None,
+        "message": "Job queued",
+        "started_at": datetime.utcnow().isoformat(),
+        "completed_at": None,
+    }
+
+    background_tasks.add_task(
+        run_bioguide_enrichment,
+        job_id=job_id,
+        limit=request.limit,
+    )
+
+    limit_msg = f"up to {request.limit}" if request.limit else "all"
+    return ETLTriggerResponse(
+        job_id=job_id,
+        status="started",
+        message=f"BioGuide enrichment job started, processing {limit_msg} politicians",
     )
 
 

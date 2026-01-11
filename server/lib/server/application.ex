@@ -75,6 +75,8 @@ defmodule Server.Application do
       Server.Scheduler.Jobs.TickerBackfillJob,
       # Party enrichment (Ollama LLM)
       Server.Scheduler.Jobs.PartyEnrichmentJob,
+      # BioGuide ID enrichment (Congress.gov API)
+      Server.Scheduler.Jobs.BioguideEnrichmentJob,
       # ML model training jobs
       Server.Scheduler.Jobs.MlTrainingJob,
       Server.Scheduler.Jobs.BatchRetrainingJob,
