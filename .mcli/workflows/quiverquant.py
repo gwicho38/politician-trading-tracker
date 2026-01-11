@@ -268,16 +268,32 @@ def get_supabase_config():
     return config
 
 
-def fetch_quiverquant_data(api_key: str, limit: int = 1000):
-    """Fetch data from QuiverQuant API."""
+def fetch_quiverquant_data(api_key: str, limit: int = 1000, politician: str = None):
+    """
+    Fetch data from QuiverQuant API.
+
+    Args:
+        api_key: QuiverQuant API key
+        limit: Maximum records to return
+        politician: Optional politician name to filter by (uses API-side filtering)
+    """
+    params = {"pagesize": limit}
+
+    # Build URL - politician filtering uses a different endpoint pattern
+    url = QUIVERQUANT_API_URL
+    if politician:
+        # QuiverQuant API supports politician filtering via URL path
+        # e.g., /congresstrading/{politician_name}
+        url = f"{QUIVERQUANT_API_URL}/{politician}"
+
     response = httpx.get(
-        QUIVERQUANT_API_URL,
+        url,
         headers={
             "Authorization": f"Bearer {api_key}",
             "Accept": "application/json"
         },
         timeout=60.0,
-        params={"pagesize": limit}
+        params=params
     )
     if response.status_code == 200:
         return response.json()
@@ -1224,46 +1240,133 @@ def coverage_report():
         console.print("\n[green]Data quality is healthy[/green]")
 
 
-@app.command("politician-trades")
-@click.argument("name")
-@click.option("--limit", "-l", default=50, help="Maximum trades to return")
-@click.option("--output", "-o", type=click.Choice(["table", "json"]), default="table")
-def politician_trades(name: str, limit: int, output: str):
+@app.command("list-politicians")
+@click.option("--limit", "-l", default=100, help="Number of recent trades to scan")
+def list_politicians(limit: int):
     """
-    Fetch all trades for a specific politician from QuiverQuant.
+    List all politicians in the QuiverQuant dataset.
 
-    NAME can be a partial match (case-insensitive).
+    Scans recent trades and shows unique politicians with trade counts.
 
-    Examples:
-        mcli run quiverquant politician-trades "Maria Elvira Salazar"
-        mcli run quiverquant politician-trades pelosi --limit 100
-        mcli run quiverquant politician-trades "Salazar" -o json
+    Example: mcli run quiverquant list-politicians
     """
     api_key = get_api_key()
     if not api_key:
         console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
         raise SystemExit(1)
 
-    console.print(f"[cyan]Searching for trades by '{name}'...[/cyan]\n")
+    console.print(f"[cyan]Fetching politicians from QuiverQuant...[/cyan]\n")
 
-    # Fetch all data (QuiverQuant API doesn't support filtering by name)
-    qq_data = fetch_quiverquant_data(api_key, limit=5000)
+    qq_data = fetch_quiverquant_data(api_key, limit=limit)
 
     if not qq_data:
-        console.print("[red]Failed to fetch data from QuiverQuant[/red]")
+        console.print("[red]Failed to fetch data[/red]")
         raise SystemExit(1)
 
-    # Filter by politician name (case-insensitive partial match)
-    name_lower = name.lower()
-    matching_trades = []
+    # Group by politician
+    politicians = {}
     for trade in qq_data:
         rep = trade.get("Representative", "")
-        if name_lower in rep.lower():
-            matching_trades.append(trade)
+        party = trade.get("Party", "?")
+        house = trade.get("House", "?")
+        bioguide = trade.get("BioGuideID", "")
+
+        if rep:
+            if rep not in politicians:
+                politicians[rep] = {
+                    "party": party,
+                    "house": house,
+                    "bioguide": bioguide,
+                    "count": 0
+                }
+            politicians[rep]["count"] += 1
+
+    console.print(f"[bold]Politicians in QuiverQuant (from {len(qq_data)} trades)[/bold]")
+    console.print("=" * 70)
+
+    table = Table()
+    table.add_column("Name", style="cyan", width=30)
+    table.add_column("Party", width=6)
+    table.add_column("Chamber", width=15)
+    table.add_column("Trades", justify="right", width=8)
+    table.add_column("BioGuide", width=12)
+
+    for name, info in sorted(politicians.items(), key=lambda x: -x[1]["count"]):
+        table.add_row(
+            name[:28],
+            info["party"],
+            info["house"][:13] if info["house"] else "?",
+            str(info["count"]),
+            info["bioguide"] or "-"
+        )
+
+    console.print(table)
+    console.print(f"\n[dim]Total unique politicians: {len(politicians)}[/dim]")
+
+
+@app.command("politician-trades")
+@click.argument("name")
+@click.option("--limit", "-l", default=50, help="Maximum trades to return")
+@click.option("--output", "-o", type=click.Choice(["table", "json"]), default="table")
+@click.option("--local-filter", "-f", is_flag=True, help="Use local filtering instead of API filtering")
+def politician_trades(name: str, limit: int, output: str, local_filter: bool):
+    """
+    Fetch all trades for a specific politician from QuiverQuant.
+
+    Uses the QuiverQuant API's politician filter endpoint for exact matches.
+    Use --local-filter for partial/fuzzy name matching.
+
+    Examples:
+        mcli run quiverquant politician-trades "Nancy Pelosi"
+        mcli run quiverquant politician-trades "Maria Elvira Salazar"
+        mcli run quiverquant politician-trades "Salazar" --local-filter
+        mcli run quiverquant politician-trades pelosi -o json
+    """
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    console.print(f"[cyan]Searching for trades by '{name}'...[/cyan]")
+
+    matching_trades = []
+
+    if local_filter:
+        # Local filtering - fetch all and filter
+        console.print("[dim]Using local filtering (partial match)...[/dim]\n")
+        qq_data = fetch_quiverquant_data(api_key, limit=5000)
+
+        if not qq_data:
+            console.print("[red]Failed to fetch data from QuiverQuant[/red]")
+            raise SystemExit(1)
+
+        name_lower = name.lower()
+        for trade in qq_data:
+            rep = trade.get("Representative", "")
+            if name_lower in rep.lower():
+                matching_trades.append(trade)
+    else:
+        # API-side filtering - use politician endpoint
+        console.print("[dim]Using API politician filter...[/dim]\n")
+        matching_trades = fetch_quiverquant_data(api_key, limit=limit, politician=name)
+
+        # If API returns empty, try local filtering as fallback
+        if not matching_trades:
+            console.print("[dim]No exact match, trying local filter...[/dim]")
+            qq_data = fetch_quiverquant_data(api_key, limit=5000)
+            if qq_data:
+                name_lower = name.lower()
+                for trade in qq_data:
+                    rep = trade.get("Representative", "")
+                    if name_lower in rep.lower():
+                        matching_trades.append(trade)
 
     if not matching_trades:
         console.print(f"[yellow]No trades found for '{name}'[/yellow]")
-        console.print("\n[dim]Try a different name or partial match (e.g., last name only)[/dim]")
+        console.print("\n[dim]Tips:[/dim]")
+        console.print("[dim]  - Try the full name: 'Nancy Pelosi' instead of 'Pelosi'[/dim]")
+        console.print("[dim]  - Use --local-filter for partial matching[/dim]")
+        console.print("[dim]  - Check available politicians: mcli run quiverquant stats[/dim]")
         raise SystemExit(1)
 
     # Get unique politician names that matched
