@@ -404,3 +404,309 @@ def health_check():
         raise SystemExit(1)
 
     console.print("\n[green]All checks passed[/green]")
+
+
+def get_supabase_config() -> Dict[str, str]:
+    """Get Supabase configuration from lsh."""
+    config = {}
+    for key in ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]:
+        try:
+            result = subprocess.run(
+                ["lsh", "get", key],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                config[key] = result.stdout.strip()
+        except Exception:
+            pass
+    return config
+
+
+def normalize_name(name: str) -> str:
+    """Normalize a name for matching."""
+    if not name:
+        return ""
+    # Handle "Last, First" format
+    if ", " in name:
+        parts = name.split(", ", 1)
+        name = f"{parts[1]} {parts[0]}"
+    # Remove common suffixes/prefixes
+    for suffix in [" Jr.", " Jr", " Sr.", " Sr", " III", " II", " IV"]:
+        name = name.replace(suffix, "")
+    return name.lower().strip()
+
+
+def fetch_all_congress_members() -> List[Dict]:
+    """Fetch all current Congress members from Congress.gov API."""
+    all_members = []
+    offset = 0
+    page_size = 250
+
+    while True:
+        params = {
+            "limit": page_size,
+            "offset": offset,
+            "currentMember": "true"
+        }
+        data = make_request("/member", params)
+        members = data.get("members", [])
+
+        if not members:
+            break
+
+        for member in members:
+            terms = member.get("terms", {}).get("item", [])
+            current_term = terms[0] if terms else {}
+
+            all_members.append({
+                "bioguide_id": member.get("bioguideId", ""),
+                "name": member.get("name", ""),
+                "direct_name": member.get("directOrderName", ""),
+                "state": member.get("state", ""),
+                "district": member.get("district"),
+                "party": member.get("partyName", ""),
+                "chamber": current_term.get("chamber", ""),
+            })
+
+        offset += page_size
+        total = data.get("pagination", {}).get("count", 0)
+        if offset >= total:
+            break
+
+    return all_members
+
+
+def fetch_app_politicians(config: Dict[str, str]) -> List[Dict]:
+    """Fetch politicians from app database."""
+    url = config.get("SUPABASE_URL")
+    key = config.get("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not url or not key:
+        return []
+
+    response = httpx.get(
+        f"{url}/rest/v1/politicians",
+        headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json"
+        },
+        params={
+            "select": "id,full_name,first_name,last_name,bioguide_id,party,state_or_country,chamber",
+            "limit": 2000
+        },
+        timeout=30.0
+    )
+
+    if response.status_code == 200:
+        return response.json()
+    return []
+
+
+def update_politician_bioguide(config: Dict[str, str], politician_id: str, bioguide_id: str) -> bool:
+    """Update a politician's bioguide_id in the database."""
+    url = config.get("SUPABASE_URL")
+    key = config.get("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not url or not key:
+        return False
+
+    response = httpx.patch(
+        f"{url}/rest/v1/politicians",
+        headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal"
+        },
+        params={"id": f"eq.{politician_id}"},
+        json={"bioguide_id": bioguide_id},
+        timeout=10.0
+    )
+
+    return response.status_code in [200, 204]
+
+
+@app.command("backfill-bioguide")
+@click.option("--dry-run", is_flag=True, help="Show matches without updating database")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed matching info")
+def backfill_bioguide(dry_run: bool, verbose: bool):
+    """
+    Backfill bioguide_id for politicians by matching with Congress.gov data.
+
+    Example: mcli run congress backfill-bioguide --dry-run
+    Example: mcli run congress backfill-bioguide
+    """
+    config = get_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found in lsh[/red]")
+        raise SystemExit(1)
+
+    console.print("[cyan]Fetching Congress members from Congress.gov...[/cyan]")
+    congress_members = fetch_all_congress_members()
+    console.print(f"  Found {len(congress_members)} current members")
+
+    console.print("[cyan]Fetching politicians from app database...[/cyan]")
+    app_politicians = fetch_app_politicians(config)
+    console.print(f"  Found {len(app_politicians)} politicians")
+
+    # Filter to those without bioguide_id
+    missing_bioguide = [p for p in app_politicians if not p.get("bioguide_id")]
+    already_have = len(app_politicians) - len(missing_bioguide)
+    console.print(f"  Already have bioguide_id: {already_have}")
+    console.print(f"  Missing bioguide_id: {len(missing_bioguide)}")
+
+    # Build lookup tables for Congress members
+    congress_by_name = {}
+    congress_by_direct_name = {}
+    for m in congress_members:
+        norm_name = normalize_name(m["name"])
+        norm_direct = normalize_name(m["direct_name"])
+        if norm_name:
+            congress_by_name[norm_name] = m
+        if norm_direct:
+            congress_by_direct_name[norm_direct] = m
+
+    # Match politicians
+    matches = []
+    no_match = []
+
+    for pol in missing_bioguide:
+        full_name = pol.get("full_name", "")
+        first_name = pol.get("first_name", "")
+        last_name = pol.get("last_name", "")
+
+        # Try different name formats
+        names_to_try = [
+            normalize_name(full_name),
+            normalize_name(f"{first_name} {last_name}"),
+            normalize_name(f"{last_name}, {first_name}"),
+        ]
+
+        match = None
+        matched_name = None
+        for name in names_to_try:
+            if name in congress_by_name:
+                match = congress_by_name[name]
+                matched_name = name
+                break
+            if name in congress_by_direct_name:
+                match = congress_by_direct_name[name]
+                matched_name = name
+                break
+
+        if match:
+            matches.append({
+                "politician": pol,
+                "congress_member": match,
+                "matched_on": matched_name
+            })
+        else:
+            no_match.append(pol)
+
+    console.print(f"\n[bold]Matching Results[/bold]")
+    console.print("-" * 60)
+    console.print(f"[green]Matched: {len(matches)}[/green]")
+    console.print(f"[yellow]No match: {len(no_match)}[/yellow]")
+
+    if verbose and matches:
+        console.print(f"\n[bold]Matches:[/bold]")
+        for m in matches[:20]:
+            pol = m["politician"]
+            cong = m["congress_member"]
+            console.print(f"  {pol['full_name']} -> {cong['bioguide_id']} ({cong['name']})")
+        if len(matches) > 20:
+            console.print(f"  ... and {len(matches) - 20} more")
+
+    if verbose and no_match:
+        console.print(f"\n[bold]No Match Found:[/bold]")
+        for pol in no_match[:10]:
+            console.print(f"  {pol['full_name']} ({pol.get('state_or_country', '?')})")
+        if len(no_match) > 10:
+            console.print(f"  ... and {len(no_match) - 10} more")
+
+    if dry_run:
+        console.print(f"\n[yellow]Dry run - no changes made[/yellow]")
+        return
+
+    if not matches:
+        console.print("[yellow]No matches to update[/yellow]")
+        return
+
+    # Update database
+    console.print(f"\n[cyan]Updating {len(matches)} politicians...[/cyan]")
+    updated = 0
+    failed = 0
+
+    for m in matches:
+        pol_id = m["politician"]["id"]
+        bioguide_id = m["congress_member"]["bioguide_id"]
+
+        if update_politician_bioguide(config, pol_id, bioguide_id):
+            updated += 1
+        else:
+            failed += 1
+            if verbose:
+                console.print(f"  [red]Failed to update {m['politician']['full_name']}[/red]")
+
+    console.print(f"\n[bold]Update Results[/bold]")
+    console.print(f"  [green]Updated: {updated}[/green]")
+    if failed:
+        console.print(f"  [red]Failed: {failed}[/red]")
+
+
+@app.command("lookup")
+@click.argument("name")
+def lookup_member(name: str):
+    """
+    Look up a Congress member by name and show their BioGuide ID.
+
+    Example: mcli run congress lookup "Nancy Pelosi"
+    Example: mcli run congress lookup "Pelosi"
+    """
+    console.print(f"[cyan]Searching for '{name}'...[/cyan]")
+
+    try:
+        # Fetch all current members
+        all_members = fetch_all_congress_members()
+
+        # Search by name (case-insensitive partial match)
+        search_lower = name.lower()
+        matches = []
+
+        for member in all_members:
+            if (search_lower in member["name"].lower() or
+                search_lower in member.get("direct_name", "").lower()):
+                matches.append(member)
+
+        if not matches:
+            console.print(f"[yellow]No members found matching '{name}'[/yellow]")
+            return
+
+        console.print(f"\n[bold]Found {len(matches)} match(es):[/bold]")
+        table = Table()
+        table.add_column("Name", style="green", width=30)
+        table.add_column("BioGuide ID", style="cyan", width=12)
+        table.add_column("State", width=6)
+        table.add_column("Party", width=12)
+        table.add_column("Chamber", width=10)
+
+        for m in matches[:20]:
+            party_style = "blue" if "Democrat" in m["party"] else "red" if "Republican" in m["party"] else "yellow"
+            table.add_row(
+                m["direct_name"] or m["name"],
+                m["bioguide_id"],
+                m["state"],
+                f"[{party_style}]{m['party'][:10]}[/{party_style}]",
+                m["chamber"][:10] if m["chamber"] else "-"
+            )
+
+        console.print(table)
+
+        if len(matches) > 20:
+            console.print(f"\n[dim]Showing first 20 of {len(matches)} matches[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)

@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "generated_at": "2026-01-11T17:31:26.426174Z",
+  "generated_at": "2026-01-11T17:57:15.640877Z",
   "commands": {
     "backfill": {
       "file": "backfill.py",
@@ -31,7 +31,7 @@
     "congress": {
       "file": "congress.py",
       "language": "python",
-      "content_hash": "sha256:c474854132367ad475437f5e10d2fd9aa66d3f9a149abe4aa70322ba6743a93e",
+      "content_hash": "sha256:e1918850394789bf9c8dd87443dbe2363440d83c6048abae1b3e371b102b1f72",
       "version": "1.0.0",
       "group": "workflows",
       "description": "Congress.gov API commands",
@@ -39,7 +39,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-01-11T18:23:29.581740Z"
+      "last_modified": "2026-01-11T18:57:10.309671Z"
     },
     "etl": {
       "file": "etl.py",
@@ -96,7 +96,7 @@
     "quiverquant": {
       "file": "quiverquant.py",
       "language": "python",
-      "content_hash": "sha256:dfc4b492c39abd8999ae6499cffdefb9de76d565c9aefdcdbcff5dbd3e8b5ae0",
+      "content_hash": "sha256:7d6378dfeea4857c4d3d4beca9c14b7ad7def0811093868d4966ec4e05a30e66",
       "version": "1.0.0",
       "group": "workflows",
       "description": "QuiverQuant API commands",
@@ -104,7 +104,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-01-11T18:31:16.200290Z"
+      "last_modified": "2026-01-11T18:31:38.402860Z"
     },
     "server": {
       "file": "server.py",
