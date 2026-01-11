@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "generated_at": "2026-01-11T17:18:25.855286Z",
+  "generated_at": "2026-01-11T17:25:19.011114Z",
   "commands": {
     "backfill": {
       "file": "backfill.py",
@@ -27,6 +27,19 @@
       "tags": [],
       "shell": null,
       "last_modified": "2026-01-11T17:47:07.907402Z"
+    },
+    "congress": {
+      "file": "congress.py",
+      "language": "python",
+      "content_hash": "sha256:c474854132367ad475437f5e10d2fd9aa66d3f9a149abe4aa70322ba6743a93e",
+      "version": "1.0.0",
+      "group": "workflows",
+      "description": "Congress.gov API commands",
+      "author": "",
+      "requires": [],
+      "tags": [],
+      "shell": null,
+      "last_modified": "2026-01-11T18:23:29.581740Z"
     },
     "etl": {
       "file": "etl.py",
