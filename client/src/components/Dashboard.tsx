@@ -4,7 +4,6 @@ import TradeChart from '@/components/TradeChart';
 import VolumeChart from '@/components/VolumeChart';
 import TopTraders from '@/components/TopTraders';
 import TopTickers from '@/components/TopTickers';
-import PartyBreakdown from '@/components/PartyBreakdown';
 import LandingTradesTable from '@/components/LandingTradesTable';
 import { useDashboardStats, useChartData } from '@/hooks/useSupabaseData';
 import { formatCurrency } from '@/lib/mockData';
@@ -126,16 +125,13 @@ const Dashboard = ({ initialTickerSearch, onTickerSearchClear }: DashboardProps)
         </ErrorBoundary>
       </div>
 
-      {/* Top Traders, Top Tickers & Party Breakdown */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      {/* Top Traders & Top Tickers */}
+      <div className="grid gap-6 md:grid-cols-2">
         <ErrorBoundary name="Top Traders" minimal>
           <TopTraders />
         </ErrorBoundary>
         <ErrorBoundary name="Top Tickers" minimal>
           <TopTickers />
-        </ErrorBoundary>
-        <ErrorBoundary name="Party Breakdown" minimal>
-          <PartyBreakdown />
         </ErrorBoundary>
       </div>
     </div>
