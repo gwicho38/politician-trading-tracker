@@ -1,73 +1,42 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import Header from '@/components/Header';
-import Sidebar from '@/components/Sidebar';
+import { SidebarLayout } from '@/components/layouts/SidebarLayout';
 import Dashboard from '@/components/Dashboard';
 import PoliticiansView from '@/components/PoliticiansView';
 import FilingsView from '@/components/FilingsView';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const Index = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState('dashboard');
+  const [searchParams] = useSearchParams();
   const [selectedPoliticianId, setSelectedPoliticianId] = useState<string | null>(null);
   const [tickerFilter, setTickerFilter] = useState<string | undefined>(undefined);
 
-  const [searchQuery, setSearchQuery] = useState('');
+  // Get active section from URL params
+  const view = searchParams.get('view');
+  const activeSection = view || 'dashboard';
 
-  // Handle URL parameters on mount and when they change
+  // Handle URL parameters for politician and ticker
   useEffect(() => {
-    const view = searchParams.get('view');
     const politicianId = searchParams.get('politician');
     const ticker = searchParams.get('ticker');
 
-    if (view) {
-      setActiveSection(view);
-    }
     if (politicianId) {
       setSelectedPoliticianId(politicianId);
-      if (!view) setActiveSection('politicians');
     }
     if (ticker) {
       setTickerFilter(ticker);
-      // Ticker search goes to dashboard (which has the trades table)
-      if (!view) setActiveSection('dashboard');
     }
+  }, [searchParams]);
 
-    // Clear URL params after processing
-    if (view || politicianId || ticker) {
-      setSearchParams({}, { replace: true });
-    }
-  }, [searchParams, setSearchParams]);
-
-  // Listen for navigation events from child components
+  // Clear state when switching sections
   useEffect(() => {
-    const handleNavigate = (e: CustomEvent<string>) => {
-      setActiveSection(e.detail);
-    };
-    const handleSearch = (e: CustomEvent<string>) => {
-      setSearchQuery(e.detail);
-      setActiveSection('trades'); // Switch to trades view to show results
-    };
-    window.addEventListener('navigate-section', handleNavigate as EventListener);
-    window.addEventListener('search', handleSearch as EventListener);
-    return () => {
-      window.removeEventListener('navigate-section', handleNavigate as EventListener);
-      window.removeEventListener('search', handleSearch as EventListener);
-    };
-  }, []);
-
-  // Clear politician selection when switching away from politicians view
-  const handleSectionChange = (section: string) => {
-    if (section !== 'politicians') {
+    if (activeSection !== 'politicians') {
       setSelectedPoliticianId(null);
     }
-    if (section !== 'filings') {
+    if (activeSection !== 'filings') {
       setTickerFilter(undefined);
     }
-    setActiveSection(section);
-  };
+  }, [activeSection]);
 
   const renderContent = () => {
     switch (activeSection) {
@@ -99,51 +68,34 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <SidebarLayout>
       {/* Background gradient */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-primary/3 rounded-full blur-3xl" />
       </div>
 
-      <div className="relative flex min-h-screen">
-        <Sidebar
-          isOpen={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-          activeSection={activeSection}
-          onSectionChange={handleSectionChange}
-        />
+      <div className="relative flex-1 flex flex-col min-h-screen">
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin">
+          <div className="mx-auto max-w-7xl">
+            {renderContent()}
+          </div>
+        </main>
 
-        <div className="flex-1 flex flex-col min-h-screen">
-          <Header onMenuClick={() => setSidebarOpen(true)} />
-
-          <main className="flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin">
-            <div className="mx-auto max-w-7xl">
-              {renderContent()}
-            </div>
-          </main>
-
-          {/* Footer */}
-          <footer className="border-t border-border/50 bg-background/50 backdrop-blur-xl py-4">
-            <div className="container px-4 text-center text-sm text-muted-foreground">
-              <p>
-                Data sourced from official government disclosures •
-                <a href="https://www.congress.gov/members" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline ml-2">US Congress</a>
-                {/* COMMENTED OUT - Multi-jurisdiction support not yet implemented
-                <span className="mx-2">•</span>
-                <a href="https://www.europarl.europa.eu/meps/en/home" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">EU Parliament</a>
-                <span className="mx-2">•</span>
-                <a href="https://www.parliament.uk/mps-lords-and-offices/mps/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">UK Parliament</a>
-                */}
-              </p>
-              <p className="mt-2">
-                Contact: <a href="mailto:luis@lefv.io" className="text-primary hover:underline">luis@lefv.io</a>
-              </p>
-            </div>
-          </footer>
-        </div>
+        {/* Footer */}
+        <footer className="border-t border-border/50 bg-background/50 backdrop-blur-xl py-4">
+          <div className="container px-4 text-center text-sm text-muted-foreground">
+            <p>
+              Data sourced from official government disclosures •
+              <a href="https://www.congress.gov/members" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline ml-2">US Congress</a>
+            </p>
+            <p className="mt-2">
+              Contact: <a href="mailto:luis@lefv.io" className="text-primary hover:underline">luis@lefv.io</a>
+            </p>
+          </div>
+        </footer>
       </div>
-    </div>
+    </SidebarLayout>
   );
 };
 
