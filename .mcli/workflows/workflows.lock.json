@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "generated_at": "2026-01-11T17:57:15.640877Z",
+  "generated_at": "2026-01-11T18:45:03.124787Z",
   "commands": {
     "backfill": {
       "file": "backfill.py",
@@ -96,7 +96,7 @@
     "quiverquant": {
       "file": "quiverquant.py",
       "language": "python",
-      "content_hash": "sha256:7d6378dfeea4857c4d3d4beca9c14b7ad7def0811093868d4966ec4e05a30e66",
+      "content_hash": "sha256:1f7b4bf4126b4f6601aa6a9e0d1842cb37843f9becefb1e0b52b43eccaae7c5e",
       "version": "1.0.0",
       "group": "workflows",
       "description": "QuiverQuant API commands",
@@ -104,7 +104,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-01-11T18:31:38.402860Z"
+      "last_modified": "2026-01-11T19:41:47.382573Z"
     },
     "server": {
       "file": "server.py",
