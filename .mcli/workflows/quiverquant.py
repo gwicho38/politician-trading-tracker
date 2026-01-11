@@ -251,6 +251,367 @@ def show_stats():
         raise SystemExit(1)
 
 
+def get_supabase_config():
+    """Get Supabase configuration from lsh."""
+    config = {}
+    for key in ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]:
+        try:
+            result = subprocess.run(
+                ["lsh", "get", key],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                config[key] = result.stdout.strip()
+        except Exception:
+            pass
+    return config
+
+
+def fetch_quiverquant_data(api_key: str, limit: int = 1000):
+    """Fetch data from QuiverQuant API."""
+    response = httpx.get(
+        QUIVERQUANT_API_URL,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json"
+        },
+        timeout=60.0,
+        params={"pagesize": limit}
+    )
+    if response.status_code == 200:
+        return response.json()
+    return []
+
+
+def fetch_supabase_data(config: dict, table: str, select: str = "*", limit: int = 1000):
+    """Fetch data from Supabase."""
+    url = config.get("SUPABASE_URL")
+    key = config.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        return []
+
+    response = httpx.get(
+        f"{url}/rest/v1/{table}",
+        headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json"
+        },
+        params={"select": select, "limit": limit},
+        timeout=30.0
+    )
+    if response.status_code == 200:
+        return response.json()
+    return []
+
+
+@app.command("validate-politicians")
+def validate_politicians():
+    """
+    Compare politician data between QuiverQuant and app database.
+
+    Example: mcli run quiverquant validate-politicians
+    """
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    config = get_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found[/red]")
+        raise SystemExit(1)
+
+    console.print("[cyan]Fetching data from both sources...[/cyan]")
+
+    # Fetch QuiverQuant data
+    qq_data = fetch_quiverquant_data(api_key)
+    qq_politicians = {}
+    for trade in qq_data:
+        rep = trade.get("Representative", "")
+        if rep:
+            if rep not in qq_politicians:
+                qq_politicians[rep] = {
+                    "name": rep,
+                    "bioguide_id": trade.get("BioGuideID"),
+                    "party": trade.get("Party"),
+                    "chamber": trade.get("House"),
+                    "trade_count": 0
+                }
+            qq_politicians[rep]["trade_count"] += 1
+
+    # Fetch app database politicians
+    app_politicians = fetch_supabase_data(
+        config, "politicians",
+        "full_name,bioguide_id,party,chamber,total_trades"
+    )
+    app_by_name = {p.get("full_name", ""): p for p in app_politicians}
+    app_by_bioguide = {p.get("bioguide_id", ""): p for p in app_politicians if p.get("bioguide_id")}
+
+    console.print(f"\n[bold]Politician Comparison[/bold]")
+    console.print("-" * 60)
+    console.print(f"QuiverQuant unique politicians: [cyan]{len(qq_politicians)}[/cyan]")
+    console.print(f"App database politicians: [cyan]{len(app_politicians)}[/cyan]")
+
+    # Find matches and mismatches
+    matched_by_name = 0
+    matched_by_bioguide = 0
+    qq_only = []
+
+    for name, qq_pol in qq_politicians.items():
+        bioguide = qq_pol.get("bioguide_id")
+        if name in app_by_name:
+            matched_by_name += 1
+        elif bioguide and bioguide in app_by_bioguide:
+            matched_by_bioguide += 1
+        else:
+            qq_only.append(qq_pol)
+
+    console.print(f"\n[bold]Match Results:[/bold]")
+    console.print(f"  Matched by name: [green]{matched_by_name}[/green]")
+    console.print(f"  Matched by BioGuide ID: [green]{matched_by_bioguide}[/green]")
+    console.print(f"  QuiverQuant only (not in app): [yellow]{len(qq_only)}[/yellow]")
+
+    if qq_only and len(qq_only) <= 20:
+        console.print(f"\n[bold]Politicians in QuiverQuant but not in app:[/bold]")
+        for pol in sorted(qq_only, key=lambda x: -x["trade_count"])[:10]:
+            console.print(f"  {pol['name']} ({pol['party']}) - {pol['trade_count']} trades")
+
+    # Party distribution comparison
+    console.print(f"\n[bold]Party Distribution:[/bold]")
+    qq_parties = {}
+    for pol in qq_politicians.values():
+        party = pol.get("party", "Unknown")
+        qq_parties[party] = qq_parties.get(party, 0) + 1
+
+    app_parties = {}
+    for pol in app_politicians:
+        party = pol.get("party", "Unknown")
+        if party:
+            # Normalize party names
+            if party.startswith("D"):
+                party = "D"
+            elif party.startswith("R"):
+                party = "R"
+            else:
+                party = "I"
+        app_parties[party] = app_parties.get(party, 0) + 1
+
+    table = Table()
+    table.add_column("Party", style="bold")
+    table.add_column("QuiverQuant", justify="right")
+    table.add_column("App DB", justify="right")
+
+    all_parties = set(qq_parties.keys()) | set(app_parties.keys())
+    for party in sorted([p for p in all_parties if p is not None]):
+        qq_count = qq_parties.get(party, 0)
+        app_count = app_parties.get(party, 0)
+        table.add_row(party, str(qq_count), str(app_count))
+
+    console.print(table)
+
+
+@app.command("validate-trades")
+@click.option("--days", "-d", default=30, help="Number of days to compare")
+def validate_trades(days: int):
+    """
+    Compare recent trades between QuiverQuant and app database.
+
+    Example: mcli run quiverquant validate-trades --days 30
+    """
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    config = get_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found[/red]")
+        raise SystemExit(1)
+
+    console.print(f"[cyan]Comparing trades from last {days} days...[/cyan]")
+
+    # Fetch QuiverQuant data
+    qq_data = fetch_quiverquant_data(api_key)
+
+    # Filter to recent trades
+    from datetime import datetime, timedelta
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    qq_recent = [t for t in qq_data if t.get("TransactionDate", "") >= cutoff]
+
+    # Fetch app database trades
+    app_trades = fetch_supabase_data(
+        config, "trading_disclosures",
+        "asset_ticker,transaction_date,transaction_type,politician_id",
+        limit=2000
+    )
+    app_recent = [t for t in app_trades if t.get("transaction_date", "") >= cutoff]
+
+    console.print(f"\n[bold]Trade Comparison (last {days} days)[/bold]")
+    console.print("-" * 60)
+    console.print(f"QuiverQuant trades: [cyan]{len(qq_recent)}[/cyan]")
+    console.print(f"App database trades: [cyan]{len(app_recent)}[/cyan]")
+
+    # Compare by ticker
+    qq_tickers = {}
+    for t in qq_recent:
+        ticker = t.get("Ticker", "")
+        if ticker:
+            qq_tickers[ticker] = qq_tickers.get(ticker, 0) + 1
+
+    app_tickers = {}
+    for t in app_recent:
+        ticker = t.get("asset_ticker", "")
+        if ticker:
+            app_tickers[ticker] = app_tickers.get(ticker, 0) + 1
+
+    console.print(f"\n[bold]Top 10 Tickers Comparison:[/bold]")
+    table = Table()
+    table.add_column("Ticker", style="yellow")
+    table.add_column("QuiverQuant", justify="right")
+    table.add_column("App DB", justify="right")
+    table.add_column("Diff", justify="right")
+
+    # Get top tickers from both sources
+    all_tickers = set(list(qq_tickers.keys())[:20]) | set(list(app_tickers.keys())[:20])
+    ticker_data = []
+    for ticker in all_tickers:
+        qq_count = qq_tickers.get(ticker, 0)
+        app_count = app_tickers.get(ticker, 0)
+        ticker_data.append((ticker, qq_count, app_count, qq_count - app_count))
+
+    # Sort by QuiverQuant count
+    ticker_data.sort(key=lambda x: -x[1])
+
+    for ticker, qq_count, app_count, diff in ticker_data[:10]:
+        diff_style = "[green]" if diff == 0 else "[yellow]" if abs(diff) <= 2 else "[red]"
+        table.add_row(
+            ticker,
+            str(qq_count),
+            str(app_count),
+            f"{diff_style}{diff:+d}[/{diff_style.strip('[]')}]"
+        )
+
+    console.print(table)
+
+    # Transaction type comparison
+    console.print(f"\n[bold]Transaction Type Comparison:[/bold]")
+    qq_types = {"Purchase": 0, "Sale": 0}
+    for t in qq_recent:
+        tx = t.get("Transaction", "")
+        if "Purchase" in tx:
+            qq_types["Purchase"] += 1
+        elif "Sale" in tx:
+            qq_types["Sale"] += 1
+
+    app_types = {"Purchase": 0, "Sale": 0}
+    for t in app_recent:
+        tx = t.get("transaction_type", "")
+        if tx and tx.lower() in ["buy", "purchase"]:
+            app_types["Purchase"] += 1
+        elif tx and tx.lower() in ["sell", "sale"]:
+            app_types["Sale"] += 1
+
+    table2 = Table()
+    table2.add_column("Type", style="bold")
+    table2.add_column("QuiverQuant", justify="right")
+    table2.add_column("App DB", justify="right")
+
+    table2.add_row("Purchases/Buys", str(qq_types["Purchase"]), str(app_types["Purchase"]))
+    table2.add_row("Sales/Sells", str(qq_types["Sale"]), str(app_types["Sale"]))
+
+    console.print(table2)
+
+
+@app.command("validate-tickers")
+def validate_tickers():
+    """
+    Compare top traded tickers between QuiverQuant and app database.
+
+    Example: mcli run quiverquant validate-tickers
+    """
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    config = get_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found[/red]")
+        raise SystemExit(1)
+
+    console.print("[cyan]Comparing top tickers...[/cyan]")
+
+    # Fetch QuiverQuant data
+    qq_data = fetch_quiverquant_data(api_key)
+    qq_tickers = {}
+    for t in qq_data:
+        ticker = t.get("Ticker", "")
+        if ticker:
+            qq_tickers[ticker] = qq_tickers.get(ticker, 0) + 1
+
+    # Fetch app database trades
+    app_trades = fetch_supabase_data(
+        config, "trading_disclosures",
+        "asset_ticker",
+        limit=5000
+    )
+    app_tickers = {}
+    for t in app_trades:
+        ticker = t.get("asset_ticker", "")
+        if ticker:
+            app_tickers[ticker] = app_tickers.get(ticker, 0) + 1
+
+    console.print(f"\n[bold]Top Tickers Comparison[/bold]")
+    console.print("-" * 60)
+    console.print(f"QuiverQuant unique tickers: [cyan]{len(qq_tickers)}[/cyan]")
+    console.print(f"App database unique tickers: [cyan]{len(app_tickers)}[/cyan]")
+
+    # Get top 20 from each
+    qq_top = sorted(qq_tickers.items(), key=lambda x: -x[1])[:20]
+    app_top = sorted(app_tickers.items(), key=lambda x: -x[1])[:20]
+
+    console.print(f"\n[bold]Top 20 Tickers Side-by-Side:[/bold]")
+    table = Table()
+    table.add_column("#", style="dim", width=3)
+    table.add_column("QuiverQuant", style="yellow", width=12)
+    table.add_column("QQ Count", justify="right", width=8)
+    table.add_column("App DB", style="cyan", width=12)
+    table.add_column("App Count", justify="right", width=8)
+    table.add_column("Match", width=6)
+
+    for i in range(20):
+        qq_ticker = qq_top[i][0] if i < len(qq_top) else "-"
+        qq_count = qq_top[i][1] if i < len(qq_top) else 0
+        app_ticker = app_top[i][0] if i < len(app_top) else "-"
+        app_count = app_top[i][1] if i < len(app_top) else 0
+
+        # Check if tickers match at this rank
+        match = "[green]Yes[/green]" if qq_ticker == app_ticker else "[red]No[/red]"
+
+        table.add_row(
+            str(i + 1),
+            qq_ticker,
+            str(qq_count),
+            app_ticker,
+            str(app_count),
+            match
+        )
+
+    console.print(table)
+
+    # Find common tickers
+    common = set(qq_tickers.keys()) & set(app_tickers.keys())
+    qq_only = set(qq_tickers.keys()) - set(app_tickers.keys())
+    app_only = set(app_tickers.keys()) - set(qq_tickers.keys())
+
+    console.print(f"\n[bold]Ticker Overlap:[/bold]")
+    console.print(f"  Common tickers: [green]{len(common)}[/green]")
+    console.print(f"  QuiverQuant only: [yellow]{len(qq_only)}[/yellow]")
+    console.print(f"  App DB only: [yellow]{len(app_only)}[/yellow]")
+
+
 @app.command("health")
 def health_check():
     """
