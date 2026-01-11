@@ -284,12 +284,18 @@ def fetch_quiverquant_data(api_key: str, limit: int = 1000):
     return []
 
 
-def fetch_supabase_data(config: dict, table: str, select: str = "*", limit: int = 1000):
-    """Fetch data from Supabase."""
+def fetch_supabase_data(config: dict, table: str, select: str = "*", limit: int = 1000, filters: dict = None, order: str = None):
+    """Fetch data from Supabase with optional filters."""
     url = config.get("SUPABASE_URL")
     key = config.get("SUPABASE_SERVICE_ROLE_KEY")
     if not url or not key:
         return []
+
+    params = {"select": select, "limit": limit}
+    if filters:
+        params.update(filters)
+    if order:
+        params["order"] = order
 
     response = httpx.get(
         f"{url}/rest/v1/{table}",
@@ -298,7 +304,7 @@ def fetch_supabase_data(config: dict, table: str, select: str = "*", limit: int 
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json"
         },
-        params={"select": select, "limit": limit},
+        params=params,
         timeout=30.0
     )
     if response.status_code == 200:
@@ -435,18 +441,21 @@ def validate_trades(days: int):
     # Fetch QuiverQuant data
     qq_data = fetch_quiverquant_data(api_key)
 
-    # Filter to recent trades
+    # Filter to recent trades by TransactionDate
     from datetime import datetime, timedelta
     cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
     qq_recent = [t for t in qq_data if t.get("TransactionDate", "") >= cutoff]
 
-    # Fetch app database trades
+    # Fetch app database trades (status=active, ordered by disclosure_date)
     app_trades = fetch_supabase_data(
         config, "trading_disclosures",
-        "asset_ticker,transaction_date,transaction_type,politician_id",
-        limit=2000
+        "asset_ticker,transaction_date,disclosure_date,transaction_type,politician_id",
+        limit=2000,
+        filters={"status": "eq.active"},
+        order="disclosure_date.desc"
     )
-    app_recent = [t for t in app_trades if t.get("transaction_date", "") >= cutoff]
+    # Filter by transaction_date (the actual trade date, not disclosure date)
+    app_recent = [t for t in app_trades if (t.get("transaction_date") or "")[:10] >= cutoff]
 
     console.print(f"\n[bold]Trade Comparison (last {days} days)[/bold]")
     console.print("-" * 60)
