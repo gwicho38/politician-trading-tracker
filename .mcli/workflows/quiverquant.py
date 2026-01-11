@@ -918,3 +918,411 @@ def sample_test(count: int, trades: int):
         raise SystemExit(1)
     elif overall_rate < 80:
         console.print("\n[yellow]Note: Some trades missing. Consider investigating.[/yellow]")
+
+
+@app.command("freshness-check")
+def freshness_check():
+    """
+    Compare data freshness between QuiverQuant and our database.
+
+    Shows:
+    - Most recent trade dates in each source
+    - Data lag (how far behind we are)
+    - Recent disclosure dates comparison
+
+    Example: mcli run quiverquant freshness-check
+    """
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    config = get_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found[/red]")
+        raise SystemExit(1)
+
+    console.print("[cyan]Checking data freshness...[/cyan]\n")
+
+    # Fetch QuiverQuant data
+    qq_data = fetch_quiverquant_data(api_key, limit=500)
+
+    # Get most recent dates from QuiverQuant
+    qq_tx_dates = [t.get("TransactionDate", "")[:10] for t in qq_data if t.get("TransactionDate")]
+    qq_disc_dates = [t.get("ReportDate", t.get("DisclosureDate", ""))[:10] for t in qq_data if t.get("ReportDate") or t.get("DisclosureDate")]
+
+    qq_latest_tx = max(qq_tx_dates) if qq_tx_dates else "N/A"
+    qq_latest_disc = max(qq_disc_dates) if qq_disc_dates else "N/A"
+
+    # Fetch our most recent dates
+    app_trades = fetch_supabase_data(
+        config, "trading_disclosures",
+        "transaction_date,disclosure_date",
+        limit=500,
+        filters={"status": "eq.active"},
+        order="disclosure_date.desc"
+    )
+
+    app_tx_dates = [(t.get("transaction_date") or "")[:10] for t in app_trades if t.get("transaction_date")]
+    app_disc_dates = [(t.get("disclosure_date") or "")[:10] for t in app_trades if t.get("disclosure_date")]
+
+    app_latest_tx = max(app_tx_dates) if app_tx_dates else "N/A"
+    app_latest_disc = max(app_disc_dates) if app_disc_dates else "N/A"
+
+    # Display comparison
+    table = Table(title="Data Freshness Comparison")
+    table.add_column("Metric", style="bold")
+    table.add_column("QuiverQuant", style="cyan")
+    table.add_column("Our Database", style="green")
+    table.add_column("Status", style="yellow")
+
+    # Transaction date comparison
+    tx_status = "OK" if app_latest_tx >= qq_latest_tx else f"Behind by {qq_latest_tx}"
+    table.add_row("Latest Transaction Date", qq_latest_tx, app_latest_tx, tx_status)
+
+    # Disclosure date comparison
+    disc_status = "OK" if app_latest_disc >= qq_latest_disc else f"Behind by {qq_latest_disc}"
+    table.add_row("Latest Disclosure Date", qq_latest_disc, app_latest_disc, disc_status)
+
+    # Record counts
+    table.add_row("Records Checked", str(len(qq_data)), str(len(app_trades)), "-")
+
+    console.print(table)
+
+    # Calculate lag in days
+    from datetime import datetime
+    try:
+        if qq_latest_disc != "N/A" and app_latest_disc != "N/A":
+            qq_date = datetime.strptime(qq_latest_disc, "%Y-%m-%d")
+            app_date = datetime.strptime(app_latest_disc, "%Y-%m-%d")
+            lag_days = (qq_date - app_date).days
+            if lag_days > 0:
+                console.print(f"\n[yellow]Data lag: {lag_days} days behind QuiverQuant[/yellow]")
+            elif lag_days < 0:
+                console.print(f"\n[green]Our data is {-lag_days} days ahead of QuiverQuant sample[/green]")
+            else:
+                console.print(f"\n[green]Data is current[/green]")
+    except Exception:
+        pass
+
+    # Show recent disclosures from each source
+    console.print("\n[bold]Recent Disclosures (QuiverQuant):[/bold]")
+    recent_qq = sorted(set(qq_disc_dates), reverse=True)[:5]
+    for d in recent_qq:
+        count = qq_disc_dates.count(d)
+        console.print(f"  {d}: {count} trades")
+
+    console.print("\n[bold]Recent Disclosures (Our DB):[/bold]")
+    recent_app = sorted(set(app_disc_dates), reverse=True)[:5]
+    for d in recent_app:
+        count = app_disc_dates.count(d)
+        console.print(f"  {d}: {count} trades")
+
+
+@app.command("bioguide-audit")
+def bioguide_audit():
+    """
+    Audit BioGuide ID consistency between QuiverQuant and our database.
+
+    Checks:
+    - Politicians with mismatched BioGuide IDs
+    - Politicians missing BioGuide IDs
+    - BioGuide IDs in QuiverQuant not in our DB
+
+    Example: mcli run quiverquant bioguide-audit
+    """
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    config = get_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found[/red]")
+        raise SystemExit(1)
+
+    console.print("[cyan]Auditing BioGuide IDs...[/cyan]\n")
+
+    # Fetch QuiverQuant data
+    qq_data = fetch_quiverquant_data(api_key, limit=2000)
+
+    # Build QuiverQuant bioguide -> name mapping
+    qq_bioguides = {}
+    for trade in qq_data:
+        bg = trade.get("BioGuideID", "")
+        name = trade.get("Representative", "")
+        if bg and name:
+            qq_bioguides[bg] = name
+
+    # Fetch our politicians
+    app_politicians = fetch_supabase_data(
+        config, "politicians",
+        "id,full_name,bioguide_id",
+        limit=2000
+    )
+
+    app_bioguides = {p.get("bioguide_id"): p for p in app_politicians if p.get("bioguide_id")}
+    app_missing_bg = [p for p in app_politicians if not p.get("bioguide_id")]
+
+    console.print(f"[bold]BioGuide ID Summary[/bold]")
+    console.print("-" * 50)
+    console.print(f"QuiverQuant unique BioGuide IDs: [cyan]{len(qq_bioguides)}[/cyan]")
+    console.print(f"Our DB with BioGuide IDs: [green]{len(app_bioguides)}[/green]")
+    console.print(f"Our DB missing BioGuide IDs: [yellow]{len(app_missing_bg)}[/yellow]")
+
+    # Find matches and mismatches
+    matched = 0
+    qq_only = []
+    name_mismatches = []
+
+    for bg, qq_name in qq_bioguides.items():
+        if bg in app_bioguides:
+            matched += 1
+            app_name = app_bioguides[bg].get("full_name", "")
+            # Check for significant name differences
+            qq_norm = normalize_name_for_match(qq_name)
+            app_norm = normalize_name_for_match(app_name)
+            if qq_norm != app_norm and qq_norm not in app_norm and app_norm not in qq_norm:
+                name_mismatches.append({
+                    "bioguide": bg,
+                    "qq_name": qq_name,
+                    "app_name": app_name
+                })
+        else:
+            qq_only.append({"bioguide": bg, "name": qq_name})
+
+    console.print(f"\n[bold]Match Results:[/bold]")
+    console.print(f"  BioGuide IDs in both: [green]{matched}[/green]")
+    console.print(f"  QuiverQuant only: [yellow]{len(qq_only)}[/yellow]")
+    console.print(f"  Name mismatches: [{'red' if name_mismatches else 'green'}]{len(name_mismatches)}[/]")
+
+    if qq_only:
+        console.print(f"\n[bold]BioGuide IDs in QuiverQuant but not in our DB (sample):[/bold]")
+        for item in qq_only[:10]:
+            console.print(f"  {item['bioguide']}: {item['name']}")
+
+    if name_mismatches:
+        console.print(f"\n[bold]Name Mismatches (same BioGuide, different names):[/bold]")
+        for item in name_mismatches[:10]:
+            console.print(f"  {item['bioguide']}:")
+            console.print(f"    QQ: {item['qq_name']}")
+            console.print(f"    DB: {item['app_name']}")
+
+    if app_missing_bg:
+        console.print(f"\n[bold]Politicians in our DB missing BioGuide ID (sample):[/bold]")
+        for p in app_missing_bg[:10]:
+            console.print(f"  {p['full_name']}")
+
+
+@app.command("coverage-report")
+def coverage_report():
+    """
+    Generate a comprehensive data coverage report.
+
+    Shows overall health metrics:
+    - Politician coverage %
+    - Trade match rate %
+    - Date range coverage
+    - Data quality indicators
+
+    Example: mcli run quiverquant coverage-report
+    """
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    config = get_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found[/red]")
+        raise SystemExit(1)
+
+    console.print("[cyan]Generating coverage report...[/cyan]\n")
+
+    # Fetch data from both sources
+    qq_data = fetch_quiverquant_data(api_key, limit=2000)
+    app_politicians = fetch_supabase_data(config, "politicians", "id,full_name,bioguide_id,party", limit=2000)
+    app_trades = fetch_supabase_data(
+        config, "trading_disclosures",
+        "id,asset_ticker,transaction_date,amount_range_min",
+        limit=5000,
+        filters={"status": "eq.active"}
+    )
+
+    # Calculate metrics
+    qq_politicians = set()
+    qq_tickers = set()
+    qq_dates = set()
+    for t in qq_data:
+        if t.get("Representative"):
+            qq_politicians.add(t["Representative"])
+        if t.get("Ticker"):
+            qq_tickers.add(t["Ticker"])
+        if t.get("TransactionDate"):
+            qq_dates.add(t["TransactionDate"][:10])
+
+    app_politician_names = set(p.get("full_name", "") for p in app_politicians)
+    app_tickers = set(t.get("asset_ticker", "") for t in app_trades if t.get("asset_ticker"))
+    app_dates = set((t.get("transaction_date") or "")[:10] for t in app_trades if t.get("transaction_date"))
+
+    # Calculate coverage
+    politician_overlap = len(qq_politicians & app_politician_names)
+    ticker_overlap = len(qq_tickers & app_tickers)
+
+    # Data quality metrics
+    trades_with_amounts = sum(1 for t in app_trades if t.get("amount_range_min"))
+    trades_with_tickers = sum(1 for t in app_trades if t.get("asset_ticker"))
+
+    # Display report
+    console.print("[bold]=" * 60)
+    console.print("[bold]       DATA COVERAGE REPORT[/bold]")
+    console.print("[bold]=" * 60)
+
+    console.print("\n[bold]1. POLITICIAN COVERAGE[/bold]")
+    console.print("-" * 40)
+    console.print(f"  QuiverQuant politicians: {len(qq_politicians)}")
+    console.print(f"  Our DB politicians: {len(app_politicians)}")
+    console.print(f"  Overlap (name match): {politician_overlap}")
+    pct = (politician_overlap / len(qq_politicians) * 100) if qq_politicians else 0
+    color = "green" if pct >= 80 else "yellow" if pct >= 60 else "red"
+    console.print(f"  Coverage: [{color}]{pct:.1f}%[/]")
+
+    console.print("\n[bold]2. TICKER COVERAGE[/bold]")
+    console.print("-" * 40)
+    console.print(f"  QuiverQuant tickers: {len(qq_tickers)}")
+    console.print(f"  Our DB tickers: {len(app_tickers)}")
+    console.print(f"  Overlap: {ticker_overlap}")
+    pct = (ticker_overlap / len(qq_tickers) * 100) if qq_tickers else 0
+    color = "green" if pct >= 80 else "yellow" if pct >= 60 else "red"
+    console.print(f"  Coverage: [{color}]{pct:.1f}%[/]")
+
+    console.print("\n[bold]3. DATE RANGE[/bold]")
+    console.print("-" * 40)
+    console.print(f"  QuiverQuant: {min(qq_dates) if qq_dates else 'N/A'} to {max(qq_dates) if qq_dates else 'N/A'}")
+    console.print(f"  Our DB: {min(app_dates) if app_dates else 'N/A'} to {max(app_dates) if app_dates else 'N/A'}")
+
+    console.print("\n[bold]4. DATA QUALITY[/bold]")
+    console.print("-" * 40)
+    console.print(f"  Total trades in DB: {len(app_trades)}")
+    pct_amounts = (trades_with_amounts / len(app_trades) * 100) if app_trades else 0
+    pct_tickers = (trades_with_tickers / len(app_trades) * 100) if app_trades else 0
+    color_amt = "green" if pct_amounts >= 90 else "yellow" if pct_amounts >= 70 else "red"
+    color_tick = "green" if pct_tickers >= 90 else "yellow" if pct_tickers >= 70 else "red"
+    console.print(f"  With amounts: [{color_amt}]{trades_with_amounts} ({pct_amounts:.1f}%)[/]")
+    console.print(f"  With tickers: [{color_tick}]{trades_with_tickers} ({pct_tickers:.1f}%)[/]")
+
+    # Overall score
+    overall_score = (pct + pct_amounts + pct_tickers) / 3
+    color = "green" if overall_score >= 80 else "yellow" if overall_score >= 60 else "red"
+    console.print(f"\n[bold]OVERALL HEALTH SCORE: [{color}]{overall_score:.0f}/100[/][/bold]")
+
+    if overall_score < 60:
+        console.print("\n[red]Action needed: Run ETL and enrichment jobs[/red]")
+    elif overall_score < 80:
+        console.print("\n[yellow]Good, but room for improvement[/yellow]")
+    else:
+        console.print("\n[green]Data quality is healthy[/green]")
+
+
+@app.command("missing-trades")
+@click.option("--days", "-d", default=30, help="Number of days to check")
+@click.option("--limit", "-l", default=20, help="Maximum trades to show")
+def missing_trades(days: int, limit: int):
+    """
+    List specific trades in QuiverQuant that are missing from our database.
+
+    Shows actionable list of missing trades with details.
+
+    Example: mcli run quiverquant missing-trades --days 14
+    """
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    config = get_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found[/red]")
+        raise SystemExit(1)
+
+    console.print(f"[cyan]Finding trades from last {days} days missing from our DB...[/cyan]\n")
+
+    # Fetch QuiverQuant data
+    qq_data = fetch_quiverquant_data(api_key, limit=2000)
+
+    # Filter to recent trades
+    from datetime import datetime, timedelta
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    qq_recent = [t for t in qq_data if (t.get("TransactionDate") or "")[:10] >= cutoff]
+
+    # Fetch our trades
+    app_trades = fetch_supabase_data(
+        config, "trading_disclosures",
+        "asset_ticker,transaction_date,politician_id",
+        limit=10000,
+        filters={"status": "eq.active"}
+    )
+
+    # Build lookup set for our trades (ticker + date)
+    app_trade_keys = set()
+    for t in app_trades:
+        ticker = t.get("asset_ticker", "")
+        date = (t.get("transaction_date") or "")[:10]
+        if ticker and date:
+            app_trade_keys.add(f"{ticker}:{date}")
+
+    # Find missing trades
+    missing = []
+    for t in qq_recent:
+        ticker = t.get("Ticker", "")
+        date = (t.get("TransactionDate") or "")[:10]
+        key = f"{ticker}:{date}"
+
+        if ticker and date and key not in app_trade_keys:
+            missing.append({
+                "ticker": ticker,
+                "date": date,
+                "politician": t.get("Representative", "Unknown"),
+                "type": t.get("Transaction", ""),
+                "amount": t.get("Range", ""),
+                "bioguide": t.get("BioGuideID", "")
+            })
+
+    console.print(f"[bold]Missing Trades Report (last {days} days)[/bold]")
+    console.print("=" * 70)
+    console.print(f"QuiverQuant trades in period: {len(qq_recent)}")
+    console.print(f"Missing from our DB: [{'red' if len(missing) > 20 else 'yellow' if missing else 'green'}]{len(missing)}[/]")
+
+    if missing:
+        # Group by politician
+        by_politician = {}
+        for m in missing:
+            pol = m["politician"]
+            if pol not in by_politician:
+                by_politician[pol] = []
+            by_politician[pol].append(m)
+
+        console.print(f"\n[bold]Missing Trades by Politician:[/bold]")
+        shown = 0
+        for pol, trades in sorted(by_politician.items(), key=lambda x: -len(x[1])):
+            if shown >= limit:
+                console.print(f"\n... and {len(missing) - shown} more")
+                break
+
+            console.print(f"\n[cyan]{pol}[/cyan] ({len(trades)} missing):")
+            for t in trades[:5]:
+                console.print(f"  {t['date']} {t['ticker']:6} {t['type']:20} {t['amount']}")
+                shown += 1
+                if shown >= limit:
+                    break
+
+        # Summary by ticker
+        ticker_counts = {}
+        for m in missing:
+            ticker_counts[m["ticker"]] = ticker_counts.get(m["ticker"], 0) + 1
+
+        console.print(f"\n[bold]Most Missed Tickers:[/bold]")
+        for ticker, count in sorted(ticker_counts.items(), key=lambda x: -x[1])[:10]:
+            console.print(f"  {ticker}: {count} missing")
+    else:
+        console.print("\n[green]No missing trades found![/green]")
