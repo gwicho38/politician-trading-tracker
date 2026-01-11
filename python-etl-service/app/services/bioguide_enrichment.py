@@ -139,12 +139,76 @@ def fetch_politicians_without_bioguide(supabase: Client, limit: Optional[int] = 
         return []
 
 
-def update_politician_bioguide(supabase: Client, politician_id: str, bioguide_id: str) -> bool:
-    """Update a politician's bioguide_id."""
+def update_politician_from_congress(
+    supabase: Client,
+    politician_id: str,
+    congress_data: Dict[str, Any],
+    current_data: Dict[str, Any]
+) -> bool:
+    """
+    Update a politician with data from Congress.gov.
+
+    Updates bioguide_id and optionally fills in missing:
+    - full_name (from direct_name or parsed name)
+    - party (D/R/I from partyName)
+    - state
+    - chamber
+
+    Only overwrites full_name if current name looks like a placeholder.
+    """
     try:
+        update_data = {"bioguide_id": congress_data["bioguide_id"]}
+
+        # Check if current name is a placeholder
+        current_name = current_data.get("full_name", "")
+        is_placeholder = any(p in current_name.lower() for p in [
+            "placeholder", "member (", "house_member", "senate_member",
+            "congress_member", "unknown", "mep ("
+        ])
+
+        # Update full_name if placeholder or missing
+        if is_placeholder or not current_name:
+            # Prefer direct_name (First Last format), fall back to name (Last, First)
+            new_name = congress_data.get("direct_name") or congress_data.get("name", "")
+            if new_name and new_name != current_name:
+                update_data["full_name"] = new_name
+                # Also update first/last name
+                parts = new_name.split()
+                if len(parts) >= 2:
+                    update_data["first_name"] = parts[0]
+                    update_data["last_name"] = " ".join(parts[1:])
+
+        # Fill in missing party (normalize to D/R/I)
+        if not current_data.get("party"):
+            party_name = congress_data.get("party", "").lower()
+            if "democrat" in party_name:
+                update_data["party"] = "D"
+            elif "republican" in party_name:
+                update_data["party"] = "R"
+            elif "independent" in party_name:
+                update_data["party"] = "I"
+
+        # Fill in missing state
+        if not current_data.get("state") and not current_data.get("state_or_country"):
+            state = congress_data.get("state")
+            if state:
+                update_data["state"] = state
+                update_data["state_or_country"] = state
+
+        # Fill in missing chamber
+        if not current_data.get("chamber"):
+            chamber = congress_data.get("chamber")
+            if chamber:
+                update_data["chamber"] = chamber
+
+        # Fill in district if available
+        district = congress_data.get("district")
+        if district and not current_data.get("district"):
+            update_data["district"] = str(district)
+
         response = (
             supabase.table("politicians")
-            .update({"bioguide_id": bioguide_id})
+            .update(update_data)
             .eq("id", politician_id)
             .execute()
         )
@@ -252,17 +316,23 @@ async def run_bioguide_enrichment(
             JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
             return
 
-        # Step 4: Update bioguide_ids
-        JOB_STATUS[job_id]["message"] = f"Updating {len(matches)} politicians..."
+        # Step 4: Update politicians with Congress.gov data
+        JOB_STATUS[job_id]["message"] = f"Updating {len(matches)} politicians with Congress.gov data..."
         updated = 0
         failed = 0
 
         for i, (pol, congress) in enumerate(matches):
             JOB_STATUS[job_id]["progress"] = i + 1
 
-            if update_politician_bioguide(supabase, pol["id"], congress["bioguide_id"]):
+            if update_politician_from_congress(supabase, pol["id"], congress, pol):
                 updated += 1
-                logger.info(f"Updated {pol['full_name']} -> {congress['bioguide_id']}")
+                # Log what was updated
+                updates = [f"bioguide={congress['bioguide_id']}"]
+                if any(p in pol.get("full_name", "").lower() for p in ["placeholder", "member ("]):
+                    updates.append(f"name={congress.get('direct_name', congress.get('name', ''))}")
+                if not pol.get("party"):
+                    updates.append(f"party={congress.get('party', '')}")
+                logger.info(f"Updated {pol['full_name']} -> {', '.join(updates)}")
             else:
                 failed += 1
 

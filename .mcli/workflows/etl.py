@@ -537,6 +537,159 @@ def enrich_preview():
 
 
 # =============================================================================
+# Name Enrichment Commands (Ollama-based - PREFERRED)
+# =============================================================================
+
+@etl.command(name="enrich-names")
+@click.option("--limit", "-l", type=int, default=None, help="Limit politicians to process")
+@click.option("--wait", "-w", is_flag=True, help="Wait for job to complete")
+def enrich_names(limit: int | None, wait: bool):
+    """
+    Trigger name enrichment job using Ollama LLM.
+
+    This is the PREFERRED method for replacing placeholder names like
+    "House Member (Placeholder)" with proper politician names extracted
+    from raw disclosure data.
+
+    Priority order:
+    1. Ollama (this) - Extract names from raw_data
+    2. Congress.gov API - Use BioGuide ID for official name
+    3. Placeholder - Only if nothing else works
+
+    Example: mcli run etl enrich-names --limit 10 --wait
+    """
+    click.echo("Triggering name enrichment job (Ollama)...")
+    click.echo("This will replace placeholder names with proper politician names.\n")
+
+    payload = {}
+    if limit:
+        payload["limit"] = limit
+
+    try:
+        response = httpx.post(
+            f"{ETL_SERVICE_URL}/enrichment/name/trigger",
+            json=payload,
+            timeout=30.0
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        job_id = data["job_id"]
+        click.echo(f"Job started: {job_id}")
+        click.echo(f"Message: {data['message']}")
+
+        if wait:
+            click.echo("\nWaiting for completion...")
+            _wait_for_name_enrichment_job(job_id)
+        else:
+            click.echo(f"\nTo check status: mcli run etl enrich-names-status {job_id}")
+
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@etl.command(name="enrich-names-status")
+@click.argument("job_id")
+@click.option("--watch", "-w", is_flag=True, help="Watch job progress until completion")
+def enrich_names_status(job_id: str, watch: bool):
+    """
+    Check status of a name enrichment job.
+
+    Example: mcli run etl enrich-names-status <job_id>
+    """
+    if watch:
+        _wait_for_name_enrichment_job(job_id)
+    else:
+        _show_name_enrichment_status(job_id)
+
+
+def _show_name_enrichment_status(job_id: str) -> dict:
+    """Show status of a name enrichment job and return the status data."""
+    try:
+        response = httpx.get(
+            f"{ETL_SERVICE_URL}/enrichment/name/status/{job_id}",
+            timeout=10.0
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        status = data["status"]
+        progress = data.get("progress", 0)
+        total = data.get("total", 0)
+        updated = data.get("updated", 0)
+        skipped = data.get("skipped", 0)
+        errors = data.get("errors", 0)
+        message = data.get("message", "")
+
+        if total:
+            pct = (progress / total * 100) if total else 0
+            click.echo(f"Status: {status} | Progress: {progress}/{total} ({pct:.1f}%)")
+            click.echo(f"  Updated: {updated} | Skipped: {skipped} | Errors: {errors}")
+            click.echo(f"  {message}")
+        else:
+            click.echo(f"Status: {status} | {message}")
+
+        return data
+
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        return {"status": "error"}
+
+
+def _wait_for_name_enrichment_job(job_id: str):
+    """Wait for name enrichment job to complete, showing progress."""
+    while True:
+        data = _show_name_enrichment_status(job_id)
+        status = data.get("status", "unknown")
+
+        if status in ("completed", "failed", "error"):
+            if status == "completed":
+                click.echo("\nJob completed successfully!")
+                click.echo(f"  Updated: {data.get('updated', 0)} politician names")
+                click.echo(f"  Skipped: {data.get('skipped', 0)} (no raw_data or extraction failed)")
+                click.echo(f"  Errors: {data.get('errors', 0)}")
+            else:
+                click.echo(f"\nJob ended with status: {status}")
+            break
+
+        time.sleep(5)
+
+
+@etl.command(name="enrich-names-preview")
+def enrich_names_preview():
+    """
+    Preview politicians with placeholder names that need enrichment.
+
+    Shows politicians with names like "House Member (Placeholder)" that
+    would be updated by the name enrichment job.
+    """
+    try:
+        response = httpx.get(
+            f"{ETL_SERVICE_URL}/enrichment/name/preview",
+            timeout=10.0
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        total = data.get("total_placeholder_names", 0)
+        sample = data.get("sample", [])
+
+        click.echo(f"Politicians with placeholder names: {total}")
+        click.echo("\nSample:")
+        for p in sample:
+            party = p.get("party") or "?"
+            state = p.get("state") or "?"
+            click.echo(f"  {p['full_name']} ({party}, {state})")
+
+        click.echo(f"\n{data.get('note', '')}")
+
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+# =============================================================================
 # Deployment Commands
 # =============================================================================
 
