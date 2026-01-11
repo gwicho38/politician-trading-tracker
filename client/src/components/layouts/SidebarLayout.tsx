@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
+  Users,
+  FileText,
   X,
   ChevronRight,
   Sliders,
@@ -13,6 +15,13 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { SidebarSyncStatus } from '@/components/SyncStatus';
 import Header from '@/components/Header';
+
+// Main navigation items (link to Index page with view param)
+const navItems = [
+  { path: '/', label: 'Dashboard', icon: LayoutDashboard, view: null },
+  { path: '/?view=politicians', label: 'Politicians', icon: Users, view: 'politicians' },
+  { path: '/?view=filings', label: 'Filings', icon: FileText, view: 'filings' },
+];
 
 // Standalone pages with their own routes
 const standalonePages = [
@@ -31,10 +40,7 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
   const location = useLocation();
   const currentPath = location.pathname;
 
-  const isActive = (path: string) => {
-    if (path === '/') {
-      return currentPath === '/';
-    }
+  const isStandaloneActive = (path: string) => {
     return currentPath === path;
   };
 
@@ -64,22 +70,6 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
             </Button>
           </div>
 
-          {/* Desktop logo */}
-          <div className="hidden lg:flex items-center gap-3 p-4 border-b border-border/50">
-            <div className="relative">
-              <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center border border-primary/30">
-                <span className="text-xl">📊</span>
-              </div>
-              <div className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-success animate-pulse" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold tracking-tight">
-                <span className="text-gradient">Gov</span>
-                <span className="text-foreground">Market</span>
-              </h1>
-            </div>
-          </div>
-
           {/* Navigation */}
           <nav className="flex-1 space-y-1 p-4">
             <div className="mb-6">
@@ -87,21 +77,18 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
                 Navigation
               </p>
 
-              {/* Dashboard link */}
-              <Link
-                to="/"
-                onClick={() => setSidebarOpen(false)}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                  currentPath === '/'
-                    ? "bg-primary/20 text-primary border border-primary/30"
-                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-                )}
-              >
-                <LayoutDashboard className="h-4 w-4" />
-                Dashboard
-                {currentPath === '/' && <ChevronRight className="ml-auto h-4 w-4" />}
-              </Link>
+              {/* Main nav items (Dashboard, Politicians, Filings) */}
+              {navItems.map((item) => (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setSidebarOpen(false)}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              ))}
 
               {/* Standalone pages */}
               {standalonePages.map((page) => (
@@ -111,14 +98,14 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
                   onClick={() => setSidebarOpen(false)}
                   className={cn(
                     "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                    isActive(page.path)
+                    isStandaloneActive(page.path)
                       ? "bg-primary/20 text-primary border border-primary/30"
                       : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                   )}
                 >
                   <page.icon className="h-4 w-4" />
                   {page.label}
-                  {isActive(page.path) && <ChevronRight className="ml-auto h-4 w-4" />}
+                  {isStandaloneActive(page.path) && <ChevronRight className="ml-auto h-4 w-4" />}
                 </Link>
               ))}
             </div>
