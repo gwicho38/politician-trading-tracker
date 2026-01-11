@@ -143,20 +143,40 @@ def status(verbose: bool):
 
 
 @client.command(name="logs")
-@click.option("--tail", "-n", default=50, help="Number of lines to show")
-def logs(tail: int):
+@click.option("--lines", "-l", default=50, help="Number of lines to show")
+@click.option("--stream", "-s", is_flag=True, help="Stream logs continuously")
+def logs(lines: int, stream: bool):
     """View recent logs from Fly.io."""
-    console.print(f"[cyan]📋 Recent logs ({tail} lines)...[/cyan]\n")
-
-    try:
-        subprocess.run(
-            ["flyctl", "logs", "-a", FLY_APP, "-n", str(tail)],
-            cwd=CLIENT_DIR,
-        )
-    except FileNotFoundError:
-        console.print("[red]✗ flyctl not found. Install with: brew install flyctl[/red]")
-    except Exception as e:
-        console.print(f"[red]✗ Error: {e}[/red]")
+    if stream:
+        console.print(f"[cyan]📋 Streaming logs (Ctrl+C to stop)...[/cyan]\n")
+        try:
+            subprocess.run(["flyctl", "logs", "-a", FLY_APP], cwd=CLIENT_DIR)
+        except FileNotFoundError:
+            console.print("[red]✗ flyctl not found. Install with: brew install flyctl[/red]")
+        except KeyboardInterrupt:
+            console.print("\n[dim]Stopped streaming.[/dim]")
+    else:
+        console.print(f"[cyan]📋 Recent logs ({lines} lines)...[/cyan]\n")
+        try:
+            # Use no-tail mode and pipe to tail for line limiting
+            result = subprocess.run(
+                f"flyctl logs -a {FLY_APP} --no-tail 2>/dev/null | tail -{lines}",
+                shell=True,
+                cwd=CLIENT_DIR,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.stdout:
+                console.print(result.stdout)
+            else:
+                console.print("[yellow]No logs available or still loading...[/yellow]")
+        except subprocess.TimeoutExpired:
+            console.print("[yellow]Timed out fetching logs[/yellow]")
+        except FileNotFoundError:
+            console.print("[red]✗ flyctl not found. Install with: brew install flyctl[/red]")
+        except Exception as e:
+            console.print(f"[red]✗ Error: {e}[/red]")
 
 
 @client.command(name="open")

@@ -1,6 +1,6 @@
 defmodule Server.Schemas.ScheduledJob do
   @moduledoc """
-  Ecto schema for jobs.scheduled_jobs table.
+  Ecto schema for public.scheduled_jobs table.
 
   Represents a scheduled job definition with its cron/interval schedule,
   execution tracking, and failure handling configuration.
@@ -10,7 +10,6 @@ defmodule Server.Schemas.ScheduledJob do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @timestamps_opts [type: :utc_datetime]
-  @schema_prefix "jobs"
 
   schema "scheduled_jobs" do
     field :job_id, :string

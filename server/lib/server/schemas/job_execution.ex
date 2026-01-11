@@ -1,6 +1,6 @@
 defmodule Server.Schemas.JobExecution do
   @moduledoc """
-  Ecto schema for jobs.job_executions table.
+  Ecto schema for public.job_executions table.
 
   Tracks individual job execution runs with status, duration,
   and optional logs/error messages.
@@ -9,7 +9,6 @@ defmodule Server.Schemas.JobExecution do
   import Ecto.Changeset
 
   @primary_key {:id, :binary_id, autogenerate: true}
-  @schema_prefix "jobs"
 
   schema "job_executions" do
     field :job_id, :string
@@ -17,15 +16,15 @@ defmodule Server.Schemas.JobExecution do
     field :completed_at, :utc_datetime
     field :status, :string, default: "running"
     field :duration_seconds, :decimal
-    field :records_processed, :integer, default: 0
     field :error_message, :string
     field :logs, :string
-    field :execution_log, :map, default: %{}
+    # Maps to 'metadata' column in database
+    field :metadata, :map, default: %{}
 
     timestamps(inserted_at: :created_at, updated_at: false, type: :utc_datetime)
   end
 
-  @valid_statuses ~w(running success failed completed)
+  @valid_statuses ~w(running success failed completed cancelled)
 
   def changeset(execution, attrs) do
     execution
@@ -35,10 +34,9 @@ defmodule Server.Schemas.JobExecution do
       :completed_at,
       :status,
       :duration_seconds,
-      :records_processed,
       :error_message,
       :logs,
-      :execution_log
+      :metadata
     ])
     |> validate_required([:job_id])
     |> validate_inclusion(:status, @valid_statuses)
@@ -63,12 +61,16 @@ defmodule Server.Schemas.JobExecution do
           %{completed_at: now, status: "success", duration_seconds: duration}
 
         {:ok, records} when is_integer(records) ->
+          # Store records count in metadata since we don't have a dedicated column
           %{
             completed_at: now,
             status: "success",
             duration_seconds: duration,
-            records_processed: records
+            metadata: %{records_processed: records}
           }
+
+        {:ok, _other} ->
+          %{completed_at: now, status: "success", duration_seconds: duration}
 
         {:error, message} ->
           %{
@@ -80,6 +82,6 @@ defmodule Server.Schemas.JobExecution do
       end
 
     execution
-    |> cast(attrs, [:completed_at, :status, :duration_seconds, :records_processed, :error_message])
+    |> cast(attrs, [:completed_at, :status, :duration_seconds, :error_message, :metadata])
   end
 end
