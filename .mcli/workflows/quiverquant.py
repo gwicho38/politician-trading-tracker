@@ -673,3 +673,248 @@ def health_check():
     else:
         console.print("\n[red]Some checks failed[/red]")
         raise SystemExit(1)
+
+
+def normalize_name_for_match(name: str) -> str:
+    """Normalize a name for fuzzy matching."""
+    if not name:
+        return ""
+    # Handle "Last, First" format
+    if ", " in name:
+        parts = name.split(", ", 1)
+        name = f"{parts[1]} {parts[0]}"
+    # Remove common prefixes/suffixes
+    for term in ["Hon. ", "Rep. ", "Sen. ", " Jr.", " Jr", " Sr.", " Sr", " III", " II", " IV"]:
+        name = name.replace(term, "")
+    return name.lower().strip()
+
+
+@app.command("sample-test")
+@click.option("--count", "-n", default=5, help="Number of politicians to sample")
+@click.option("--trades", "-t", default=30, help="Number of trades to check per politician")
+def sample_test(count: int, trades: int):
+    """
+    Sample random politicians and verify their trades exist in our database.
+
+    For each sampled politician from QuiverQuant:
+    1. Find matching politician in our database
+    2. Get their recent trades from QuiverQuant
+    3. Check if those trades exist in our database
+
+    Example: mcli run quiverquant sample-test --count 5 --trades 30
+    """
+    import random
+
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    config = get_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found[/red]")
+        raise SystemExit(1)
+
+    console.print(f"[cyan]Sampling {count} politicians, checking up to {trades} trades each...[/cyan]\n")
+
+    # Fetch all QuiverQuant data
+    qq_data = fetch_quiverquant_data(api_key, limit=2000)
+    if not qq_data:
+        console.print("[red]Failed to fetch QuiverQuant data[/red]")
+        raise SystemExit(1)
+
+    # Group trades by politician
+    qq_by_politician = {}
+    for trade in qq_data:
+        rep = trade.get("Representative", "")
+        bioguide = trade.get("BioGuideID", "")
+        if rep:
+            key = (rep, bioguide)
+            if key not in qq_by_politician:
+                qq_by_politician[key] = []
+            qq_by_politician[key].append(trade)
+
+    # Get politicians with enough trades to sample
+    active_politicians = [(k, v) for k, v in qq_by_politician.items() if len(v) >= 5]
+    if len(active_politicians) < count:
+        console.print(f"[yellow]Only {len(active_politicians)} politicians with 5+ trades available[/yellow]")
+        count = len(active_politicians)
+
+    # Random sample
+    sampled = random.sample(active_politicians, count)
+
+    # Fetch our politicians for matching
+    app_politicians = fetch_supabase_data(
+        config, "politicians",
+        "id,full_name,first_name,last_name,bioguide_id",
+        limit=2000
+    )
+
+    # Build lookup maps (handle duplicates by collecting all IDs)
+    app_by_bioguide = {}  # bioguide_id -> list of politician dicts
+    for p in app_politicians:
+        bg = p.get("bioguide_id")
+        if bg:
+            if bg not in app_by_bioguide:
+                app_by_bioguide[bg] = []
+            app_by_bioguide[bg].append(p)
+
+    app_by_name = {}  # normalized name -> list of politician dicts
+    for p in app_politicians:
+        name = p.get("full_name") or f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
+        norm = normalize_name_for_match(name)
+        if norm:
+            if norm not in app_by_name:
+                app_by_name[norm] = []
+            app_by_name[norm].append(p)
+
+    # Results
+    total_qq_trades = 0
+    total_matched = 0
+    total_missing = 0
+    results = []
+
+    for (rep_name, bioguide_id), qq_trades in sampled:
+        # Find matching politician(s) in our database (may have duplicates)
+        app_pols = []
+        match_method = None
+
+        # Try BioGuide ID first
+        if bioguide_id and bioguide_id in app_by_bioguide:
+            app_pols = app_by_bioguide[bioguide_id]
+            match_method = "bioguide_id"
+        else:
+            # Try name matching
+            norm_name = normalize_name_for_match(rep_name)
+            if norm_name in app_by_name:
+                app_pols = app_by_name[norm_name]
+                match_method = "name"
+
+        if not app_pols:
+            console.print(f"[yellow]Could not find politician: {rep_name} ({bioguide_id})[/yellow]")
+            results.append({
+                "politician": rep_name,
+                "bioguide": bioguide_id,
+                "qq_trades": len(qq_trades[:trades]),
+                "matched": 0,
+                "missing": len(qq_trades[:trades]),
+                "match_rate": 0,
+                "status": "NOT_FOUND"
+            })
+            total_qq_trades += len(qq_trades[:trades])
+            total_missing += len(qq_trades[:trades])
+            continue
+
+        # Fetch trades for all matching politician IDs (handles duplicates)
+        app_pol_trades = []
+        for app_pol in app_pols:
+            app_pol_id = app_pol.get("id")
+            pol_trades = fetch_supabase_data(
+                config, "trading_disclosures",
+                "id,politician_id,asset_ticker,transaction_date,transaction_type,asset_name",
+                limit=500,
+                filters={"status": "eq.active", "politician_id": f"eq.{app_pol_id}"},
+                order="transaction_date.desc"
+            )
+            app_pol_trades.extend(pol_trades)
+
+        # Compare trades
+        matched = 0
+        missing = 0
+        missing_trades = []
+
+        for qq_trade in qq_trades[:trades]:
+            qq_ticker = qq_trade.get("Ticker", "")
+            qq_date = qq_trade.get("TransactionDate", "")[:10]
+            qq_type = qq_trade.get("Transaction", "").lower()
+
+            # Look for matching trade in our database
+            found = False
+            for app_trade in app_pol_trades:
+                app_ticker = app_trade.get("asset_ticker") or ""
+                app_date = (app_trade.get("transaction_date") or "")[:10]
+                app_type = (app_trade.get("transaction_type") or "").lower()
+
+                # Match by ticker and date (type can vary slightly)
+                if app_ticker == qq_ticker and app_date == qq_date:
+                    found = True
+                    break
+                # Also check if ticker is in asset_name
+                if qq_ticker and qq_ticker in (app_trade.get("asset_name") or "") and app_date == qq_date:
+                    found = True
+                    break
+
+            if found:
+                matched += 1
+            else:
+                missing += 1
+                if len(missing_trades) < 3:
+                    missing_trades.append(f"{qq_date} {qq_ticker} ({qq_type})")
+
+        total_qq_trades += len(qq_trades[:trades])
+        total_matched += matched
+        total_missing += missing
+
+        match_rate = (matched / len(qq_trades[:trades]) * 100) if qq_trades else 0
+        status = "[green]GOOD[/green]" if match_rate >= 80 else "[yellow]PARTIAL[/yellow]" if match_rate >= 50 else "[red]LOW[/red]"
+
+        results.append({
+            "politician": rep_name,
+            "bioguide": bioguide_id,
+            "qq_trades": len(qq_trades[:trades]),
+            "matched": matched,
+            "missing": missing,
+            "match_rate": match_rate,
+            "status": status,
+            "missing_examples": missing_trades
+        })
+
+    # Display results
+    console.print("[bold]Sample Test Results[/bold]")
+    console.print("=" * 80)
+
+    table = Table()
+    table.add_column("Politician", style="cyan", width=25)
+    table.add_column("BioGuide", width=10)
+    table.add_column("QQ Trades", justify="right", width=10)
+    table.add_column("Matched", justify="right", width=8)
+    table.add_column("Missing", justify="right", width=8)
+    table.add_column("Rate", justify="right", width=8)
+    table.add_column("Status", width=10)
+
+    for r in results:
+        table.add_row(
+            r["politician"][:24],
+            r["bioguide"] or "-",
+            str(r["qq_trades"]),
+            str(r["matched"]),
+            str(r["missing"]),
+            f"{r['match_rate']:.0f}%",
+            r["status"]
+        )
+
+    console.print(table)
+
+    # Show missing trade examples
+    console.print("\n[bold]Missing Trade Examples:[/bold]")
+    for r in results:
+        if r.get("missing_examples"):
+            console.print(f"  [cyan]{r['politician']}[/cyan]:")
+            for ex in r["missing_examples"]:
+                console.print(f"    - {ex}")
+
+    # Summary
+    console.print("\n[bold]Summary[/bold]")
+    console.print("-" * 40)
+    console.print(f"Politicians sampled: {count}")
+    console.print(f"Total QuiverQuant trades checked: {total_qq_trades}")
+    console.print(f"Matched in our DB: [green]{total_matched}[/green]")
+    console.print(f"Missing from our DB: [yellow]{total_missing}[/yellow]")
+    overall_rate = (total_matched / total_qq_trades * 100) if total_qq_trades else 0
+    console.print(f"Overall match rate: [{'green' if overall_rate >= 80 else 'yellow' if overall_rate >= 50 else 'red'}]{overall_rate:.1f}%[/]")
+
+    if overall_rate < 50:
+        console.print("\n[red]Warning: Low match rate. ETL may be missing data.[/red]")
+        raise SystemExit(1)
+    elif overall_rate < 80:
+        console.print("\n[yellow]Note: Some trades missing. Consider investigating.[/yellow]")
