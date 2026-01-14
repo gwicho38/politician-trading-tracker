@@ -9,11 +9,19 @@ const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 // PUBLIC CLIENT - For data queries (dashboard, trades, politicians, etc.)
 // This client has NO auth - it won't block waiting for session state
 // ============================================================================
+const noopStorage = {
+  getItem: () => null,
+  setItem: () => {},
+  removeItem: () => {},
+};
+
 export const supabasePublic = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     persistSession: false,    // Don't persist - this is anonymous
     autoRefreshToken: false,  // No token to refresh
     detectSessionInUrl: false,
+    storage: noopStorage,     // Use no-op storage to avoid conflicts with auth client
+    storageKey: 'sb-public',  // Different key to avoid GoTrueClient conflict warning
   }
 });
 

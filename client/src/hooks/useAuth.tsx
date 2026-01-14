@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -20,11 +20,30 @@ function getStoredUser(): User | null {
   }
 }
 
-export const useAuth = () => {
+// Auth state interface
+interface AuthState {
+  user: User | null;
+  loading: boolean;
+  isAuthenticated: boolean;
+  authReady: boolean;
+}
+
+// Create context with default values
+const AuthContext = createContext<AuthState>({
+  user: null,
+  loading: true,
+  isAuthenticated: false,
+  authReady: false,
+});
+
+// Provider component
+export function AuthProvider({ children }: { children: ReactNode }) {
   // Initialize from localStorage immediately (sync, no loading)
   const storedUser = getStoredUser();
   const [user, setUser] = useState<User | null>(storedUser);
   const [loading, setLoading] = useState(!storedUser);
+  // Track when auth listener has fired (auth client is ready for queries)
+  const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
     // Listen for auth changes
@@ -33,18 +52,42 @@ export const useAuth = () => {
         console.log('[useAuth] Auth state changed:', event);
         setUser(session?.user ?? null);
         setLoading(false);
+        setAuthReady(true);
       }
     );
 
-    return () => subscription.unsubscribe();
+    // Fallback: if auth listener doesn't fire within 2s, mark as ready anyway
+    const timeout = setTimeout(() => {
+      setAuthReady(true);
+    }, 2000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
-  return {
+  const value: AuthState = {
     user,
     loading,
     isAuthenticated: !!user,
+    authReady,
   };
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+// Hook to consume auth state
+export const useAuth = () => {
+  return useContext(AuthContext);
 };
 
 // Backwards compatibility export
-export const useAuthReady = () => true;
+export const useAuthReady = () => {
+  const { authReady } = useAuth();
+  return authReady;
+};

@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Menu, LogOut, User, UserX, Shield } from 'lucide-react';
+import { Menu, LogOut, User, UserX, Shield, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -8,6 +9,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/hooks/useAuth';
@@ -23,10 +30,21 @@ const Header = ({ onMenuClick }: HeaderProps) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isAdmin } = useAdmin();
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
+  const handleSignOut = () => {
+    // Don't await signOut - it can block due to Supabase client issues
+    // Instead, just clear localStorage and reload
+    supabase.auth.signOut().catch(console.error);
+
+    // Clear all Supabase auth tokens from localStorage
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('sb-'))
+      .forEach(key => localStorage.removeItem(key));
+
+    // Navigate home and reload to clear all cached state
     navigate('/');
+    window.location.reload();
   };
 
   const getDisplayName = () => {
@@ -77,9 +95,21 @@ const Header = ({ onMenuClick }: HeaderProps) => {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Desktop search */}
           <div className="hidden md:block">
             <GlobalSearch />
           </div>
+
+          {/* Mobile search button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setMobileSearchOpen(true)}
+            aria-label="Search"
+          >
+            <Search className="h-5 w-5" />
+          </Button>
 
           <HeaderSyncStatus />
 
@@ -131,6 +161,19 @@ const Header = ({ onMenuClick }: HeaderProps) => {
           )}
         </div>
       </div>
+
+      {/* Mobile search dialog */}
+      <Dialog open={mobileSearchOpen} onOpenChange={setMobileSearchOpen}>
+        <DialogContent className="top-[10%] translate-y-0 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Search</DialogTitle>
+          </DialogHeader>
+          <GlobalSearch
+            fullWidth
+            onResultSelect={() => setMobileSearchOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
     </header>
   );
 };

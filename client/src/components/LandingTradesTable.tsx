@@ -29,6 +29,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import {
   Table,
   TableBody,
   TableCell,
@@ -101,6 +108,9 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
   // Report error modal state
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [selectedDisclosure, setSelectedDisclosure] = useState<TradingDisclosure | null>(null);
+
+  // Mobile filter dialog state
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
   const handleReportClick = (disclosure: TradingDisclosure) => {
     setSelectedDisclosure(disclosure);
@@ -326,6 +336,66 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                 </SelectContent>
               </Select>
 
+              {/* Mobile Date Filter Button */}
+              <Dialog open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="sm:hidden gap-1"
+                  >
+                    <Calendar className="h-4 w-4" />
+                    Dates
+                    {(dateFrom || dateTo) && (
+                      <Badge variant="secondary" className="h-4 w-4 p-0 flex items-center justify-center text-[10px]">
+                        {(dateFrom ? 1 : 0) + (dateTo ? 1 : 0)}
+                      </Badge>
+                    )}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Filter by Date</DialogTitle>
+                  </DialogHeader>
+                  <div className="flex flex-col gap-4 py-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">From Date</label>
+                      <Input
+                        type="date"
+                        value={dateFrom}
+                        onChange={(e) => { setDateFrom(e.target.value); setPage(0); }}
+                        className="bg-background/50"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">To Date</label>
+                      <Input
+                        type="date"
+                        value={dateTo}
+                        onChange={(e) => { setDateTo(e.target.value); setPage(0); }}
+                        className="bg-background/50"
+                      />
+                    </div>
+                    {(dateFrom || dateTo) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { setDateFrom(''); setDateTo(''); setPage(0); }}
+                        className="w-full"
+                      >
+                        Clear Dates
+                      </Button>
+                    )}
+                    <Button
+                      onClick={() => setMobileFilterOpen(false)}
+                      className="w-full"
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
               {/* Date Filters - Hidden on mobile */}
               <div className="hidden sm:flex gap-2">
                 {/* Date From */}
@@ -429,8 +499,105 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto">
+      {/* Mobile Card View */}
+      <div className="sm:hidden">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : disclosures.length === 0 ? (
+          <div className="py-12 text-center text-muted-foreground">
+            {hasActiveFilters
+              ? 'No disclosures match your filters'
+              : 'No trading disclosures found'}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 p-4">
+            {disclosures.map((disclosure) => {
+              const politician = disclosure.politician;
+              const partyValue = (politician?.party || 'Unknown') as 'D' | 'R' | 'I' | 'Other';
+              const isBuy = disclosure.transaction_type === 'purchase';
+              const isSell = disclosure.transaction_type === 'sale';
+
+              return (
+                <div
+                  key={disclosure.id}
+                  className={cn(
+                    "relative rounded-xl border p-3 flex flex-col gap-2",
+                    isBuy && "border-success/30 bg-success/5",
+                    isSell && "border-destructive/30 bg-destructive/5",
+                    !isBuy && !isSell && "border-border/50 bg-card/60"
+                  )}
+                >
+                  {/* Transaction Type Indicator */}
+                  <div className="flex items-center justify-between">
+                    <Badge
+                      variant={isBuy ? 'buy' : isSell ? 'sell' : 'outline'}
+                      className="text-[10px] px-1.5 py-0 gap-0.5"
+                    >
+                      {isBuy && <ArrowUpRight className="h-2.5 w-2.5" />}
+                      {isSell && <ArrowDownRight className="h-2.5 w-2.5" />}
+                      {disclosure.transaction_type.charAt(0).toUpperCase() + disclosure.transaction_type.slice(1)}
+                    </Badge>
+                    {disclosure.source_url && (
+                      <a
+                        href={disclosure.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                  </div>
+
+                  {/* Ticker - Prominent */}
+                  <div className="flex items-center gap-1.5">
+                    {disclosure.asset_ticker && (
+                      <span className="font-mono text-lg font-bold text-primary">
+                        {disclosure.asset_ticker}
+                      </span>
+                    )}
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[9px] px-1 py-0",
+                        getPartyBg(partyValue),
+                        getPartyColor(partyValue)
+                      )}
+                    >
+                      {partyValue}
+                    </Badge>
+                  </div>
+
+                  {/* Amount - Most Prominent */}
+                  <div className={cn(
+                    "text-xl font-bold",
+                    isBuy && "text-success",
+                    isSell && "text-destructive",
+                    !isBuy && !isSell && "text-foreground"
+                  )}>
+                    {formatAmount(disclosure.amount_range_min, disclosure.amount_range_max)}
+                  </div>
+
+                  {/* Politician Name */}
+                  <div className="text-xs text-muted-foreground truncate">
+                    {politician?.name || 'Unknown'}
+                  </div>
+
+                  {/* Date */}
+                  <div className="text-[10px] text-muted-foreground/70">
+                    {formatDate(disclosure.disclosure_date)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden sm:block overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -617,30 +784,34 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between px-6 py-4 border-t border-border/50">
-          <div className="text-sm text-muted-foreground">
-            Showing {offset + 1} - {Math.min(offset + ROWS_PER_PAGE, total)} of {total.toLocaleString()}
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-t border-border/50">
+          <div className="text-xs sm:text-sm text-muted-foreground">
+            <span className="hidden sm:inline">Showing </span>
+            {offset + 1}-{Math.min(offset + ROWS_PER_PAGE, total)}
+            <span className="hidden sm:inline"> of {total.toLocaleString()}</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setPage(p => Math.max(0, p - 1))}
               disabled={page === 0}
+              className="px-2 sm:px-3"
             >
               <ChevronLeft className="h-4 w-4" />
-              Previous
+              <span className="hidden sm:inline ml-1">Previous</span>
             </Button>
-            <span className="text-sm text-muted-foreground px-2">
-              Page {page + 1} of {totalPages.toLocaleString()}
+            <span className="text-xs sm:text-sm text-muted-foreground px-1 sm:px-2">
+              {page + 1}/{totalPages}
             </span>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
+              className="px-2 sm:px-3"
             >
-              Next
+              <span className="hidden sm:inline mr-1">Next</span>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
