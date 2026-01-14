@@ -215,6 +215,9 @@ serve(async (req) => {
       case 'reset-daily-trades':
         response = await handleResetDailyTrades(supabaseClient, requestId)
         break
+      case 'check-exits':
+        response = await handleCheckExits(supabaseClient, requestId)
+        break
       default:
         // Default to get-state for general requests
         response = await handleGetState(supabaseClient, requestId)
@@ -1027,6 +1030,21 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
       const currentDrawdown = ((peakValue - portfolioValue) / peakValue) * 100
       const maxDrawdown = Math.max(state.max_drawdown || 0, currentDrawdown)
 
+      // Calculate day return from previous day's snapshot
+      const today = new Date().toISOString().split('T')[0]
+      const { data: lastSnapshot } = await supabaseClient
+        .from('reference_portfolio_snapshots')
+        .select('portfolio_value')
+        .lt('snapshot_date', today)
+        .order('snapshot_date', { ascending: false })
+        .limit(1)
+        .single()
+
+      // Use previous snapshot value or initial capital as baseline
+      const previousValue = lastSnapshot?.portfolio_value || initialCapital
+      const dayReturn = portfolioValue - previousValue
+      const dayReturnPct = (dayReturn / previousValue) * 100
+
       await supabaseClient
         .from('reference_portfolio_state')
         .update({
@@ -1034,6 +1052,8 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
           portfolio_value: portfolioValue,
           total_return: totalReturn,
           total_return_pct: totalReturnPct,
+          day_return: Math.round(dayReturn * 100) / 100,
+          day_return_pct: Math.round(dayReturnPct * 10000) / 10000,
           peak_portfolio_value: peakValue,
           current_drawdown: currentDrawdown,
           max_drawdown: maxDrawdown,
@@ -1199,6 +1219,20 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
       const currentDrawdown = ((peakValue - portfolioValue) / peakValue) * 100
       const maxDrawdown = Math.max(state.max_drawdown || 0, currentDrawdown)
 
+      // Calculate day return from previous day's snapshot
+      const today = new Date().toISOString().split('T')[0]
+      const { data: lastSnapshot } = await supabaseClient
+        .from('reference_portfolio_snapshots')
+        .select('portfolio_value')
+        .lt('snapshot_date', today)
+        .order('snapshot_date', { ascending: false })
+        .limit(1)
+        .single()
+
+      const previousValue = lastSnapshot?.portfolio_value || initialCapital
+      const dayReturn = portfolioValue - previousValue
+      const dayReturnPct = (dayReturn / previousValue) * 100
+
       await supabaseClient
         .from('reference_portfolio_state')
         .update({
@@ -1206,6 +1240,8 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
           portfolio_value: portfolioValue,
           total_return: totalReturn,
           total_return_pct: totalReturnPct,
+          day_return: Math.round(dayReturn * 100) / 100,
+          day_return_pct: Math.round(dayReturnPct * 10000) / 10000,
           peak_portfolio_value: peakValue,
           current_drawdown: currentDrawdown,
           max_drawdown: maxDrawdown,
@@ -1221,7 +1257,9 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
         totalPositionsValue,
         portfolioValue,
         totalReturn,
-        totalReturnPct
+        totalReturnPct,
+        dayReturn,
+        dayReturnPct
       })
     }
   } catch (error) {
@@ -1320,6 +1358,58 @@ async function handleTakeSnapshot(supabaseClient: any, requestId: string) {
     const totalClosedTrades = state.winning_trades + state.losing_trades
     const winRate = totalClosedTrades > 0 ? (state.winning_trades / totalClosedTrades) * 100 : 0
 
+    // Calculate Sharpe ratio from recent daily returns (last 30 days)
+    let sharpeRatio = state.sharpe_ratio
+    const { data: recentSnapshots } = await supabaseClient
+      .from('reference_portfolio_snapshots')
+      .select('day_return_pct')
+      .order('snapshot_date', { ascending: false })
+      .limit(30)
+
+    if (recentSnapshots && recentSnapshots.length >= 5) {
+      // Get daily return percentages (filter out nulls and zeros from non-trading days)
+      const dailyReturns = recentSnapshots
+        .map((s: any) => s.day_return_pct)
+        .filter((r: number | null) => r !== null && r !== undefined)
+
+      if (dailyReturns.length >= 5) {
+        // Calculate mean daily return
+        const meanReturn = dailyReturns.reduce((sum: number, r: number) => sum + r, 0) / dailyReturns.length
+
+        // Calculate standard deviation of daily returns
+        const squaredDiffs = dailyReturns.map((r: number) => Math.pow(r - meanReturn, 2))
+        const variance = squaredDiffs.reduce((sum: number, d: number) => sum + d, 0) / dailyReturns.length
+        const stdDev = Math.sqrt(variance)
+
+        // Sharpe ratio: (mean return - risk free rate) / std dev
+        // Annualized: multiply by sqrt(252) for daily returns
+        // Using 0 as risk-free rate for simplicity
+        if (stdDev > 0) {
+          const dailySharpe = meanReturn / stdDev
+          sharpeRatio = Math.round(dailySharpe * Math.sqrt(252) * 10000) / 10000  // Annualized
+        } else {
+          sharpeRatio = meanReturn > 0 ? 3.0 : 0  // Cap at 3.0 if no volatility
+        }
+
+        log.info('Calculated Sharpe ratio', {
+          requestId,
+          sharpeRatio,
+          meanReturn: Math.round(meanReturn * 10000) / 10000,
+          stdDev: Math.round(stdDev * 10000) / 10000,
+          sampleSize: dailyReturns.length
+        })
+
+        // Update state with new Sharpe ratio
+        await supabaseClient
+          .from('reference_portfolio_state')
+          .update({
+            sharpe_ratio: sharpeRatio,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', state.id)
+      }
+    }
+
     // Insert snapshot
     const { data: snapshot, error: snapshotError } = await supabaseClient
       .from('reference_portfolio_snapshots')
@@ -1403,6 +1493,271 @@ async function handleResetDailyTrades(supabaseClient: any, requestId: string) {
 
   } catch (error) {
     log.error('Error in handleResetDailyTrades', error, { requestId })
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+}
+
+// =============================================================================
+// CHECK EXITS - Monitor positions for stop-loss and take-profit triggers
+// =============================================================================
+async function handleCheckExits(supabaseClient: any, requestId: string) {
+  try {
+    log.info('Checking exit conditions', { requestId })
+
+    // Get config
+    const { data: config } = await supabaseClient
+      .from('reference_portfolio_config')
+      .select('*')
+      .single()
+
+    if (!config?.is_active) {
+      return new Response(
+        JSON.stringify({ success: true, message: 'Trading is disabled', closed: 0 }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Get state
+    const { data: state } = await supabaseClient
+      .from('reference_portfolio_state')
+      .select('*')
+      .single()
+
+    if (!state) {
+      return new Response(
+        JSON.stringify({ error: 'Portfolio state not found' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Get all open positions with stop-loss and take-profit prices
+    const { data: positions, error: posError } = await supabaseClient
+      .from('reference_portfolio_positions')
+      .select('*')
+      .eq('is_open', true)
+
+    if (posError) {
+      log.error('Failed to fetch positions', posError, { requestId })
+      return new Response(
+        JSON.stringify({ error: 'Failed to fetch positions' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!positions || positions.length === 0) {
+      return new Response(
+        JSON.stringify({ success: true, message: 'No open positions', closed: 0 }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Get Alpaca credentials
+    const credentials = getAlpacaCredentials()
+    if (!credentials) {
+      return new Response(
+        JSON.stringify({ error: 'Alpaca credentials not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    let closed = 0
+    let wins = 0
+    let losses = 0
+    const results: any[] = []
+
+    for (const position of positions) {
+      try {
+        // Get current price from Alpaca
+        const quoteUrl = `${credentials.dataUrl}/v2/stocks/${position.ticker}/quotes/latest`
+        const quoteResponse = await fetch(quoteUrl, {
+          headers: {
+            'APCA-API-KEY-ID': credentials.apiKey,
+            'APCA-API-SECRET-KEY': credentials.secretKey
+          }
+        })
+
+        if (!quoteResponse.ok) {
+          log.warn('Failed to get quote', { requestId, ticker: position.ticker })
+          continue
+        }
+
+        const quote = await quoteResponse.json()
+        const currentPrice = quote.quote?.bp || quote.quote?.ap || position.current_price
+
+        if (!currentPrice || currentPrice <= 0) continue
+
+        // Check exit conditions
+        let exitReason: string | null = null
+
+        if (position.stop_loss_price && currentPrice <= position.stop_loss_price) {
+          exitReason = 'stop_loss'
+        } else if (position.take_profit_price && currentPrice >= position.take_profit_price) {
+          exitReason = 'take_profit'
+        }
+
+        if (!exitReason) continue
+
+        log.info('Exit triggered', {
+          requestId,
+          ticker: position.ticker,
+          exitReason,
+          currentPrice,
+          stopLoss: position.stop_loss_price,
+          takeProfit: position.take_profit_price
+        })
+
+        // Place sell order with Alpaca
+        const orderUrl = `${credentials.baseUrl}/v2/orders`
+        const orderResponse = await fetch(orderUrl, {
+          method: 'POST',
+          headers: {
+            'APCA-API-KEY-ID': credentials.apiKey,
+            'APCA-API-SECRET-KEY': credentials.secretKey,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            symbol: position.ticker.toUpperCase(),
+            qty: position.quantity,
+            side: 'sell',
+            type: 'market',
+            time_in_force: 'day'
+          })
+        })
+
+        const orderResult = await orderResponse.json()
+
+        if (!orderResponse.ok) {
+          log.error('Sell order failed', { error: orderResult }, { requestId, ticker: position.ticker })
+          continue
+        }
+
+        log.info('Sell order placed', { requestId, orderId: orderResult.id, ticker: position.ticker })
+
+        // Calculate realized P&L
+        const exitValue = currentPrice * position.quantity
+        const entryValue = position.entry_price * position.quantity
+        const realizedPL = exitValue - entryValue
+        const realizedPLPct = ((currentPrice - position.entry_price) / position.entry_price) * 100
+
+        // Determine if win or loss
+        const isWin = realizedPL > 0
+        if (isWin) wins++
+        else losses++
+
+        // Update position as closed
+        await supabaseClient
+          .from('reference_portfolio_positions')
+          .update({
+            is_open: false,
+            exit_price: currentPrice,
+            exit_date: new Date().toISOString(),
+            exit_reason: exitReason,
+            exit_order_id: orderResult.id,
+            realized_pl: realizedPL,
+            realized_pl_pct: realizedPLPct,
+            current_price: currentPrice,
+            market_value: exitValue,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', position.id)
+
+        // Record the transaction
+        await supabaseClient
+          .from('reference_portfolio_transactions')
+          .insert({
+            position_id: position.id,
+            ticker: position.ticker,
+            transaction_type: 'sell',
+            quantity: position.quantity,
+            price: currentPrice,
+            total_value: exitValue,
+            executed_at: new Date().toISOString(),
+            alpaca_order_id: orderResult.id,
+            exit_reason: exitReason,
+            realized_pl: realizedPL,
+            realized_pl_pct: realizedPLPct,
+            portfolio_value_at_trade: state.portfolio_value,
+            status: 'executed'
+          })
+
+        // Update portfolio state
+        await supabaseClient
+          .from('reference_portfolio_state')
+          .update({
+            cash: state.cash + exitValue,
+            buying_power: state.buying_power + exitValue,
+            positions_value: state.positions_value - position.market_value,
+            open_positions: state.open_positions - 1,
+            winning_trades: isWin ? state.winning_trades + 1 : state.winning_trades,
+            losing_trades: !isWin ? state.losing_trades + 1 : state.losing_trades,
+            trades_today: state.trades_today + 1,
+            total_trades: state.total_trades + 1,
+            last_trade_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', state.id)
+
+        // Update state object for next iteration
+        state.cash += exitValue
+        state.buying_power += exitValue
+        state.positions_value -= position.market_value
+        state.open_positions -= 1
+        if (isWin) state.winning_trades += 1
+        else state.losing_trades += 1
+        state.trades_today += 1
+        state.total_trades += 1
+
+        closed++
+        results.push({
+          ticker: position.ticker,
+          exitReason,
+          exitPrice: currentPrice,
+          entryPrice: position.entry_price,
+          quantity: position.quantity,
+          realizedPL,
+          realizedPLPct: Math.round(realizedPLPct * 100) / 100,
+          isWin
+        })
+
+        // Small delay between orders
+        await new Promise(resolve => setTimeout(resolve, 200))
+
+      } catch (error) {
+        log.error('Error checking exit for position', error, { requestId, ticker: position.ticker })
+      }
+    }
+
+    // Update win rate in state
+    if (closed > 0) {
+      const totalClosed = state.winning_trades + state.losing_trades
+      const winRate = totalClosed > 0 ? (state.winning_trades / totalClosed) * 100 : 0
+
+      await supabaseClient
+        .from('reference_portfolio_state')
+        .update({
+          win_rate: Math.round(winRate * 100) / 100,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', state.id)
+    }
+
+    log.info('Exit check completed', { requestId, checked: positions.length, closed, wins, losses })
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: `Closed ${closed} positions (${wins} wins, ${losses} losses)`,
+        summary: { checked: positions.length, closed, wins, losses },
+        results
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+
+  } catch (error) {
+    log.error('Error in handleCheckExits', error, { requestId })
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

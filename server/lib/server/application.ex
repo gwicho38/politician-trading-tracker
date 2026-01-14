@@ -65,6 +65,9 @@ defmodule Server.Application do
       Server.Scheduler.Jobs.PortfolioSnapshotJob,
       # Reference portfolio automation
       Server.Scheduler.Jobs.ReferencePortfolioExecuteJob,
+      Server.Scheduler.Jobs.ReferencePortfolioExitCheckJob,
+      Server.Scheduler.Jobs.ReferencePortfolioSyncJob,
+      Server.Scheduler.Jobs.ReferencePortfolioDailyResetJob,
       # Politician trading collection (split by source to avoid timeouts)
       Server.Scheduler.Jobs.PoliticianTradingHouseJob,
       Server.Scheduler.Jobs.PoliticianTradingSenateJob,

@@ -225,6 +225,41 @@ async function handleRecordOutcomes(supabaseClient: any, requestId: string) {
   const losses = outcomes.filter((o: any) => o.outcome === 'loss').length
   const avgReturn = outcomes.reduce((sum: number, o: any) => sum + o.return_pct, 0) / outcomes.length
 
+  // Update reference_portfolio_state with new win/loss counts
+  if (wins > 0 || losses > 0) {
+    const { data: currentState } = await supabaseClient
+      .from('reference_portfolio_state')
+      .select('winning_trades, losing_trades')
+      .single()
+
+    if (currentState) {
+      const newWinningTrades = (currentState.winning_trades || 0) + wins
+      const newLosingTrades = (currentState.losing_trades || 0) + losses
+      const totalClosed = newWinningTrades + newLosingTrades
+      const newWinRate = totalClosed > 0 ? (newWinningTrades / totalClosed) * 100 : 0
+
+      const { error: stateUpdateError } = await supabaseClient
+        .from('reference_portfolio_state')
+        .update({
+          winning_trades: newWinningTrades,
+          losing_trades: newLosingTrades,
+          win_rate: Math.round(newWinRate * 100) / 100,
+          updated_at: new Date().toISOString()
+        })
+
+      if (stateUpdateError) {
+        log.error('Failed to update portfolio state win/loss counts', stateUpdateError, { requestId })
+      } else {
+        log.info('Updated portfolio state win/loss counts', {
+          requestId,
+          newWinningTrades,
+          newLosingTrades,
+          newWinRate: Math.round(newWinRate * 100) / 100
+        })
+      }
+    }
+  }
+
   log.info('Outcomes recorded', {
     requestId,
     recorded: inserted?.length || 0,
