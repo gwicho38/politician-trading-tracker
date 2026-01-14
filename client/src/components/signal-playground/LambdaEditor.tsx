@@ -35,8 +35,27 @@ import {
 } from '@/components/ui/dialog';
 import { LambdaTemplates } from './LambdaTemplates';
 
-const DEFAULT_LAMBDA = `# Modify signal fields and assign to 'result'
-# Available: signal (dict), math module, Decimal
+const DEFAULT_LAMBDA = `# ============================================================================
+# SIGNAL TRANSFORM FUNCTION
+# ============================================================================
+#
+# INPUT: A 'signal' dictionary is provided with these fields:
+#   - ticker (str): Stock ticker symbol (e.g., "AAPL", "MSFT")
+#   - signal_type (str): "strong_buy", "buy", "hold", "sell", "strong_sell"
+#   - confidence_score (float): 0.0 to 1.0 (probability/strength)
+#   - buy_sell_ratio (float): Ratio of buys to sells (>1 = more buys)
+#   - politician_activity_count (int): Number of politicians trading
+#   - total_transaction_volume (float): Dollar volume of transactions
+#   - recent_trades (int): Trades in last 30 days
+#   - bipartisan (bool): True if both parties are trading
+#
+# OUTPUT: Modify 'signal' fields as needed, then assign to 'result'
+#   - result = signal  (required at end)
+#   - You can modify: confidence_score, signal_type
+#   - Other fields are read-only
+#
+# AVAILABLE: signal (dict), math module, Decimal, len, abs, min, max, round
+# ============================================================================
 
 # Example: Boost confidence for high buy/sell ratio
 if signal.get('buy_sell_ratio', 0) > 3.0:
