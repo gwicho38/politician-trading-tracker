@@ -1,111 +1,100 @@
-import { useState, useEffect } from 'react';
-import { User } from '@supabase/supabase-js';
+import { useState, useEffect, useRef } from 'react';
+import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
-// Check if stored session looks stale (older than 7 days since last activity)
-function hasStaleSession(): boolean {
+// Get stored session from localStorage without triggering a refresh
+function getStoredSession(): { user: User; session: Session } | null {
   try {
     const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
-    if (keys.length === 0) return false;
+    if (keys.length === 0) return null;
 
     const sessionData = localStorage.getItem(keys[0]);
-    if (!sessionData) return false;
+    if (!sessionData) return null;
 
     const parsed = JSON.parse(sessionData);
+
+    // Check if session is expired
     const expiresAt = parsed?.expires_at;
     if (expiresAt && expiresAt * 1000 < Date.now()) {
-      console.log('[useAuth] Found expired session, clearing...');
-      return true;
+      console.log('[useAuth] Stored session is expired');
+      return null;
     }
-    return false;
-  } catch {
-    return false;
-  }
-}
 
-// Clear all Supabase session data from localStorage
-function clearSupabaseSession(): void {
-  try {
-    const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-'));
-    keys.forEach(k => localStorage.removeItem(k));
-    if (keys.length > 0) {
-      console.log('[useAuth] Cleared Supabase session keys:', keys);
+    // Return user from stored session
+    if (parsed?.user) {
+      return { user: parsed.user, session: parsed };
     }
+    return null;
   } catch (e) {
-    console.error('[useAuth] Failed to clear localStorage:', e);
+    console.error('[useAuth] Error reading stored session:', e);
+    return null;
   }
 }
 
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const initializedRef = useRef(false);
 
   useEffect(() => {
-    // Get initial session with timeout and retry to prevent infinite loading
-    const getInitialSession = async (retryCount = 0) => {
-      const MAX_RETRIES = 2;
-      const TIMEOUT_MS = 5000;
+    // Prevent double initialization in React strict mode
+    if (initializedRef.current) return;
+    initializedRef.current = true;
 
-      // Pre-check: if session is expired, clear it before getSession() tries to refresh
-      if (hasStaleSession()) {
-        clearSupabaseSession();
-        setUser(null);
-        setLoading(false);
-        return;
-      }
+    let mounted = true;
 
-      try {
-        // Add timeout to prevent hanging on slow/failed auth requests
-        const timeoutPromise = new Promise<null>((_, reject) => {
-          setTimeout(() => reject(new Error('Session fetch timeout')), TIMEOUT_MS);
-        });
+    // Step 1: Immediately check localStorage for existing session (non-blocking)
+    const storedSession = getStoredSession();
+    if (storedSession?.user) {
+      console.log('[useAuth] Found valid stored session, setting user immediately');
+      setUser(storedSession.user);
+      setLoading(false);
+    }
 
-        const sessionPromise = supabase.auth.getSession();
-        const result = await Promise.race([sessionPromise, timeoutPromise]);
-
-        if (result && 'data' in result) {
-          const { data: { session }, error } = result;
-          if (error) {
-            console.error('[useAuth] Session fetch error:', error.message);
-          }
-          setUser(session?.user ?? null);
-          setLoading(false);
-        } else {
-          setUser(null);
-          setLoading(false);
-        }
-      } catch (error) {
-        console.warn('[useAuth] Session fetch attempt failed:', error);
-
-        // Retry on timeout (don't clear session yet - it might be valid)
-        if (retryCount < MAX_RETRIES) {
-          console.log(`[useAuth] Retrying session fetch (attempt ${retryCount + 2}/${MAX_RETRIES + 1})...`);
-          // Small delay before retry to let Supabase initialize
-          await new Promise(resolve => setTimeout(resolve, 500));
-          return getInitialSession(retryCount + 1);
-        }
-
-        // After all retries failed, don't clear session - let onAuthStateChange handle it
-        // The user will see as logged out, but if session becomes available, they'll be logged in
-        console.error('[useAuth] All session fetch attempts failed, falling back to auth listener');
-        setUser(null);
-        setLoading(false);
-        // Note: We don't clear the session here anymore - the onAuthStateChange listener
-        // will update the user if the session becomes available
-      }
-    };
-
-    getInitialSession();
-
-    // Listen for auth changes
+    // Step 2: Set up auth state change listener (primary mechanism)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        if (!mounted) return;
+        console.log('[useAuth] Auth state changed:', event);
         setUser(session?.user ?? null);
         setLoading(false);
       }
     );
 
-    return () => subscription.unsubscribe();
+    // Step 3: Trigger Supabase to check/refresh session in background (don't await)
+    // This will fire onAuthStateChange when complete
+    supabase.auth.getSession()
+      .then(({ data: { session }, error }) => {
+        if (!mounted) return;
+        if (error) {
+          console.error('[useAuth] Background session check error:', error.message);
+        }
+        // Update user if different from stored (handles token refresh)
+        if (session?.user?.id !== user?.id) {
+          setUser(session?.user ?? null);
+        }
+        setLoading(false);
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        console.error('[useAuth] Background session check failed:', error);
+        // Don't clear user - keep using stored session if we have one
+        setLoading(false);
+      });
+
+    // Step 4: Fallback timeout - ensure loading eventually stops
+    const fallbackTimeout = setTimeout(() => {
+      if (mounted && loading) {
+        console.log('[useAuth] Fallback timeout - stopping loading state');
+        setLoading(false);
+      }
+    }, 3000);
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+      clearTimeout(fallbackTimeout);
+    };
   }, []);
 
   return {
