@@ -16,12 +16,14 @@ import { PositionsTable } from '@/components/trading/PositionsTable';
 import { OrderHistory } from '@/components/trading/OrderHistory';
 
 const Trading = () => {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, authReady } = useAuth();
   const [tradingMode, setTradingMode] = useState<'paper' | 'live'>('paper');
   const { isConnected, isLoading: credentialsLoading } = useAlpacaCredentials();
   const connected = isConnected(tradingMode);
 
-  if (authLoading) {
+  // Wait for both auth loading to complete AND auth to be ready
+  // authReady ensures the auth listener has fired, which is required for credentials query
+  if (authLoading || (user && !authReady)) {
     return (
       <SidebarLayout>
         <div className="flex-1 flex items-center justify-center">
