@@ -26,27 +26,27 @@ const Header = ({ onMenuClick }: HeaderProps) => {
   const { isAdmin } = useAdmin();
 
   useEffect(() => {
-    // Get initial session with error handling
-    supabase.auth.getSession()
-      .then(({ data: { session }, error }) => {
-        if (error) {
-          console.error('[Header] Session fetch error:', error.message);
+    // Check localStorage immediately for stored session (non-blocking)
+    try {
+      const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+      if (keys.length > 0) {
+        const sessionData = localStorage.getItem(keys[0]);
+        if (sessionData) {
+          const parsed = JSON.parse(sessionData);
+          if (parsed?.user && parsed?.expires_at * 1000 > Date.now()) {
+            setUser(parsed.user);
+          }
         }
-        setUser(session?.user ?? null);
-      })
-      .catch((error) => {
-        console.error('[Header] Failed to get session:', error);
-        // Clear corrupted session directly from localStorage
-        try {
-          Object.keys(localStorage).filter(k => k.startsWith('sb-')).forEach(k => localStorage.removeItem(k));
-        } catch {}
-        setUser(null);
-      });
+      }
+    } catch {}
 
-    // Listen for auth changes
+    // Listen for auth changes (primary mechanism)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
     });
+
+    // Trigger background session check (don't await)
+    supabase.auth.getSession().catch(console.error);
 
     return () => subscription.unsubscribe();
   }, []);
