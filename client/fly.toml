@@ -7,6 +7,9 @@ app = 'govmarket-client'
 primary_region = 'ord'
 
 [build]
+  [build.args]
+    VITE_SUPABASE_URL = "https://uljsqvwkomdrlnofmlad.supabase.co"
+    VITE_SUPABASE_PUBLISHABLE_KEY = "REDACTED"
 
 [http_service]
   internal_port = 8080
