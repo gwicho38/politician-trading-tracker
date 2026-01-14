@@ -3,11 +3,16 @@
  * Displays a strategy preset in the showcase grid
  */
 
-import { Clock, Play, User as UserIcon } from 'lucide-react';
+import { Clock, Play, User as UserIcon, Code } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { LikeButton } from './LikeButton';
 import type { ShowcaseStrategy } from '@/types/signal-playground';
 
@@ -89,7 +94,22 @@ export function StrategyCard({
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <CardTitle className="text-lg truncate">{strategy.name}</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-lg truncate">{strategy.name}</CardTitle>
+              {strategy.user_lambda && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="text-xs shrink-0 gap-1">
+                      <Code className="h-3 w-3" />
+                      Transform
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Includes custom signal transform code</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
             <div className="flex items-center gap-1.5 mt-1 text-sm text-muted-foreground">
               <UserIcon className="h-3.5 w-3.5" />
               <span className="truncate">

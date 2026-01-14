@@ -106,7 +106,12 @@ export function ReportErrorModal({ disclosure, open, onOpenChange }: ReportError
         source_url: disclosure.source_url,
       };
 
-      const { error } = await supabase
+      // Add timeout to prevent endless spinner
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out. Please try again.')), 15000)
+      );
+
+      const insertPromise = supabase
         .from('user_error_reports')
         .insert({
           user_id: user.id,
@@ -115,6 +120,8 @@ export function ReportErrorModal({ disclosure, open, onOpenChange }: ReportError
           description: description.trim(),
           disclosure_snapshot: disclosureSnapshot,
         });
+
+      const { error } = await Promise.race([insertPromise, timeoutPromise]) as { error: Error | null };
 
       if (error) throw error;
 
