@@ -652,12 +652,12 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
         <p className="text-xs text-muted-foreground text-center">
           This is a free public resource. Data is collected from public STOCK Act disclosures and{' '}
           <a
-            href="https://www.capitoltrades.com"
+            href="https://www.govmarket.trade"
             target="_blank"
             rel="noopener noreferrer"
             className="text-primary hover:underline"
           >
-            Capitol Trades
+            GovMarket
           </a>
           . For the most accurate and complete data, please verify with official sources.
         </p>
