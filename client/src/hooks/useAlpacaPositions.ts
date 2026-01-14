@@ -29,7 +29,7 @@ interface PositionsResponse {
 }
 
 export function useAlpacaPositions(tradingMode: 'paper' | 'live') {
-  const { user } = useAuth();
+  const { user, authReady } = useAuth();
 
   return useQuery({
     queryKey: ['alpaca-positions', tradingMode, user?.email],
@@ -58,7 +58,8 @@ export function useAlpacaPositions(tradingMode: 'paper' | 'live') {
 
       return data.positions || [];
     },
-    enabled: !!user,
+    // Only run when auth is fully ready (not just localStorage hydrated)
+    enabled: !!user && authReady,
     staleTime: 30 * 1000, // 30 seconds
     refetchInterval: 60 * 1000, // Refresh every minute
     retry: 1,

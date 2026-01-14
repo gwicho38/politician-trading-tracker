@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
 
 export interface Order {
@@ -47,12 +48,13 @@ export function useOrders(
     offset?: number;
   }
 ) {
+  const { user, authReady } = useAuth();
   const status = options?.status || 'all';
   const limit = options?.limit || 50;
   const offset = options?.offset || 0;
 
   return useQuery({
-    queryKey: ['orders', tradingMode, status, limit, offset],
+    queryKey: ['orders', tradingMode, status, limit, offset, user?.email],
     queryFn: async (): Promise<OrdersResponse> => {
       const { data, error } = await supabase.functions.invoke('orders', {
         body: {
@@ -70,6 +72,8 @@ export function useOrders(
 
       return data;
     },
+    // Only run when auth is fully ready (not just localStorage hydrated)
+    enabled: !!user && authReady,
     refetchInterval: 30000, // Refresh every 30 seconds
     staleTime: 10000, // Consider data stale after 10 seconds
   });

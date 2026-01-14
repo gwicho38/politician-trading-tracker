@@ -26,7 +26,7 @@ interface AccountResponse {
 }
 
 export function useAlpacaAccount(tradingMode: 'paper' | 'live') {
-  const { user } = useAuth();
+  const { user, authReady } = useAuth();
 
   return useQuery({
     queryKey: ['alpaca-account', tradingMode, user?.email],
@@ -55,7 +55,8 @@ export function useAlpacaAccount(tradingMode: 'paper' | 'live') {
 
       return data.account || null;
     },
-    enabled: !!user,
+    // Only run when auth is fully ready (not just localStorage hydrated)
+    enabled: !!user && authReady,
     staleTime: 30 * 1000, // 30 seconds
     refetchInterval: 60 * 1000, // Refresh every minute
     retry: 1,

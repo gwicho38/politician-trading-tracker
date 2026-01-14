@@ -16,7 +16,7 @@ import { PositionsTable } from '@/components/trading/PositionsTable';
 import { OrderHistory } from '@/components/trading/OrderHistory';
 
 const Trading = () => {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [tradingMode, setTradingMode] = useState<'paper' | 'live'>('paper');
   const { isConnected, isLoading: credentialsLoading } = useAlpacaCredentials();
   const connected = isConnected(tradingMode);

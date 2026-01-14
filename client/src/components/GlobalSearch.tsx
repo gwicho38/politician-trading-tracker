@@ -10,9 +10,13 @@ import { cn } from '@/lib/utils';
 interface GlobalSearchProps {
   onSelectPolitician?: (id: string) => void;
   onSelectTicker?: (ticker: string) => void;
+  /** If true, uses full width styling for mobile dialogs */
+  fullWidth?: boolean;
+  /** Called when a result is selected - useful for closing mobile dialogs */
+  onResultSelect?: () => void;
 }
 
-export function GlobalSearch({ onSelectPolitician, onSelectTicker }: GlobalSearchProps) {
+export function GlobalSearch({ onSelectPolitician, onSelectTicker, fullWidth, onResultSelect }: GlobalSearchProps) {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -83,6 +87,9 @@ export function GlobalSearch({ onSelectPolitician, onSelectTicker }: GlobalSearc
         navigate(`/?ticker=${result.id}`);
       }
     }
+
+    // Notify parent (useful for closing mobile dialogs)
+    onResultSelect?.();
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -102,7 +109,10 @@ export function GlobalSearch({ onSelectPolitician, onSelectTicker }: GlobalSearc
           onChange={handleInputChange}
           onFocus={() => query.length >= 2 && setIsOpen(true)}
           onKeyDown={handleKeyDown}
-          className="w-64 pl-9 bg-secondary/50 border-border/50 focus:border-primary/50"
+          className={cn(
+            "pl-9 bg-secondary/50 border-border/50 focus:border-primary/50",
+            fullWidth ? "w-full" : "w-64"
+          )}
         />
         {isLoading && (
           <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground animate-spin" />

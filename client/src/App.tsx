@@ -2,6 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "@/hooks/useAuth";
 import { WalletProvider } from "@/components/WalletProvider";
 import { CartProvider } from "@/contexts/CartContext";
 import { AlertProvider } from "@/contexts/AlertContext";
@@ -25,9 +26,10 @@ import NotFound from "./pages/NotFound";
 
 const App = () => (
   <RootErrorBoundary>
-    <WalletProvider>
-      <AlertProvider>
-        <CartProvider>
+    <AuthProvider>
+      <WalletProvider>
+        <AlertProvider>
+          <CartProvider>
           <TooltipProvider>
             <Toaster />
             <Sonner />
@@ -84,9 +86,10 @@ const App = () => (
             <FloatingCart />
           </BrowserRouter>
           </TooltipProvider>
-        </CartProvider>
-      </AlertProvider>
-    </WalletProvider>
+          </CartProvider>
+        </AlertProvider>
+      </WalletProvider>
+    </AuthProvider>
   </RootErrorBoundary>
 );
 

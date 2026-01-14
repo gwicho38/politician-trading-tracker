@@ -25,7 +25,7 @@ interface ConnectionTestResult {
 }
 
 export function useAlpacaCredentials() {
-  const { user } = useAuth();
+  const { user, authReady } = useAuth();
   const queryClient = useQueryClient();
 
   // Fetch existing credentials
@@ -52,7 +52,8 @@ export function useAlpacaCredentials() {
 
       return data;
     },
-    enabled: !!user?.email,
+    // Only run query when auth is fully ready (not just localStorage hydrated)
+    enabled: !!user?.email && authReady,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
