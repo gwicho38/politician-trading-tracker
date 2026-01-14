@@ -527,6 +527,14 @@ def parse_transaction_from_row(row: List[str], disclosure: Dict[str, Any]) -> Op
                     pass
                 break
 
+    # Skip rows that lack BOTH transaction type AND value info
+    # These are likely footer rows or incomplete data
+    has_transaction_type = transaction_type is not None
+    has_value_info = value_info.get("value_low") is not None or value_info.get("value_high") is not None
+
+    if not has_transaction_type and not has_value_info:
+        return None
+
     return {
         "asset_name": asset_name,
         "ticker": asset_ticker,

@@ -544,6 +544,14 @@ def parse_transaction_from_row(
     # Extract transaction and notification dates from the row
     transaction_date, notification_date = extract_dates_from_row(row)
 
+    # Skip rows that lack BOTH transaction type AND value info
+    # These are likely footer rows or incomplete data
+    has_transaction_type = transaction_type is not None
+    has_value_info = value_info.get("value_low") is not None or value_info.get("value_high") is not None
+
+    if not has_transaction_type and not has_value_info:
+        return None
+
     return {
         "politician_name": disclosure.get("politician_name"),
         "doc_id": disclosure.get("doc_id"),
