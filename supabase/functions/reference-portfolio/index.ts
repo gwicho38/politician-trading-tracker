@@ -1730,15 +1730,39 @@ async function handleCheckExits(supabaseClient: any, requestId: string) {
       }
     }
 
-    // Update win rate in state
+    // Update win rate and avg win/loss in state
     if (closed > 0) {
       const totalClosed = state.winning_trades + state.losing_trades
       const winRate = totalClosed > 0 ? (state.winning_trades / totalClosed) * 100 : 0
+
+      // Calculate avg win and avg loss from closed positions
+      const { data: closedPositions } = await supabaseClient
+        .from('reference_portfolio_positions')
+        .select('realized_pl_pct')
+        .eq('is_open', false)
+        .not('realized_pl_pct', 'is', null)
+
+      let avgWin = 0
+      let avgLoss = 0
+
+      if (closedPositions && closedPositions.length > 0) {
+        const wins = closedPositions.filter((p: any) => p.realized_pl_pct > 0)
+        const losses = closedPositions.filter((p: any) => p.realized_pl_pct <= 0)
+
+        if (wins.length > 0) {
+          avgWin = wins.reduce((sum: number, p: any) => sum + p.realized_pl_pct, 0) / wins.length
+        }
+        if (losses.length > 0) {
+          avgLoss = losses.reduce((sum: number, p: any) => sum + p.realized_pl_pct, 0) / losses.length
+        }
+      }
 
       await supabaseClient
         .from('reference_portfolio_state')
         .update({
           win_rate: Math.round(winRate * 100) / 100,
+          avg_win: Math.round(avgWin * 100) / 100,
+          avg_loss: Math.round(avgLoss * 100) / 100,
           updated_at: new Date().toISOString()
         })
         .eq('id', state.id)
