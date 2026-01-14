@@ -1898,13 +1898,72 @@ function blendSignals(
   }
 }
 
+// Apply user lambda to signals via Python service
+async function applyUserLambda(
+  signals: any[],
+  lambdaCode: string,
+  requestId: string
+): Promise<any[]> {
+  if (!lambdaCode || !lambdaCode.trim() || signals.length === 0) {
+    return signals
+  }
+
+  try {
+    log.info('Applying user lambda', { requestId, signalCount: signals.length })
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout
+
+    const response = await fetch(`${ETL_API_URL}/signals/apply-lambda`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        signals,
+        lambdaCode,
+      }),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      log.warn('Lambda application failed', {
+        requestId,
+        status: response.status,
+        error: errorData.detail || 'Unknown error'
+      })
+      return signals // Return original on failure
+    }
+
+    const data = await response.json()
+
+    if (data.success && Array.isArray(data.signals)) {
+      log.info('User lambda applied successfully', {
+        requestId,
+        transformedCount: data.signals.length
+      })
+      return data.signals
+    }
+
+    return signals
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      log.warn('Lambda application timed out', { requestId })
+    } else {
+      log.warn('Lambda application error', { requestId, error: error.message })
+    }
+    return signals // Return original on error
+  }
+}
+
 // Handler for preview-signals endpoint
 // Similar to generate-signals but with configurable weights and NO database persistence
 async function handlePreviewSignals(supabaseClient: any, req: Request, requestId: string) {
   const handlerStartTime = Date.now()
   try {
     const body = await req.json()
-    const { lookbackDays = 30, weights: providedWeights, useML = ML_ENABLED } = body
+    const { lookbackDays = 30, weights: providedWeights, useML = ML_ENABLED, userLambda } = body
 
     // Merge provided weights with defaults
     const weights: SignalWeights = {
@@ -2192,10 +2251,24 @@ async function handlePreviewSignals(supabaseClient: any, req: Request, requestId
 
     // Sort by confidence (highest first) and limit to top 100 for preview
     generatedSignals.sort((a, b) => b.confidence_score - a.confidence_score)
-    const topSignals = generatedSignals.slice(0, 100)
+    let topSignals = generatedSignals.slice(0, 100)
 
-    // Count ML-enhanced signals
+    // Count ML-enhanced signals (before lambda)
     const mlEnhancedCount = topSignals.filter(s => s.ml_enhanced).length
+
+    // Apply user lambda if provided
+    let lambdaApplied = false
+    let lambdaError: string | null = null
+    if (userLambda && userLambda.trim()) {
+      log.info('Applying user lambda to preview signals', { requestId, signalCount: topSignals.length })
+      try {
+        topSignals = await applyUserLambda(topSignals, userLambda, requestId)
+        lambdaApplied = true
+      } catch (e) {
+        lambdaError = e.message || 'Lambda execution failed'
+        log.warn('User lambda failed', { requestId, error: lambdaError })
+      }
+    }
 
     log.info('Preview signals generated', {
       requestId,
@@ -2203,6 +2276,7 @@ async function handlePreviewSignals(supabaseClient: any, req: Request, requestId
       returned: topSignals.length,
       mlEnabled: useML,
       mlEnhancedCount,
+      lambdaApplied,
       duration: Date.now() - handlerStartTime
     })
 
@@ -2212,6 +2286,8 @@ async function handlePreviewSignals(supabaseClient: any, req: Request, requestId
         preview: true,
         signals: topSignals,
         weights,
+        lambdaApplied,
+        lambdaError,
         stats: {
           totalDisclosures: disclosures.length,
           uniqueTickers: Object.keys(tickerData).length,
@@ -2220,6 +2296,7 @@ async function handlePreviewSignals(supabaseClient: any, req: Request, requestId
           mlEnhancedCount,
           mlPredictionCount,
           mlFeaturesCount: mlFeaturesList.length,
+          lambdaApplied,
           signalTypeDistribution: topSignals.reduce((acc, s) => {
             acc[s.signal_type] = (acc[s.signal_type] || 0) + 1
             return acc

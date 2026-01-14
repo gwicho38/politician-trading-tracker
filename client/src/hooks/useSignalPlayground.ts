@@ -26,7 +26,8 @@ const DEBOUNCE_DELAY = 500; // ms
 async function fetchPreviewSignals(
   weights: SignalWeights,
   lookbackDays: number = 90,
-  useML: boolean = false
+  useML: boolean = false,
+  userLambda?: string
 ): Promise<PreviewResponse> {
   // Use path-based routing: trading-signals/preview-signals
   const { data, error } = await supabase.functions.invoke('trading-signals/preview-signals', {
@@ -34,6 +35,7 @@ async function fetchPreviewSignals(
       weights,
       lookbackDays,
       useML,
+      userLambda: userLambda?.trim() || undefined,
     },
   });
 
@@ -67,9 +69,13 @@ export function useSignalPlayground(options: UseSignalPlaygroundOptions = {}) {
   // Lookback period state
   const [lookbackDays, setLookbackDays] = useState(initialLookback);
 
+  // User lambda state
+  const [userLambda, setUserLambda] = useState('');
+
   // Debounce weights for API calls
   const debouncedWeights = useDebounce(weights, DEBOUNCE_DELAY);
   const debouncedLookback = useDebounce(lookbackDays, DEBOUNCE_DELAY);
+  const debouncedLambda = useDebounce(userLambda, DEBOUNCE_DELAY);
 
   // Track if we're in the debounce period (showing "Updating...")
   const [isDebouncing, setIsDebouncing] = useState(false);
@@ -79,7 +85,22 @@ export function useSignalPlayground(options: UseSignalPlaygroundOptions = {}) {
     setIsDebouncing(true);
     const timer = setTimeout(() => setIsDebouncing(false), DEBOUNCE_DELAY);
     return () => clearTimeout(timer);
-  }, [weights, lookbackDays]);
+  }, [weights, lookbackDays, userLambda]);
+
+  // Check if we have a non-empty lambda to apply
+  const hasActiveLambda = !!debouncedLambda?.trim();
+
+  // Fetch base signals (without lambda) for comparison - only when lambda is active
+  const {
+    data: baseSignalsData,
+    isLoading: isLoadingBase,
+  } = useQuery({
+    queryKey: ['signalPreviewBase', debouncedWeights, debouncedLookback],
+    queryFn: () => fetchPreviewSignals(debouncedWeights, debouncedLookback, mlEnabled, undefined),
+    staleTime: 60 * 1000, // 1 minute - base signals don't change often
+    refetchOnWindowFocus: false,
+    enabled: hasActiveLambda, // Only fetch when lambda is active
+  });
 
   // Fetch preview signals with debounced weights (ML always enabled)
   const {
@@ -89,8 +110,8 @@ export function useSignalPlayground(options: UseSignalPlaygroundOptions = {}) {
     error,
     refetch,
   } = useQuery({
-    queryKey: ['signalPreview', debouncedWeights, debouncedLookback],
-    queryFn: () => fetchPreviewSignals(debouncedWeights, debouncedLookback, mlEnabled),
+    queryKey: ['signalPreview', debouncedWeights, debouncedLookback, debouncedLambda],
+    queryFn: () => fetchPreviewSignals(debouncedWeights, debouncedLookback, mlEnabled, debouncedLambda),
     staleTime: 30 * 1000, // 30 seconds
     refetchOnWindowFocus: false,
   });
@@ -113,9 +134,13 @@ export function useSignalPlayground(options: UseSignalPlaygroundOptions = {}) {
     setWeights(DEFAULT_WEIGHTS);
   }, []);
 
-  // Load weights from a preset
+  // Load weights (and optionally lambda) from a preset
   const loadPreset = useCallback((preset: SignalPreset) => {
     setWeights(presetToWeights(preset));
+    // Also load user_lambda if the preset includes it
+    if (preset.user_lambda) {
+      setUserLambda(preset.user_lambda);
+    }
   }, []);
 
   // Check if current weights differ from defaults
@@ -138,9 +163,100 @@ export function useSignalPlayground(options: UseSignalPlaygroundOptions = {}) {
 
   // Extract signals from response
   const signals: PreviewSignal[] = previewData?.signals || [];
+  const baseSignals: PreviewSignal[] = baseSignalsData?.signals || [];
   const stats = previewData?.stats;
   // mlEnhancedCount comes from stats in the edge function response
   const mlEnhancedCount = previewData?.stats?.mlEnhancedCount || 0;
+
+  // Lambda status from response
+  const lambdaApplied = previewData?.lambdaApplied || false;
+  const lambdaError = previewData?.lambdaError || null;
+
+  // Compute comparison data when lambda is applied
+  const comparisonData = useMemo(() => {
+    if (!lambdaApplied || !baseSignals.length || !signals.length) {
+      return null;
+    }
+
+    // Create lookup map for after signals
+    const afterMap = new Map(signals.map((s) => [s.ticker, s]));
+
+    const comparisons = baseSignals.map((before) => {
+      const after = afterMap.get(before.ticker);
+      if (!after) return null;
+
+      const typeChanged = before.signal_type !== after.signal_type;
+      const confidenceDelta = after.confidence_score - before.confidence_score;
+
+      // Determine if the change is an improvement
+      const signalTypeRank: Record<string, number> = {
+        strong_sell: -2,
+        sell: -1,
+        hold: 0,
+        buy: 1,
+        strong_buy: 2,
+      };
+
+      const beforeRank = signalTypeRank[before.signal_type] || 0;
+      const afterRank = signalTypeRank[after.signal_type] || 0;
+      const typeImproved = afterRank > beforeRank;
+      const typeDegraded = afterRank < beforeRank;
+
+      return {
+        ticker: before.ticker,
+        before: {
+          signal_type: before.signal_type,
+          confidence_score: before.confidence_score,
+        },
+        after: {
+          signal_type: after.signal_type,
+          confidence_score: after.confidence_score,
+        },
+        changes: {
+          typeChanged,
+          confidenceDelta,
+          typeImproved,
+          typeDegraded,
+        },
+      };
+    }).filter(Boolean);
+
+    // Calculate summary stats
+    const modified = comparisons.filter(
+      (c) => c && (c.changes.typeChanged || Math.abs(c.changes.confidenceDelta) > 0.01)
+    );
+    const improved = comparisons.filter(
+      (c) => c && (c.changes.typeImproved || c.changes.confidenceDelta > 0.01)
+    );
+    const degraded = comparisons.filter(
+      (c) => c && (c.changes.typeDegraded || c.changes.confidenceDelta < -0.01)
+    );
+    const avgConfidenceDelta = modified.length > 0
+      ? modified.reduce((sum, c) => sum + (c?.changes.confidenceDelta || 0), 0) / modified.length
+      : 0;
+
+    return {
+      comparisons: comparisons as Array<{
+        ticker: string;
+        before: { signal_type: string; confidence_score: number };
+        after: { signal_type: string; confidence_score: number };
+        changes: { typeChanged: boolean; confidenceDelta: number; typeImproved: boolean; typeDegraded: boolean };
+      }>,
+      stats: {
+        totalSignals: comparisons.length,
+        modifiedCount: modified.length,
+        improvedCount: improved.length,
+        degradedCount: degraded.length,
+        avgConfidenceDelta,
+      },
+    };
+  }, [lambdaApplied, baseSignals, signals]);
+
+  // Apply lambda manually (triggers refetch)
+  const applyLambda = useCallback(() => {
+    // Just trigger a refetch - the lambda is already in the query
+    refetch();
+  }, [refetch]);
 
   return {
     // Weight state
@@ -155,6 +271,15 @@ export function useSignalPlayground(options: UseSignalPlaygroundOptions = {}) {
     // Lookback period
     lookbackDays,
     setLookbackDays,
+
+    // User lambda
+    userLambda,
+    setUserLambda,
+    lambdaApplied,
+    lambdaError,
+    applyLambda,
+    comparisonData,
+    isLoadingComparison: isLoadingBase,
 
     // ML enhancement (always enabled, falls back gracefully)
     mlEnabled,

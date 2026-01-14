@@ -67,6 +67,9 @@ export interface SignalPreset {
   strong_sell_threshold: number;
   sell_threshold: number;
 
+  // Optional lambda code for custom signal transformation
+  user_lambda?: string | null;
+
   created_at: string;
   updated_at: string;
 }
@@ -118,6 +121,9 @@ export interface PreviewResponse {
   stats: PreviewStats;
   weights: SignalWeights; // Note: edge function returns 'weights', not 'weightsApplied'
   requestId?: string;
+  // Lambda application status
+  lambdaApplied?: boolean;
+  lambdaError?: string | null;
 }
 
 /**
@@ -151,6 +157,7 @@ export interface PresetFormData {
   description: string;
   is_public: boolean;
   weights: SignalWeights;
+  user_lambda?: string;
 }
 
 /**

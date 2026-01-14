@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Check, ChevronsUpDown, Trash2, Star } from 'lucide-react';
+import { Check, ChevronsUpDown, Trash2, Star, Code } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Command,
@@ -31,6 +31,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { SignalPreset } from '@/types/signal-playground';
 
@@ -149,6 +154,16 @@ export function PresetManager({
                             )}
                           />
                           <span>{preset.name}</span>
+                          {preset.user_lambda && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Code className="h-3 w-3 text-primary" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Includes custom transform</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
                           {preset.is_public && (
                             <Badge variant="outline" className="text-xs">
                               Public
