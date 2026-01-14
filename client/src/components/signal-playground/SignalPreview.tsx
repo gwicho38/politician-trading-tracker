@@ -55,6 +55,24 @@ import type {
   PreviewStats,
   SignalType,
 } from '@/types/signal-playground';
+import { LambdaComparison } from './LambdaComparison';
+import { LambdaEditor } from './LambdaEditor';
+
+interface ComparisonData {
+  comparisons: Array<{
+    ticker: string;
+    before: { signal_type: string; confidence_score: number };
+    after: { signal_type: string; confidence_score: number };
+    changes: { typeChanged: boolean; confidenceDelta: number; typeImproved: boolean; typeDegraded: boolean };
+  }>;
+  stats: {
+    totalSignals: number;
+    modifiedCount: number;
+    improvedCount: number;
+    degradedCount: number;
+    avgConfidenceDelta: number;
+  };
+}
 
 interface SignalPreviewProps {
   signals: PreviewSignal[];
@@ -62,6 +80,14 @@ interface SignalPreviewProps {
   isLoading?: boolean;
   isUpdating?: boolean;
   error?: Error | null;
+  comparisonData?: ComparisonData | null;
+  isLoadingComparison?: boolean;
+  lambdaApplied?: boolean;
+  // Lambda editor props
+  userLambda?: string;
+  onLambdaChange?: (code: string) => void;
+  onLambdaApply?: () => void;
+  lambdaError?: string | null;
 }
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
@@ -860,6 +886,13 @@ export function SignalPreview({
   isLoading,
   isUpdating,
   error,
+  comparisonData,
+  isLoadingComparison,
+  lambdaApplied,
+  userLambda,
+  onLambdaChange,
+  onLambdaApply,
+  lambdaError,
 }: SignalPreviewProps) {
   // State for selected signal type in distribution chart
   const [selectedSignalType, setSelectedSignalType] = useState<SignalType | null>(null);
@@ -905,10 +938,28 @@ export function SignalPreview({
 
       {/* Tabs for different views */}
       <Tabs defaultValue="distribution" className="flex-1 flex flex-col">
-        <TabsList className="grid w-full grid-cols-3 shrink-0">
+        <TabsList className={`grid w-full shrink-0 ${lambdaApplied ? 'grid-cols-5' : 'grid-cols-4'}`}>
           <TabsTrigger value="distribution">Distribution</TabsTrigger>
           <TabsTrigger value="confidence">Confidence</TabsTrigger>
           <TabsTrigger value="signals">Signals</TabsTrigger>
+          <TabsTrigger value="transform" className="relative">
+            Transform
+            {lambdaApplied && (
+              <span className="absolute -top-1 -right-1 bg-green-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+                ✓
+              </span>
+            )}
+          </TabsTrigger>
+          {lambdaApplied && (
+            <TabsTrigger value="lambda-impact" className="relative">
+              Impact
+              {comparisonData && comparisonData.stats.modifiedCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+                  {comparisonData.stats.modifiedCount}
+                </span>
+              )}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="distribution" className="mt-4 flex-1">
@@ -953,6 +1004,51 @@ export function SignalPreview({
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="transform" className="mt-4 flex-1">
+          {onLambdaChange && onLambdaApply ? (
+            <LambdaEditor
+              value={userLambda || ''}
+              onChange={onLambdaChange}
+              onApply={onLambdaApply}
+              error={lambdaError}
+              isLoading={isUpdating}
+              lambdaApplied={lambdaApplied}
+            />
+          ) : (
+            <Card>
+              <CardContent className="flex items-center justify-center h-48 text-muted-foreground">
+                Lambda editor not available
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {lambdaApplied && (
+          <TabsContent value="lambda-impact" className="mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Lambda Transform Impact</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Comparison of signals before and after lambda transformation
+                </p>
+              </CardHeader>
+              <CardContent>
+                {comparisonData ? (
+                  <LambdaComparison
+                    comparisons={comparisonData.comparisons}
+                    stats={comparisonData.stats}
+                    isLoading={isLoadingComparison}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-48 text-muted-foreground">
+                    {isLoadingComparison ? 'Loading comparison data...' : 'No comparison data available'}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

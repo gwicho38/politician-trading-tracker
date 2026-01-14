@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Save, Calendar, User, LogOut, Sparkles } from 'lucide-react';
+import { Save, Calendar, User, LogOut, Sparkles, Code } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -113,6 +113,14 @@ export default function SignalPlayground() {
     isLoading,
     isUpdating,
     error,
+    // Lambda state
+    userLambda,
+    setUserLambda,
+    lambdaApplied,
+    lambdaError,
+    applyLambda,
+    comparisonData,
+    isLoadingComparison,
   } = useSignalPlayground();
 
   // Presets hook
@@ -131,6 +139,7 @@ export default function SignalPlayground() {
   const [presetName, setPresetName] = useState('');
   const [presetDescription, setPresetDescription] = useState('');
   const [isPublic, setIsPublic] = useState(false);
+  const [includeLambda, setIncludeLambda] = useState(false);
 
   // Selected preset for tracking
   const [selectedPresetId, setSelectedPresetId] = useState<string>();
@@ -197,6 +206,7 @@ export default function SignalPlayground() {
         description: presetDescription.trim() || undefined,
         is_public: isPublic,
         weights,
+        user_lambda: includeLambda && userLambda?.trim() ? userLambda.trim() : undefined,
       });
 
       console.log('Preset saved:', result);
@@ -210,6 +220,7 @@ export default function SignalPlayground() {
       setPresetName('');
       setPresetDescription('');
       setIsPublic(false);
+      setIncludeLambda(false);
       setSaveDialogOpen(false);
     } catch (err) {
       console.error('Failed to save preset:', err);
@@ -318,16 +329,18 @@ export default function SignalPlayground() {
         <ResizablePanelGroup direction="horizontal">
           {/* Left panel - Weight controls */}
           <ResizablePanel defaultSize={35} minSize={25} maxSize={50}>
-            <WeightControls
-              weights={weights}
-              onWeightChange={updateWeight}
-              onReset={handleReset}
-              onSave={() => setSaveDialogOpen(true)}
-              hasChanges={hasChanges}
-              modifiedCount={modifiedCount}
-              isUpdating={isUpdating}
-              canSave={!!user}
-            />
+            <div className="flex flex-col h-full overflow-y-auto">
+              <WeightControls
+                weights={weights}
+                onWeightChange={updateWeight}
+                onReset={handleReset}
+                onSave={() => setSaveDialogOpen(true)}
+                hasChanges={hasChanges}
+                modifiedCount={modifiedCount}
+                isUpdating={isUpdating}
+                canSave={!!user}
+              />
+            </div>
           </ResizablePanel>
 
           <ResizableHandle withHandle />
@@ -342,6 +355,13 @@ export default function SignalPlayground() {
                   isLoading={isLoading}
                   isUpdating={isUpdating}
                   error={error as Error | null}
+                  comparisonData={comparisonData}
+                  isLoadingComparison={isLoadingComparison}
+                  lambdaApplied={lambdaApplied}
+                  userLambda={userLambda}
+                  onLambdaChange={setUserLambda}
+                  onLambdaApply={applyLambda}
+                  lambdaError={lambdaError}
                 />
               </div>
               {/* ML Insights panel */}
@@ -401,6 +421,26 @@ export default function SignalPlayground() {
                 onCheckedChange={setIsPublic}
               />
             </div>
+
+            {/* Lambda inclusion option - only show if there's lambda code */}
+            {userLambda?.trim() && (
+              <div className="flex items-center justify-between border-t pt-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="preset-lambda" className="flex items-center gap-2">
+                    <Code className="h-4 w-4" />
+                    Include custom transform
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Save lambda code with this preset
+                  </p>
+                </div>
+                <Switch
+                  id="preset-lambda"
+                  checked={includeLambda}
+                  onCheckedChange={setIncludeLambda}
+                />
+              </div>
+            )}
           </div>
 
           <DialogFooter>

@@ -48,6 +48,7 @@ async function createPreset(input: {
   description?: string;
   is_public?: boolean;
   weights: SignalWeights;
+  user_lambda?: string;
 }): Promise<SignalPreset> {
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData?.user?.id;
@@ -65,6 +66,7 @@ async function createPreset(input: {
       name: input.name,
       description: input.description || null,
       is_public: input.is_public || false,
+      user_lambda: input.user_lambda || null,
       ...presetFields,
     })
     .select()
@@ -86,12 +88,14 @@ async function updatePreset(input: {
   description?: string;
   is_public?: boolean;
   weights?: SignalWeights;
+  user_lambda?: string | null;
 }): Promise<SignalPreset> {
   const updates: Record<string, unknown> = {};
 
   if (input.name !== undefined) updates.name = input.name;
   if (input.description !== undefined) updates.description = input.description;
   if (input.is_public !== undefined) updates.is_public = input.is_public;
+  if (input.user_lambda !== undefined) updates.user_lambda = input.user_lambda;
 
   if (input.weights) {
     const presetFields = weightsToPresetFields(input.weights);
