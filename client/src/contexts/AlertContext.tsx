@@ -198,22 +198,8 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const checkConnectionHealth = async () => {
       try {
-        // Get session from localStorage directly to avoid blocking
-        let accessToken: string | null = null;
-        try {
-          const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
-          if (keys.length > 0) {
-            const sessionData = localStorage.getItem(keys[0]);
-            if (sessionData) {
-              const parsed = JSON.parse(sessionData);
-              if (parsed?.access_token && parsed?.expires_at * 1000 > Date.now()) {
-                accessToken = parsed.access_token;
-              }
-            }
-          }
-        } catch {}
-
-        if (!accessToken) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
           setConnectionHealth('unknown');
           return;
         }
@@ -224,7 +210,7 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${accessToken}`,
+              'Authorization': `Bearer ${session.access_token}`,
             },
             body: JSON.stringify({
               action: 'connection-status',

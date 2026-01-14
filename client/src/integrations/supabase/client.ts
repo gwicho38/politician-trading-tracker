@@ -5,14 +5,27 @@ import type { Database } from './types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-// Import the supabase client like this:
-// import { supabase } from "@/integrations/supabase/client";
+// ============================================================================
+// PUBLIC CLIENT - For data queries (dashboard, trades, politicians, etc.)
+// This client has NO auth - it won't block waiting for session state
+// ============================================================================
+export const supabasePublic = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: {
+    persistSession: false,    // Don't persist - this is anonymous
+    autoRefreshToken: false,  // No token to refresh
+    detectSessionInUrl: false,
+  }
+});
 
+// ============================================================================
+// AUTH CLIENT - For authentication and user-specific operations
+// This client handles login/logout and user data
+// ============================================================================
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     storage: localStorage,
     persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: false,  // Don't scan URL for OAuth on every page load
+    autoRefreshToken: false,  // DISABLED - prevents blocking on token refresh
+    detectSessionInUrl: false,
   }
 });

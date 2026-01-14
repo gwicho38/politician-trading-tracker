@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+// Use public client for data queries - it won't be blocked by auth token refresh
+import { supabasePublic as supabase } from '@/integrations/supabase/client';
 
 // Types matching database schema
 export interface Jurisdiction {

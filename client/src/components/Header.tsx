@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Menu, LogOut, User, UserX, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,10 +10,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdmin } from '@/hooks/useAdmin';
+import { useAuth } from '@/hooks/useAuth';
 import NotificationBell from '@/components/NotificationBell';
 import { HeaderSyncStatus } from '@/components/SyncStatus';
 import { GlobalSearch } from '@/components/GlobalSearch';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -22,34 +21,8 @@ interface HeaderProps {
 
 const Header = ({ onMenuClick }: HeaderProps) => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<SupabaseUser | null>(null);
+  const { user } = useAuth();
   const { isAdmin } = useAdmin();
-
-  useEffect(() => {
-    // Check localStorage immediately for stored session (non-blocking)
-    try {
-      const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
-      if (keys.length > 0) {
-        const sessionData = localStorage.getItem(keys[0]);
-        if (sessionData) {
-          const parsed = JSON.parse(sessionData);
-          if (parsed?.user && parsed?.expires_at * 1000 > Date.now()) {
-            setUser(parsed.user);
-          }
-        }
-      }
-    } catch {}
-
-    // Listen for auth changes (primary mechanism)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    // Trigger background session check (don't await)
-    supabase.auth.getSession().catch(console.error);
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();

@@ -4,7 +4,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabasePublic } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import type { ShowcaseStrategy } from '@/types/signal-playground';
 
@@ -19,7 +19,8 @@ async function fetchShowcaseStrategies(
   sortBy: SortOption,
   userId: string | undefined
 ): Promise<ShowcaseStrategy[]> {
-  const { data, error } = await supabase.rpc('get_public_strategies', {
+  // Use public client for fetching - won't block on auth
+  const { data, error } = await supabasePublic.rpc('get_public_strategies', {
     sort_by: sortBy,
     user_id_param: userId || null,
   });
