@@ -238,9 +238,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [loadCartFromLocalStorage, syncCartToSupabase]);
 
-  // Listen for auth changes
+  // Listen for auth changes - onAuthStateChange fires with INITIAL_SESSION on mount
   useEffect(() => {
+    // Load from localStorage immediately as fallback
+    loadCartFromLocalStorage();
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[CartContext] Auth state changed:', event);
       const newUserId = session?.user?.id || null;
       setUserId(newUserId);
 
@@ -249,21 +253,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         await loadCartFromSupabase(newUserId);
         initialLoadRef.current = true;
       } else if (!newUserId) {
-        // User logged out - load from localStorage
+        // User logged out - reset
         initialLoadRef.current = false;
-        loadCartFromLocalStorage();
-      }
-    });
-
-    // Initial check
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const currentUserId = session?.user?.id || null;
-      setUserId(currentUserId);
-      if (currentUserId) {
-        loadCartFromSupabase(currentUserId);
-        initialLoadRef.current = true;
-      } else {
-        loadCartFromLocalStorage();
       }
     });
 
