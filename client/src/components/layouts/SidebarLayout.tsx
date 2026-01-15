@@ -10,6 +10,7 @@ import {
   Sparkles,
   Wallet,
   Activity,
+  MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ const standalonePages = [
   { path: '/reference-portfolio', label: 'Reference Strategy', icon: Activity },
   { path: '/playground', label: 'Signal Playground', icon: Sliders },
   { path: '/showcase', label: 'Strategy Showcase', icon: Sparkles },
+  { path: '/drops', label: 'Drops', icon: MessageSquare },
 ];
 
 interface SidebarLayoutProps {

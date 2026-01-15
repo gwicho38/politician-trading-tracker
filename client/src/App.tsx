@@ -15,6 +15,7 @@ import SignalPlayground from "./pages/SignalPlayground";
 import Showcase from "./pages/Showcase";
 import Trading from "./pages/Trading";
 import TradingSignals from "./pages/TradingSignals";
+import Drops from "./pages/Drops";
 import DataQuality from "./pages/DataQuality";
 import ReferencePortfolio from "./pages/ReferencePortfolio";
 // COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready
@@ -53,6 +54,11 @@ const App = () => (
               <Route path="/showcase" element={
                 <ErrorBoundary name="Showcase">
                   <Showcase />
+                </ErrorBoundary>
+              } />
+              <Route path="/drops" element={
+                <ErrorBoundary name="Drops">
+                  <Drops />
                 </ErrorBoundary>
               } />
               <Route path="/trading" element={
