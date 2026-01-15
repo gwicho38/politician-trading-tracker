@@ -1,6 +1,8 @@
-import { useEffect } from 'react';
-import { FileText, Loader2, ExternalLink } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { FileText, Loader2, ExternalLink, Filter } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { useTrades } from '@/hooks/useSupabaseData';
 import { usePagination } from '@/hooks/usePagination';
 import { PaginationControls } from '@/components/PaginationControls';
@@ -10,9 +12,27 @@ import { format } from 'date-fns';
 const FilingsView = () => {
   const { data: trades, isLoading } = useTrades(500);
   const pagination = usePagination();
+  const [hideUnknown, setHideUnknown] = useState(true);
+
+  // Filter out unknown/undisclosed entries if filter is enabled
+  const filteredTrades = trades?.filter((trade) => {
+    if (!hideUnknown) return true;
+
+    // Check if transaction type is unknown
+    const hasUnknownType = !trade.trade_type ||
+      trade.trade_type.toLowerCase() === 'unknown' ||
+      trade.trade_type === '--';
+
+    // Check if amount is not disclosed (both min and max are 0 or null)
+    const hasUndisclosedAmount = !trade.estimated_value || trade.estimated_value === 0;
+
+    // Filter out if BOTH type is unknown AND amount is undisclosed
+    // Or if type is explicitly "unknown"
+    return !hasUnknownType;
+  });
 
   // Group trades by filing date
-  const filingsByDate = trades?.reduce((acc, trade) => {
+  const filingsByDate = filteredTrades?.reduce((acc, trade) => {
     const date = trade.filing_date;
     if (!acc[date]) {
       acc[date] = [];
@@ -36,11 +56,26 @@ const FilingsView = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h2 className="text-2xl font-bold text-foreground">Filings</h2>
-        <p className="text-muted-foreground">
-          Official disclosure filings grouped by date
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col gap-2">
+          <h2 className="text-2xl font-bold text-foreground">Filings</h2>
+          <p className="text-muted-foreground">
+            Official disclosure filings grouped by date
+          </p>
+        </div>
+
+        {/* Filter controls */}
+        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-secondary/30">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <Label htmlFor="hide-unknown" className="text-sm text-muted-foreground cursor-pointer">
+            Hide unknown types
+          </Label>
+          <Switch
+            id="hide-unknown"
+            checked={hideUnknown}
+            onCheckedChange={setHideUnknown}
+          />
+        </div>
       </div>
 
       <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-6">
