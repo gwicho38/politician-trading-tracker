@@ -5,7 +5,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase, supabasePublic } from '@/integrations/supabase/client';
+import { supabasePublic } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import type { Drop, FeedType, CreateDropRequest } from '@/types/drops';
 
@@ -107,49 +107,115 @@ async function createDrop(
 }
 
 /**
- * Delete a drop
+ * Delete a drop using direct fetch
  */
 async function deleteDrop(dropId: string, userId: string): Promise<void> {
-  const { error } = await supabase
-    .from('drops')
-    .delete()
-    .eq('id', dropId)
-    .eq('user_id', userId);
+  console.log('[deleteDrop] Deleting drop:', dropId, 'for user:', userId);
 
-  if (error) {
-    throw new Error(error.message || 'Failed to delete drop');
+  const accessToken = getAccessToken();
+  if (!accessToken) {
+    throw new Error('No access token found. Please sign in again.');
   }
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/drops?id=eq.${dropId}&user_id=eq.${userId}`,
+    {
+      method: 'DELETE',
+      headers: {
+        'apikey': anonKey,
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  console.log('[deleteDrop] Response status:', response.status);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    console.error('[deleteDrop] Error:', errorData);
+    throw new Error(errorData.message || 'Failed to delete drop');
+  }
+
+  console.log('[deleteDrop] Success');
 }
 
 /**
- * Like a drop
+ * Like a drop using direct fetch
  */
 async function likeDrop(dropId: string, userId: string): Promise<void> {
-  const { error } = await supabase.from('drop_likes').insert({
-    user_id: userId,
-    drop_id: dropId,
+  console.log('[likeDrop] Liking drop:', dropId);
+
+  const accessToken = getAccessToken();
+  if (!accessToken) {
+    throw new Error('No access token found. Please sign in again.');
+  }
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/drop_likes`, {
+    method: 'POST',
+    headers: {
+      'apikey': anonKey,
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      user_id: userId,
+      drop_id: dropId,
+    }),
   });
 
-  if (error) {
-    // Ignore duplicate errors (already liked)
-    if (error.code === '23505') return;
-    throw new Error(error.message || 'Failed to like drop');
+  // Ignore 409 Conflict (already liked - duplicate)
+  if (response.status === 409) {
+    console.log('[likeDrop] Already liked');
+    return;
   }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    console.error('[likeDrop] Error:', errorData);
+    throw new Error(errorData.message || 'Failed to like drop');
+  }
+
+  console.log('[likeDrop] Success');
 }
 
 /**
- * Unlike a drop
+ * Unlike a drop using direct fetch
  */
 async function unlikeDrop(dropId: string, userId: string): Promise<void> {
-  const { error } = await supabase
-    .from('drop_likes')
-    .delete()
-    .eq('user_id', userId)
-    .eq('drop_id', dropId);
+  console.log('[unlikeDrop] Unliking drop:', dropId);
 
-  if (error) {
-    throw new Error(error.message || 'Failed to unlike drop');
+  const accessToken = getAccessToken();
+  if (!accessToken) {
+    throw new Error('No access token found. Please sign in again.');
   }
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/drop_likes?user_id=eq.${userId}&drop_id=eq.${dropId}`,
+    {
+      method: 'DELETE',
+      headers: {
+        'apikey': anonKey,
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    console.error('[unlikeDrop] Error:', errorData);
+    throw new Error(errorData.message || 'Failed to unlike drop');
+  }
+
+  console.log('[unlikeDrop] Success');
 }
 
 export function useDrops(feedType: FeedType = 'live') {
@@ -197,27 +263,31 @@ export function useDrops(feedType: FeedType = 'live') {
   // Delete drop mutation with optimistic update
   const deleteMutation = useMutation({
     mutationFn: (dropId: string) => {
+      console.log('[deleteMutation] mutationFn called for dropId:', dropId);
       if (!userId) throw new Error('Must be logged in to delete');
       return deleteDrop(dropId, userId);
     },
     onMutate: async (dropId) => {
+      console.log('[deleteMutation] onMutate - optimistically removing from all feeds');
       await queryClient.cancelQueries({ queryKey: DROPS_QUERY_KEY });
 
+      // Get previous data for rollback
       const previousDrops = queryClient.getQueryData<Drop[]>([
         ...DROPS_QUERY_KEY,
         feedType,
         userId,
       ]);
 
-      // Optimistically remove the drop
-      queryClient.setQueryData<Drop[]>(
-        [...DROPS_QUERY_KEY, feedType, userId],
+      // Optimistically remove from ALL cached queries (both feeds)
+      queryClient.setQueriesData<Drop[]>(
+        { queryKey: DROPS_QUERY_KEY },
         (old) => old?.filter((d) => d.id !== dropId)
       );
 
       return { previousDrops };
     },
-    onError: (_err, _dropId, context) => {
+    onError: (err, _dropId, context) => {
+      console.error('[deleteMutation] onError:', err);
       if (context?.previousDrops) {
         queryClient.setQueryData(
           [...DROPS_QUERY_KEY, feedType, userId],
@@ -225,7 +295,11 @@ export function useDrops(feedType: FeedType = 'live') {
         );
       }
     },
+    onSuccess: () => {
+      console.log('[deleteMutation] onSuccess - delete completed');
+    },
     onSettled: () => {
+      console.log('[deleteMutation] onSettled - invalidating all drops queries');
       queryClient.invalidateQueries({ queryKey: DROPS_QUERY_KEY });
     },
   });
