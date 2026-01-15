@@ -35,7 +35,23 @@ async function fetchDrops(
 }
 
 /**
- * Create a new drop
+ * Get access token from localStorage
+ */
+function getAccessToken(): string | null {
+  try {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+    if (keys.length === 0) return null;
+    const sessionData = localStorage.getItem(keys[0]);
+    if (!sessionData) return null;
+    const parsed = JSON.parse(sessionData);
+    return parsed?.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Create a new drop using direct fetch to avoid Supabase client blocking
  */
 async function createDrop(
   content: string,
@@ -44,31 +60,50 @@ async function createDrop(
 ): Promise<Drop> {
   console.log('[createDrop] Starting insert for user:', userId);
 
-  // Check if we have an active session
-  const { data: sessionData } = await supabase.auth.getSession();
-  console.log('[createDrop] Session exists:', !!sessionData?.session);
+  const accessToken = getAccessToken();
+  console.log('[createDrop] Access token exists:', !!accessToken);
 
-  if (!sessionData?.session) {
-    throw new Error('No active session. Please sign in again.');
+  if (!accessToken) {
+    throw new Error('No access token found. Please sign in again.');
   }
 
-  const { data, error } = await supabase
-    .from('drops')
-    .insert({
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+  console.log('[createDrop] Making fetch request...');
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/drops`, {
+    method: 'POST',
+    headers: {
+      'apikey': anonKey,
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation',
+    },
+    body: JSON.stringify({
       user_id: userId,
       content: content.trim(),
       is_public: isPublic,
-    })
-    .select()
-    .single();
+    }),
+  });
 
-  console.log('[createDrop] Insert result:', { data, error });
+  console.log('[createDrop] Response status:', response.status);
 
-  if (error) {
-    throw new Error(error.message || 'Failed to create drop');
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    console.error('[createDrop] Error response:', errorData);
+
+    if (response.status === 401 || errorData.code === '42501') {
+      throw new Error('Session expired. Please sign in again.');
+    }
+    throw new Error(errorData.message || `Failed to create drop (${response.status})`);
   }
 
-  return data as Drop;
+  const data = await response.json();
+  console.log('[createDrop] Success:', data);
+
+  // Response is an array, get the first item
+  return Array.isArray(data) ? data[0] : data;
 }
 
 /**
@@ -138,12 +173,24 @@ export function useDrops(feedType: FeedType = 'live') {
   // Create drop mutation
   const createMutation = useMutation({
     mutationFn: (request: CreateDropRequest) => {
+      console.log('[useDrops mutation] mutationFn called with:', request);
+      console.log('[useDrops mutation] userId:', userId);
       if (!userId) throw new Error('Must be logged in to post');
       return createDrop(request.content, userId, request.is_public ?? true);
     },
-    onSuccess: () => {
+    onMutate: (variables) => {
+      console.log('[useDrops mutation] onMutate:', variables);
+    },
+    onSuccess: (data) => {
+      console.log('[useDrops mutation] onSuccess:', data);
       // Invalidate both feeds
       queryClient.invalidateQueries({ queryKey: DROPS_QUERY_KEY });
+    },
+    onError: (error) => {
+      console.error('[useDrops mutation] onError:', error);
+    },
+    onSettled: () => {
+      console.log('[useDrops mutation] onSettled');
     },
   });
 

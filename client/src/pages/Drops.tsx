@@ -77,18 +77,25 @@ export default function Drops() {
   };
 
   const handleCreateDrop = async (content: string) => {
+    console.log('[Drops page] handleCreateDrop called with content:', content.substring(0, 50));
+    console.log('[Drops page] isAuthenticated:', isAuthenticated);
+
     if (!isAuthenticated) {
+      console.log('[Drops page] Not authenticated, showing auth required');
       handleAuthRequired();
       return;
     }
+
     try {
+      console.log('[Drops page] Calling createDropAsync...');
       await createDropAsync({ content });
+      console.log('[Drops page] createDropAsync completed successfully');
       toast({
         title: 'Drop posted!',
         description: 'Your drop is now live.',
       });
     } catch (error) {
-      console.error('Failed to create drop:', error);
+      console.error('[Drops page] createDropAsync failed:', error);
       toast({
         title: 'Failed to post',
         description: error instanceof Error ? error.message : 'Something went wrong',
