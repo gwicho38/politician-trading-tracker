@@ -42,6 +42,16 @@ async function createDrop(
   userId: string,
   isPublic: boolean = true
 ): Promise<Drop> {
+  console.log('[createDrop] Starting insert for user:', userId);
+
+  // Check if we have an active session
+  const { data: sessionData } = await supabase.auth.getSession();
+  console.log('[createDrop] Session exists:', !!sessionData?.session);
+
+  if (!sessionData?.session) {
+    throw new Error('No active session. Please sign in again.');
+  }
+
   const { data, error } = await supabase
     .from('drops')
     .insert({
@@ -51,6 +61,8 @@ async function createDrop(
     })
     .select()
     .single();
+
+  console.log('[createDrop] Insert result:', { data, error });
 
   if (error) {
     throw new Error(error.message || 'Failed to create drop');

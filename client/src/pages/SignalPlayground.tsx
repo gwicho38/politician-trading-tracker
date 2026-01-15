@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Save, Calendar, User, LogOut, Sparkles, Code } from 'lucide-react';
+import { Save, Calendar, Sparkles, Code } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,15 +26,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { supabase } from '@/integrations/supabase/client';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
+import { useAuth } from '@/hooks/useAuth';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -66,36 +58,8 @@ export default function SignalPlayground() {
   const presetIdFromUrl = searchParams.get('preset');
   const fromShowcase = !!presetIdFromUrl;
 
-  // User auth state
-  const [user, setUser] = useState<SupabaseUser | null>(null);
-
-  useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    navigate('/');
-  };
-
-  const getDisplayName = () => {
-    if (!user) return '';
-    const walletAddress = user.user_metadata?.wallet_address;
-    if (walletAddress) {
-      return `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
-    }
-    return user.email?.split('@')[0] || 'User';
-  };
+  // User auth state - use centralized hook
+  const { user } = useAuth();
 
   // Playground state hook
   const {
@@ -118,6 +82,7 @@ export default function SignalPlayground() {
     setUserLambda,
     lambdaApplied,
     lambdaError,
+    lambdaTrace,
     applyLambda,
     comparisonData,
     isLoadingComparison,
@@ -291,35 +256,6 @@ export default function SignalPlayground() {
                 isLoading={presetsLoading}
               />
 
-              {/* User profile */}
-              {user ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="gap-2">
-                      <User className="h-4 w-4" />
-                      <span className="hidden sm:inline">{getDisplayName()}</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuItem className="text-muted-foreground text-xs">
-                      {user.email}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
-                      <LogOut className="mr-2 h-4 w-4" />
-                      Sign out
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate('/auth')}
-                >
-                  Sign In
-                </Button>
-              )}
             </div>
           </div>
         </div>
@@ -362,6 +298,7 @@ export default function SignalPlayground() {
                   onLambdaChange={setUserLambda}
                   onLambdaApply={applyLambda}
                   lambdaError={lambdaError}
+                  lambdaTrace={lambdaTrace}
                 />
               </div>
               {/* ML Insights panel */}
