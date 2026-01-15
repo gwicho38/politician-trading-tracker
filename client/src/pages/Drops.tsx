@@ -40,7 +40,7 @@ export default function Drops() {
   const {
     drops: myDrops,
     isLoading: isLoadingMyDrops,
-    createDrop,
+    createDropAsync,
     isCreating,
     deleteDrop,
     isDeleting,
@@ -76,16 +76,25 @@ export default function Drops() {
     });
   };
 
-  const handleCreateDrop = (content: string) => {
+  const handleCreateDrop = async (content: string) => {
     if (!isAuthenticated) {
       handleAuthRequired();
       return;
     }
-    createDrop({ content });
-    toast({
-      title: 'Drop posted!',
-      description: 'Your drop is now live.',
-    });
+    try {
+      await createDropAsync({ content });
+      toast({
+        title: 'Drop posted!',
+        description: 'Your drop is now live.',
+      });
+    } catch (error) {
+      console.error('Failed to create drop:', error);
+      toast({
+        title: 'Failed to post',
+        description: error instanceof Error ? error.message : 'Something went wrong',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleDeleteDrop = (dropId: string) => {
