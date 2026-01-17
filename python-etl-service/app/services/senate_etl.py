@@ -30,6 +30,8 @@ import pdfplumber
 from bs4 import BeautifulSoup
 from supabase import create_client, Client
 
+from parser import extract_ticker_from_text
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -369,10 +371,10 @@ def upload_transaction_to_supabase(
 # =============================================================================
 
 
-def extract_ticker_from_text(text: str) -> Optional[str]:
-    """Extract stock ticker from text like 'Company Name (TICKER)'."""
-    match = re.search(r"\(([A-Z]{1,5})\)", text)
-    return match.group(1) if match else None
+# def extract_ticker_from_text(text: str) -> Optional[str]:
+#     """Extract stock ticker from text like 'Company Name (TICKER)'."""
+#     match = re.search(r"\(([A-Z]{1,5})\)", text)
+#     return match.group(1) if match else None
 
 
 def parse_asset_type(text: str) -> Tuple[Optional[str], Optional[str]]:
