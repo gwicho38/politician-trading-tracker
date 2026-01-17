@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from supabase import create_client, Client
+from lib.database import get_supabase
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://uljsqvwkomdrlnofmlad.supabase.co")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
@@ -90,9 +91,7 @@ class AutoCorrector:
 
     def _get_supabase(self) -> Optional[Client]:
         """Get Supabase client."""
-        if not SUPABASE_SERVICE_KEY:
-            return None
-        return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        return get_supabase()
 
     # =========================================================================
     # Main Correction Methods

@@ -231,9 +231,6 @@ Generated: 2026-01-17
 
 | Function | Count | Candidate for Refactoring |
 |----------|-------|---------------------------|
-| `get_supabase` | 5 | ✅ High priority |
-| `get_supabase_client` | 4 | ✅ High priority |
-| `_get_supabase` | 3 | ✅ High priority |
 | `upload_transaction_to_supabase` | 2 | ✅ Medium priority |
 | `sanitize_string` | 2 | ✅ Medium priority |
 | `parse_value_range` | 2 | ✅ Medium priority |

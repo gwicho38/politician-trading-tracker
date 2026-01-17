@@ -20,6 +20,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from collections import defaultdict
+from lib.database import get_supabase
 
 from supabase import create_client, Client
 
@@ -47,9 +48,7 @@ class PoliticianDeduplicator:
 
     def _get_supabase(self) -> Client | None:
         """Get Supabase client."""
-        if not SUPABASE_SERVICE_KEY:
-            return None
-        return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        return get_supabase()
 
     def normalize_name(self, name: str) -> str:
         """
