@@ -30,7 +30,7 @@ import pdfplumber
 from bs4 import BeautifulSoup
 from supabase import create_client, Client
 
-from lib.parser import extract_ticker_from_text
+from lib.parser import extract_ticker_from_text, sanitize_string
 from lib.database import get_supabase
 
 # Setup logging
@@ -400,17 +400,6 @@ def parse_value_range(text: str) -> Dict[str, Optional[float]]:
         if re.search(pattern, text, re.IGNORECASE):
             return {"value_low": float(low), "value_high": float(high)}
     return {"value_low": None, "value_high": None}
-
-
-def sanitize_string(value: Any) -> Optional[str]:
-    """Remove null characters and other problematic unicode."""
-    if value is None:
-        return None
-    s = str(value)
-    s = s.replace("\x00", "").replace("\u0000", "")
-    s = "".join(c for c in s if c == "\n" or c == "\t" or (ord(c) >= 32 and ord(c) != 127))
-    return s.strip() if s.strip() else None
-
 
 def extract_tables_from_pdf(pdf_bytes: bytes) -> List[List[List[str]]]:
     """Extract all tables from a PDF file."""
