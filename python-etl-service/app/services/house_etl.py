@@ -19,7 +19,7 @@ import httpx
 import pdfplumber
 from supabase import create_client, Client
 
-from lib.parser import extract_ticker_from_text
+from lib.parser import extract_ticker_from_text, sanitize_string
 from lib.database import get_supabase, upload_transaction_to_supabase
 
 # Setup logging
@@ -299,18 +299,6 @@ def extract_dates_from_row(row: List[str]) -> Tuple[Optional[str], Optional[str]
             pass
 
     return None, None
-
-
-def sanitize_string(value: Any) -> Optional[str]:
-    """Remove null characters and other problematic unicode from strings."""
-    if value is None:
-        return None
-    s = str(value)
-    s = s.replace("\x00", "").replace("\u0000", "")
-    s = "".join(
-        c for c in s if c == "\n" or c == "\t" or (ord(c) >= 32 and ord(c) != 127)
-    )
-    return s.strip() if s.strip() else None
 
 
 def clean_asset_name(name: str) -> str:

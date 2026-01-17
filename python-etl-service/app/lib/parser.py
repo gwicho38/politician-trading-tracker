@@ -1,5 +1,5 @@
 import re
-from typing import Optional
+from typing import Optional, Any
 
 # def extract_ticker_from_text(text: str) -> Optional[str]:
 #     """Extract stock ticker from text like 'Company Name (TICKER) [ST]'."""
@@ -50,3 +50,15 @@ def extract_ticker_from_text(text: str) -> Optional[str]:
             return ticker
 
     return None
+
+
+def sanitize_string(value: Any) -> Optional[str]:
+    """Remove null characters and other problematic unicode from strings."""
+    if value is None:
+        return None
+    s = str(value)
+    s = s.replace("\x00", "").replace("\u0000", "")
+    s = "".join(
+        c for c in s if c == "\n" or c == "\t" or (ord(c) >= 32 and ord(c) != 127)
+    )
+    return s.strip() if s.strip() else None
