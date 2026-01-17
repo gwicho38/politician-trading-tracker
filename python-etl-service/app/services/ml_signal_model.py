@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from supabase import create_client, Client
-from lib.database import get_supabase
+from app.lib.database import get_supabase
 
 logger = logging.getLogger(__name__)
 

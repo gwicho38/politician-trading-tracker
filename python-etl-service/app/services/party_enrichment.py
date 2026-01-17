@@ -12,7 +12,7 @@ import logging
 import httpx
 from typing import Optional
 from datetime import datetime
-from lib.database import get_supabase
+from app.lib.database import get_supabase
 
 logger = logging.getLogger(__name__)
 

@@ -15,7 +15,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 
-from lib.database import get_supabase
+from app.lib.database import get_supabase
 
 router = APIRouter()
 

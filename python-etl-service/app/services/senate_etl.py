@@ -20,22 +20,24 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
-from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
-from supabase import Client as SupabaseClient
 from urllib.parse import quote
 
 import httpx
-import pdfplumber
 from bs4 import BeautifulSoup
-from supabase import create_client, Client
+from supabase import Client
 
-from lib.parser import (
-    extract_ticker_from_text, 
-    sanitize_string, 
-    parse_asset_type
+from app.lib.parser import (
+    extract_ticker_from_text,
+    sanitize_string,
+    parse_asset_type,
+    parse_value_range,
+    clean_asset_name,
+    is_header_row,
 )
-from lib.database import get_supabase
+from app.lib.database import get_supabase, upload_transaction_to_supabase
+from app.lib.pdf_utils import extract_text_from_pdf, extract_tables_from_pdf
+from app.lib.politician import find_or_create_politician
 
 # Setup logging
 logging.basicConfig(
@@ -45,7 +47,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import shared job status from house_etl
-from app.services.house_etl import JOB_STATUS, RateLimiter, VALUE_PATTERNS, ASSET_TYPE_CODES
+from app.services.house_etl import JOB_STATUS, RateLimiter
+from app.lib.parser import VALUE_PATTERNS, ASSET_TYPE_CODES
 
 # Constants
 SENATE_BASE_URL = "https://efdsearch.senate.gov"
@@ -225,181 +228,11 @@ def _upsert_senator_by_name(supabase: Client, senator: Dict[str, Any]) -> Option
     return None
 
 
-# =============================================================================
-# SUPABASE UTILITIES
-# =============================================================================
-
-
-def find_or_create_politician(
-    supabase: Client, name: str, state: Optional[str] = None
-) -> Optional[str]:
-    """Find or create a politician record, returning the ID."""
-    if not name or name == "Unknown":
-        return None
-
-    # Clean the name
-    clean_name = name.strip()
-    # Remove common prefixes
-    for prefix in ["Sen.", "Senator", "Hon.", "Honorable"]:
-        clean_name = clean_name.replace(prefix, "").strip()
-
-    # Try to find existing politician
-    try:
-        response = (
-            supabase.table("politicians")
-            .select("id")
-            .ilike("name", f"%{clean_name}%")
-            .limit(1)
-            .execute()
-        )
-
-        if response.data:
-            return response.data[0]["id"]
-
-        # Create new politician - split name into first and last
-        name_parts = clean_name.split()
-        first_name = name_parts[0] if name_parts else clean_name
-        last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
-
-        new_politician = {
-            "name": clean_name,
-            "full_name": clean_name,
-            "first_name": first_name,
-            "last_name": last_name,
-            "chamber": "senate",
-            "role": "Senator",
-            "party": None,
-            "state": state,
-        }
-
-        response = supabase.table("politicians").insert(new_politician).execute()
-        if response.data:
-            logger.info(f"Created new politician: {clean_name}")
-            return response.data[0]["id"]
-
-    except Exception as e:
-        logger.error(f"Error finding/creating politician {name}: {e}")
-
-    return None
-
-
-def clean_asset_name(raw_name: Optional[str]) -> str:
-    """Clean up asset name by removing excess whitespace and truncating."""
-    if not raw_name:
-        return "Unknown"
-
-    # Normalize whitespace (replace multiple spaces/newlines with single space)
-    import re
-    cleaned = re.sub(r'\s+', ' ', raw_name).strip()
-
-    # If still too long, try to extract just the first meaningful part
-    # (before "Company:" or "Description:" markers)
-    if len(cleaned) > 200:
-        for marker in ["Company:", "Description:"]:
-            if marker in cleaned:
-                cleaned = cleaned.split(marker)[0].strip()
-                break
-
-    # Truncate to 200 chars max (database limit)
-    return cleaned[:200] if len(cleaned) > 200 else cleaned
-
-
-def upload_transaction_to_supabase(
-    supabase: Client,
-    politician_id: str,
-    transaction: Dict[str, Any],
-    disclosure_info: Dict[str, Any],
-) -> Optional[str]:
-    """Upload a transaction to Supabase trading_disclosures table."""
-    try:
-        asset_name = clean_asset_name(transaction.get("asset_name"))
-        transaction_date = transaction.get("transaction_date")
-        source_url = disclosure_info.get("source_url")
-
-        # Check if record already exists (manual duplicate check)
-        existing = (
-            supabase.table("trading_disclosures")
-            .select("id")
-            .eq("politician_id", politician_id)
-            .eq("asset_name", asset_name)
-            .eq("transaction_date", transaction_date)
-            .eq("source_url", source_url)
-            .limit(1)
-            .execute()
-        )
-
-        if existing.data:
-            logger.debug(f"Transaction already exists: {asset_name} on {transaction_date}")
-            return existing.data[0]["id"]
-
-        # Insert new record
-        record = {
-            "politician_id": politician_id,
-            "asset_name": asset_name,
-            "asset_ticker": transaction.get("ticker"),
-            "asset_type": transaction.get("asset_type"),
-            "transaction_type": transaction.get("transaction_type", "unknown"),
-            "transaction_date": transaction_date,
-            "disclosure_date": transaction.get("notification_date") or disclosure_info.get("filing_date"),
-            "amount_range_min": transaction.get("value_low"),
-            "amount_range_max": transaction.get("value_high"),
-            "source_url": source_url,
-            "raw_data": {
-                "doc_id": disclosure_info.get("doc_id"),
-                "filing_date": disclosure_info.get("filing_date"),
-                "source": "us_senate",
-            },
-        }
-
-        response = supabase.table("trading_disclosures").insert(record).execute()
-
-        if response.data:
-            return response.data[0]["id"]
-
-    except Exception as e:
-        logger.error(f"Error uploading transaction: {e}")
-
-    return None
-
-
-# =============================================================================
-# PDF PARSING UTILITIES
-# =============================================================================
-
-
-def parse_value_range(text: str) -> Dict[str, Optional[float]]:
-    """Parse value range from text."""
-    for pattern, low, high in VALUE_PATTERNS:
-        if re.search(pattern, text, re.IGNORECASE):
-            return {"value_low": float(low), "value_high": float(high)}
-    return {"value_low": None, "value_high": None}
-
-def extract_tables_from_pdf(pdf_bytes: bytes) -> List[List[List[str]]]:
-    """Extract all tables from a PDF file."""
-    try:
-        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
-            return [table for page in pdf.pages for table in (page.extract_tables() or [])]
-    except Exception as e:
-        logger.error(f"Failed to extract tables from PDF: {e}")
-        return []
-
-
-def extract_text_from_pdf(pdf_bytes: bytes) -> Optional[str]:
-    """Extract all text from a PDF file."""
-    try:
-        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
-            text_parts = [page.extract_text() for page in pdf.pages if page.extract_text()]
-            return "\n".join(text_parts) if text_parts else None
-    except Exception as e:
-        logger.error(f"Failed to extract text from PDF: {e}")
-        return None
-
-
-def is_header_row(row_text: str) -> bool:
-    """Check if a row is a header row."""
-    text_lower = row_text.lower().strip()
-    headers = ["asset", "owner", "value", "income", "description", "transaction", "type", "date", "amount"]
-    return any(header in text_lower for header in headers)
+# Note: find_or_create_politician moved to app.lib.politician
+# Note: clean_asset_name moved to app.lib.parser
+# Note: upload_transaction_to_supabase moved to app.lib.database
+# Note: extract_tables_from_pdf, extract_text_from_pdf moved to app.lib.pdf_utils
+# Note: is_header_row moved to app.lib.parser
 
 
 def parse_transaction_from_row(row: List[str], disclosure: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -493,7 +326,7 @@ def parse_transaction_from_row(row: List[str], disclosure: Dict[str, Any]) -> Op
 
     return {
         "asset_name": asset_name,
-        "ticker": asset_ticker,
+        "asset_ticker": asset_ticker,
         "asset_type_code": asset_type_code,
         "asset_type": asset_type,
         "transaction_type": transaction_type or "unknown",
@@ -790,7 +623,7 @@ async def parse_ptr_page_playwright(
             if asset_name and asset_name not in ["--", ""]:
                 transactions.append({
                     "asset_name": sanitize_string(asset_name),
-                    "ticker": ticker,
+                    "asset_ticker": ticker,
                     "asset_type": asset_type if asset_type not in ["--", ""] else None,
                     "transaction_type": transaction_type,
                     "transaction_date": transaction_date,
@@ -883,7 +716,7 @@ async def process_disclosures_playwright(
                     politician_id = disclosure.get("politician_id")
                     if not politician_id:
                         politician_id = find_or_create_politician(
-                            supabase, disclosure.get("politician_name")
+                            supabase, name=disclosure.get("politician_name"), chamber="senate"
                         )
 
                     if not politician_id:
@@ -1156,7 +989,7 @@ async def parse_ptr_page(
             if asset_name and asset_name != "--":
                 transactions.append({
                     "asset_name": sanitize_string(asset_name),
-                    "ticker": ticker,
+                    "asset_ticker": ticker,
                     "asset_type": asset_type if asset_type != "--" else None,
                     "transaction_type": transaction_type,
                     "transaction_date": transaction_date,
@@ -1241,7 +1074,7 @@ async def process_senate_disclosure(
     politician_id = disclosure.get("politician_id")
     if not politician_id:
         politician_id = find_or_create_politician(
-            supabase, disclosure.get("politician_name")
+            supabase, name=disclosure.get("politician_name"), chamber="senate"
         )
 
     if not politician_id:

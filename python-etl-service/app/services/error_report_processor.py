@@ -18,7 +18,7 @@ from typing import Optional
 from datetime import datetime
 
 from supabase import create_client, Client
-from lib.database import get_supabase
+from app.lib.database import get_supabase
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://uljsqvwkomdrlnofmlad.supabase.co")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")

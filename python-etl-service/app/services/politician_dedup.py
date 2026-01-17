@@ -20,7 +20,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from collections import defaultdict
-from lib.database import get_supabase
+from app.lib.database import get_supabase
 
 from supabase import create_client, Client
 

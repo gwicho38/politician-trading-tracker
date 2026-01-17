@@ -17,7 +17,7 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 import httpx
-from lib.database import get_supabase
+from app.lib.database import get_supabase
 
 logger = logging.getLogger(__name__)
 

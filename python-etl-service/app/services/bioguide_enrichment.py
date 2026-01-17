@@ -13,7 +13,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-from lib.database import get_supabase
+from supabase import Client
+from app.lib.database import get_supabase
 
 from app.services.house_etl import JOB_STATUS
 

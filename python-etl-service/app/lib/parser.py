@@ -146,3 +146,153 @@ def parse_asset_type(text: str) -> Tuple[Optional[str], Optional[str]]:
         code = match.group(1)
         return code, ASSET_TYPE_CODES.get(code, code)
     return None, None
+
+
+def clean_asset_name(name: Optional[str]) -> Optional[str]:
+    """Clean asset name by removing trailing metadata and normalizing whitespace.
+
+    PDF table cells often contain multiple lines with metadata appended:
+    'Apple Inc (AAPL) [ST]\\nF S: New\\nS O: Brokerage Account'
+
+    We want just: 'Apple Inc (AAPL) [ST]'
+
+    Args:
+        name: Raw asset name from PDF
+
+    Returns:
+        Cleaned asset name, truncated to 200 chars max
+    """
+    if not name:
+        return None
+
+    # Split by newlines and process line by line
+    lines = name.split("\n")
+    clean_lines = []
+
+    for line in lines:
+        line = line.strip()
+        # Stop if we hit metadata lines
+        if re.match(r"^(F\s*S|S\s*O|Owner|Filer|Status|Type)\s*:", line, re.IGNORECASE):
+            break
+        # Skip empty lines
+        if not line:
+            continue
+        clean_lines.append(line)
+
+    result = " ".join(clean_lines).strip()
+
+    # Normalize whitespace (replace multiple spaces/newlines with single space)
+    result = re.sub(r'\s+', ' ', result).strip()
+
+    # Remove transaction data pattern that's mixed into asset name
+    # Pattern: "S 02/25/2025 02/25/2025 $1,001 - $15,000" or partial
+    result = re.sub(
+        r"\s+[PS]\s+\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}/\d{1,2}/\d{4}\s+\$[\d,]+\s*-\s*(\$[\d,]+)?",
+        "",
+        result,
+    )
+    # Also handle "(partial)" notation
+    result = re.sub(
+        r"\s+[PS]\s*\(partial\)\s+\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}/\d{1,2}/\d{4}\s+\$[\d,]+\s*-\s*(\$[\d,]+)?",
+        "",
+        result,
+        flags=re.IGNORECASE,
+    )
+
+    # Remove trailing metadata that didn't have a newline
+    result = re.sub(r"\s+(F\s*S|S\s*O)\s*:.*$", "", result, flags=re.IGNORECASE)
+
+    # If still too long, try to extract just the first meaningful part
+    if len(result) > 200:
+        for marker in ["Company:", "Description:"]:
+            if marker in result:
+                result = result.split(marker)[0].strip()
+                break
+
+    # Truncate to 200 chars max (database limit)
+    return result[:200] if result and len(result) > 200 else (result if result else None)
+
+
+def is_header_row(row_text: str) -> bool:
+    """Check if a row is a header row.
+
+    PDF tables sometimes split headers across multiple rows, e.g.:
+    Row 0: ['ID', 'Owner', 'Asset', 'Transaction', ...]
+    Row 1: ['', '', '', 'Type', ...]  ← continuation of header
+
+    We need to detect both full headers and these continuation rows.
+
+    Args:
+        row_text: Combined text from all cells in the row
+
+    Returns:
+        True if row appears to be a header row
+    """
+    text_lower = row_text.lower().strip()
+
+    # Standard header keywords
+    headers = [
+        "asset", "owner", "value", "income", "description",
+        "transaction", "notification"
+    ]
+    if any(header in text_lower for header in headers):
+        return True
+
+    # Exact match for standalone header continuation words
+    # These appear in continuation rows with mostly empty cells
+    standalone_headers = ["type", "date", "amount", "cap.", "gains"]
+    words = [w.strip() for w in text_lower.split() if w.strip()]
+    if words and all(w in standalone_headers or w.startswith("$") or w == ">" for w in words):
+        return True
+
+    return False
+
+
+def normalize_name(name: str) -> str:
+    """Normalize a politician name for comparison.
+
+    Removes:
+    - Honorifics (Hon., Representative, Senator, etc.)
+    - Suffixes (Jr., Sr., III, etc.)
+    - Extra whitespace
+    - Punctuation
+
+    Lowercases and standardizes the name.
+
+    Args:
+        name: Raw politician name
+
+    Returns:
+        Normalized lowercase name for comparison
+    """
+    if not name:
+        return ""
+
+    result = name
+
+    # Remove common prefixes (case-insensitive)
+    prefixes = [
+        r"^hon\.?\s*",
+        r"^honorable\s+",
+        r"^representative\s+",
+        r"^rep\.?\s*",
+        r"^senator\s+",
+        r"^sen\.?\s*",
+        r"^dr\.?\s*",
+        r"^mr\.?\s*",
+        r"^mrs\.?\s*",
+        r"^ms\.?\s*",
+    ]
+    for prefix in prefixes:
+        result = re.sub(prefix, "", result, flags=re.IGNORECASE)
+
+    # Remove common suffixes
+    suffixes = [" Jr.", " Jr", " Sr.", " Sr", " III", " II", " IV", " M.D.", " Ph.D."]
+    for suffix in suffixes:
+        result = result.replace(suffix, "")
+
+    # Remove punctuation and extra whitespace
+    result = re.sub(r"[.,]", "", result)
+    result = re.sub(r"\s+", " ", result)
+
+    return result.lower().strip()

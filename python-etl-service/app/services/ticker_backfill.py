@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 # Job status tracking (shared with house_etl)
 from app.services.house_etl import JOB_STATUS
-from lib.parser import extract_ticker_from_text
-from lib.database import get_supabase
+from app.lib.parser import extract_ticker_from_text
+from app.lib.database import get_supabase
 
 def extract_ticker_from_asset_name(asset_name: str) -> Optional[str]:
     """Extract ticker from asset name with common company mappings."""
