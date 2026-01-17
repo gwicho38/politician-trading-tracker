@@ -19,6 +19,8 @@ import httpx
 import pdfplumber
 from supabase import create_client, Client
 
+from parser import extract_ticker_from_text
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -136,10 +138,10 @@ ASSET_TYPE_CODES = {
 # =============================================================================
 
 
-def extract_ticker_from_text(text: str) -> Optional[str]:
-    """Extract stock ticker from text like 'Company Name (TICKER) [ST]'."""
-    match = re.search(r"\(([A-Z]{1,5})\)", text)
-    return match.group(1) if match else None
+# def extract_ticker_from_text(text: str) -> Optional[str]:
+#     """Extract stock ticker from text like 'Company Name (TICKER) [ST]'."""
+#     match = re.search(r"\(([A-Z]{1,5})\)", text)
+#     return match.group(1) if match else None
 
 
 def parse_asset_type(text: str) -> Tuple[Optional[str], Optional[str]]:
