@@ -18,6 +18,7 @@ from typing import Optional
 from datetime import datetime
 
 from supabase import create_client, Client
+from lib.database import get_supabase
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://uljsqvwkomdrlnofmlad.supabase.co")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
@@ -62,9 +63,7 @@ class ErrorReportProcessor:
 
     def _get_supabase(self) -> Optional[Client]:
         """Get Supabase client."""
-        if not SUPABASE_SERVICE_KEY:
-            return None
-        return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        return get_supabase() 
 
     def _get_ollama_client(self) -> httpx.Client:
         """Create Ollama HTTP client with auth."""
