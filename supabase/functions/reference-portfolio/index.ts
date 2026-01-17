@@ -237,10 +237,11 @@ serve(async (req) => {
 
 // =============================================================================
 // GET STATE - Public endpoint to get current portfolio state
+// Always fetches live data from Alpaca first, falls back to database
 // =============================================================================
 async function handleGetState(supabaseClient: any, requestId: string) {
   try {
-    // Get config and state together
+    // Get config and state from database
     const { data: state, error: stateError } = await supabaseClient
       .from('reference_portfolio_state')
       .select(`
@@ -257,12 +258,93 @@ async function handleGetState(supabaseClient: any, requestId: string) {
       )
     }
 
+    const initialCapital = state.config?.initial_capital || 1000000
+
+    // Always fetch live data from Alpaca first
+    const credentials = getAlpacaCredentials()
+    let alpacaData: {
+      equity: number | null
+      cash: number | null
+      buying_power: number | null
+      positions_value: number | null
+      source: 'alpaca' | 'database'
+    } = {
+      equity: null,
+      cash: null,
+      buying_power: null,
+      positions_value: null,
+      source: 'database'
+    }
+
+    if (credentials) {
+      try {
+        // Fetch account data from Alpaca
+        const accountUrl = `${credentials.baseUrl}/v2/account`
+        const accountResponse = await fetch(accountUrl, {
+          headers: {
+            'APCA-API-KEY-ID': credentials.apiKey,
+            'APCA-API-SECRET-KEY': credentials.secretKey
+          }
+        })
+
+        if (accountResponse.ok) {
+          const account = await accountResponse.json()
+          alpacaData = {
+            equity: parseFloat(account.equity),
+            cash: parseFloat(account.cash),
+            buying_power: parseFloat(account.buying_power),
+            positions_value: parseFloat(account.long_market_value) + parseFloat(account.short_market_value || 0),
+            source: 'alpaca'
+          }
+          log.info('Fetched live Alpaca data for get-state', {
+            requestId,
+            equity: alpacaData.equity,
+            cash: alpacaData.cash
+          })
+        } else {
+          log.warn('Alpaca API failed, using database values', {
+            requestId,
+            status: accountResponse.status
+          })
+        }
+      } catch (alpacaError) {
+        log.warn('Failed to fetch Alpaca data, using database values', {
+          requestId,
+          error: alpacaError.message
+        })
+      }
+    }
+
+    // Use Alpaca values if available, otherwise fall back to database
+    const portfolioValue = alpacaData.equity ?? state.portfolio_value
+    const cashValue = alpacaData.cash ?? state.cash
+    const buyingPower = alpacaData.buying_power ?? state.buying_power
+    const positionsValue = alpacaData.positions_value ?? state.positions_value
+
+    // Calculate returns based on live portfolio value
+    const totalReturn = portfolioValue - initialCapital
+    const totalReturnPct = (totalReturn / initialCapital) * 100
+
+    // Calculate current drawdown
+    const peakValue = Math.max(state.peak_portfolio_value || initialCapital, portfolioValue)
+    const currentDrawdown = ((peakValue - portfolioValue) / peakValue) * 100
+
     return new Response(
       JSON.stringify({
         success: true,
         state: {
           ...state,
-          is_market_open: isMarketOpen()
+          // Override with live Alpaca values
+          portfolio_value: portfolioValue,
+          cash: cashValue,
+          buying_power: buyingPower,
+          positions_value: positionsValue,
+          total_return: totalReturn,
+          total_return_pct: totalReturnPct,
+          current_drawdown: currentDrawdown,
+          peak_portfolio_value: peakValue,
+          is_market_open: isMarketOpen(),
+          data_source: alpacaData.source
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -278,12 +360,14 @@ async function handleGetState(supabaseClient: any, requestId: string) {
 
 // =============================================================================
 // GET POSITIONS - Public endpoint to get current open positions
+// Always fetches live position data from Alpaca first
 // =============================================================================
 async function handleGetPositions(supabaseClient: any, requestId: string, bodyParams: any) {
   try {
     const includesClosed = bodyParams.include_closed === true
     const limit = bodyParams.limit || 100
 
+    // Get database positions for historical context (entry date, signals, etc.)
     let query = supabaseClient
       .from('reference_portfolio_positions')
       .select('*')
@@ -294,21 +378,83 @@ async function handleGetPositions(supabaseClient: any, requestId: string, bodyPa
       query = query.eq('is_open', true)
     }
 
-    const { data: positions, error } = await query
+    const { data: dbPositions, error } = await query
 
     if (error) {
-      log.error('Failed to fetch positions', error, { requestId })
+      log.error('Failed to fetch positions from database', error, { requestId })
       return new Response(
         JSON.stringify({ error: 'Failed to fetch positions' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
+    // For open positions, fetch live data from Alpaca
+    let positions = dbPositions || []
+    let dataSource = 'database'
+
+    if (!includesClosed) {
+      const credentials = getAlpacaCredentials()
+      if (credentials) {
+        try {
+          const alpacaPositionsUrl = `${credentials.baseUrl}/v2/positions`
+          const alpacaResponse = await fetch(alpacaPositionsUrl, {
+            headers: {
+              'APCA-API-KEY-ID': credentials.apiKey,
+              'APCA-API-SECRET-KEY': credentials.secretKey
+            }
+          })
+
+          if (alpacaResponse.ok) {
+            const alpacaPositions = await alpacaResponse.json()
+            const alpacaPositionMap = new Map(alpacaPositions.map((p: any) => [p.symbol, p]))
+
+            // Merge Alpaca live data with database records
+            positions = positions.map((dbPos: any) => {
+              const alpacaPos = alpacaPositionMap.get(dbPos.ticker.toUpperCase())
+              if (alpacaPos) {
+                return {
+                  ...dbPos,
+                  // Override with live Alpaca values
+                  current_price: parseFloat(alpacaPos.current_price),
+                  market_value: parseFloat(alpacaPos.market_value),
+                  unrealized_pl: parseFloat(alpacaPos.unrealized_pl),
+                  unrealized_pl_pct: parseFloat(alpacaPos.unrealized_plpc) * 100,
+                  quantity: parseInt(alpacaPos.qty),
+                  avg_entry_price: parseFloat(alpacaPos.avg_entry_price),
+                  cost_basis: parseFloat(alpacaPos.cost_basis),
+                  data_source: 'alpaca'
+                }
+              }
+              return { ...dbPos, data_source: 'database' }
+            })
+
+            dataSource = 'alpaca'
+            log.info('Fetched live Alpaca positions', {
+              requestId,
+              alpacaCount: alpacaPositions.length,
+              dbCount: dbPositions?.length || 0
+            })
+          } else {
+            log.warn('Alpaca positions API failed, using database values', {
+              requestId,
+              status: alpacaResponse.status
+            })
+          }
+        } catch (alpacaError) {
+          log.warn('Failed to fetch Alpaca positions, using database values', {
+            requestId,
+            error: alpacaError.message
+          })
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
-        positions: positions || [],
-        count: positions?.length || 0
+        positions: positions,
+        count: positions.length,
+        data_source: dataSource
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
@@ -627,17 +773,19 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
       )
     }
 
-    // Get existing positions to avoid duplicates
+    // Get existing positions with full details for sell signal handling
     const { data: existingPositions } = await supabaseClient
       .from('reference_portfolio_positions')
-      .select('ticker')
+      .select('*')
       .eq('is_open', true)
 
     const existingTickers = new Set((existingPositions || []).map((p: any) => p.ticker.toUpperCase()))
+    const positionsByTicker = new Map((existingPositions || []).map((p: any) => [p.ticker.toUpperCase(), p]))
 
     let executed = 0
     let skipped = 0
     let failed = 0
+    let sellsExecuted = 0
     const results: any[] = []
 
     for (const queued of queuedSignals) {
@@ -649,24 +797,192 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
         continue
       }
 
-      // Skip if we already have a position in this ticker
-      if (existingTickers.has(signal.ticker.toUpperCase())) {
-        await updateQueueStatus(supabaseClient, queued.id, 'skipped', 'Already have position')
-        skipped++
-        continue
-      }
+      const ticker = signal.ticker.toUpperCase()
+      const isBuySignal = ['buy', 'strong_buy'].includes(signal.signal_type)
+      const isSellSignal = ['sell', 'strong_sell'].includes(signal.signal_type)
+      const hasPosition = existingTickers.has(ticker)
 
-      // Check confidence threshold
+      // Check confidence threshold for all signals
       if (signal.confidence_score < config.min_confidence_threshold) {
         await updateQueueStatus(supabaseClient, queued.id, 'skipped', 'Below confidence threshold')
         skipped++
         continue
       }
 
-      // Only process buy signals for new positions (we handle sells separately)
-      const isBuySignal = ['buy', 'strong_buy'].includes(signal.signal_type)
+      // Handle SELL signals - close existing positions
+      if (isSellSignal) {
+        if (!hasPosition) {
+          await updateQueueStatus(supabaseClient, queued.id, 'skipped', 'Sell signal but no position to close')
+          skipped++
+          continue
+        }
+
+        const position = positionsByTicker.get(ticker)
+        if (!position) {
+          await updateQueueStatus(supabaseClient, queued.id, 'skipped', 'Position not found')
+          skipped++
+          continue
+        }
+
+        try {
+          // Get current price from Alpaca
+          const quoteUrl = `${credentials.dataUrl}/v2/stocks/${ticker}/quotes/latest`
+          const quoteResponse = await fetch(quoteUrl, {
+            headers: {
+              'APCA-API-KEY-ID': credentials.apiKey,
+              'APCA-API-SECRET-KEY': credentials.secretKey
+            }
+          })
+
+          let currentPrice = position.current_price
+          if (quoteResponse.ok) {
+            const quote = await quoteResponse.json()
+            currentPrice = quote.quote?.bp || quote.quote?.ap || position.current_price
+          }
+
+          // Place sell order with Alpaca
+          const orderUrl = `${credentials.baseUrl}/v2/orders`
+          const orderRequest = {
+            symbol: ticker,
+            qty: position.quantity,
+            side: 'sell',
+            type: 'market',
+            time_in_force: 'day'
+          }
+
+          log.info('Placing sell order from signal', { requestId, ticker, shares: position.quantity, signalType: signal.signal_type })
+
+          const orderResponse = await fetch(orderUrl, {
+            method: 'POST',
+            headers: {
+              'APCA-API-KEY-ID': credentials.apiKey,
+              'APCA-API-SECRET-KEY': credentials.secretKey,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(orderRequest)
+          })
+
+          const orderResult = await orderResponse.json()
+
+          if (!orderResponse.ok) {
+            log.error('Sell order failed', { error: orderResult }, { requestId, ticker })
+            await updateQueueStatus(supabaseClient, queued.id, 'failed', orderResult.message || 'Sell order rejected')
+            failed++
+            continue
+          }
+
+          log.info('Sell order placed successfully', { requestId, orderId: orderResult.id, ticker })
+
+          // Calculate realized P&L
+          const exitValue = currentPrice * position.quantity
+          const entryValue = position.entry_price * position.quantity
+          const realizedPL = exitValue - entryValue
+          const realizedPLPct = ((currentPrice - position.entry_price) / position.entry_price) * 100
+          const isWin = realizedPL > 0
+
+          // Update position as closed
+          await supabaseClient
+            .from('reference_portfolio_positions')
+            .update({
+              is_open: false,
+              exit_price: currentPrice,
+              exit_date: new Date().toISOString(),
+              exit_signal_id: signal.id,
+              exit_reason: `signal_${signal.signal_type}`,
+              exit_order_id: orderResult.id,
+              realized_pl: realizedPL,
+              realized_pl_pct: realizedPLPct,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', position.id)
+
+          // Record the sell transaction
+          await supabaseClient
+            .from('reference_portfolio_transactions')
+            .insert({
+              position_id: position.id,
+              ticker: ticker,
+              transaction_type: 'sell',
+              quantity: position.quantity,
+              price: currentPrice,
+              total_value: exitValue,
+              signal_id: signal.id,
+              signal_confidence: signal.confidence_score,
+              signal_type: signal.signal_type,
+              executed_at: new Date().toISOString(),
+              alpaca_order_id: orderResult.id,
+              alpaca_client_order_id: orderResult.client_order_id,
+              portfolio_value_at_trade: state.portfolio_value,
+              status: 'executed'
+            })
+
+          // Update portfolio state
+          await supabaseClient
+            .from('reference_portfolio_state')
+            .update({
+              cash: state.cash + exitValue,
+              buying_power: state.buying_power + exitValue,
+              positions_value: state.positions_value - position.market_value,
+              open_positions: state.open_positions - 1,
+              trades_today: state.trades_today + 1,
+              total_trades: state.total_trades + 1,
+              winning_trades: isWin ? state.winning_trades + 1 : state.winning_trades,
+              losing_trades: !isWin ? state.losing_trades + 1 : state.losing_trades,
+              last_trade_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', state.id)
+
+          // Update local state for subsequent iterations
+          state.cash += exitValue
+          state.buying_power += exitValue
+          state.open_positions -= 1
+          state.trades_today += 1
+          if (isWin) state.winning_trades += 1
+          else state.losing_trades += 1
+
+          // Update queue status
+          await updateQueueStatus(supabaseClient, queued.id, 'executed', null, position.id)
+
+          // Remove from existing positions
+          existingTickers.delete(ticker)
+          positionsByTicker.delete(ticker)
+
+          sellsExecuted++
+          executed++
+          results.push({
+            ticker,
+            action: 'sell',
+            shares: position.quantity,
+            price: currentPrice,
+            value: exitValue,
+            realizedPL,
+            realizedPLPct: realizedPLPct.toFixed(2) + '%',
+            orderId: orderResult.id
+          })
+
+          // Small delay between orders
+          await new Promise(resolve => setTimeout(resolve, 200))
+
+        } catch (error) {
+          log.error('Error processing sell signal', error, { requestId, ticker })
+          await updateQueueStatus(supabaseClient, queued.id, 'failed', error.message)
+          failed++
+        }
+
+        continue
+      }
+
+      // Handle BUY signals - open new positions
       if (!isBuySignal) {
-        await updateQueueStatus(supabaseClient, queued.id, 'skipped', 'Not a buy signal')
+        await updateQueueStatus(supabaseClient, queued.id, 'skipped', 'Unknown signal type')
+        skipped++
+        continue
+      }
+
+      // Skip if we already have a position in this ticker
+      if (hasPosition) {
+        await updateQueueStatus(supabaseClient, queued.id, 'skipped', 'Already have position')
         skipped++
         continue
       }
@@ -844,13 +1160,13 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
       }
     }
 
-    log.info('Signal execution completed', { requestId, executed, skipped, failed })
+    log.info('Signal execution completed', { requestId, executed, skipped, failed, sellsExecuted })
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Executed ${executed} trades, skipped ${skipped}, failed ${failed}`,
-        summary: { executed, skipped, failed },
+        message: `Executed ${executed} trades (${sellsExecuted} sells), skipped ${skipped}, failed ${failed}`,
+        summary: { executed, skipped, failed, sellsExecuted },
         results
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -951,9 +1267,28 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
     // Try to update from Alpaca if credentials available
     const credentials = getAlpacaCredentials()
     let alpacaSyncSuccess = false
+    let alpacaEquity: number | null = null
+    let alpacaCash: number | null = null
 
     if (credentials) {
       try {
+        // First, get account info to get the actual equity and cash
+        const alpacaAccountUrl = `${credentials.baseUrl}/v2/account`
+        const accountResponse = await fetch(alpacaAccountUrl, {
+          headers: {
+            'APCA-API-KEY-ID': credentials.apiKey,
+            'APCA-API-SECRET-KEY': credentials.secretKey
+          }
+        })
+
+        if (accountResponse.ok) {
+          const accountData = await accountResponse.json()
+          alpacaEquity = parseFloat(accountData.equity)
+          alpacaCash = parseFloat(accountData.cash)
+          log.info('Alpaca account fetched', { requestId, equity: alpacaEquity, cash: alpacaCash })
+        }
+
+        // Then get positions
         const alpacaPositionsUrl = `${credentials.baseUrl}/v2/positions`
         const alpacaResponse = await fetch(alpacaPositionsUrl, {
           headers: {
@@ -1021,7 +1356,9 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
       .single()
 
     if (state) {
-      const portfolioValue = state.cash + totalPositionsValue
+      // Use Alpaca equity as source of truth if available, otherwise calculate from DB
+      const portfolioValue = alpacaEquity !== null ? alpacaEquity : (state.cash + totalPositionsValue)
+      const cashValue = alpacaCash !== null ? alpacaCash : state.cash
       const totalReturn = portfolioValue - initialCapital
       const totalReturnPct = (totalReturn / initialCapital) * 100
 
@@ -1045,11 +1382,20 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
       const dayReturn = portfolioValue - previousValue
       const dayReturnPct = (dayReturn / previousValue) * 100
 
+      log.info('Updating portfolio state', {
+        requestId,
+        portfolioValue,
+        cashValue,
+        positionsValue: totalPositionsValue,
+        alpacaEquityUsed: alpacaEquity !== null
+      })
+
       await supabaseClient
         .from('reference_portfolio_state')
         .update({
           positions_value: totalPositionsValue,
           portfolio_value: portfolioValue,
+          cash: cashValue, // Also update cash from Alpaca
           total_return: totalReturn,
           total_return_pct: totalReturnPct,
           day_return: Math.round(dayReturn * 100) / 100,
@@ -1143,9 +1489,26 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
 
     // Try to update from Alpaca if credentials available
     const credentials = getAlpacaCredentials()
+    let alpacaEquity: number | null = null
+    let alpacaCash: number | null = null
 
     if (credentials) {
       try {
+        // First, get account info to get the actual equity and cash
+        const alpacaAccountUrl = `${credentials.baseUrl}/v2/account`
+        const accountResponse = await fetch(alpacaAccountUrl, {
+          headers: {
+            'APCA-API-KEY-ID': credentials.apiKey,
+            'APCA-API-SECRET-KEY': credentials.secretKey
+          }
+        })
+
+        if (accountResponse.ok) {
+          const accountData = await accountResponse.json()
+          alpacaEquity = parseFloat(accountData.equity)
+          alpacaCash = parseFloat(accountData.cash)
+        }
+
         const alpacaPositionsUrl = `${credentials.baseUrl}/v2/positions`
         const alpacaResponse = await fetch(alpacaPositionsUrl, {
           headers: {
@@ -1210,7 +1573,9 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
       .single()
 
     if (state) {
-      const portfolioValue = state.cash + totalPositionsValue
+      // Use Alpaca equity as source of truth if available
+      const portfolioValue = alpacaEquity !== null ? alpacaEquity : (state.cash + totalPositionsValue)
+      const cashValue = alpacaCash !== null ? alpacaCash : state.cash
       const totalReturn = portfolioValue - initialCapital
       const totalReturnPct = (totalReturn / initialCapital) * 100
 
@@ -1238,6 +1603,7 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
         .update({
           positions_value: totalPositionsValue,
           portfolio_value: portfolioValue,
+          cash: cashValue, // Also update cash from Alpaca
           total_return: totalReturn,
           total_return_pct: totalReturnPct,
           day_return: Math.round(dayReturn * 100) / 100,
@@ -1475,7 +1841,23 @@ async function handleTakeSnapshot(supabaseClient: any, requestId: string) {
 // =============================================================================
 async function handleResetDailyTrades(supabaseClient: any, requestId: string) {
   try {
-    await supabaseClient
+    // Get the current state ID first
+    const { data: currentState } = await supabaseClient
+      .from('reference_portfolio_state')
+      .select('id, trades_today')
+      .single()
+
+    if (!currentState) {
+      log.warn('No portfolio state found to reset', { requestId })
+      return new Response(
+        JSON.stringify({ success: false, message: 'No portfolio state found' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    log.info('Resetting daily trades', { requestId, currentTradesToday: currentState.trades_today, stateId: currentState.id })
+
+    const { error: updateError, count } = await supabaseClient
       .from('reference_portfolio_state')
       .update({
         trades_today: 0,
@@ -1483,8 +1865,17 @@ async function handleResetDailyTrades(supabaseClient: any, requestId: string) {
         day_return_pct: 0,
         updated_at: new Date().toISOString()
       })
+      .eq('id', currentState.id)
 
-    log.info('Daily trades reset', { requestId })
+    if (updateError) {
+      log.error('Failed to reset daily trades', updateError, { requestId })
+      return new Response(
+        JSON.stringify({ success: false, error: updateError.message }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    log.info('Daily trades reset successfully', { requestId, previousTradesToday: currentState.trades_today })
 
     return new Response(
       JSON.stringify({ success: true, message: 'Daily trades reset' }),

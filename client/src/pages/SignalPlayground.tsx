@@ -42,6 +42,7 @@ import {
   MLInsights,
 } from '@/components/signal-playground';
 import { SidebarLayout } from '@/components/layouts/SidebarLayout';
+import { ApplyStrategyButton } from '@/components/strategy-follow';
 
 const LOOKBACK_OPTIONS = [
   { value: '30', label: 'Last 30 days' },
@@ -256,6 +257,14 @@ export default function SignalPlayground() {
                 isLoading={presetsLoading}
               />
 
+              {/* Apply current weights as strategy */}
+              <ApplyStrategyButton
+                strategyType="custom"
+                customWeights={weights}
+                variant="default"
+                size="sm"
+                showBadge={false}
+              />
             </div>
           </div>
         </div>

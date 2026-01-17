@@ -54,9 +54,11 @@ import type {
   PreviewSignal,
   PreviewStats,
   SignalType,
+  ExecutionTrace,
 } from '@/types/signal-playground';
 import { LambdaComparison } from './LambdaComparison';
 import { LambdaEditor } from './LambdaEditor';
+import { LambdaTrace } from './LambdaTrace';
 
 interface ComparisonData {
   comparisons: Array<{
@@ -88,6 +90,7 @@ interface SignalPreviewProps {
   onLambdaChange?: (code: string) => void;
   onLambdaApply?: () => void;
   lambdaError?: string | null;
+  lambdaTrace?: ExecutionTrace | null;
 }
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
@@ -893,6 +896,7 @@ export function SignalPreview({
   onLambdaChange,
   onLambdaApply,
   lambdaError,
+  lambdaTrace,
 }: SignalPreviewProps) {
   // State for selected signal type in distribution chart
   const [selectedSignalType, setSelectedSignalType] = useState<SignalType | null>(null);
@@ -1005,16 +1009,25 @@ export function SignalPreview({
           </Card>
         </TabsContent>
 
-        <TabsContent value="transform" className="mt-4 flex-1">
+        <TabsContent value="transform" className="mt-4 flex-1 space-y-4">
           {onLambdaChange && onLambdaApply ? (
-            <LambdaEditor
-              value={userLambda || ''}
-              onChange={onLambdaChange}
-              onApply={onLambdaApply}
-              error={lambdaError}
-              isLoading={isUpdating}
-              lambdaApplied={lambdaApplied}
-            />
+            <>
+              <LambdaEditor
+                value={userLambda || ''}
+                onChange={onLambdaChange}
+                onApply={onLambdaApply}
+                error={lambdaError}
+                isLoading={isUpdating}
+                lambdaApplied={lambdaApplied}
+              />
+              {/* Execution trace - shows console output, stats, and sample transformations */}
+              {lambdaApplied && (
+                <LambdaTrace
+                  trace={lambdaTrace}
+                  isLoading={isUpdating}
+                />
+              )}
+            </>
           ) : (
             <Card>
               <CardContent className="flex items-center justify-center h-48 text-muted-foreground">

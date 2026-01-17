@@ -1,6 +1,21 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+
+/**
+ * Get access token from localStorage
+ */
+function getAccessToken(): string | null {
+  try {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+    if (keys.length === 0) return null;
+    const sessionData = localStorage.getItem(keys[0]);
+    if (!sessionData) return null;
+    const parsed = JSON.parse(sessionData);
+    return parsed?.access_token || null;
+  } catch {
+    return null;
+  }
+}
 
 interface AlpacaAccount {
   portfolio_value: number;
@@ -33,17 +48,30 @@ export function useAlpacaAccount(tradingMode: 'paper' | 'live') {
     queryFn: async (): Promise<AlpacaAccount | null> => {
       if (!user) return null;
 
-      const { data, error } = await supabase.functions.invoke<AccountResponse>('alpaca-account', {
-        body: {
+      const accessToken = getAccessToken();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/alpaca-account`, {
+        method: 'POST',
+        headers: {
+          'apikey': anonKey,
+          'Authorization': `Bearer ${accessToken || anonKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           action: 'get-account',
           tradingMode,
-        },
+        }),
       });
 
-      if (error) {
-        console.error('Error fetching account:', error);
-        throw new Error(error.message);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Error fetching account:', errorData);
+        throw new Error(errorData.message || 'Failed to fetch account');
       }
+
+      const data: AccountResponse = await response.json();
 
       if (!data?.success) {
         // If credentials not configured, return null (not an error)

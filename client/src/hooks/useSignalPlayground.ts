@@ -6,7 +6,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useDebounce } from './useDebounce';
-import { supabasePublic as supabase } from '@/integrations/supabase/client';
 import {
   DEFAULT_WEIGHTS,
   presetToWeights,
@@ -21,7 +20,7 @@ import type {
 const DEBOUNCE_DELAY = 500; // ms
 
 /**
- * Fetch preview signals from the edge function
+ * Fetch preview signals from the edge function using direct fetch
  */
 async function fetchPreviewSignals(
   weights: SignalWeights,
@@ -29,21 +28,30 @@ async function fetchPreviewSignals(
   useML: boolean = false,
   userLambda?: string
 ): Promise<PreviewResponse> {
-  // Use path-based routing: trading-signals/preview-signals
-  const { data, error } = await supabase.functions.invoke('trading-signals/preview-signals', {
-    body: {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/trading-signals/preview-signals`, {
+    method: 'POST',
+    headers: {
+      'apikey': anonKey,
+      'Authorization': `Bearer ${anonKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
       weights,
       lookbackDays,
       useML,
       userLambda: userLambda?.trim() || undefined,
-    },
+    }),
   });
 
-  if (error) {
-    throw new Error(error.message || 'Failed to fetch preview signals');
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to fetch preview signals');
   }
 
-  return data as PreviewResponse;
+  return response.json();
 }
 
 interface UseSignalPlaygroundOptions {
@@ -171,6 +179,7 @@ export function useSignalPlayground(options: UseSignalPlaygroundOptions = {}) {
   // Lambda status from response
   const lambdaApplied = previewData?.lambdaApplied || false;
   const lambdaError = previewData?.lambdaError || null;
+  const lambdaTrace = previewData?.lambdaTrace || null;
 
   // Compute comparison data when lambda is applied
   const comparisonData = useMemo(() => {
@@ -277,6 +286,7 @@ export function useSignalPlayground(options: UseSignalPlaygroundOptions = {}) {
     setUserLambda,
     lambdaApplied,
     lambdaError,
+    lambdaTrace,
     applyLambda,
     comparisonData,
     isLoadingComparison: isLoadingBase,

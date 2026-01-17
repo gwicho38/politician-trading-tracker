@@ -15,7 +15,22 @@ import {
   Zap,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { supabase } from '@/integrations/supabase/client';
+
+/**
+ * Get access token from localStorage
+ */
+function getAccessToken(): string | null {
+  try {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+    if (keys.length === 0) return null;
+    const sessionData = localStorage.getItem(keys[0]);
+    if (!sessionData) return null;
+    const parsed = JSON.parse(sessionData);
+    return parsed?.access_token || null;
+  } catch {
+    return null;
+  }
+}
 
 interface ConnectionStatusResponse {
   success: boolean;
@@ -68,16 +83,19 @@ export function AlpacaConnectionStatus({ tradingMode }: AlpacaConnectionStatusPr
   const { data: connectionStatus, isLoading, error, refetch } = useQuery<ConnectionStatusResponse>({
     queryKey: ['alpaca-connection-status', tradingMode],
     queryFn: async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated');
+      const accessToken = getAccessToken();
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      if (!accessToken) throw new Error('Not authenticated');
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/alpaca-account`,
         {
           method: 'POST',
           headers: {
+            'apikey': anonKey,
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
+            'Authorization': `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             action: 'connection-status',
@@ -98,16 +116,19 @@ export function AlpacaConnectionStatus({ tradingMode }: AlpacaConnectionStatusPr
   // Health check mutation
   const healthCheckMutation = useMutation({
     mutationFn: async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated');
+      const accessToken = getAccessToken();
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      if (!accessToken) throw new Error('Not authenticated');
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/alpaca-account`,
         {
           method: 'POST',
           headers: {
+            'apikey': anonKey,
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
+            'Authorization': `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             action: 'health-check',

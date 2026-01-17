@@ -3,7 +3,7 @@
  * Displays a strategy preset in the showcase grid
  */
 
-import { Clock, Play, User as UserIcon, Code } from 'lucide-react';
+import { Clock, Play, User as UserIcon, Code, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { LikeButton } from './LikeButton';
+import { ApplyStrategyButton } from '@/components/strategy-follow';
 import type { ShowcaseStrategy } from '@/types/signal-playground';
 
 interface StrategyCardProps {
@@ -21,8 +22,10 @@ interface StrategyCardProps {
   isAuthenticated: boolean;
   isCurrentUser: boolean;
   onToggleLike: () => void;
+  onDelete?: () => void;
   onAuthRequired?: () => void;
   isLikeLoading?: boolean;
+  isDeleteLoading?: boolean;
 }
 
 /**
@@ -69,8 +72,10 @@ export function StrategyCard({
   isAuthenticated,
   isCurrentUser,
   onToggleLike,
+  onDelete,
   onAuthRequired,
   isLikeLoading,
+  isDeleteLoading,
 }: StrategyCardProps) {
   const navigate = useNavigate();
 
@@ -158,14 +163,36 @@ export function StrategyCard({
         </div>
 
         {isCurrentUser ? (
-          <Button size="sm" variant="outline" onClick={handleEdit}>
-            Edit
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={handleEdit}>
+              Edit
+            </Button>
+            {onDelete && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={onDelete}
+                disabled={isDeleteLoading}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         ) : (
-          <Button size="sm" onClick={handleTryInPlayground}>
-            <Play className="h-4 w-4 mr-1" />
-            Try
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={handleTryInPlayground}>
+              <Play className="h-4 w-4 mr-1" />
+              Try
+            </Button>
+            <ApplyStrategyButton
+              strategyType="preset"
+              presetId={strategy.id}
+              presetName={strategy.name}
+              size="sm"
+              showBadge={false}
+            />
+          </div>
         )}
       </CardFooter>
     </Card>

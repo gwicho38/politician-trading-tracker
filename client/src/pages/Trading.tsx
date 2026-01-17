@@ -14,6 +14,7 @@ import { AlpacaConnectionStatus } from '@/components/trading/AlpacaConnectionSta
 import { AccountDashboard } from '@/components/trading/AccountDashboard';
 import { PositionsTable } from '@/components/trading/PositionsTable';
 import { OrderHistory } from '@/components/trading/OrderHistory';
+import { FollowingSettingsCard } from '@/components/strategy-follow';
 
 const Trading = () => {
   const { user, loading: authLoading, authReady } = useAuth();
@@ -141,6 +142,11 @@ const Trading = () => {
               {/* Connection Status (shown when connected) */}
               {connected && (
                 <AlpacaConnectionStatus tradingMode={tradingMode} />
+              )}
+
+              {/* Strategy Following (shown when connected) */}
+              {connected && (
+                <FollowingSettingsCard tradingMode={tradingMode} />
               )}
 
               {/* Account Dashboard */}

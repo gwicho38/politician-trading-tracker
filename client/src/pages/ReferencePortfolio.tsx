@@ -11,6 +11,7 @@ import {
 } from '@/components/reference-portfolio';
 import { useReferencePortfolioState, useMarketStatus } from '@/hooks/useReferencePortfolio';
 import { SidebarLayout } from '@/components/layouts/SidebarLayout';
+import { ApplyStrategyButton, FollowingStatusBadge } from '@/components/strategy-follow';
 
 export default function ReferencePortfolio() {
   const { data: state } = useReferencePortfolioState();
@@ -85,6 +86,14 @@ export default function ReferencePortfolio() {
                   Updated {lastSyncTime}
                 </div>
               )}
+
+              {/* Following Status or Apply Button */}
+              <FollowingStatusBadge />
+              <ApplyStrategyButton
+                strategyType="reference"
+                variant="default"
+                size="sm"
+              />
             </div>
           </div>
         </div>

@@ -15,6 +15,7 @@ from app.services.sandbox import (
     apply_lambda_to_signals,
     LambdaValidationError,
     LambdaExecutionError,
+    ExecutionTrace,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,12 +55,30 @@ class ApplyLambdaRequest(BaseModel):
     )
 
 
+class SampleTransformation(BaseModel):
+    """Sample before/after transformation for observability."""
+    ticker: str
+    before: Dict[str, Any]
+    after: Dict[str, Any]
+
+
+class ExecutionTraceResponse(BaseModel):
+    """Execution trace for observability."""
+    console_output: List[str] = Field(default_factory=list)
+    execution_time_ms: float = 0
+    signals_processed: int = 0
+    signals_modified: int = 0
+    errors: List[Dict[str, Any]] = Field(default_factory=list)
+    sample_transformations: List[SampleTransformation] = Field(default_factory=list)
+
+
 class ApplyLambdaResponse(BaseModel):
     """Response from lambda application."""
     success: bool
     signals: List[Dict[str, Any]]
     errors: List[Dict[str, Any]] = Field(default_factory=list)
     message: Optional[str] = None
+    trace: Optional[ExecutionTraceResponse] = None
 
 
 class ValidateLambdaRequest(BaseModel):
@@ -111,27 +130,43 @@ async def apply_lambda(request: ApplyLambdaRequest):
         return ApplyLambdaResponse(
             success=True,
             signals=[],
-            message="No signals provided"
+            message="No signals provided",
+            trace=ExecutionTraceResponse()
         )
 
     if not request.lambdaCode or not request.lambdaCode.strip():
         return ApplyLambdaResponse(
             success=True,
             signals=request.signals,
-            message="Empty lambda code, returning original signals"
+            message="Empty lambda code, returning original signals",
+            trace=ExecutionTraceResponse(signals_processed=len(request.signals))
         )
 
     try:
-        # Apply the lambda to all signals
-        transformed_signals = apply_lambda_to_signals(
+        # Apply the lambda to all signals with trace collection
+        transformed_signals, trace = apply_lambda_to_signals(
             request.signals,
-            request.lambdaCode
+            request.lambdaCode,
+            collect_trace=True
+        )
+
+        # Convert trace to response format
+        trace_response = ExecutionTraceResponse(
+            console_output=trace.console_output,
+            execution_time_ms=round(trace.execution_time_ms, 2),
+            signals_processed=trace.signals_processed,
+            signals_modified=trace.signals_modified,
+            errors=trace.errors,
+            sample_transformations=[
+                SampleTransformation(**t) for t in trace.sample_transformations
+            ]
         )
 
         return ApplyLambdaResponse(
             success=True,
             signals=transformed_signals,
-            message=f"Lambda applied to {len(transformed_signals)} signals"
+            message=f"Lambda applied: {trace.signals_modified}/{trace.signals_processed} signals modified",
+            trace=trace_response
         )
 
     except LambdaValidationError as e:

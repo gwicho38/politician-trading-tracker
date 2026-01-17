@@ -18,7 +18,6 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/hooks/useAuth';
-import NotificationBell from '@/components/NotificationBell';
 import { HeaderSyncStatus } from '@/components/SyncStatus';
 import { GlobalSearch } from '@/components/GlobalSearch';
 

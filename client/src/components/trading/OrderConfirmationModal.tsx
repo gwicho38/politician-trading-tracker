@@ -12,8 +12,23 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+
+/**
+ * Get access token from localStorage
+ */
+function getAccessToken(): string | null {
+  try {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+    if (keys.length === 0) return null;
+    const sessionData = localStorage.getItem(keys[0]);
+    if (!sessionData) return null;
+    const parsed = JSON.parse(sessionData);
+    return parsed?.access_token || null;
+  } catch {
+    return null;
+  }
+}
 
 interface OrderRequest {
   ticker: string;
@@ -64,18 +79,31 @@ export function OrderConfirmationModal({
     setIsSubmitting(true);
 
     try {
+      const accessToken = getAccessToken();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
       // Call the orders edge function
-      const { data, error } = await supabase.functions.invoke('orders', {
-        body: {
+      const response = await fetch(`${supabaseUrl}/functions/v1/orders`, {
+        method: 'POST',
+        headers: {
+          'apikey': anonKey,
+          'Authorization': `Bearer ${accessToken || anonKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           action: 'place-orders',
           orders,
           tradingMode,
-        },
+        }),
       });
 
-      if (error) {
-        throw new Error(error.message);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to place orders');
       }
+
+      const data = await response.json();
 
       if (data.success) {
         toast.success(data.message || 'Orders placed successfully');

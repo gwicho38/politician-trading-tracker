@@ -1898,14 +1898,28 @@ function blendSignals(
   }
 }
 
+// Lambda execution result with trace
+interface LambdaResult {
+  signals: any[]
+  trace: {
+    console_output: string[]
+    execution_time_ms: number
+    signals_processed: number
+    signals_modified: number
+    errors: any[]
+    sample_transformations: any[]
+  } | null
+  error: string | null
+}
+
 // Apply user lambda to signals via Python service
 async function applyUserLambda(
   signals: any[],
   lambdaCode: string,
   requestId: string
-): Promise<any[]> {
+): Promise<LambdaResult> {
   if (!lambdaCode || !lambdaCode.trim() || signals.length === 0) {
-    return signals
+    return { signals, trace: null, error: null }
   }
 
   try {
@@ -1933,7 +1947,7 @@ async function applyUserLambda(
         status: response.status,
         error: errorData.detail || 'Unknown error'
       })
-      return signals // Return original on failure
+      return { signals, trace: null, error: errorData.detail || 'Lambda execution failed' }
     }
 
     const data = await response.json()
@@ -1941,19 +1955,25 @@ async function applyUserLambda(
     if (data.success && Array.isArray(data.signals)) {
       log.info('User lambda applied successfully', {
         requestId,
-        transformedCount: data.signals.length
+        transformedCount: data.signals.length,
+        hasTrace: !!data.trace
       })
-      return data.signals
+      return {
+        signals: data.signals,
+        trace: data.trace || null,
+        error: null
+      }
     }
 
-    return signals
+    return { signals, trace: null, error: 'Unexpected response format' }
   } catch (error) {
     if (error.name === 'AbortError') {
       log.warn('Lambda application timed out', { requestId })
+      return { signals, trace: null, error: 'Lambda execution timed out' }
     } else {
       log.warn('Lambda application error', { requestId, error: error.message })
+      return { signals, trace: null, error: error.message }
     }
-    return signals // Return original on error
   }
 }
 
@@ -2259,13 +2279,15 @@ async function handlePreviewSignals(supabaseClient: any, req: Request, requestId
     // Apply user lambda if provided
     let lambdaApplied = false
     let lambdaError: string | null = null
+    let lambdaTrace: LambdaResult['trace'] = null
     if (userLambda && userLambda.trim()) {
       log.info('Applying user lambda to preview signals', { requestId, signalCount: topSignals.length })
-      try {
-        topSignals = await applyUserLambda(topSignals, userLambda, requestId)
-        lambdaApplied = true
-      } catch (e) {
-        lambdaError = e.message || 'Lambda execution failed'
+      const lambdaResult = await applyUserLambda(topSignals, userLambda, requestId)
+      topSignals = lambdaResult.signals
+      lambdaTrace = lambdaResult.trace
+      lambdaError = lambdaResult.error
+      lambdaApplied = !lambdaError
+      if (lambdaError) {
         log.warn('User lambda failed', { requestId, error: lambdaError })
       }
     }
@@ -2288,6 +2310,7 @@ async function handlePreviewSignals(supabaseClient: any, req: Request, requestId
         weights,
         lambdaApplied,
         lambdaError,
+        lambdaTrace,
         stats: {
           totalDisclosures: disclosures.length,
           uniqueTickers: Object.keys(tickerData).length,

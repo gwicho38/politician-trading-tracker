@@ -10,10 +10,55 @@ import copy
 import logging
 import math
 import threading
+import time
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ExecutionTrace:
+    """Captures execution details for observability."""
+    console_output: List[str] = field(default_factory=list)
+    execution_time_ms: float = 0
+    signals_processed: int = 0
+    signals_modified: int = 0
+    errors: List[Dict[str, Any]] = field(default_factory=list)
+    sample_transformations: List[Dict[str, Any]] = field(default_factory=list)
+
+
+class CapturedPrint:
+    """Captures print() output for observability."""
+
+    def __init__(self, max_lines: int = 100, max_chars_per_line: int = 500):
+        self.output: List[str] = []
+        self.max_lines = max_lines
+        self.max_chars_per_line = max_chars_per_line
+
+    def __call__(self, *args, **kwargs):
+        """Callable that captures print output."""
+        if len(self.output) >= self.max_lines:
+            return  # Silently drop after limit
+
+        # Convert args to string like print() does
+        sep = kwargs.get('sep', ' ')
+        end = kwargs.get('end', '\n')
+        line = sep.join(str(arg) for arg in args)
+
+        # Truncate long lines
+        if len(line) > self.max_chars_per_line:
+            line = line[:self.max_chars_per_line] + '...[truncated]'
+
+        # Handle newlines in end
+        if end and end != '\n':
+            line += end.rstrip('\n')
+
+        self.output.append(line)
+
+    def get_output(self) -> List[str]:
+        return self.output.copy()
 
 
 class LambdaValidationError(Exception):
@@ -265,6 +310,7 @@ class SignalLambdaSandbox:
         self,
         compiled_data: Dict[str, Any],
         signal: Dict[str, Any],
+        captured_print: Optional[CapturedPrint] = None,
     ) -> Dict[str, Any]:
         """Execute compiled lambda on a signal dictionary."""
         compiled_code = compiled_data['code']
@@ -273,9 +319,18 @@ class SignalLambdaSandbox:
         # Create a deep copy of the signal to prevent modifications to original
         signal_copy = copy.deepcopy(signal)
 
-        # Create restricted globals
+        # Create captured print if not provided
+        if captured_print is None:
+            captured_print = CapturedPrint()
+
+        # Create restricted globals with print capture
+        builtins_with_print = {
+            **self.SAFE_BUILTINS,
+            'print': captured_print,  # Capture print output
+        }
+
         restricted_globals = {
-            '__builtins__': self.SAFE_BUILTINS,
+            '__builtins__': builtins_with_print,
             'math': self._create_safe_math_module(),
             'Decimal': Decimal,
             **guards,  # Add RestrictedPython guards if available
@@ -326,21 +381,37 @@ class SignalLambdaSandbox:
         return result
 
 
+def _signal_was_modified(original: Dict[str, Any], modified: Dict[str, Any]) -> bool:
+    """Check if a signal was modified by comparing key fields."""
+    fields_to_check = ['confidence_score', 'signal_type', 'signal_strength']
+    for field in fields_to_check:
+        if original.get(field) != modified.get(field):
+            return True
+    return False
+
+
 def apply_lambda_to_signals(
     signals: List[Dict[str, Any]],
     lambda_code: str,
-) -> List[Dict[str, Any]]:
+    collect_trace: bool = True,
+) -> tuple[List[Dict[str, Any]], ExecutionTrace]:
     """
     Apply a user lambda to a list of signals.
 
     Args:
         signals: List of signal dictionaries
         lambda_code: User-provided Python code
+        collect_trace: Whether to collect execution trace for observability
 
     Returns:
-        List of transformed signals (or original on error)
+        Tuple of (transformed signals list, execution trace)
     """
     sandbox = SignalLambdaSandbox()
+    trace = ExecutionTrace()
+    start_time = time.time()
+
+    # Shared print capture across all signals
+    captured_print = CapturedPrint()
 
     try:
         compiled = sandbox.compile_lambda(lambda_code)
@@ -349,20 +420,49 @@ def apply_lambda_to_signals(
         raise
 
     results = []
-    errors = []
+    modified_count = 0
+    max_sample_transformations = 3  # Show up to 3 examples
 
     for i, signal in enumerate(signals):
         try:
-            modified = sandbox.execute(compiled, signal)
+            modified = sandbox.execute(compiled, signal, captured_print)
             # Preserve original ticker even if lambda tries to change it
             modified['ticker'] = signal.get('ticker', modified.get('ticker'))
             results.append(modified)
+
+            # Track if signal was modified
+            was_modified = _signal_was_modified(signal, modified)
+            if was_modified:
+                modified_count += 1
+
+                # Collect sample transformations for observability
+                if collect_trace and len(trace.sample_transformations) < max_sample_transformations:
+                    trace.sample_transformations.append({
+                        'ticker': signal.get('ticker'),
+                        'before': {
+                            'signal_type': signal.get('signal_type'),
+                            'confidence_score': signal.get('confidence_score'),
+                            'signal_strength': signal.get('signal_strength'),
+                        },
+                        'after': {
+                            'signal_type': modified.get('signal_type'),
+                            'confidence_score': modified.get('confidence_score'),
+                            'signal_strength': modified.get('signal_strength'),
+                        },
+                    })
+
         except LambdaExecutionError as e:
             logger.warning(f"Lambda execution failed for signal {i} ({signal.get('ticker')}): {e}")
-            errors.append({'index': i, 'ticker': signal.get('ticker'), 'error': str(e)})
+            trace.errors.append({'index': i, 'ticker': signal.get('ticker'), 'error': str(e)})
             results.append(signal)  # Keep original on error
 
-    if errors:
-        logger.info(f"Lambda applied with {len(errors)} errors out of {len(signals)} signals")
+    # Finalize trace
+    trace.execution_time_ms = (time.time() - start_time) * 1000
+    trace.signals_processed = len(signals)
+    trace.signals_modified = modified_count
+    trace.console_output = captured_print.get_output()
 
-    return results
+    if trace.errors:
+        logger.info(f"Lambda applied with {len(trace.errors)} errors out of {len(signals)} signals")
+
+    return results, trace
