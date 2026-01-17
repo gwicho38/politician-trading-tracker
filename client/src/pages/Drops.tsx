@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useDrops } from '@/hooks/useDrops';
 import { useDropsRealtime } from '@/hooks/useDropsRealtime';
 import { useStrategyShowcase } from '@/hooks/useStrategyShowcase';
+import { useSignalPresets } from '@/hooks/useSignalPresets';
 import { DropComposer, DropFeed } from '@/components/drops';
 import { StrategyCard } from '@/components/showcase';
 import { SidebarLayout } from '@/components/layouts/SidebarLayout';
@@ -56,7 +57,14 @@ export default function Drops() {
     toggleLike: toggleLikeStrategy,
     isLiking: isLikingStrategy,
     isUnliking: isUnlikingStrategy,
+    refetch: refetchStrategies,
   } = useStrategyShowcase('recent');
+
+  // Presets for delete functionality
+  const {
+    deletePreset,
+    isDeleting: isDeletingStrategy,
+  } = useSignalPresets();
 
   // Filter to user's own strategies
   const myStrategies = strategies.filter((s) => s.user_id === userId);
@@ -109,6 +117,25 @@ export default function Drops() {
     toast({
       title: 'Drop deleted',
       description: 'Your drop has been removed.',
+    });
+  };
+
+  const handleDeleteStrategy = (strategyId: string) => {
+    deletePreset(strategyId, {
+      onSuccess: () => {
+        toast({
+          title: 'Strategy deleted',
+          description: 'Your strategy has been removed.',
+        });
+        refetchStrategies();
+      },
+      onError: (error: Error) => {
+        toast({
+          title: 'Failed to delete',
+          description: error.message || 'Something went wrong',
+          variant: 'destructive',
+        });
+      },
     });
   };
 
@@ -242,8 +269,10 @@ export default function Drops() {
                         onToggleLike={() =>
                           toggleLikeStrategy(strategy.id, strategy.user_has_liked)
                         }
+                        onDelete={() => handleDeleteStrategy(strategy.id)}
                         onAuthRequired={handleAuthRequired}
                         isLikeLoading={isLikingStrategy || isUnlikingStrategy}
+                        isDeleteLoading={isDeletingStrategy}
                       />
                     ))}
                   </div>

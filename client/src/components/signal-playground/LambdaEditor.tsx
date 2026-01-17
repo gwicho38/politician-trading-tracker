@@ -55,14 +55,20 @@ const DEFAULT_LAMBDA = `# ======================================================
 #   - Other fields are read-only
 #
 # AVAILABLE: signal (dict), math module, Decimal, len, abs, min, max, round
+#            print() - use print() to see output in the console below!
 # ============================================================================
+
+# Use print() to see what's happening - output appears in Console Output below
+print(f"Processing {signal['ticker']}: {signal['signal_type']} @ {signal['confidence_score']:.0%}")
 
 # Example: Boost confidence for high buy/sell ratio
 if signal.get('buy_sell_ratio', 0) > 3.0:
+    print(f"  -> Boosting {signal['ticker']} (high buy/sell ratio)")
     signal['confidence_score'] = min(signal['confidence_score'] + 0.05, 0.99)
 
 # Example: Penalize low politician count
 if signal.get('politician_activity_count', 0) < 3:
+    print(f"  -> Penalizing {signal['ticker']} (low politician count)")
     signal['confidence_score'] = signal['confidence_score'] * 0.9
 
 result = signal

@@ -112,6 +112,35 @@ export interface PreviewStats {
 }
 
 /**
+ * Sample transformation for observability
+ */
+export interface SampleTransformation {
+  ticker: string;
+  before: {
+    signal_type: string;
+    confidence_score: number;
+    signal_strength?: string;
+  };
+  after: {
+    signal_type: string;
+    confidence_score: number;
+    signal_strength?: string;
+  };
+}
+
+/**
+ * Execution trace for lambda observability
+ */
+export interface ExecutionTrace {
+  console_output: string[];
+  execution_time_ms: number;
+  signals_processed: number;
+  signals_modified: number;
+  errors: Array<{ index: number; ticker: string; error: string }>;
+  sample_transformations: SampleTransformation[];
+}
+
+/**
  * API response from preview-signals endpoint
  */
 export interface PreviewResponse {
@@ -124,6 +153,7 @@ export interface PreviewResponse {
   // Lambda application status
   lambdaApplied?: boolean;
   lambdaError?: string | null;
+  lambdaTrace?: ExecutionTrace | null;
 }
 
 /**

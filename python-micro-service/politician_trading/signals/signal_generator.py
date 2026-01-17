@@ -47,7 +47,6 @@ from decimal import Decimal
 from typing import Dict, List, Any, Optional
 from uuid import uuid4
 import hashlib
-import json
 import logging
 import pickle
 
@@ -208,6 +207,8 @@ class SignalGenerator:
         target_price, stop_loss, take_profit = self._calculate_price_targets(
             ticker, signal_type, market_data
         )
+
+
 
         # Create signal object
         now_utc = datetime.now(timezone.utc)

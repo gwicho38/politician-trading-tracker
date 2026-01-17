@@ -10,3 +10,4 @@ export { MLInsights } from './MLInsights';
 export { LambdaEditor } from './LambdaEditor';
 export { LambdaTemplates } from './LambdaTemplates';
 export { LambdaComparison } from './LambdaComparison';
+export { LambdaTrace } from './LambdaTrace';

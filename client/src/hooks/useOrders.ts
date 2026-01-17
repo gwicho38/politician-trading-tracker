@@ -1,7 +1,38 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
+
+/**
+ * Get access token from localStorage
+ */
+function getAccessToken(): string | null {
+  try {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+    if (keys.length === 0) return null;
+    const sessionData = localStorage.getItem(keys[0]);
+    if (!sessionData) return null;
+    const parsed = JSON.parse(sessionData);
+    return parsed?.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get user email from localStorage
+ */
+function getUserEmail(): string | null {
+  try {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+    if (keys.length === 0) return null;
+    const sessionData = localStorage.getItem(keys[0]);
+    if (!sessionData) return null;
+    const parsed = JSON.parse(sessionData);
+    return parsed?.user?.email || null;
+  } catch {
+    return null;
+  }
+}
 
 export interface Order {
   id: string;
@@ -56,21 +87,32 @@ export function useOrders(
   return useQuery({
     queryKey: ['orders', tradingMode, status, limit, offset, user?.email],
     queryFn: async (): Promise<OrdersResponse> => {
-      const { data, error } = await supabase.functions.invoke('orders', {
-        body: {
+      const accessToken = getAccessToken();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/orders`, {
+        method: 'POST',
+        headers: {
+          'apikey': anonKey,
+          'Authorization': `Bearer ${accessToken || anonKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           action: 'get-orders',
           trading_mode: tradingMode,
           status,
           limit,
           offset,
-        },
+        }),
       });
 
-      if (error) {
-        throw new Error(error.message);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to fetch orders');
       }
 
-      return data;
+      return response.json();
     },
     // Only run when auth is fully ready (not just localStorage hydrated)
     enabled: !!user && authReady,
@@ -84,20 +126,31 @@ export function useSyncOrders(tradingMode: 'paper' | 'live') {
 
   return useMutation({
     mutationFn: async (): Promise<SyncResponse> => {
-      const { data, error } = await supabase.functions.invoke('orders', {
-        body: {
+      const accessToken = getAccessToken();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/orders`, {
+        method: 'POST',
+        headers: {
+          'apikey': anonKey,
+          'Authorization': `Bearer ${accessToken || anonKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           action: 'sync-orders',
           tradingMode,
           status: 'all',
           limit: 100,
-        },
+        }),
       });
 
-      if (error) {
-        throw new Error(error.message);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to sync orders');
       }
 
-      return data;
+      return response.json();
     },
     onSuccess: () => {
       // Invalidate orders query to refetch with new data
@@ -120,17 +173,30 @@ export function usePlaceOrder(tradingMode: 'paper' | 'live') {
 
   return useMutation({
     mutationFn: async (params: PlaceOrderParams): Promise<{ success: boolean; order?: any; error?: string }> => {
-      const { data, error } = await supabase.functions.invoke('orders', {
-        body: {
+      const accessToken = getAccessToken();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/orders`, {
+        method: 'POST',
+        headers: {
+          'apikey': anonKey,
+          'Authorization': `Bearer ${accessToken || anonKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           action: 'place-order',
           tradingMode,
           ...params,
-        },
+        }),
       });
 
-      if (error) {
-        throw new Error(error.message);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to place order');
       }
+
+      const data = await response.json();
 
       if (!data.success) {
         throw new Error(data.error || 'Failed to place order');
@@ -151,18 +217,28 @@ export function useCancelOrder(tradingMode: 'paper' | 'live') {
 
   return useMutation({
     mutationFn: async (orderId: string): Promise<{ success: boolean; message: string }> => {
-      // Get the user's Alpaca credentials
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user?.email) {
+      const accessToken = getAccessToken();
+      const userEmail = getUserEmail();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      if (!userEmail || !accessToken) {
         throw new Error('User not authenticated');
       }
 
       // Get credentials from user_api_keys
-      const { data: credentials } = await supabase
-        .from('user_api_keys')
-        .select('paper_api_key, paper_secret_key, live_api_key, live_secret_key')
-        .eq('user_email', user.email)
-        .maybeSingle();
+      const credResponse = await fetch(
+        `${supabaseUrl}/rest/v1/user_api_keys?user_email=eq.${encodeURIComponent(userEmail)}&select=paper_api_key,paper_secret_key,live_api_key,live_secret_key`,
+        {
+          headers: {
+            'apikey': anonKey,
+            'Authorization': `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      const credData = await credResponse.json();
+      const credentials = credData.length > 0 ? credData[0] : null;
 
       if (!credentials) {
         throw new Error('No Alpaca credentials found');
@@ -194,10 +270,18 @@ export function useCancelOrder(tradingMode: 'paper' | 'live') {
       }
 
       // Update local database
-      await supabase
-        .from('trading_orders')
-        .update({ status: 'canceled', canceled_at: new Date().toISOString() })
-        .eq('alpaca_order_id', orderId);
+      await fetch(
+        `${supabaseUrl}/rest/v1/trading_orders?alpaca_order_id=eq.${orderId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': anonKey,
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ status: 'canceled', canceled_at: new Date().toISOString() }),
+        }
+      );
 
       return { success: true, message: 'Order canceled successfully' };
     },

@@ -115,6 +115,65 @@ serve(async (req) => {
       logger.info(fn, `update-politician-parties ${partyResult.success ? 'completed' : 'failed'}`, { requestId })
     }
 
+    // Sync strategy followers (if market is open, the function will check)
+    logger.info(fn, 'Step 4: Running strategy-follow sync-all-active...', { requestId })
+    try {
+      const strategyFollowResult = await fetch(`${supabaseUrl}/functions/v1/strategy-follow`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceRoleKey}`,
+          'apikey': serviceRoleKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ action: 'sync-all-active' })
+      })
+      const strategyFollowData = await strategyFollowResult.json()
+      results.strategyFollow = { success: strategyFollowResult.ok, data: strategyFollowData }
+      logger.info(fn, `strategy-follow ${strategyFollowResult.ok ? 'completed' : 'failed'}`, { requestId, data: strategyFollowData })
+    } catch (strategyError) {
+      results.strategyFollow = { success: false, error: strategyError.message }
+      logger.warn(fn, `strategy-follow failed: ${strategyError.message}`, { requestId })
+    }
+
+    // Reference Portfolio: Update positions and check for stop-loss/take-profit exits
+    logger.info(fn, 'Step 5: Running reference-portfolio update-positions...', { requestId })
+    try {
+      const updatePosResult = await fetch(`${supabaseUrl}/functions/v1/reference-portfolio`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceRoleKey}`,
+          'apikey': serviceRoleKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ action: 'update-positions' })
+      })
+      const updatePosData = await updatePosResult.json()
+      results.referenceUpdatePositions = { success: updatePosResult.ok, data: updatePosData }
+      logger.info(fn, `reference-portfolio update-positions ${updatePosResult.ok ? 'completed' : 'failed'}`, { requestId })
+    } catch (refError) {
+      results.referenceUpdatePositions = { success: false, error: refError.message }
+      logger.warn(fn, `reference-portfolio update-positions failed: ${refError.message}`, { requestId })
+    }
+
+    logger.info(fn, 'Step 6: Running reference-portfolio check-exits...', { requestId })
+    try {
+      const checkExitsResult = await fetch(`${supabaseUrl}/functions/v1/reference-portfolio`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceRoleKey}`,
+          'apikey': serviceRoleKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ action: 'check-exits' })
+      })
+      const checkExitsData = await checkExitsResult.json()
+      results.referenceCheckExits = { success: checkExitsResult.ok, data: checkExitsData }
+      logger.info(fn, `reference-portfolio check-exits ${checkExitsResult.ok ? 'completed' : 'failed'}`, { requestId, data: checkExitsData })
+    } catch (refError) {
+      results.referenceCheckExits = { success: false, error: refError.message }
+      logger.warn(fn, `reference-portfolio check-exits failed: ${refError.message}`, { requestId })
+    }
+
     const duration = Date.now() - startTime
     logger.info(fn, `Scheduled sync completed`, { requestId, duration: `${duration}ms`, mode })
 

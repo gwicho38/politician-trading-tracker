@@ -243,6 +243,14 @@ export const useTradingDisclosures = (options: {
         .order(sortField, { ascending: sortDirection === 'asc' })
         .range(offset, offset + limit - 1);
 
+      // Filter out unknown transaction types by default (unless explicitly filtering by type)
+      if (!transactionType) {
+        query = query.not('transaction_type', 'in', '(unknown,Unknown)');
+      }
+
+      // Filter out entries without disclosed amounts (both min and max are null)
+      query = query.or('amount_range_min.not.is.null,amount_range_max.not.is.null');
+
       if (ticker) {
         query = query.ilike('asset_ticker', `%${ticker}%`);
       }
