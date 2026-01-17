@@ -3,7 +3,7 @@ import logging
 from typing import Optional
 from supabase import create_client, Client
 from typing import Any, Dict, List, Optional, Tuple
-from lib.parser import sanitize_string
+from app.lib.parser import sanitize_string
 logger = logging.getLogger(__name__)
 
 def get_supabase() -> Optional[Client]:

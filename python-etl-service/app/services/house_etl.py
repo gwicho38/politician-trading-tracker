@@ -12,20 +12,22 @@ import os
 import re
 import zipfile
 from datetime import datetime
-from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-import pdfplumber
-from supabase import create_client, Client
+from supabase import Client
 
-from lib.parser import (
-    extract_ticker_from_text, 
-    sanitize_string, 
-    parse_value_range, 
-    parse_asset_type
+from app.lib.parser import (
+    extract_ticker_from_text,
+    sanitize_string,
+    parse_value_range,
+    parse_asset_type,
+    clean_asset_name,
+    is_header_row,
 )
-from lib.database import get_supabase, upload_transaction_to_supabase
+from app.lib.database import get_supabase, upload_transaction_to_supabase
+from app.lib.pdf_utils import extract_text_from_pdf, extract_tables_from_pdf
+from app.lib.politician import find_or_create_politician
 
 # Setup logging
 logging.basicConfig(
@@ -217,105 +219,11 @@ def extract_dates_from_row(row: List[str]) -> Tuple[Optional[str], Optional[str]
     return None, None
 
 
-def clean_asset_name(name: str) -> str:
-    """Clean asset name by removing trailing metadata like F S:, S O:, etc.
-
-    PDF table cells often contain multiple lines with metadata appended:
-    'Apple Inc (AAPL) [ST]\nF S: New\nS O: Brokerage Account'
-
-    We want just: 'Apple Inc (AAPL) [ST]'
-    """
-    if not name:
-        return name
-
-    # Split by newlines and process line by line
-    lines = name.split("\n")
-    clean_lines = []
-
-    for line in lines:
-        line = line.strip()
-        # Stop if we hit metadata lines
-        if re.match(r"^(F\s*S|S\s*O|Owner|Filer|Status|Type)\s*:", line, re.IGNORECASE):
-            break
-        # Skip empty lines
-        if not line:
-            continue
-        clean_lines.append(line)
-
-    result = " ".join(clean_lines).strip()
-
-    # Remove transaction data pattern that's mixed into asset name
-    # Pattern: "S 02/25/2025 02/25/2025 $1,001 - $15,000" or partial like "P 01/17/2025 02/04/2025 $15,001 -"
-    # The second amount may be missing due to newlines in the PDF
-    result = re.sub(
-        r"\s+[PS]\s+\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}/\d{1,2}/\d{4}\s+\$[\d,]+\s*-\s*(\$[\d,]+)?",
-        "",
-        result,
-    )
-    # Also handle "(partial)" notation like "S (partial) 01/08/2025..."
-    result = re.sub(
-        r"\s+[PS]\s*\(partial\)\s+\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}/\d{1,2}/\d{4}\s+\$[\d,]+\s*-\s*(\$[\d,]+)?",
-        "",
-        result,
-        flags=re.IGNORECASE,
-    )
-
-    # Also remove any trailing metadata that didn't have a newline
-    # e.g., "Stock Name [ST] F S: New" -> "Stock Name [ST]"
-    result = re.sub(r"\s+(F\s*S|S\s*O)\s*:.*$", "", result, flags=re.IGNORECASE)
-
-    return result if result else None
+# Note: clean_asset_name moved to app.lib.parser
 
 
-def extract_text_from_pdf(pdf_bytes: bytes) -> Optional[str]:
-    """Extract all text from a PDF file."""
-    try:
-        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
-            text_parts = [
-                page.extract_text() for page in pdf.pages if page.extract_text()
-            ]
-            return "\n".join(text_parts) if text_parts else None
-    except Exception as e:
-        logger.error(f"Failed to extract text from PDF: {e}")
-        return None
-
-
-def extract_tables_from_pdf(pdf_bytes: bytes) -> List[List[List[str]]]:
-    """Extract all tables from a PDF file."""
-    try:
-        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
-            return [
-                table for page in pdf.pages for table in (page.extract_tables() or [])
-            ]
-    except Exception as e:
-        logger.error(f"Failed to extract tables from PDF: {e}")
-        return []
-
-
-def is_header_row(row_text: str) -> bool:
-    """Check if a row is a header row.
-
-    PDF tables sometimes split headers across multiple rows, e.g.:
-    Row 0: ['ID', 'Owner', 'Asset', 'Transaction', ...]
-    Row 1: ['', '', '', 'Type', ...]  ← continuation of header
-
-    We need to detect both full headers and these continuation rows.
-    """
-    text_lower = row_text.lower().strip()
-
-    # Standard header keywords
-    headers = ["asset", "owner", "value", "income", "description", "transaction", "notification"]
-    if any(header in text_lower for header in headers):
-        return True
-
-    # Exact match for standalone header continuation words
-    # These appear in continuation rows with mostly empty cells
-    standalone_headers = ["type", "date", "amount", "cap.", "gains"]
-    words = [w.strip() for w in text_lower.split() if w.strip()]
-    if words and all(w in standalone_headers or w.startswith("$") or w == ">" for w in words):
-        return True
-
-    return False
+# Note: extract_text_from_pdf, extract_tables_from_pdf moved to app.lib.pdf_utils
+# Note: is_header_row moved to app.lib.parser
 
 
 def is_metadata_row(text: str) -> bool:
@@ -665,60 +573,7 @@ class HouseDisclosureScraper:
         return disclosures
 
 
-# =============================================================================
-# SUPABASE UPLOAD
-# =============================================================================
-
-
-
-def find_or_create_politician(
-    supabase_client: Client, disclosure: Dict[str, Any]
-) -> Optional[str]:
-    """Find existing politician or create a new one."""
-    first_name = disclosure.get("first_name", "").strip()
-    last_name = disclosure.get("last_name", "").strip()
-    full_name = disclosure.get("politician_name", f"{first_name} {last_name}").strip()
-
-    state_district = disclosure.get("state_district", "")
-    state = state_district[:2] if len(state_district) >= 2 else None
-
-    # Try to find existing politician
-    try:
-        response = (
-            supabase_client.table("politicians")
-            .select("id")
-            .match(
-                {"first_name": first_name, "last_name": last_name, "role": "Representative"}
-            )
-            .execute()
-        )
-
-        if response.data and len(response.data) > 0:
-            logger.debug(f"Found existing politician: {full_name}")
-            return response.data[0]["id"]
-    except Exception as e:
-        logger.debug(f"Error finding politician: {e}")
-
-    # Create new politician
-    try:
-        politician_data = {
-            "first_name": first_name,
-            "last_name": last_name,
-            "full_name": full_name,
-            "role": "Representative",
-            "state_or_country": state,
-            "district": state_district,
-        }
-
-        response = supabase_client.table("politicians").insert(politician_data).execute()
-
-        if response.data and len(response.data) > 0:
-            logger.info(f"Created new politician: {full_name}")
-            return response.data[0]["id"]
-    except Exception as e:
-        logger.error(f"Error creating politician {full_name}: {e}")
-
-    return None
+# Note: find_or_create_politician moved to app.lib.politician
 
 
 # =============================================================================
@@ -847,7 +702,7 @@ async def run_house_etl(
                 if cache_key in politician_cache:
                     politician_id = politician_cache[cache_key]
                 else:
-                    politician_id = find_or_create_politician(supabase_client, disclosure)
+                    politician_id = find_or_create_politician(supabase_client, disclosure=disclosure)
                     if politician_id:
                         politician_cache[cache_key] = politician_id
                         politicians_created += 1
