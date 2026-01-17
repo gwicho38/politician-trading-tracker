@@ -109,6 +109,10 @@ export interface ReferencePortfolioTransaction {
   status: string;
   error_message: string | null;
   created_at: string;
+  // Sell-specific fields
+  exit_reason: string | null;
+  realized_pl: number | null;
+  realized_pl_pct: number | null;
 }
 
 export interface ReferencePortfolioSnapshot {

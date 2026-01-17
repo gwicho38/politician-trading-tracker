@@ -136,19 +136,48 @@ export function TradeHistoryTable({ limit = 20 }: TradeHistoryTableProps) {
                         {formatCurrency(trade.total_value)}
                       </TableCell>
                       <TableCell className="text-right">
-                        {trade.signal_confidence ? (
+                        {isBuy ? (
+                          // Show signal info for buys
+                          trade.signal_confidence ? (
+                            <div className="flex flex-col items-end">
+                              <Badge variant="outline" className="text-xs">
+                                {(trade.signal_confidence * 100).toFixed(0)}%
+                              </Badge>
+                              {trade.signal_type && (
+                                <span className="text-[10px] text-muted-foreground mt-0.5">
+                                  {trade.signal_type.replace('_', ' ')}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )
+                        ) : (
+                          // Show exit reason and P/L for sells
                           <div className="flex flex-col items-end">
-                            <Badge variant="outline" className="text-xs">
-                              {(trade.signal_confidence * 100).toFixed(0)}%
-                            </Badge>
-                            {trade.signal_type && (
-                              <span className="text-[10px] text-muted-foreground mt-0.5">
-                                {trade.signal_type.replace('_', ' ')}
+                            {trade.exit_reason && (
+                              <Badge
+                                variant="outline"
+                                className={`text-xs ${
+                                  trade.exit_reason === 'take_profit'
+                                    ? 'border-success text-success'
+                                    : trade.exit_reason === 'stop_loss'
+                                    ? 'border-destructive text-destructive'
+                                    : ''
+                                }`}
+                              >
+                                {trade.exit_reason.replace('_', ' ')}
+                              </Badge>
+                            )}
+                            {trade.realized_pl !== null && (
+                              <span className={`text-[10px] mt-0.5 ${
+                                trade.realized_pl >= 0 ? 'text-success' : 'text-destructive'
+                              }`}>
+                                {trade.realized_pl >= 0 ? '+' : ''}
+                                {formatCurrency(trade.realized_pl)}
                               </span>
                             )}
                           </div>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
                       <TableCell>
