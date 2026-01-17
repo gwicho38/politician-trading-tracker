@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-from supabase import create_client, Client
+from lib.database import get_supabase
 
 from app.services.house_etl import JOB_STATUS
 
@@ -27,17 +27,6 @@ logger = logging.getLogger(__name__)
 # Congress.gov API configuration
 CONGRESS_API_URL = "https://api.congress.gov/v3"
 CONGRESS_API_KEY = os.environ.get("CONGRESS_API_KEY")
-
-
-def get_supabase_client() -> Client:
-    """Create Supabase client from environment variables."""
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not url or not key:
-        raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
-
-    return create_client(url, key)
 
 
 def normalize_name(name: str) -> str:
@@ -278,7 +267,7 @@ async def run_bioguide_enrichment(
     try:
         # Get Supabase client
         try:
-            supabase = get_supabase_client()
+            supabase = get_supabase()
         except ValueError as e:
             JOB_STATUS[job_id]["status"] = "failed"
             JOB_STATUS[job_id]["message"] = str(e)

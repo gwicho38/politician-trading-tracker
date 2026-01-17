@@ -15,17 +15,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 
-from supabase import create_client, Client
+from lib.database import get_supabase
 
 router = APIRouter()
-
-def get_supabase() -> Optional[Client]:
-    """Get Supabase client."""
-    supabase_url = os.getenv("SUPABASE_URL", "https://uljsqvwkomdrlnofmlad.supabase.co")
-    supabase_key = os.getenv("SUPABASE_SERVICE_KEY", "")
-    if not supabase_key:
-        return None
-    return create_client(supabase_url, supabase_key)
 
 
 def get_polygon_api_key() -> str:
