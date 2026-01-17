@@ -19,7 +19,8 @@ import httpx
 import pdfplumber
 from supabase import create_client, Client
 
-from parser import extract_ticker_from_text
+from lib.parser import extract_ticker_from_text
+from lib.database import get_supabase
 
 # Setup logging
 logging.basicConfig(
@@ -765,16 +766,6 @@ class HouseDisclosureScraper:
 # =============================================================================
 
 
-def get_supabase_client() -> Client:
-    """Create Supabase client from environment variables."""
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not url or not key:
-        raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
-
-    return create_client(url, key)
-
 
 def find_or_create_politician(
     supabase_client: Client, disclosure: Dict[str, Any]
@@ -965,7 +956,7 @@ async def run_house_etl(
     try:
         # Initialize Supabase client
         try:
-            supabase_client = get_supabase_client()
+            supabase_client = get_supabase()
         except ValueError as e:
             JOB_STATUS[job_id]["status"] = "failed"
             JOB_STATUS[job_id]["message"] = str(e)

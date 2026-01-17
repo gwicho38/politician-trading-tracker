@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from supabase import create_client, Client
+from lib.database import get_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +53,6 @@ SIGNAL_LABELS = {
     1: 'buy',
     2: 'strong_buy',
 }
-
-
-def get_supabase() -> Client:
-    """Get Supabase client."""
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 def ensure_storage_bucket_exists(supabase: Client) -> bool:

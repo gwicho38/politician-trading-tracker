@@ -17,7 +17,7 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 import httpx
-from supabase import create_client, Client
+from lib.database import get_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +35,6 @@ LABEL_THRESHOLDS = {
     'sell': -0.02,         # -2% to -5% return
     'strong_sell': -0.05,  # < -5% return
 }
-
-
-def get_supabase() -> Client:
-    """Get Supabase client."""
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 def generate_label(forward_return_7d: float) -> int:

@@ -18,7 +18,7 @@ import logging
 import httpx
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from supabase import create_client, Client
+from lib.database import get_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +32,6 @@ SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 # Rate limiting
 REQUEST_DELAY = 0.5  # seconds between Ollama requests
 BATCH_SIZE = 50
-
-
-def get_supabase() -> Client:
-    """Get Supabase client."""
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 async def extract_politician_name_with_ollama(

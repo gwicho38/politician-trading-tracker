@@ -14,65 +14,8 @@ logger = logging.getLogger(__name__)
 
 # Job status tracking (shared with house_etl)
 from app.services.house_etl import JOB_STATUS
-from parser import extract_ticker_from_text
-
-
-def get_supabase_client() -> Client:
-    """Get Supabase client from environment variables."""
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not url or not key:
-        raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
-
-    return create_client(url, key)
-
-
-# def extract_ticker_from_text(text: str) -> Optional[str]:
-#     """
-#     Extract stock ticker from various text formats.
-
-#     Handles formats like:
-#     - "Apple Inc. (AAPL)"
-#     - "AAPL - Apple Inc."
-#     - "Microsoft Corporation - MSFT"
-#     - "TSLA"
-#     """
-#     if not text or not isinstance(text, str):
-#         return None
-
-#     text = text.strip()
-
-#     # Pattern 1: Ticker in parentheses (most common)
-#     match = re.search(r"\(([A-Z]{1,5})\)", text)
-#     if match:
-#         return match.group(1)
-
-#     # Pattern 2: Ticker after dash or hyphen
-#     match = re.search(r"[-–]\s*([A-Z]{1,5})(?:\s|$)", text)
-#     if match:
-#         return match.group(1)
-
-#     # Pattern 3: Ticker before dash
-#     match = re.search(r"^([A-Z]{1,5})\s*[-–]", text)
-#     if match:
-#         return match.group(1)
-
-#     # Pattern 4: Just a ticker (2-5 uppercase letters) - be careful
-#     match = re.search(r"\b([A-Z]{2,5})\b", text)
-#     if match:
-#         ticker = match.group(1)
-#         # Exclude common false positives
-#         excluded = {
-#             "INC", "LLC", "LTD", "CORP", "CO", "THE", "AND", "OR",
-#             "ETF", "FUND", "LP", "NA", "US", "USA", "NEW", "OLD",
-#             "PLC", "ADR", "ADS", "COMMON", "STOCK", "CLASS",
-#         }
-#         if ticker not in excluded:
-#             return ticker
-
-#     return None
-
+from lib.parser import extract_ticker_from_text
+from lib.database import get_supabase
 
 def extract_ticker_from_asset_name(asset_name: str) -> Optional[str]:
     """Extract ticker from asset name with common company mappings."""
@@ -179,7 +122,7 @@ async def run_ticker_backfill(job_id: str, limit: Optional[int] = None):
     JOB_STATUS[job_id]["message"] = "Initializing..."
 
     try:
-        supabase = get_supabase_client()
+        supabase = get_supabase()
         logger.info("Connected to Supabase")
 
         # Query disclosures with null or empty tickers
@@ -325,7 +268,7 @@ async def run_transaction_type_backfill(job_id: str, limit: Optional[int] = None
     JOB_STATUS[job_id]["message"] = "Initializing..."
 
     try:
-        supabase = get_supabase_client()
+        supabase = get_supabase()
         logger.info("Connected to Supabase")
 
         # Query disclosures with 'unknown' transaction_type

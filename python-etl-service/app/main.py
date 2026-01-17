@@ -5,7 +5,6 @@ FastAPI service that extracts real disclosure data from government PDFs
 and uploads to Supabase.
 """
 
-import os
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 

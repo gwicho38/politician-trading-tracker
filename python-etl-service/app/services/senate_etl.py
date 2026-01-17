@@ -30,7 +30,8 @@ import pdfplumber
 from bs4 import BeautifulSoup
 from supabase import create_client, Client
 
-from parser import extract_ticker_from_text
+from lib.parser import extract_ticker_from_text
+from lib.database import get_supabase
 
 # Setup logging
 logging.basicConfig(
@@ -223,15 +224,6 @@ def _upsert_senator_by_name(supabase: Client, senator: Dict[str, Any]) -> Option
 # =============================================================================
 # SUPABASE UTILITIES
 # =============================================================================
-
-
-def get_supabase_client() -> Client:
-    """Get authenticated Supabase client."""
-    url = os.getenv("SUPABASE_URL", "https://uljsqvwkomdrlnofmlad.supabase.co")
-    key = os.getenv("SUPABASE_SERVICE_KEY", "")
-    if not key:
-        raise ValueError("SUPABASE_SERVICE_KEY not configured")
-    return create_client(url, key)
 
 
 def find_or_create_politician(
@@ -1341,7 +1333,7 @@ async def run_senate_etl(
 
     try:
         # Get Supabase client
-        supabase = get_supabase_client()
+        supabase = get_supabase()
 
         # Step 1: Fetch senators from XML
         senators = await fetch_senators_from_xml()
