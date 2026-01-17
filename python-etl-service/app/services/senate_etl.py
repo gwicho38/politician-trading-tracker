@@ -30,7 +30,11 @@ import pdfplumber
 from bs4 import BeautifulSoup
 from supabase import create_client, Client
 
-from lib.parser import extract_ticker_from_text, sanitize_string
+from lib.parser import (
+    extract_ticker_from_text, 
+    sanitize_string, 
+    parse_asset_type
+)
 from lib.database import get_supabase
 
 # Setup logging
@@ -361,37 +365,6 @@ def upload_transaction_to_supabase(
 # =============================================================================
 # PDF PARSING UTILITIES
 # =============================================================================
-
-
-# def extract_ticker_from_text(text: str) -> Optional[str]:
-#     """Extract stock ticker from text like 'Company Name (TICKER)'."""
-#     match = re.search(r"\(([A-Z]{1,5})\)", text)
-#     return match.group(1) if match else None
-
-
-def parse_asset_type(text: str) -> Tuple[Optional[str], Optional[str]]:
-    """Parse asset type from Senate disclosure format."""
-    # Senate often uses full words instead of codes
-    text_lower = text.lower()
-
-    if "stock" in text_lower or "equity" in text_lower:
-        return "ST", "Stocks"
-    elif "option" in text_lower:
-        return "OP", "Stock Options"
-    elif "mutual fund" in text_lower or "etf" in text_lower:
-        return "MF", "Mutual Funds"
-    elif "bond" in text_lower:
-        return "BN", "Bonds"
-    elif "treasury" in text_lower or "government" in text_lower:
-        return "GS", "Government Securities"
-
-    # Also check for bracketed codes like House
-    match = re.search(r"\[([A-Z]{2})\]", text)
-    if match:
-        code = match.group(1)
-        return code, ASSET_TYPE_CODES.get(code, code)
-
-    return None, None
 
 
 def parse_value_range(text: str) -> Dict[str, Optional[float]]:
