@@ -16,14 +16,14 @@ from app.services.house_etl import (
     HouseDisclosureScraper,
     extract_tables_from_pdf,
     parse_transaction_from_row,
-    get_supabase_client,
+    get_supabase,
     find_or_create_politician,
     upload_transaction_to_supabase,
 )
 from app.services.senate_etl import (
     run_senate_etl,
     fetch_senators_from_xml,
-    get_supabase_client as get_senate_supabase_client,
+    get_supabase as get_senate_supabase_client,
 )
 from app.services.ticker_backfill import run_ticker_backfill, run_transaction_type_backfill
 from app.services.bioguide_enrichment import run_bioguide_enrichment
@@ -385,7 +385,7 @@ async def ingest_single_url(request: IngestUrlRequest):
 
     # Upload to Supabase
     try:
-        supabase_client = get_supabase_client()
+        supabase_client = get_supabase()
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
