@@ -28,7 +28,7 @@ class ProcessOneRequest(BaseModel):
 
 
 @router.post("/process")
-async def process_pending_reports(request: ProcessRequest):
+async def process_pending_reports(request: ProcessRequest) -> dict:
     """
     Process pending error reports using Ollama LLM.
 
