@@ -40,14 +40,14 @@ This section maps every metric from external source → processing function → 
 
 ### 1.1 Dashboard Metrics
 
-| Metric | External Source | ETL Function | Invoker | DB Table.Field | React Hook | UI Component |
-|--------|-----------------|--------------|---------|----------------|------------|--------------|
-| Total Trades | House/Senate PDFs | `house_etl.py:run_house_etl()` | `sync-data/index.ts:handleUpdateStats()` | `dashboard_stats.total_trades` | `useDashboardStats()` | `Dashboard.tsx` → StatsCard |
-| Total Volume | House/Senate PDFs | `senate_etl.py:run_senate_etl()` | `sync-data/index.ts:handleUpdateStats()` | `dashboard_stats.total_volume` | `useDashboardStats()` | `Dashboard.tsx` → StatsCard |
-| Active Politicians | House/Senate XML | `politician.py:find_or_create_politician()` | `sync-data/index.ts:handleUpdateStats()` | `dashboard_stats.active_politicians` | `useDashboardStats()` | `Dashboard.tsx` → StatsCard |
-| Trades This Month | Computed | `sync-data/index.ts` aggregation | `scheduled-sync/index.ts` | `dashboard_stats.trades_this_month` | `useDashboardStats()` | `Dashboard.tsx` → StatsCard |
-| Average Trade Size | Computed | `sync-data/index.ts` aggregation | `scheduled-sync/index.ts` | `dashboard_stats.average_trade_size` | `useDashboardStats()` | `Dashboard.tsx` → StatsCard |
-| Top Traded Stock | Computed | `sync-data/index.ts` aggregation | `scheduled-sync/index.ts` | `dashboard_stats.top_traded_stock` | `useDashboardStats()` | `Dashboard.tsx` → StatsCard |
+| ✓ | Metric | External Source | ETL Function | Invoker | DB Table.Field | React Hook | UI Component |
+|---|--------|-----------------|--------------|---------|----------------|------------|--------------|
+| [ ] | Total Trades | House/Senate PDFs | `house_etl.py:run_house_etl()` | `sync-data/index.ts:handleUpdateStats()` | `dashboard_stats.total_trades` | `useDashboardStats()` | `Dashboard.tsx` → StatsCard |
+| [ ] | Total Volume | House/Senate PDFs | `senate_etl.py:run_senate_etl()` | `sync-data/index.ts:handleUpdateStats()` | `dashboard_stats.total_volume` | `useDashboardStats()` | `Dashboard.tsx` → StatsCard |
+| [ ] | Active Politicians | House/Senate XML | `politician.py:find_or_create_politician()` | `sync-data/index.ts:handleUpdateStats()` | `dashboard_stats.active_politicians` | `useDashboardStats()` | `Dashboard.tsx` → StatsCard |
+| [ ] | Trades This Month | Computed | `sync-data/index.ts` aggregation | `scheduled-sync/index.ts` | `dashboard_stats.trades_this_month` | `useDashboardStats()` | `Dashboard.tsx` → StatsCard |
+| [ ] | Average Trade Size | Computed | `sync-data/index.ts` aggregation | `scheduled-sync/index.ts` | `dashboard_stats.average_trade_size` | `useDashboardStats()` | `Dashboard.tsx` → StatsCard |
+| [ ] | Top Traded Stock | Computed | `sync-data/index.ts` aggregation | `scheduled-sync/index.ts` | `dashboard_stats.top_traded_stock` | `useDashboardStats()` | `Dashboard.tsx` → StatsCard |
 
 **File References:**
 - ETL: `python-etl-service/app/services/house_etl.py` lines 1-500
@@ -60,15 +60,15 @@ This section maps every metric from external source → processing function → 
 
 ### 1.2 Politicians Data
 
-| Metric | External Source | ETL Function | Invoker | DB Table.Field | React Hook | UI Component |
-|--------|-----------------|--------------|---------|----------------|------------|--------------|
-| Politician Name | House PDFs / Senate XML | `house_etl.py:parse_transaction_from_row()` | `PoliticianTradingHouseJob` | `politicians.full_name` | `usePoliticians()` | `PoliticiansView.tsx` |
-| Party Affiliation | Senate XML / QuiverQuant | `senate_etl.py:fetch_senators_from_xml()` | `PoliticianTradingSenateJob` | `politicians.party` | `usePoliticians()` | `PoliticiansView.tsx`, `TopTraders.tsx` |
-| Chamber | House/Senate classification | `find_or_create_politician()` | ETL jobs | `politicians.chamber` | `usePoliticians()` | `PoliticiansView.tsx` |
-| State | House/Senate records | ETL parsing | ETL jobs | `politicians.state_or_country` | `usePoliticians()` | `PoliticiansView.tsx` |
-| BioGuide ID | Congress.gov API | `bioguide_enrichment.py:run_bioguide_enrichment()` | `BioguideEnrichmentJob` | `politicians.bioguide_id` | `usePoliticians()` | Internal linking |
-| Total Trades (per politician) | Computed | `sync-data:handleUpdatePoliticianTotals()` | `scheduled-sync/index.ts` | `politicians.total_trades` | `usePoliticians()` | `PoliticiansView.tsx`, `TopTraders.tsx` |
-| Total Volume (per politician) | Computed | `sync-data:handleUpdatePoliticianTotals()` | `scheduled-sync/index.ts` | `politicians.total_volume` | `usePoliticians()` | `PoliticiansView.tsx`, `TopTraders.tsx` |
+| ✓ | Metric | External Source | ETL Function | Invoker | DB Table.Field | React Hook | UI Component |
+|---|--------|-----------------|--------------|---------|----------------|------------|--------------|
+| [ ] | Politician Name | House PDFs / Senate XML | `house_etl.py:parse_transaction_from_row()` | `PoliticianTradingHouseJob` | `politicians.full_name` | `usePoliticians()` | `PoliticiansView.tsx` |
+| [ ] | Party Affiliation | Senate XML / QuiverQuant | `senate_etl.py:fetch_senators_from_xml()` | `PoliticianTradingSenateJob` | `politicians.party` | `usePoliticians()` | `PoliticiansView.tsx`, `TopTraders.tsx` |
+| [ ] | Chamber | House/Senate classification | `find_or_create_politician()` | ETL jobs | `politicians.chamber` | `usePoliticians()` | `PoliticiansView.tsx` |
+| [ ] | State | House/Senate records | ETL parsing | ETL jobs | `politicians.state_or_country` | `usePoliticians()` | `PoliticiansView.tsx` |
+| [ ] | BioGuide ID | Congress.gov API | `bioguide_enrichment.py:run_bioguide_enrichment()` | `BioguideEnrichmentJob` | `politicians.bioguide_id` | `usePoliticians()` | Internal linking |
+| [ ] | Total Trades (per politician) | Computed | `sync-data:handleUpdatePoliticianTotals()` | `scheduled-sync/index.ts` | `politicians.total_trades` | `usePoliticians()` | `PoliticiansView.tsx`, `TopTraders.tsx` |
+| [ ] | Total Volume (per politician) | Computed | `sync-data:handleUpdatePoliticianTotals()` | `scheduled-sync/index.ts` | `politicians.total_volume` | `usePoliticians()` | `PoliticiansView.tsx`, `TopTraders.tsx` |
 
 **File References:**
 - ETL: `python-etl-service/app/services/house_etl.py` lines 200-350
@@ -83,17 +83,17 @@ This section maps every metric from external source → processing function → 
 
 ### 1.3 Trading Disclosures
 
-| Metric | External Source | ETL Function | Invoker | DB Table.Field | React Hook | UI Component |
-|--------|-----------------|--------------|---------|----------------|------------|--------------|
-| Asset Name | House/Senate PDFs | `house_etl.py:parse_transaction_from_row()` | `PoliticianTradingHouseJob` | `trading_disclosures.asset_name` | `useTradingDisclosures()` | `FilingsView.tsx`, `LandingTradesTable.tsx` |
-| Asset Ticker | House/Senate PDFs + backfill | `ticker_backfill.py:run_ticker_backfill()` | `TickerBackfillJob` | `trading_disclosures.asset_ticker` | `useTradingDisclosures()` | `FilingsView.tsx`, `LandingTradesTable.tsx` |
-| Transaction Type | House/Senate PDFs | `house_etl.py:parse_transaction_from_row()` | ETL jobs | `trading_disclosures.transaction_type` | `useTradingDisclosures()` | `FilingsView.tsx`, `LandingTradesTable.tsx` |
-| Transaction Date | House/Senate PDFs | ETL parsing | ETL jobs | `trading_disclosures.transaction_date` | `useTradingDisclosures()` | `FilingsView.tsx`, `LandingTradesTable.tsx` |
-| Disclosure Date | House/Senate PDFs | ETL parsing | ETL jobs | `trading_disclosures.disclosure_date` | `useTradingDisclosures()` | `FilingsView.tsx`, `LandingTradesTable.tsx` |
-| Amount Range Min | House/Senate PDFs | ETL parsing | ETL jobs | `trading_disclosures.amount_range_min` | `useTradingDisclosures()` | `FilingsView.tsx`, `LandingTradesTable.tsx` |
-| Amount Range Max | House/Senate PDFs | ETL parsing | ETL jobs | `trading_disclosures.amount_range_max` | `useTradingDisclosures()` | `FilingsView.tsx`, `LandingTradesTable.tsx` |
-| Source URL | Constructed | ETL processing | ETL jobs | `trading_disclosures.source_url` | `useTradingDisclosures()` | `FilingsView.tsx` (link) |
-| Asset Owner | House/Senate PDFs | ETL parsing | ETL jobs | `trading_disclosures.asset_owner` | `useTradingDisclosures()` | Detail modals |
+| ✓ | Metric | External Source | ETL Function | Invoker | DB Table.Field | React Hook | UI Component |
+|---|--------|-----------------|--------------|---------|----------------|------------|--------------|
+| [ ] | Asset Name | House/Senate PDFs | `house_etl.py:parse_transaction_from_row()` | `PoliticianTradingHouseJob` | `trading_disclosures.asset_name` | `useTradingDisclosures()` | `FilingsView.tsx`, `LandingTradesTable.tsx` |
+| [ ] | Asset Ticker | House/Senate PDFs + backfill | `ticker_backfill.py:run_ticker_backfill()` | `TickerBackfillJob` | `trading_disclosures.asset_ticker` | `useTradingDisclosures()` | `FilingsView.tsx`, `LandingTradesTable.tsx` |
+| [ ] | Transaction Type | House/Senate PDFs | `house_etl.py:parse_transaction_from_row()` | ETL jobs | `trading_disclosures.transaction_type` | `useTradingDisclosures()` | `FilingsView.tsx`, `LandingTradesTable.tsx` |
+| [ ] | Transaction Date | House/Senate PDFs | ETL parsing | ETL jobs | `trading_disclosures.transaction_date` | `useTradingDisclosures()` | `FilingsView.tsx`, `LandingTradesTable.tsx` |
+| [ ] | Disclosure Date | House/Senate PDFs | ETL parsing | ETL jobs | `trading_disclosures.disclosure_date` | `useTradingDisclosures()` | `FilingsView.tsx`, `LandingTradesTable.tsx` |
+| [ ] | Amount Range Min | House/Senate PDFs | ETL parsing | ETL jobs | `trading_disclosures.amount_range_min` | `useTradingDisclosures()` | `FilingsView.tsx`, `LandingTradesTable.tsx` |
+| [ ] | Amount Range Max | House/Senate PDFs | ETL parsing | ETL jobs | `trading_disclosures.amount_range_max` | `useTradingDisclosures()` | `FilingsView.tsx`, `LandingTradesTable.tsx` |
+| [ ] | Source URL | Constructed | ETL processing | ETL jobs | `trading_disclosures.source_url` | `useTradingDisclosures()` | `FilingsView.tsx` (link) |
+| [ ] | Asset Owner | House/Senate PDFs | ETL parsing | ETL jobs | `trading_disclosures.asset_owner` | `useTradingDisclosures()` | Detail modals |
 
 **File References:**
 - ETL: `python-etl-service/app/services/house_etl.py` lines 250-400
@@ -106,14 +106,14 @@ This section maps every metric from external source → processing function → 
 
 ### 1.4 Charts & Aggregations
 
-| Metric | External Source | ETL Function | Invoker | DB Table.Field | React Hook | UI Component |
-|--------|-----------------|--------------|---------|----------------|------------|--------------|
-| Monthly Buy Count | Computed from disclosures | `sync-data:handleUpdateChartData()` | `scheduled-sync/index.ts` | `chart_data.buy_count` | `useChartData()` | `TradeChart.tsx` |
-| Monthly Sell Count | Computed from disclosures | `sync-data:handleUpdateChartData()` | `scheduled-sync/index.ts` | `chart_data.sell_count` | `useChartData()` | `TradeChart.tsx` |
-| Monthly Volume | Computed from disclosures | `sync-data:handleUpdateChartData()` | `scheduled-sync/index.ts` | `chart_data.volume` | `useChartData()` | `TradeChart.tsx`, `VolumeChart.tsx` |
-| Monthly Unique Politicians | Computed from disclosures | `sync-data:handleUpdateChartData()` | `scheduled-sync/index.ts` | `chart_data.unique_politicians` | `useChartData()` | `TradeChart.tsx` |
-| Top Tickers (Global) | Computed from disclosures | Database view aggregation | On-demand | `top_tickers` view | `useTopTickers()` | `TopTickers.tsx` |
-| Top Tickers (Monthly) | Computed from disclosures | `sync-data:handleUpdateChartData()` | `scheduled-sync/index.ts` | `chart_data.top_tickers` (JSON) | `useChartData()` | `MonthDetailModal.tsx` |
+| ✓ | Metric | External Source | ETL Function | Invoker | DB Table.Field | React Hook | UI Component |
+|---|--------|-----------------|--------------|---------|----------------|------------|--------------|
+| [ ] | Monthly Buy Count | Computed from disclosures | `sync-data:handleUpdateChartData()` | `scheduled-sync/index.ts` | `chart_data.buy_count` | `useChartData()` | `TradeChart.tsx` |
+| [ ] | Monthly Sell Count | Computed from disclosures | `sync-data:handleUpdateChartData()` | `scheduled-sync/index.ts` | `chart_data.sell_count` | `useChartData()` | `TradeChart.tsx` |
+| [ ] | Monthly Volume | Computed from disclosures | `sync-data:handleUpdateChartData()` | `scheduled-sync/index.ts` | `chart_data.volume` | `useChartData()` | `TradeChart.tsx`, `VolumeChart.tsx` |
+| [ ] | Monthly Unique Politicians | Computed from disclosures | `sync-data:handleUpdateChartData()` | `scheduled-sync/index.ts` | `chart_data.unique_politicians` | `useChartData()` | `TradeChart.tsx` |
+| [ ] | Top Tickers (Global) | Computed from disclosures | Database view aggregation | On-demand | `top_tickers` view | `useTopTickers()` | `TopTickers.tsx` |
+| [ ] | Top Tickers (Monthly) | Computed from disclosures | `sync-data:handleUpdateChartData()` | `scheduled-sync/index.ts` | `chart_data.top_tickers` (JSON) | `useChartData()` | `MonthDetailModal.tsx` |
 
 **File References:**
 - Edge Function: `server/supabase/functions/sync-data/index.ts` lines 500-650
@@ -125,18 +125,18 @@ This section maps every metric from external source → processing function → 
 
 ### 1.5 Trading & Portfolio
 
-| Metric | External Source | ETL Function | Invoker | DB Table.Field | React Hook | UI Component |
-|--------|-----------------|--------------|---------|----------------|------------|--------------|
-| Order Status | Alpaca API | `orders/index.ts:handleGetOrders()` | `OrdersJob` / User action | `trading_orders.status` | `useOrders()` | Orders table |
-| Order Fill Price | Alpaca API | `orders/index.ts:handleSyncOrders()` | `OrdersJob` | `trading_orders.filled_avg_price` | `useOrders()` | Orders table |
-| Order Quantity | Alpaca API | `orders/index.ts` | User action | `trading_orders.quantity` | `useOrders()` | Orders table |
-| Position Quantity | Alpaca API | `alpaca-account/index.ts:handleGetPositions()` | User action | Memory/Alpaca | `useAlpacaPositions()` | Portfolio dashboard |
-| Position Value | Alpaca API | `alpaca-account/index.ts:handleGetPositions()` | User action | Memory/Alpaca | `useAlpacaPositions()` | Portfolio dashboard |
-| Unrealized P&L | Alpaca API | `alpaca-account/index.ts:handleGetPositions()` | User action | Memory/Alpaca | `useAlpacaPositions()` | Portfolio dashboard |
-| Account Balance | Alpaca API | `alpaca-account/index.ts:handleGetAccount()` | User action | Memory/Alpaca | `useAlpacaAccount()` | Account summary |
-| Signal Type | ML Model | `trading-signals/index.ts` | `TradingSignalsJob` | `trading_signals.signal_type` | Direct query | Signal dashboard |
-| Signal Confidence | ML Model | `trading-signals/index.ts` | `TradingSignalsJob` | `trading_signals.confidence_score` | Direct query | Signal dashboard |
-| Reference Portfolio Value | Alpaca API + Computed | `reference-portfolio/index.ts` | `ReferencePortfolioSyncJob` | `reference_portfolio_positions` | Admin only | Portfolio dashboard |
+| ✓ | Metric | External Source | ETL Function | Invoker | DB Table.Field | React Hook | UI Component |
+|---|--------|-----------------|--------------|---------|----------------|------------|--------------|
+| [ ] | Order Status | Alpaca API | `orders/index.ts:handleGetOrders()` | `OrdersJob` / User action | `trading_orders.status` | `useOrders()` | Orders table |
+| [ ] | Order Fill Price | Alpaca API | `orders/index.ts:handleSyncOrders()` | `OrdersJob` | `trading_orders.filled_avg_price` | `useOrders()` | Orders table |
+| [ ] | Order Quantity | Alpaca API | `orders/index.ts` | User action | `trading_orders.quantity` | `useOrders()` | Orders table |
+| [ ] | Position Quantity | Alpaca API | `alpaca-account/index.ts:handleGetPositions()` | User action | Memory/Alpaca | `useAlpacaPositions()` | Portfolio dashboard |
+| [ ] | Position Value | Alpaca API | `alpaca-account/index.ts:handleGetPositions()` | User action | Memory/Alpaca | `useAlpacaPositions()` | Portfolio dashboard |
+| [ ] | Unrealized P&L | Alpaca API | `alpaca-account/index.ts:handleGetPositions()` | User action | Memory/Alpaca | `useAlpacaPositions()` | Portfolio dashboard |
+| [ ] | Account Balance | Alpaca API | `alpaca-account/index.ts:handleGetAccount()` | User action | Memory/Alpaca | `useAlpacaAccount()` | Account summary |
+| [ ] | Signal Type | ML Model | `trading-signals/index.ts` | `TradingSignalsJob` | `trading_signals.signal_type` | Direct query | Signal dashboard |
+| [ ] | Signal Confidence | ML Model | `trading-signals/index.ts` | `TradingSignalsJob` | `trading_signals.confidence_score` | Direct query | Signal dashboard |
+| [ ] | Reference Portfolio Value | Alpaca API + Computed | `reference-portfolio/index.ts` | `ReferencePortfolioSyncJob` | `reference_portfolio_positions` | Admin only | Portfolio dashboard |
 
 **File References:**
 - Edge Function: `server/supabase/functions/orders/index.ts` lines 200-500
@@ -149,17 +149,17 @@ This section maps every metric from external source → processing function → 
 
 ### 1.6 Detail Views
 
-| Metric | External Source | ETL Function | Invoker | DB Table.Field | React Hook | UI Component |
-|--------|-----------------|--------------|---------|----------------|------------|--------------|
-| Politician Total Trades | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `usePoliticianDetail()` | `PoliticianProfileModal.tsx` |
-| Politician Total Volume | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `usePoliticianDetail()` | `PoliticianProfileModal.tsx` |
-| Politician Buy/Sell/Hold Counts | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `usePoliticianDetail()` | `PoliticianProfileModal.tsx` |
-| Politician Top Tickers | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `usePoliticianDetail()` | `PoliticianProfileModal.tsx` |
-| Politician Recent Trades | Client-fetched | N/A | React hook | `trading_disclosures` | `usePoliticianDetail()` | `PoliticianProfileModal.tsx` |
-| Ticker Trade Count | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `useTickerDetail()` | `TickerDetailModal.tsx` |
-| Ticker Total Volume | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `useTickerDetail()` | `TickerDetailModal.tsx` |
-| Ticker Top Politicians | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `useTickerDetail()` | `TickerDetailModal.tsx` |
-| Month Buy/Sell Breakdown | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `useMonthDetail()` | `MonthDetailModal.tsx` |
+| ✓ | Metric | External Source | ETL Function | Invoker | DB Table.Field | React Hook | UI Component |
+|---|--------|-----------------|--------------|---------|----------------|------------|--------------|
+| [ ] | Politician Total Trades | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `usePoliticianDetail()` | `PoliticianProfileModal.tsx` |
+| [ ] | Politician Total Volume | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `usePoliticianDetail()` | `PoliticianProfileModal.tsx` |
+| [ ] | Politician Buy/Sell/Hold Counts | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `usePoliticianDetail()` | `PoliticianProfileModal.tsx` |
+| [ ] | Politician Top Tickers | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `usePoliticianDetail()` | `PoliticianProfileModal.tsx` |
+| [ ] | Politician Recent Trades | Client-fetched | N/A | React hook | `trading_disclosures` | `usePoliticianDetail()` | `PoliticianProfileModal.tsx` |
+| [ ] | Ticker Trade Count | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `useTickerDetail()` | `TickerDetailModal.tsx` |
+| [ ] | Ticker Total Volume | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `useTickerDetail()` | `TickerDetailModal.tsx` |
+| [ ] | Ticker Top Politicians | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `useTickerDetail()` | `TickerDetailModal.tsx` |
+| [ ] | Month Buy/Sell Breakdown | Client-computed | N/A (client aggregation) | React hook | Computed in-memory | `useMonthDetail()` | `MonthDetailModal.tsx` |
 
 **File References:**
 - Hook: `client/src/hooks/useSupabaseData.ts` lines 439-712
@@ -186,31 +186,31 @@ This section maps every metric from external source → processing function → 
 #### Fields Populated
 
 **Table: `politicians`**
-| Field | Source Field | Description |
-|-------|--------------|-------------|
-| `first_name` | Parsed from PDF | Politician first name |
-| `last_name` | Parsed from PDF | Politician last name |
-| `full_name` | Parsed from PDF | Combined name |
-| `state_or_country` | State/District | State abbreviation |
-| `district` | State/District | Congressional district |
-| `role` | Fixed | "Representative" |
-| `chamber` | Fixed | "House" |
+| ✓ | Field | Source Field | Description |
+|---|-------|--------------|-------------|
+| [ ] | `first_name` | Parsed from PDF | Politician first name |
+| [ ] | `last_name` | Parsed from PDF | Politician last name |
+| [ ] | `full_name` | Parsed from PDF | Combined name |
+| [ ] | `state_or_country` | State/District | State abbreviation |
+| [ ] | `district` | State/District | Congressional district |
+| [ ] | `role` | Fixed | "Representative" |
+| [ ] | `chamber` | Fixed | "House" |
 
 **Table: `trading_disclosures`**
-| Field | Source Field | Description |
-|-------|--------------|-------------|
-| `asset_name` | PDF table | Full asset/security name |
-| `asset_ticker` | PDF table | Stock ticker symbol (extracted) |
-| `asset_type` | PDF table | Type of asset (stock, bond, etc.) |
-| `transaction_type` | PDF table | "purchase", "sale", "exchange" |
-| `transaction_date` | PDF table | Date of transaction |
-| `disclosure_date` | Filing date | Date disclosed to House clerk |
-| `amount_range_min` | PDF table | Lower bound of amount range |
-| `amount_range_max` | PDF table | Upper bound of amount range |
-| `source_url` | Constructed | URL to original PDF |
-| `source_document_id` | doc_id | Unique document identifier |
-| `asset_owner` | PDF table | "Self", "Spouse", "Joint", etc. |
-| `comments` | PDF table | Additional transaction notes |
+| ✓ | Field | Source Field | Description |
+|---|-------|--------------|-------------|
+| [ ] | `asset_name` | PDF table | Full asset/security name |
+| [ ] | `asset_ticker` | PDF table | Stock ticker symbol (extracted) |
+| [ ] | `asset_type` | PDF table | Type of asset (stock, bond, etc.) |
+| [ ] | `transaction_type` | PDF table | "purchase", "sale", "exchange" |
+| [ ] | `transaction_date` | PDF table | Date of transaction |
+| [ ] | `disclosure_date` | Filing date | Date disclosed to House clerk |
+| [ ] | `amount_range_min` | PDF table | Lower bound of amount range |
+| [ ] | `amount_range_max` | PDF table | Upper bound of amount range |
+| [ ] | `source_url` | Constructed | URL to original PDF |
+| [ ] | `source_document_id` | doc_id | Unique document identifier |
+| [ ] | `asset_owner` | PDF table | "Self", "Spouse", "Joint", etc. |
+| [ ] | `comments` | PDF table | Additional transaction notes |
 
 ---
 
@@ -229,31 +229,31 @@ This section maps every metric from external source → processing function → 
 #### Fields Populated
 
 **Table: `politicians`**
-| Field | Source Field | Description |
-|-------|--------------|-------------|
-| `first_name` | XML/HTML | Senator first name |
-| `last_name` | XML/HTML | Senator last name |
-| `full_name` | XML/HTML | Combined name |
-| `party` | XML | "D", "R", or "I" |
-| `state_or_country` | XML | State abbreviation |
-| `bioguide_id` | XML | Congress.gov BioGuide ID |
-| `role` | Fixed | "Senator" |
-| `chamber` | Fixed | "Senate" |
+| ✓ | Field | Source Field | Description |
+|---|-------|--------------|-------------|
+| [ ] | `first_name` | XML/HTML | Senator first name |
+| [ ] | `last_name` | XML/HTML | Senator last name |
+| [ ] | `full_name` | XML/HTML | Combined name |
+| [ ] | `party` | XML | "D", "R", or "I" |
+| [ ] | `state_or_country` | XML | State abbreviation |
+| [ ] | `bioguide_id` | XML | Congress.gov BioGuide ID |
+| [ ] | `role` | Fixed | "Senator" |
+| [ ] | `chamber` | Fixed | "Senate" |
 
 **Table: `trading_disclosures`**
-| Field | Source Field | Description |
-|-------|--------------|-------------|
-| `asset_name` | HTML table | Full asset/security name |
-| `asset_ticker` | HTML table | Stock ticker symbol |
-| `asset_type` | HTML table | Type of asset |
-| `transaction_type` | HTML table | "purchase", "sale", "exchange" |
-| `transaction_date` | HTML table | Date of transaction |
-| `disclosure_date` | HTML table | Date disclosed to Senate |
-| `amount_range_min` | HTML table | Lower bound of amount range |
-| `amount_range_max` | HTML table | Upper bound of amount range |
-| `source_url` | PTR URL | Link to Senate EFD page |
-| `asset_owner` | HTML table | Owner of the asset |
-| `comments` | HTML table | Additional notes |
+| ✓ | Field | Source Field | Description |
+|---|-------|--------------|-------------|
+| [ ] | `asset_name` | HTML table | Full asset/security name |
+| [ ] | `asset_ticker` | HTML table | Stock ticker symbol |
+| [ ] | `asset_type` | HTML table | Type of asset |
+| [ ] | `transaction_type` | HTML table | "purchase", "sale", "exchange" |
+| [ ] | `transaction_date` | HTML table | Date of transaction |
+| [ ] | `disclosure_date` | HTML table | Date disclosed to Senate |
+| [ ] | `amount_range_min` | HTML table | Lower bound of amount range |
+| [ ] | `amount_range_max` | HTML table | Upper bound of amount range |
+| [ ] | `source_url` | PTR URL | Link to Senate EFD page |
+| [ ] | `asset_owner` | HTML table | Owner of the asset |
+| [ ] | `comments` | HTML table | Additional notes |
 
 ---
 
@@ -271,11 +271,11 @@ This section maps every metric from external source → processing function → 
 #### Fields Populated
 
 **Table: `politicians`**
-| Field | Source Field | Description |
-|-------|--------------|-------------|
-| `full_name` | API | California official name |
-| `state_or_country` | Fixed | "CA" |
-| `role` | API | State office held |
+| ✓ | Field | Source Field | Description |
+|---|-------|--------------|-------------|
+| [ ] | `full_name` | API | California official name |
+| [ ] | `state_or_country` | Fixed | "CA" |
+| [ ] | `role` | API | State office held |
 
 ---
 
@@ -293,12 +293,12 @@ This section maps every metric from external source → processing function → 
 #### Fields Populated
 
 **Table: `politicians`**
-| Field | Source Field | Description |
-|-------|--------------|-------------|
-| `full_name` | API | MEP full name |
-| `eu_id` | API | EU Parliament member ID |
-| `state_or_country` | API | Member state |
-| `role` | Fixed | "MEP" |
+| ✓ | Field | Source Field | Description |
+|---|-------|--------------|-------------|
+| [ ] | `full_name` | API | MEP full name |
+| [ ] | `eu_id` | API | EU Parliament member ID |
+| [ ] | `state_or_country` | API | Member state |
+| [ ] | `role` | Fixed | "MEP" |
 
 ---
 
@@ -342,32 +342,32 @@ This section maps every metric from external source → processing function → 
 #### Fields Populated
 
 **Table: `politicians`**
-| Field | QuiverQuant Field | Description |
-|-------|-------------------|-------------|
-| `full_name` | `Representative` | Politician full name |
-| `bioguide_id` | `BioGuideID` | Congress.gov identifier |
-| `party` | `Party` | "D", "R", or "I" |
-| `chamber` | `House` | "Representatives" or "Senate" |
+| ✓ | Field | QuiverQuant Field | Description |
+|---|-------|-------------------|-------------|
+| [ ] | `full_name` | `Representative` | Politician full name |
+| [ ] | `bioguide_id` | `BioGuideID` | Congress.gov identifier |
+| [ ] | `party` | `Party` | "D", "R", or "I" |
+| [ ] | `chamber` | `House` | "Representatives" or "Senate" |
 
 **Table: `trading_disclosures`**
-| Field | QuiverQuant Field | Description |
-|-------|-------------------|-------------|
-| `asset_ticker` | `Ticker` | Stock ticker symbol |
-| `asset_name` | `Description` | Asset description (falls back to ticker) |
-| `transaction_type` | `Transaction` | Normalized to "purchase"/"sale" |
-| `transaction_date` | `TransactionDate` | Date of trade |
-| `disclosure_date` | `ReportDate` | Date disclosed |
-| `amount_range_min` | Parsed from `Range` | Lower bound |
-| `amount_range_max` | Parsed from `Range` | Upper bound |
-| `source_url` | Fixed | QuiverQuant URL |
+| ✓ | Field | QuiverQuant Field | Description |
+|---|-------|-------------------|-------------|
+| [ ] | `asset_ticker` | `Ticker` | Stock ticker symbol |
+| [ ] | `asset_name` | `Description` | Asset description (falls back to ticker) |
+| [ ] | `transaction_type` | `Transaction` | Normalized to "purchase"/"sale" |
+| [ ] | `transaction_date` | `TransactionDate` | Date of trade |
+| [ ] | `disclosure_date` | `ReportDate` | Date disclosed |
+| [ ] | `amount_range_min` | Parsed from `Range` | Lower bound |
+| [ ] | `amount_range_max` | Parsed from `Range` | Upper bound |
+| [ ] | `source_url` | Fixed | QuiverQuant URL |
 
 **Additional QuiverQuant-Only Metrics** (stored in `raw_data` JSON):
-| Metric | Description |
-|--------|-------------|
-| `ExcessReturn` | Performance vs SPY benchmark (%) |
-| `PriceChange` | Actual price change since trade (%) |
-| `SPYChange` | S&P 500 change over same period (%) |
-| `TickerType` | Asset type code ("ST" = Stock) |
+| ✓ | Metric | Description |
+|---|--------|-------------|
+| [ ] | `ExcessReturn` | Performance vs SPY benchmark (%) |
+| [ ] | `PriceChange` | Actual price change since trade (%) |
+| [ ] | `SPYChange` | S&P 500 change over same period (%) |
+| [ ] | `TickerType` | Asset type code ("ST" = Stock) |
 
 ---
 
@@ -388,17 +388,17 @@ This section maps every metric from external source → processing function → 
 #### Fields Populated (Enrichment)
 
 **Table: `politicians`**
-| Field | API Field | Description |
-|-------|-----------|-------------|
-| `bioguide_id` | `bioguideId` | Unique Congress identifier |
-| `first_name` | `firstName` | Official first name |
-| `last_name` | `lastName` | Official last name |
-| `party` | `partyName` | Full party name |
-| `state_or_country` | `state` | State abbreviation |
-| `district` | `district` | Congressional district (House only) |
-| `role` | `chamber` | "Senate" or "House" |
-| `term_start` | `terms[].startYear` | Current term start |
-| `term_end` | `terms[].endYear` | Current term end |
+| ✓ | Field | API Field | Description |
+|---|-------|-----------|-------------|
+| [ ] | `bioguide_id` | `bioguideId` | Unique Congress identifier |
+| [ ] | `first_name` | `firstName` | Official first name |
+| [ ] | `last_name` | `lastName` | Official last name |
+| [ ] | `party` | `partyName` | Full party name |
+| [ ] | `state_or_country` | `state` | State abbreviation |
+| [ ] | `district` | `district` | Congressional district (House only) |
+| [ ] | `role` | `chamber` | "Senate" or "House" |
+| [ ] | `term_start` | `terms[].startYear` | Current term start |
+| [ ] | `term_end` | `terms[].endYear` | Current term end |
 
 ---
 
@@ -418,40 +418,40 @@ This section maps every metric from external source → processing function → 
 #### Fields Populated
 
 **Table: `trading_orders`**
-| Field | Alpaca Field | Description |
-|-------|--------------|-------------|
-| `alpaca_order_id` | `id` | Alpaca's order UUID |
-| `alpaca_client_order_id` | `client_order_id` | Client-provided order ID |
-| `ticker` | `symbol` | Stock symbol |
-| `side` | `side` | "buy" or "sell" |
-| `quantity` | `qty` | Number of shares |
-| `order_type` | `type` | "market", "limit", "stop", etc. |
-| `limit_price` | `limit_price` | Limit price (if applicable) |
-| `stop_price` | `stop_price` | Stop price (if applicable) |
-| `status` | `status` | Order status |
-| `filled_quantity` | `filled_qty` | Shares filled |
-| `filled_avg_price` | `filled_avg_price` | Average fill price |
-| `submitted_at` | `submitted_at` | Submission timestamp |
-| `filled_at` | `filled_at` | Fill timestamp |
-| `canceled_at` | `canceled_at` | Cancellation timestamp |
-| `expired_at` | `expired_at` | Expiration timestamp |
+| ✓ | Field | Alpaca Field | Description |
+|---|-------|--------------|-------------|
+| [ ] | `alpaca_order_id` | `id` | Alpaca's order UUID |
+| [ ] | `alpaca_client_order_id` | `client_order_id` | Client-provided order ID |
+| [ ] | `ticker` | `symbol` | Stock symbol |
+| [ ] | `side` | `side` | "buy" or "sell" |
+| [ ] | `quantity` | `qty` | Number of shares |
+| [ ] | `order_type` | `type` | "market", "limit", "stop", etc. |
+| [ ] | `limit_price` | `limit_price` | Limit price (if applicable) |
+| [ ] | `stop_price` | `stop_price` | Stop price (if applicable) |
+| [ ] | `status` | `status` | Order status |
+| [ ] | `filled_quantity` | `filled_qty` | Shares filled |
+| [ ] | `filled_avg_price` | `filled_avg_price` | Average fill price |
+| [ ] | `submitted_at` | `submitted_at` | Submission timestamp |
+| [ ] | `filled_at` | `filled_at` | Fill timestamp |
+| [ ] | `canceled_at` | `canceled_at` | Cancellation timestamp |
+| [ ] | `expired_at` | `expired_at` | Expiration timestamp |
 
 **Table: `reference_portfolio_positions`**
-| Field | Alpaca Field | Description |
-|-------|--------------|-------------|
-| `ticker` | `symbol` | Stock symbol |
-| `quantity` | `qty` | Shares held |
-| `average_entry_price` | `avg_entry_price` | Cost basis per share |
-| `current_price` | Latest quote | Real-time price |
-| `market_value` | `market_value` | Current position value |
-| `unrealized_pl` | `unrealized_pl` | Unrealized P&L |
-| `unrealized_plpc` | `unrealized_plpc` | Unrealized P&L % |
+| ✓ | Field | Alpaca Field | Description |
+|---|-------|--------------|-------------|
+| [ ] | `ticker` | `symbol` | Stock symbol |
+| [ ] | `quantity` | `qty` | Shares held |
+| [ ] | `average_entry_price` | `avg_entry_price` | Cost basis per share |
+| [ ] | `current_price` | Latest quote | Real-time price |
+| [ ] | `market_value` | `market_value` | Current position value |
+| [ ] | `unrealized_pl` | `unrealized_pl` | Unrealized P&L |
+| [ ] | `unrealized_plpc` | `unrealized_plpc` | Unrealized P&L % |
 
 **Table: `portfolios`**
-| Field | Alpaca Field | Description |
-|-------|--------------|-------------|
-| `cash_balance` | `cash` | Available cash |
-| `current_value` | `portfolio_value` | Total portfolio value |
+| ✓ | Field | Alpaca Field | Description |
+|---|-------|--------------|-------------|
+| [ ] | `cash_balance` | `cash` | Available cash |
+| [ ] | `current_value` | `portfolio_value` | Total portfolio value |
 
 ---
 
@@ -468,11 +468,11 @@ This section maps every metric from external source → processing function → 
 #### Fields Used
 
 **Table: `trading_signals`** (indirectly)
-| Metric | Yahoo Field | Description |
-|--------|-------------|-------------|
-| Current Price | `chart.result[0].meta.regularMarketPrice` | Latest market price |
-| Historical Prices | `chart.result[0].indicators.quote[0].close` | Closing prices |
-| Volume | `chart.result[0].indicators.quote[0].volume` | Trading volume |
+| ✓ | Metric | Yahoo Field | Description |
+|---|--------|-------------|-------------|
+| [ ] | Current Price | `chart.result[0].meta.regularMarketPrice` | Latest market price |
+| [ ] | Historical Prices | `chart.result[0].indicators.quote[0].close` | Closing prices |
+| [ ] | Volume | `chart.result[0].indicators.quote[0].volume` | Trading volume |
 
 ---
 
@@ -491,16 +491,16 @@ This section maps every metric from external source → processing function → 
 #### Fields Populated (Enrichment)
 
 **Table: `politicians`**
-| Field | LLM Output | Description |
-|-------|------------|-------------|
-| `party` | Inferred | Party affiliation from context |
-| `full_name` | Normalized | Canonical name form |
+| ✓ | Field | LLM Output | Description |
+|---|-------|------------|-------------|
+| [ ] | `party` | Inferred | Party affiliation from context |
+| [ ] | `full_name` | Normalized | Canonical name form |
 
 **Table: `error_reports`**
-| Field | LLM Output | Description |
-|-------|------------|-------------|
-| `category` | Classification | Error category |
-| `severity` | Assessment | Error severity level |
+| ✓ | Field | LLM Output | Description |
+|---|-------|------------|-------------|
+| [ ] | `category` | Classification | Error category |
+| [ ] | `severity` | Assessment | Error severity level |
 
 ---
 
@@ -515,26 +515,26 @@ This section maps every metric from external source → processing function → 
 
 #### Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/ml/models/active` | GET | List active ML models |
-| `/ml/batch-predict` | POST | Batch signal predictions |
-| `/signals/apply-lambda` | POST | Apply scoring functions |
+| ✓ | Endpoint | Method | Description |
+|---|----------|--------|-------------|
+| [ ] | `/ml/models/active` | GET | List active ML models |
+| [ ] | `/ml/batch-predict` | POST | Batch signal predictions |
+| [ ] | `/signals/apply-lambda` | POST | Apply scoring functions |
 
 #### Fields Populated
 
 **Table: `trading_signals`**
-| Field | ML Output | Description |
-|-------|-----------|-------------|
-| `signal_type` | Prediction | "buy", "sell", or "hold" |
-| `confidence_score` | Model confidence | 0.0 to 1.0 |
-| `signal_strength` | Strength bucket | "strong", "medium", "weak" |
-| `target_price` | Price prediction | Expected target price |
-| `stop_loss` | Risk management | Stop loss level |
-| `take_profit` | Risk management | Take profit level |
-| `model_version` | Model ID | Which model generated signal |
-| `features` | Feature vector | Input features (JSON) |
-| `analysis` | Explanation | Signal analysis (JSON) |
+| ✓ | Field | ML Output | Description |
+|---|-------|-----------|-------------|
+| [ ] | `signal_type` | Prediction | "buy", "sell", or "hold" |
+| [ ] | `confidence_score` | Model confidence | 0.0 to 1.0 |
+| [ ] | `signal_strength` | Strength bucket | "strong", "medium", "weak" |
+| [ ] | `target_price` | Price prediction | Expected target price |
+| [ ] | `stop_loss` | Risk management | Stop loss level |
+| [ ] | `take_profit` | Risk management | Take profit level |
+| [ ] | `model_version` | Model ID | Which model generated signal |
+| [ ] | `features` | Feature vector | Input features (JSON) |
+| [ ] | `analysis` | Explanation | Signal analysis (JSON) |
 
 ---
 
@@ -542,44 +542,44 @@ This section maps every metric from external source → processing function → 
 
 ### Core Tables and External Source Mapping
 
-| Table | Primary External Sources | Update Frequency |
-|-------|-------------------------|------------------|
-| `politicians` | House PDFs, Senate XML, Congress.gov, QuiverQuant | 6 hours |
-| `trading_disclosures` | House PDFs, Senate HTML, QuiverQuant | 6 hours |
-| `trading_orders` | Alpaca API | Real-time |
-| `trading_signals` | ML Service, Yahoo Finance | Daily |
-| `reference_portfolio_positions` | Alpaca API | Real-time |
-| `portfolios` | Alpaca API | Real-time |
-| `chart_data` | Aggregated from disclosures | Daily |
-| `dashboard_stats` | Aggregated from disclosures | Daily |
+| ✓ | Table | Primary External Sources | Update Frequency |
+|---|-------|-------------------------|------------------|
+| [ ] | `politicians` | House PDFs, Senate XML, Congress.gov, QuiverQuant | 6 hours |
+| [ ] | `trading_disclosures` | House PDFs, Senate HTML, QuiverQuant | 6 hours |
+| [ ] | `trading_orders` | Alpaca API | Real-time |
+| [ ] | `trading_signals` | ML Service, Yahoo Finance | Daily |
+| [ ] | `reference_portfolio_positions` | Alpaca API | Real-time |
+| [ ] | `portfolios` | Alpaca API | Real-time |
+| [ ] | `chart_data` | Aggregated from disclosures | Daily |
+| [ ] | `dashboard_stats` | Aggregated from disclosures | Daily |
 
 ### Computed/Aggregated Metrics
 
 **Table: `dashboard_stats`**
-| Metric | Computation | Description |
-|--------|-------------|-------------|
-| `total_trades` | COUNT(trading_disclosures) | Total disclosure count |
-| `total_volume` | SUM(amount_range_avg) | Estimated trading volume |
-| `active_politicians` | COUNT(DISTINCT politician_id) | Politicians with trades |
-| `trades_this_month` | COUNT WHERE month = current | Monthly trade count |
-| `average_trade_size` | AVG(amount_range_avg) | Average transaction size |
-| `top_traded_stock` | MODE(asset_ticker) | Most traded ticker |
+| ✓ | Metric | Computation | Description |
+|---|--------|-------------|-------------|
+| [ ] | `total_trades` | COUNT(trading_disclosures) | Total disclosure count |
+| [ ] | `total_volume` | SUM(amount_range_avg) | Estimated trading volume |
+| [ ] | `active_politicians` | COUNT(DISTINCT politician_id) | Politicians with trades |
+| [ ] | `trades_this_month` | COUNT WHERE month = current | Monthly trade count |
+| [ ] | `average_trade_size` | AVG(amount_range_avg) | Average transaction size |
+| [ ] | `top_traded_stock` | MODE(asset_ticker) | Most traded ticker |
 
 **Table: `chart_data`**
-| Metric | Computation | Description |
-|--------|-------------|-------------|
-| `buy_count` | COUNT WHERE type='purchase' | Monthly buys |
-| `sell_count` | COUNT WHERE type='sale' | Monthly sells |
-| `total_volume` | SUM(amount_range_avg) | Monthly volume |
-| `unique_politicians` | COUNT(DISTINCT politician_id) | Active politicians |
-| `top_tickers` | GROUP BY ticker, TOP 5 | Most traded tickers |
-| `party_breakdown` | GROUP BY party | Trades by party |
+| ✓ | Metric | Computation | Description |
+|---|--------|-------------|-------------|
+| [ ] | `buy_count` | COUNT WHERE type='purchase' | Monthly buys |
+| [ ] | `sell_count` | COUNT WHERE type='sale' | Monthly sells |
+| [ ] | `total_volume` | SUM(amount_range_avg) | Monthly volume |
+| [ ] | `unique_politicians` | COUNT(DISTINCT politician_id) | Active politicians |
+| [ ] | `top_tickers` | GROUP BY ticker, TOP 5 | Most traded tickers |
+| [ ] | `party_breakdown` | GROUP BY party | Trades by party |
 
 **Table: `politicians`** (Aggregated)
-| Metric | Computation | Description |
-|--------|-------------|-------------|
-| `total_trades` | COUNT(disclosures) | Politician's trade count |
-| `total_volume` | SUM(amount_range_avg) | Politician's total volume |
+| ✓ | Metric | Computation | Description |
+|---|--------|-------------|-------------|
+| [ ] | `total_trades` | COUNT(disclosures) | Politician's trade count |
+| [ ] | `total_volume` | SUM(amount_range_avg) | Politician's total volume |
 
 ---
 
@@ -676,16 +676,16 @@ ETL_API_URL=https://politician-trading-etl.fly.dev
 
 ## Quick Reference: Source to Table Mapping
 
-| External Source | Primary Table(s) | Key Fields |
-|----------------|------------------|------------|
-| House Clerk PDFs | `politicians`, `trading_disclosures` | name, ticker, amount, dates |
-| Senate EFD | `politicians`, `trading_disclosures` | name, ticker, amount, dates |
-| QuiverQuant | `politicians`, `trading_disclosures` | name, ticker, party, performance |
-| Congress.gov | `politicians` | bioguide_id, party, term dates |
-| Alpaca | `trading_orders`, `portfolios`, `positions` | orders, balances, positions |
-| Yahoo Finance | `trading_signals` | prices, volume |
-| ML Service | `trading_signals` | predictions, confidence |
-| Ollama | `politicians`, `error_reports` | party inference, categorization |
+| ✓ | External Source | Primary Table(s) | Key Fields |
+|---|----------------|------------------|------------|
+| [ ] | House Clerk PDFs | `politicians`, `trading_disclosures` | name, ticker, amount, dates |
+| [ ] | Senate EFD | `politicians`, `trading_disclosures` | name, ticker, amount, dates |
+| [ ] | QuiverQuant | `politicians`, `trading_disclosures` | name, ticker, party, performance |
+| [ ] | Congress.gov | `politicians` | bioguide_id, party, term dates |
+| [ ] | Alpaca | `trading_orders`, `portfolios`, `positions` | orders, balances, positions |
+| [ ] | Yahoo Finance | `trading_signals` | prices, volume |
+| [ ] | ML Service | `trading_signals` | predictions, confidence |
+| [ ] | Ollama | `politicians`, `error_reports` | party inference, categorization |
 
 ---
 
