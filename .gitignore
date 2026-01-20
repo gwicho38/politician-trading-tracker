@@ -67,6 +67,10 @@ models/*.pt
 models/*.json
 !models/.gitkeep
 
+# Cache files
+*_cache.json
+house_members_cache.json
+
 # Build artifacts
 *.whl
 .build_cache/
