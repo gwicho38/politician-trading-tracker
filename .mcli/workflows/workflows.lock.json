@@ -1,20 +1,7 @@
 {
   "version": "2.0",
-  "generated_at": "2026-01-11T18:45:03.124787Z",
+  "generated_at": "2026-01-19T20:19:06.870918Z",
   "commands": {
-    "backfill": {
-      "file": "backfill.py",
-      "language": "python",
-      "content_hash": "sha256:837ffa421303f72bb22605fe18bd9551665146d02fbb9e426078d6ee92ff6a41",
-      "version": "1.0.0",
-      "group": "workflows",
-      "description": "backfill command",
-      "author": "",
-      "requires": [],
-      "tags": [],
-      "shell": null,
-      "last_modified": "2026-01-04T18:05:15.581967Z"
-    },
     "client": {
       "file": "client.py",
       "language": "python",
@@ -26,25 +13,25 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-01-11T17:47:07.907402Z"
+      "last_modified": "2026-01-13T23:23:53.257370Z"
     },
-    "congress": {
-      "file": "congress.py",
+    "context": {
+      "file": "context.py",
       "language": "python",
-      "content_hash": "sha256:e1918850394789bf9c8dd87443dbe2363440d83c6048abae1b3e371b102b1f72",
+      "content_hash": "sha256:719c385c37f1f3fa619ab40527a3fb6a134decfde946eeb9ed308697b778af94",
       "version": "1.0.0",
       "group": "workflows",
-      "description": "Congress.gov API commands",
+      "description": "Context command",
       "author": "",
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-01-11T18:57:10.309671Z"
+      "last_modified": "2026-01-19T21:13:09.196894Z"
     },
     "etl": {
       "file": "etl.py",
       "language": "python",
-      "content_hash": "sha256:00dd78848b966b04755367144c37f0737bb22864fbc9d3038b7c7ebe59ff4ce1",
+      "content_hash": "sha256:f80186dd8185a5b60ccbe1adb06add6fce8f7d648418b3059215d93eb3323c40",
       "version": "1.0.0",
       "group": "workflows",
       "description": "etl command",
@@ -52,7 +39,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-01-08T12:59:43.409841Z"
+      "last_modified": "2026-01-17T19:12:13.847028Z"
     },
     "jobs": {
       "file": "jobs.py",
@@ -65,33 +52,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-01-11T17:57:36.968478Z"
-    },
-    "lambda": {
-      "file": "lambda.py",
-      "language": "python",
-      "content_hash": "sha256:placeholder",
-      "version": "1.0.0",
-      "group": "workflows",
-      "description": "Test and validate user lambda functions for signal transformation",
-      "author": "",
-      "requires": [],
-      "tags": [],
-      "shell": null,
-      "last_modified": "2026-01-14T00:00:00.000000Z"
-    },
-    "ml": {
-      "file": "ml.py",
-      "language": "python",
-      "content_hash": "sha256:c0c076f6dc9065aecc5418f5ec0921e31be8147bbfa702db91cd65890ffb2ef8",
-      "version": "1.0.0",
-      "group": "workflows",
-      "description": "ml command",
-      "author": "",
-      "requires": [],
-      "tags": [],
-      "shell": null,
-      "last_modified": "2025-12-31T14:42:35.973657Z"
+      "last_modified": "2026-01-13T23:23:53.257782Z"
     },
     "politician_trading_tracker": {
       "file": "politician_trading_tracker.py",
@@ -104,25 +65,12 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2025-12-28T09:39:32.181222Z"
-    },
-    "quiverquant": {
-      "file": "quiverquant.py",
-      "language": "python",
-      "content_hash": "sha256:1f7b4bf4126b4f6601aa6a9e0d1842cb37843f9becefb1e0b52b43eccaae7c5e",
-      "version": "1.0.0",
-      "group": "workflows",
-      "description": "QuiverQuant API commands",
-      "author": "",
-      "requires": [],
-      "tags": [],
-      "shell": null,
-      "last_modified": "2026-01-11T19:41:47.382573Z"
+      "last_modified": "2026-01-13T23:23:53.257972Z"
     },
     "server": {
       "file": "server.py",
       "language": "python",
-      "content_hash": "sha256:5d4a441f32814b21fc45e8f1b32a1226d48910617e20e168dcb5ac34032b0209",
+      "content_hash": "sha256:4d3af733e33265758a29d0628dbb793742bf63b0bc38bdd17fb9442a66b00a1e",
       "version": "2.1.0",
       "group": "workflows",
       "description": "Deploy and manage politician-trading-tracker Elixir server",
@@ -130,20 +78,20 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2025-12-30T00:18:46.371008Z"
+      "last_modified": "2026-01-17T19:12:13.912427Z"
     },
-    "shell": {
-      "file": "shell.sh",
+    "services": {
+      "file": "services.sh",
       "language": "shell",
-      "content_hash": "sha256:b3d51d8a3dc30a7071c856152f3d0767204bc8c65f9321072087c497007faa36",
+      "content_hash": "sha256:4f44c56595910f898c1d85dc656b415044e63f2e34e0ac423eb88d814a350bf2",
       "version": "1.0.0",
       "group": "workflows",
-      "description": "Shell command",
+      "description": "Services command",
       "author": "",
       "requires": [],
       "tags": [],
       "shell": "zsh",
-      "last_modified": "2025-12-31T14:41:21.438640Z"
+      "last_modified": "2026-01-17T14:58:06.319718Z"
     },
     "supabase": {
       "file": "supabase.py",
@@ -156,7 +104,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-01-04T13:01:05.781235Z"
+      "last_modified": "2026-01-13T23:23:53.258314Z"
     }
   }
 }

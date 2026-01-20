@@ -426,6 +426,8 @@ export const useDashboardStats = () => {
 
 // Politician detail: full profile with trading stats and recent trades
 export interface PoliticianDetail extends Politician {
+  total_trades: number;
+  total_volume: number;
   buyCount: number;
   sellCount: number;
   holdingCount: number;
@@ -460,12 +462,18 @@ export const usePoliticianDetail = (politicianId: string | null) => {
       if (tradesError) throw tradesError;
 
       // Calculate stats by transaction type
+      const total_trades = trades?.length || 0;
       const buyCount = trades?.filter(t => t.transaction_type === 'purchase').length || 0;
       const sellCount = trades?.filter(t => t.transaction_type === 'sale').length || 0;
       const holdingCount = trades?.filter(t => t.transaction_type === 'holding').length || 0;
       const otherCount = trades?.filter(t =>
         t.transaction_type && !['purchase', 'sale', 'holding'].includes(t.transaction_type)
       ).length || 0;
+
+      // Calculate total volume (average of min/max range)
+      const total_volume = trades?.reduce((sum, t) => {
+        return sum + ((t.amount_range_min || 0) + (t.amount_range_max || 0)) / 2;
+      }, 0) || 0;
 
       // Get top tickers
       const tickerCounts = new Map<string, number>();
@@ -485,6 +493,8 @@ export const usePoliticianDetail = (politicianId: string | null) => {
         name: politician.full_name || `${politician.first_name} ${politician.last_name}`,
         chamber: politician.role || 'Unknown',
         state: politician.state_or_country || politician.district,
+        total_trades,
+        total_volume,
         buyCount,
         sellCount,
         holdingCount,

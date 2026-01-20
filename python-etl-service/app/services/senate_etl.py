@@ -38,6 +38,7 @@ from app.lib.parser import (
 from app.lib.database import get_supabase, upload_transaction_to_supabase
 from app.lib.pdf_utils import extract_text_from_pdf, extract_tables_from_pdf
 from app.lib.politician import find_or_create_politician
+from app.lib.job_logger import log_job_execution, cleanup_old_executions
 
 # Setup logging
 logging.basicConfig(
@@ -1175,21 +1176,61 @@ async def run_senate_etl(
         disclosures_processed = len(electronic_disclosures) - errors
 
         # Update final status
+        completed_at = datetime.utcnow()
         JOB_STATUS[job_id]["status"] = "completed"
         JOB_STATUS[job_id]["message"] = (
             f"Completed: {len(senators)} senators, {disclosures_processed} disclosures, "
             f"{total_transactions} transactions, {errors} errors"
         )
-        JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+        JOB_STATUS[job_id]["completed_at"] = completed_at.isoformat()
 
         logger.info(
             f"[Senate ETL] Completed: {len(senators)} senators, {disclosures_processed} disclosures, "
             f"{total_transactions} transactions, {errors} errors"
         )
 
+        # Log job execution to database
+        log_job_execution(
+            supabase,
+            job_id="politician-trading-senate",
+            status="success",
+            started_at=datetime.fromisoformat(JOB_STATUS[job_id]["started_at"]),
+            completed_at=completed_at,
+            metadata={
+                "etl_job_id": job_id,
+                "lookback_days": lookback_days,
+                "senators_count": len(senators),
+                "disclosures_processed": disclosures_processed,
+                "transactions_uploaded": total_transactions,
+                "errors": errors,
+            },
+        )
+
+        # Cleanup old records (1% chance per run)
+        import random
+        if random.random() < 0.01:
+            cleanup_old_executions(supabase, days=30)
+
     except Exception as e:
+        completed_at = datetime.utcnow()
         JOB_STATUS[job_id]["status"] = "error"
         JOB_STATUS[job_id]["message"] = f"ETL failed: {str(e)}"
-        JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+        JOB_STATUS[job_id]["completed_at"] = completed_at.isoformat()
         logger.error(f"[Senate ETL] Failed: {e}", exc_info=True)
+
+        # Log failed execution to database
+        try:
+            sb = get_supabase()
+            log_job_execution(
+                sb,
+                job_id="politician-trading-senate",
+                status="failed",
+                started_at=datetime.fromisoformat(JOB_STATUS[job_id]["started_at"]),
+                completed_at=completed_at,
+                error_message=str(e),
+                metadata={"etl_job_id": job_id, "lookback_days": lookback_days},
+            )
+        except Exception as log_error:
+            logger.error(f"Failed to log job execution: {log_error}")
+
         raise

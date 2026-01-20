@@ -36,3 +36,6 @@ yfinance>=0.2.33
 
 # Sandboxed code execution
 RestrictedPython>=6.1
+
+# Testing
+pytest>=7.4.0

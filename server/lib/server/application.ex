@@ -95,7 +95,8 @@ defmodule Server.Application do
       # User feedback processing
       Server.Scheduler.Jobs.ErrorReportsJob,
       # Data cleanup
-      Server.Scheduler.Jobs.PoliticianDedupJob
+      Server.Scheduler.Jobs.PoliticianDedupJob,
+      Server.Scheduler.Jobs.JobExecutionCleanupJob
     ]
 
     Enum.each(jobs, fn job_module ->

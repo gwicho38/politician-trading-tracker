@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 import httpx
 
+# Legacy imports for backward compatibility
 from app.services.house_etl import (
     run_house_etl,
     JOB_STATUS,
@@ -27,6 +28,12 @@ from app.services.senate_etl import (
 )
 from app.services.ticker_backfill import run_ticker_backfill, run_transaction_type_backfill
 from app.services.bioguide_enrichment import run_bioguide_enrichment
+
+# New framework imports
+from app.lib import ETLRegistry
+
+# Register services (import triggers registration)
+import app.services.etl_services  # noqa: F401
 
 router = APIRouter()
 
@@ -58,6 +65,36 @@ class ETLStatusResponse(BaseModel):
     completed_at: Optional[str] = None
 
 
+class SourceInfo(BaseModel):
+    """Information about an ETL source."""
+    source_id: str
+    source_name: str
+    class_name: str
+
+
+class SourcesResponse(BaseModel):
+    """Response listing available ETL sources."""
+    sources: List[SourceInfo]
+
+
+@router.get("/sources", response_model=SourcesResponse)
+async def list_sources():
+    """
+    List all available ETL data sources.
+
+    Returns registered sources from the ETL registry.
+    """
+    sources = [
+        SourceInfo(
+            source_id=info["source_id"],
+            source_name=info["source_name"],
+            class_name=info["class"],
+        )
+        for info in ETLRegistry.get_all_info()
+    ]
+    return SourcesResponse(sources=sources)
+
+
 @router.post("/trigger", response_model=ETLTriggerResponse)
 async def trigger_etl(
     request: ETLTriggerRequest,
@@ -66,14 +103,17 @@ async def trigger_etl(
     """
     Trigger an ETL job for a specific data source.
 
-    Supported sources:
+    Supported sources can be listed via GET /etl/sources.
+    Currently registered:
     - house: US House of Representatives disclosures
     - senate: US Senate disclosures
     """
-    if request.source not in ["house", "senate"]:
+    # Validate source using registry
+    if not ETLRegistry.is_registered(request.source):
+        available = ETLRegistry.list_sources()
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported source: {request.source}. Supported: 'house', 'senate'",
+            detail=f"Unsupported source: {request.source}. Available: {available}",
         )
 
     # Generate job ID
@@ -478,4 +518,45 @@ async def get_senators(refresh: bool = False):
         senators=senators,
         with_disclosures=with_disclosures,
         total_disclosures=total_disclosures,
+    )
+
+
+# =============================================================================
+# Job Execution Cleanup
+# =============================================================================
+
+
+class CleanupRequest(BaseModel):
+    """Request body for job execution cleanup."""
+    days: int = 30  # Delete records older than this many days
+
+
+class CleanupResponse(BaseModel):
+    """Response from cleanup operation."""
+    deleted: int
+    message: str
+
+
+@router.post("/cleanup-executions", response_model=CleanupResponse)
+async def cleanup_job_executions(request: CleanupRequest):
+    """
+    Clean up old job execution records from the database.
+
+    Deletes job_executions records older than the specified number of days.
+    This should be called periodically (e.g., weekly) to prevent table bloat.
+
+    Default: deletes records older than 30 days.
+    """
+    from app.lib.job_logger import cleanup_old_executions
+
+    try:
+        supabase_client = get_supabase()
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    deleted = cleanup_old_executions(supabase_client, days=request.days)
+
+    return CleanupResponse(
+        deleted=deleted,
+        message=f"Deleted {deleted} job execution records older than {request.days} days",
     )
