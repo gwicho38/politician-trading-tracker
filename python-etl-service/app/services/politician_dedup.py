@@ -65,10 +65,10 @@ class PoliticianDeduplicator:
         if not name:
             return ""
 
-        # Remove common prefixes
+        # Remove common prefixes (longer patterns first to avoid partial matches)
         prefixes = [
-            r"^hon\.?\s*",
             r"^honorable\s+",
+            r"^hon\.?\s*",
             r"^representative\s+",
             r"^rep\.?\s*",
             r"^senator\s+",

@@ -46,7 +46,9 @@ import {
 import { cn } from '@/lib/utils';
 import { useTradingDisclosures, SortField, SortDirection, TradingDisclosure } from '@/hooks/useSupabaseData';
 import { ReportErrorModal } from '@/components/ReportErrorModal';
+import { PoliticianProfileModal } from '@/components/detail-modals/PoliticianProfileModal';
 import { getPartyColor, getPartyBg } from '@/lib/mockData';
+import type { Politician } from '@/hooks/useSupabaseData';
 
 const ROWS_PER_PAGE = 15;
 
@@ -111,6 +113,9 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
 
   // Mobile filter dialog state
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+
+  // Politician profile modal state
+  const [selectedPoliticianForProfile, setSelectedPoliticianForProfile] = useState<Politician | null>(null);
 
   const handleReportClick = (disclosure: TradingDisclosure) => {
     setSelectedDisclosure(disclosure);
@@ -581,9 +586,15 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                   </div>
 
                   {/* Politician Name */}
-                  <div className="text-xs text-muted-foreground truncate">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (politician) setSelectedPoliticianForProfile(politician);
+                    }}
+                    className="text-xs text-muted-foreground truncate hover:text-primary hover:underline transition-colors text-left"
+                  >
                     {politician?.name || 'Unknown'}
-                  </div>
+                  </button>
 
                   {/* Date */}
                   <div className="text-[10px] text-muted-foreground/70">
@@ -675,9 +686,15 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                     {/* Politician */}
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-foreground">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (politician) setSelectedPoliticianForProfile(politician);
+                          }}
+                          className="font-medium text-foreground hover:text-primary hover:underline transition-colors text-left"
+                        >
                           {politician?.name || 'Unknown'}
-                        </span>
+                        </button>
                         <Badge
                           variant="outline"
                           className={cn(
@@ -839,6 +856,13 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
         disclosure={selectedDisclosure}
         open={reportModalOpen}
         onOpenChange={setReportModalOpen}
+      />
+
+      {/* Politician Profile Modal */}
+      <PoliticianProfileModal
+        politician={selectedPoliticianForProfile}
+        open={!!selectedPoliticianForProfile}
+        onOpenChange={(open) => !open && setSelectedPoliticianForProfile(null)}
       />
     </div>
   );

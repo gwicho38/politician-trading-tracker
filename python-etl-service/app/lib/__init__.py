@@ -3,6 +3,11 @@ Shared library utilities for the ETL service.
 
 This module consolidates common functions used across multiple ETL services
 to eliminate code duplication.
+
+Framework components:
+- BaseETLService: Abstract base class for ETL data sources
+- ETLRegistry: Service discovery and registration
+- ETLResult: Standardized result tracking
 """
 
 from app.lib.database import get_supabase, upload_transaction_to_supabase
@@ -19,8 +24,22 @@ from app.lib.parser import (
 )
 from app.lib.pdf_utils import extract_tables_from_pdf, extract_text_from_pdf
 from app.lib.politician import find_or_create_politician
+from app.lib.job_logger import (
+    log_job_execution,
+    cleanup_old_executions,
+    JobExecutionContext,
+)
+
+# Framework components
+from app.lib.base_etl import BaseETLService, ETLResult, JobStatus
+from app.lib.registry import ETLRegistry
 
 __all__ = [
+    # Framework
+    "BaseETLService",
+    "ETLResult",
+    "JobStatus",
+    "ETLRegistry",
     # Database
     "get_supabase",
     "upload_transaction_to_supabase",
@@ -39,4 +58,8 @@ __all__ = [
     "extract_text_from_pdf",
     # Politician
     "find_or_create_politician",
+    # Job Logger
+    "log_job_execution",
+    "cleanup_old_executions",
+    "JobExecutionContext",
 ]

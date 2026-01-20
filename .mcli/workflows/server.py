@@ -479,3 +479,207 @@ def etl_run(ctx, years, limit: Optional[int]):
         except Exception as e:
             console.print(f"[red]✗ Error: {e}[/red]")
             break
+
+
+# =============================================================================
+# Lambda Sandbox Commands (Subgroup)
+# =============================================================================
+
+LAMBDA_ETL_SERVICE_URL = "https://politician-trading-etl.fly.dev"
+
+
+@server.group(name="lambda")
+def lambda_cmd():
+    """Test and validate user lambda functions for signal transformation."""
+    pass
+
+
+@lambda_cmd.command(name="validate")
+@click.argument("code", required=False)
+@click.option("--file", "-f", type=click.Path(exists=True), help="Read code from file")
+def lambda_validate(code, file):
+    """
+    Validate lambda code without executing it.
+
+    Examples:
+        mcli run server lambda validate 'result = signal'
+        mcli run server lambda validate -f my_lambda.py
+    """
+    import httpx
+
+    if file:
+        with open(file, 'r') as f:
+            code = f.read()
+
+    if not code:
+        console.print("[red]Error: Provide code as argument or use --file[/red]")
+        raise SystemExit(1)
+
+    console.print("🔍 Validating lambda code...\n")
+    console.print(f"Code:\n{'-'*40}")
+    for line in code.split('\n')[:10]:
+        console.print(f"  {line}")
+    console.print(f"{'-'*40}\n")
+
+    try:
+        response = httpx.post(
+            f"{LAMBDA_ETL_SERVICE_URL}/signals/validate-lambda",
+            json={"lambdaCode": code},
+            timeout=30.0
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("valid"):
+            console.print("[green]✅ Lambda code is valid[/green]")
+        else:
+            console.print(f"[red]❌ Invalid: {data.get('error', 'Unknown error')}[/red]")
+            raise SystemExit(1)
+
+    except httpx.HTTPError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)
+
+
+@lambda_cmd.command(name="test-security")
+def lambda_test_security():
+    """
+    Test that dangerous operations are properly blocked.
+    """
+    import httpx
+
+    console.print("🔒 Security Test Suite\n")
+
+    test_cases = [
+        ("Import blocking", "import os\nresult = signal", False),
+        ("Eval blocking", "eval('1+1')\nresult = signal", False),
+        ("Open blocking", "open('/etc/passwd')\nresult = signal", False),
+        ("Valid simple lambda", "result = signal", True),
+        ("Valid math operations", "signal['confidence_score'] = min(0.99, signal['confidence_score'] + 0.1)\nresult = signal", True),
+    ]
+
+    passed = 0
+    failed = 0
+
+    for name, code, should_pass in test_cases:
+        try:
+            response = httpx.post(
+                f"{LAMBDA_ETL_SERVICE_URL}/signals/validate-lambda",
+                json={"lambdaCode": code},
+                timeout=10.0
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            is_valid = data.get("valid", False)
+
+            if is_valid == should_pass:
+                console.print(f"  [green]✅ PASS[/green]: {name}")
+                passed += 1
+            else:
+                console.print(f"  [red]❌ FAIL[/red]: {name}")
+                failed += 1
+
+        except httpx.HTTPError as e:
+            console.print(f"  [red]❌ ERROR[/red]: {name} - {e}")
+            failed += 1
+
+    console.print(f"\n{'='*40}")
+    console.print(f"Results: {passed} passed, {failed} failed")
+
+    if failed > 0:
+        raise SystemExit(1)
+
+
+@lambda_cmd.command(name="apply")
+@click.option("--code", "-c", required=True, help="Lambda code to apply")
+@click.option("--ticker", "-t", default="AAPL", help="Ticker symbol")
+@click.option("--confidence", default=0.7, help="Initial confidence score")
+@click.option("--signal-type", default="buy", help="Signal type")
+def lambda_apply(code, ticker, confidence, signal_type):
+    """
+    Apply lambda code to a test signal.
+
+    Examples:
+        mcli run server lambda apply -c 'result = signal'
+        mcli run server lambda apply -c 'signal["confidence_score"] = 0.99; result = signal' -t NVDA
+    """
+    import httpx
+    import json
+
+    signal = {
+        "ticker": ticker.upper(),
+        "signal_type": signal_type,
+        "confidence_score": confidence,
+        "buy_sell_ratio": 2.0,
+        "politician_activity_count": 3,
+        "total_transaction_volume": 100000,
+        "ml_enhanced": False,
+    }
+
+    console.print("🧪 Applying lambda to test signal\n")
+    console.print(f"Input: ticker={signal['ticker']}, confidence={signal['confidence_score']:.2f}")
+
+    try:
+        response = httpx.post(
+            f"{LAMBDA_ETL_SERVICE_URL}/signals/apply-lambda",
+            json={"signals": [signal], "lambdaCode": code},
+            timeout=30.0
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("success") and data.get("signals"):
+            result = data["signals"][0]
+            console.print(f"\nOutput: confidence={result.get('confidence_score', 0):.2f}")
+
+            if result.get('confidence_score') != signal['confidence_score']:
+                diff = result.get('confidence_score', 0) - signal['confidence_score']
+                console.print(f"[green]✓ Changed: {'+' if diff > 0 else ''}{diff:.2f}[/green]")
+            else:
+                console.print("[dim]○ No changes[/dim]")
+        else:
+            console.print(f"[red]❌ Lambda failed: {data}[/red]")
+            raise SystemExit(1)
+
+    except httpx.HTTPError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)
+
+
+@lambda_cmd.command(name="help")
+def lambda_help():
+    """Show lambda help documentation and examples."""
+    console.print("📚 Lambda Quick Reference\n")
+    console.print("Available in lambda:")
+    console.print("  - signal: dict with ticker, confidence_score, signal_type, etc.")
+    console.print("  - math: sqrt, log, sin, cos, floor, ceil, etc.")
+    console.print("  - Builtins: len, abs, min, max, round, str, int, float")
+    console.print("\nExample:")
+    console.print('  if signal.get("buy_sell_ratio", 0) > 2:')
+    console.print('      signal["confidence_score"] = min(signal["confidence_score"] + 0.1, 0.99)')
+    console.print('  result = signal')
+    console.print("\nForbidden:")
+    console.print("  - import, eval, exec, open, __import__")
+    console.print("  - Dunder methods (__class__, __globals__, etc.)")
+
+
+@lambda_cmd.command(name="examples")
+def lambda_examples():
+    """Show example lambda functions."""
+    examples = [
+        ("Boost high buy/sell ratio", 'if signal.get("buy_sell_ratio", 0) > 3.0:\n    signal["confidence_score"] = min(signal["confidence_score"] + 0.1, 0.99)\nresult = signal'),
+        ("Penalize low politician count", 'if signal.get("politician_activity_count", 0) < 3:\n    signal["confidence_score"] = signal["confidence_score"] * 0.85\nresult = signal'),
+        ("Convert weak sells to holds", 'if signal["signal_type"] == "sell" and signal["confidence_score"] < 0.65:\n    signal["signal_type"] = "hold"\nresult = signal'),
+    ]
+
+    console.print("📝 Lambda Examples\n")
+
+    for i, (name, code) in enumerate(examples, 1):
+        console.print(f"{i}. {name}")
+        for line in code.split('\n'):
+            console.print(f"     {line}")
+        console.print()
+
+# Entry point for mcli
+app = server

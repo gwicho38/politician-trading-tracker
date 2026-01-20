@@ -1,60 +1,62 @@
 # Politician Trading Tracker
 
-🚀 **React + Supabase** politician trading disclosure tracker with comprehensive scrapers for US Congress, EU Parliament, UK Parliament, US states, and more.
+Track and analyze financial disclosures from US Congress members using data from official government sources and third-party aggregators.
 
 ## Overview
 
-This project provides a modern web application for collecting, processing, and analyzing financial disclosures and trading activities of politicians worldwide. It features:
+This project provides a full-stack application for collecting, processing, and analyzing politician trading disclosures. It uses a **tripartite architecture** with three main components:
 
-- **Modern React UI** with TypeScript and Tailwind CSS
-- **Supabase Backend** with PostgreSQL database and Edge Functions
-- **Comprehensive Scrapers** for official government sources
-- **Real-time Trading Signals** with ML-powered analysis
-- **User Authentication** and subscription management
-- **Admin Dashboard** for data management
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| **Client** | React + TypeScript + Vite | Web frontend with dashboard, trading signals, and portfolio management |
+| **Server** | Elixir Phoenix | API server, background jobs, WebSocket connections, and business logic |
+| **ETL Service** | Python | Data ingestion from Congress.gov, QuiverQuant, and PDF parsing |
 
-**Architecture:** React SPA → Supabase Edge Functions → PostgreSQL Database
+All components connect to **Supabase** (PostgreSQL) as the shared data layer.
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────────┐
+│   Client    │     │   Server    │     │   ETL Service   │
+│   (React)   │     │  (Phoenix)  │     │    (Python)     │
+└──────┬──────┘     └──────┬──────┘     └────────┬────────┘
+       │                   │                     │
+       └───────────────────┼─────────────────────┘
+                           │
+                    ┌──────▼──────┐
+                    │  Supabase   │
+                    │ (PostgreSQL)│
+                    └─────────────┘
+```
 
 ## Features
 
-### Scrapers
+### Data Sources
 
-- **US Federal**
-  - US House of Representatives
-  - US Senate
-  - Third-party aggregators (QuiverQuant, etc.)
+- **US Congress** - House and Senate financial disclosures via Congress.gov API
+- **QuiverQuant** - Third-party aggregator with enriched trading data
+- **PDF Parsing** - Direct extraction from disclosure PDFs using pdfplumber
 
-- **US State Level**
-  - California (NetFile, FPPC)
-  - Texas
-  - New York
-  - Florida
-  - And more...
+### Client Features
 
-- **International**
-  - EU Parliament
-  - UK Parliament
-  - EU Member States (Germany, France, Italy, Spain, Netherlands)
+- Modern dashboard with trading activity overview
+- ML-powered trading signal recommendations
+- Portfolio tracking and order management
+- Politician search and filtering
+- User authentication via Supabase Auth
 
-- **Corporate Registries**
-  - SEC filings
-  - State business registries
-  - International corporate registries
+### Server Features
 
-### Data Processing
+- REST API for client consumption
+- Background job processing (Oban)
+- Real-time updates via Phoenix Channels
+- Lambda sandbox for secure code execution
 
-- Automated data collection workflows
+### ETL Features
+
+- Automated data collection pipelines
 - Politician matching and deduplication
-- Data normalization and validation
-- Supabase database integration
-- ML preprocessing for analysis
-
-### Monitoring & Scheduling
-
-- Real-time scraping status monitoring
-- Scheduled data collection via cron/daemon
-- Error tracking and alerting
-- Job status tracking
+- Ticker symbol extraction and validation
+- Scheduled job execution via cron
 
 ## Quick Start
 
@@ -63,301 +65,268 @@ This project provides a modern web application for collecting, processing, and a
 git clone https://github.com/gwicho38/politician-trading-tracker.git
 cd politician-trading-tracker
 
-# One-command setup (installs all dependencies)
-make setup
-
-# Start development servers
+# Start all services locally
 make dev
 
-# Open http://localhost:5173 in your browser
+# Or start individual components:
+cd client && bun dev          # React frontend at http://localhost:5173
+cd server && mix phx.server   # Phoenix server at http://localhost:4000
+cd python-etl-service && python -m app.main  # ETL service
+```
+
+## Project Structure
+
+```
+politician-trading-tracker/
+├── client/                 # React frontend (Vite + TypeScript + Tailwind)
+│   ├── src/
+│   │   ├── components/     # Reusable UI components
+│   │   ├── pages/          # Route pages
+│   │   ├── hooks/          # Custom React hooks
+│   │   └── lib/            # Utilities and Supabase client
+│   └── package.json
+│
+├── server/                 # Elixir Phoenix backend
+│   ├── lib/
+│   │   ├── politician_trading/        # Business logic
+│   │   └── politician_trading_web/    # Web layer (controllers, channels)
+│   └── mix.exs
+│
+├── python-etl-service/     # Python ETL microservice
+│   ├── app/
+│   │   ├── lib/            # Shared utilities (database, parser, pdf_utils)
+│   │   ├── services/       # ETL services (house, senate, quiverquant)
+│   │   └── main.py         # Service entry point
+│   └── requirements.txt
+│
+├── supabase/               # Database configuration
+│   ├── functions/          # Edge Functions
+│   └── sql/                # Schema migrations
+│
+├── .mcli/workflows/        # CLI workflow commands
+│   ├── client.py           # Client deployment commands
+│   ├── server.py           # Server deployment + lambda subcommands
+│   ├── etl.py              # ETL + congress/quiver/backfill/ml subcommands
+│   ├── jobs.py             # Cross-service job monitoring
+│   ├── supabase.py         # Database management
+│   └── services.sh         # Fly.io orchestration
+│
+└── docs/                   # Documentation
 ```
 
 ## Installation
 
-### Option 1: Makefile (Recommended)
+### Prerequisites
+
+- **Node.js 20+** or **Bun** (for client)
+- **Elixir 1.15+** and **Erlang/OTP 26+** (for server)
+- **Python 3.11+** with **uv** (for ETL service)
+- **Supabase** account (for database)
+
+### Setup Each Component
 
 ```bash
-make setup          # Install all dependencies
-make dev           # Start development servers
-make build         # Build for production
-make test          # Run all tests
+# Client
+cd client
+bun install  # or npm install
+
+# Server
+cd server
+mix deps.get
+mix ecto.setup
+
+# ETL Service
+cd python-etl-service
+uv sync  # or pip install -r requirements.txt
 ```
 
-### Option 2: Manual Setup
+### Environment Variables
+
+Each component needs its own `.env` file:
 
 ```bash
-# Install Python dependencies
-uv sync --dev
-
-# Install React dependencies
-cd submodules/capital-trades && npm install
-
-# Set up environment variables
-cp .env.example .env
-cp submodules/capital-trades/.env.production.example submodules/capital-trades/.env.production
-# Edit both .env files with your configuration
+# Copy example files
+cp client/.env.production.example client/.env
+cp server/.env.example server/.env
+cp .env.example .env  # Root for ETL service
 ```
 
 ## Configuration
 
-### Python Backend (.env)
+### Client (client/.env)
 
 ```bash
-# Supabase Configuration
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_KEY=your_supabase_service_key
-
-# API Keys (optional for enhanced data)
-QUIVER_API_KEY=your_quiver_key
-ALPACA_API_KEY=your_alpaca_key
-ALPACA_SECRET_KEY=your_alpaca_secret
-
-# Scraping Configuration
-SCRAPING_DELAY=1.0
-MAX_RETRIES=3
-TIMEOUT=30
-```
-
-### React Frontend (submodules/capital-trades/.env.production)
-
-```bash
-# Supabase Configuration
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_API_URL=http://localhost:4000  # Phoenix server URL
+```
 
-# Application Configuration
-VITE_APP_TITLE="Politician Trading Tracker"
-VITE_APP_VERSION="1.0.0"
-VITE_APP_ENVIRONMENT="production"
+### Server (server/.env)
 
-# Feature Flags
-VITE_ENABLE_LIVE_TRADING=false
-VITE_ENABLE_DEBUG_MODE=false
+```bash
+DATABASE_URL=ecto://postgres:password@localhost/politician_trading_dev
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_KEY=your_service_key
+SECRET_KEY_BASE=your_phoenix_secret_key
+```
+
+### ETL Service (.env in root)
+
+```bash
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_KEY=your_service_key
+QUIVER_API_KEY=your_quiver_key  # Optional, for QuiverQuant data
+CONGRESS_API_KEY=your_congress_key  # Optional, for Congress.gov API
 ```
 
 ## Usage
 
-### Web Application
+### Development
 
-Start the development server and open http://localhost:5173:
-
-```bash
-make dev
-```
-
-**Available Pages:**
-- **Dashboard** - Overview of trading activity and signals
-- **Trading Signals** - ML-powered trading recommendations
-- **Portfolio** - Track your investments
-- **Orders** - Manage trading orders
-- **Admin** - Data management and system monitoring
-
-### Command Line Interface
+Start all services for local development:
 
 ```bash
-# Run full collection workflow
-uv run politician-trading collect
+# Terminal 1: Client
+cd client && bun dev
+# Opens http://localhost:5173
 
-# Seed database with sample data
-uv run politician-trading-seed
+# Terminal 2: Server
+cd server && mix phx.server
+# API at http://localhost:4000
 
-# Check status
-uv run politician-trading status
-
-# Run specific scraper
-uv run politician-trading scrape --source us-congress
-uv run politician-trading scrape --source uk-parliament
-uv run politician-trading scrape --source california
+# Terminal 3: ETL (run as needed)
+cd python-etl-service && python -m app.main
 ```
 
-### Python API
+### CLI Workflows (mcli)
 
-```python
-from politician_trading.workflow import PoliticianTradingWorkflow
-from politician_trading.config import WorkflowConfig
+The project uses `mcli` for deployment and management workflows:
 
-# Initialize workflow
-config = WorkflowConfig.default()
-workflow = PoliticianTradingWorkflow(config)
+```bash
+# Client commands
+mcli run client deploy           # Deploy React app to Fly.io
+mcli run client status           # Check deployment status
 
-# Run full collection
-results = await workflow.run_full_collection()
+# Server commands
+mcli run server deploy           # Deploy Phoenix server to Fly.io
+mcli run server status           # Check server status
+mcli run server lambda validate  # Test Lambda sandbox
 
-# Check status
-status = await workflow.get_status()
+# ETL commands
+mcli run etl trigger --house     # Trigger House ETL job
+mcli run etl trigger --senate    # Trigger Senate ETL job
+mcli run etl congress test       # Test Congress.gov API
+mcli run etl quiver fetch        # Fetch QuiverQuant data
+mcli run etl backfill repair     # Fix data quality issues
+mcli run etl ml train            # Train ML models
+
+# Cross-service commands
+mcli run jobs status             # View all job statuses
+mcli run supabase tables         # List database tables
+mcli run services deploy-all     # Deploy all services
 ```
 
-### Scrapers
+### Web Application Pages
 
-```python
-from politician_trading.scrapers import (
-    CongressTradingScraper,
-    UKParliamentScraper,
-    CaliforniaScraper
-)
-
-# US Congress scraper
-scraper = CongressTradingScraper()
-async with scraper:
-    house_disclosures = await scraper.scrape_house_disclosures()
-    senate_disclosures = await scraper.scrape_senate_disclosures()
-
-# UK Parliament scraper
-uk_scraper = UKParliamentScraper()
-async with uk_scraper:
-    uk_disclosures = await uk_scraper.scrape_mp_interests()
-```
+- **Dashboard** - Overview of trading activity and market signals
+- **Trading Signals** - ML-powered buy/sell recommendations
+- **Portfolio** - Track investments and performance
+- **Orders** - Execute and manage trades
+- **Politicians** - Browse and search politician disclosures
 
 ## Deployment
 
-### Production Deployment
+All services deploy to **Fly.io** with Docker containers.
+
+### Deploy Individual Services
 
 ```bash
-# Build for production
-make build
+# Deploy client (React)
+mcli run client deploy
 
-# Deploy React app (choose one method)
-./scripts/deploy_vercel.sh    # Vercel
-./scripts/deploy_netlify.sh   # Netlify
-./scripts/deploy_docker.sh    # Docker
-./scripts/deploy_manual.sh    # Manual
+# Deploy server (Phoenix)
+mcli run server deploy
 
-# Deploy Supabase Edge Functions
-make deploy-backend
+# Deploy ETL service
+cd python-etl-service && fly deploy
 ```
 
-### Environment Setup
+### Deploy All Services
 
-1. **Supabase Project**: Create at https://supabase.com
-2. **Database Schema**: Run SQL in Supabase dashboard:
-   ```sql
-   -- Copy contents from supabase/sql/create_missing_tables.sql
-   ```
-3. **Edge Functions**: Deploy via Supabase CLI:
-   ```bash
-   supabase functions deploy trading-signals --project-ref YOUR_PROJECT_REF
-   supabase functions deploy orders --project-ref YOUR_PROJECT_REF
-   supabase functions deploy portfolio --project-ref YOUR_PROJECT_REF
-   ```
+```bash
+mcli run services deploy-all
+```
+
+### Fly.io Configuration
+
+Each service has its own `fly.toml`:
+- `client/fly.toml` - React static site
+- `server/fly.toml` - Phoenix application
+- `python-etl-service/fly.toml` - Python worker
+
+### Database Setup
+
+1. Create a Supabase project at https://supabase.com
+2. Run migrations from `supabase/sql/`
+3. Set environment variables in each service
 
 ## Database Schema
 
-The project uses a normalized database schema with the following main tables:
+Core tables in Supabase PostgreSQL:
 
-- `politician_trades` - Main trading data table
-- `user_sessions` - User authentication sessions
-- `action_logs` - Application action logging
-- `scheduled_jobs` - Job scheduling system
+| Table | Purpose |
+|-------|---------|
+| `politicians` | Politician profiles (name, party, state, chamber) |
+| `trading_disclosures` | Individual trade transactions |
+| `scheduled_jobs` | ETL job definitions and schedules |
+| `job_executions` | Job run history and logs |
+| `data_pull_jobs` | Data collection tracking |
 
 See `supabase/sql/` for complete schema definitions.
 
 ## Development
 
-### Setup Development Environment
+### Client Development
 
 ```bash
-# One-command setup
-make setup
-
-# Start development servers (React + Python)
-make dev
-
-# React app: http://localhost:9090 (or next available port)
-# Python API: Available via Supabase Edge Functions
+cd client
+bun dev              # Start dev server
+bun run build        # Production build
+bun run lint         # ESLint
+bun run test         # Vitest
+bun run e2e          # Playwright E2E tests
 ```
 
-### Development Workflow
+### Server Development
 
 ```bash
-# Run all tests
-make test
-
-# Run linting and formatting
-make lint
-make format
-
-# Build for production
-make build
-
-# Clean development artifacts
-make clean
+cd server
+mix deps.get         # Install dependencies
+mix ecto.setup       # Create and migrate database
+mix phx.server       # Start server
+mix test             # Run tests
 ```
 
-### Code Quality
+### ETL Development
 
 ```bash
-# Python linting and formatting
-uv run ruff check src/ tests/ scripts/
-uv run black src/ tests/ scripts/
-uv run isort src/ tests/ scripts/
-uv run mypy src/
-
-# React linting and formatting
-cd submodules/capital-trades && npm run lint
-cd submodules/capital-trades && npm run format
-```
-
-### Adding New Scrapers
-
-1. Create a new scraper module in `src/politician_trading/scrapers/`
-2. Inherit from base scraper class or implement required interface
-3. Add scraper to workflow in `workflow.py`
-4. Add tests in `tests/integration/`
-5. Update documentation
-
-Example:
-
-```python
-from politician_trading.scrapers.base import BaseScraper
-from politician_trading.models import TradingDisclosure
-
-class NewJurisdictionScraper(BaseScraper):
-    async def scrape_disclosures(self) -> List[TradingDisclosure]:
-        # Implementation
-        pass
+cd python-etl-service
+uv sync              # Install dependencies
+pytest               # Run tests
+ruff check app/      # Linting
 ```
 
 ## Testing
 
 ```bash
-# Run all tests
-pytest
+# Client (Vitest + Playwright)
+cd client && bun test && bun run e2e
 
-# Run only unit tests
-pytest tests/unit
+# Server (ExUnit)
+cd server && mix test
 
-# Run only integration tests
-pytest tests/integration
-
-# Skip slow tests
-pytest -m "not slow"
-
-# Run with coverage
-pytest --cov=src/politician_trading --cov-report=html
-```
-
-## Deployment
-
-### Supabase Functions
-
-Deploy the automated collection function:
-
-```bash
-cd supabase
-supabase functions deploy politician-trading-collect
-```
-
-### Scheduled Jobs
-
-Set up cron jobs for automated collection:
-
-```bash
-# Daily collection at 2 AM
-0 2 * * * politician-trading collect --mode daily
-
-# Weekly full scan on Sundays at 3 AM
-0 3 * * 0 politician-trading collect --mode full
+# ETL (pytest)
+cd python-etl-service && pytest
 ```
 
 ## Data Sources
@@ -366,38 +335,53 @@ Set up cron jobs for automated collection:
 
 - [US House Financial Disclosures](https://disclosures-clerk.house.gov/)
 - [US Senate Financial Disclosures](https://efdsearch.senate.gov/)
-- [UK Parliament Register of Interests](https://www.parliament.uk/mps-lords-and-offices/standards-and-financial-interests/)
-- [EU Parliament Declarations](https://www.europarl.europa.eu/meps/en/declarations)
+- [Congress.gov API](https://api.congress.gov/)
 
 ### Third-Party Aggregators
 
-- QuiverQuant
-- Capitol Trades
-- Various state disclosure systems
+- [QuiverQuant](https://www.quiverquant.com/) - Aggregated congress trading data
 
 ## Architecture
 
+### Tripartite Design
+
+The application follows a tripartite architecture separating concerns:
+
+| Layer | Component | Responsibilities |
+|-------|-----------|------------------|
+| **Presentation** | Client (React) | UI rendering, user interactions, state management |
+| **Application** | Server (Phoenix) | Business logic, API endpoints, real-time features |
+| **Data** | ETL Service (Python) | Data ingestion, transformation, ML processing |
+
+### Communication Patterns
+
 ```
-politician-trading-tracker/
-├── src/politician_trading/
-│   ├── scrapers/          # Data collection modules
-│   ├── database/          # Database operations
-│   ├── models/            # Data models
-│   ├── preprocessing/     # ML preprocessing
-│   ├── ml/                # ML features
-│   ├── config.py          # Configuration
-│   ├── workflow.py        # Main orchestration
-│   └── monitoring.py      # Status monitoring
-├── tests/
-│   ├── unit/
-│   └── integration/
-├── docs/
-│   └── guides/
-├── supabase/
-│   ├── functions/
-│   └── sql/
-└── scripts/
+Client ←──REST/WebSocket──→ Server ←──HTTP──→ ETL Service
+   │                          │                    │
+   └──────────────────────────┼────────────────────┘
+                              │
+                        ┌─────▼─────┐
+                        │  Supabase │
+                        │    (DB)   │
+                        └───────────┘
 ```
+
+- **Client → Server**: REST API for CRUD, WebSocket for real-time updates
+- **Server → ETL**: HTTP triggers for job execution
+- **All → Supabase**: Direct database access via Supabase client libraries
+
+### Workflow Management
+
+CLI workflows (`.mcli/workflows/`) provide unified management:
+
+| Workflow | Scope | Commands |
+|----------|-------|----------|
+| `client.py` | React frontend | deploy, status, logs, open |
+| `server.py` | Phoenix server | deploy, status, logs, jobs, lambda |
+| `etl.py` | Python ETL | trigger, status, congress, quiver, backfill, ml |
+| `jobs.py` | All services | unified job monitoring |
+| `supabase.py` | Database | tables, schema, query |
+| `services.sh` | Deployment | deploy-all, status |
 
 ## Contributing
 
@@ -409,18 +393,26 @@ Contributions are welcome! Please:
 4. Ensure all tests pass
 5. Submit a pull request
 
+### Component-Specific Guidelines
+
+- **Client**: Follow React/TypeScript conventions, use existing UI components
+- **Server**: Follow Elixir conventions, add ExUnit tests
+- **ETL**: Follow Python conventions, add pytest tests
+
 ## License
 
 MIT License - see LICENSE file for details
 
 ## Disclaimer
 
-This project is for research and transparency purposes only. Always comply with terms of service and robots.txt when scraping data. The data collected is from publicly available sources.
+This project is for research and transparency purposes only. The data collected is from publicly available government sources.
 
-## Acknowledgments
+## Documentation
 
-- Data sources: US House, US Senate, UK Parliament, EU Parliament, and various state governments
-- Built with inspiration from transparency and government accountability projects
+- [Architecture Decisions](docs/architecture/README.md) - ADRs for major decisions
+- [Pipeline Architecture](docs/PIPELINE_ARCHITECTURE.md) - ETL pipeline design
+- [Database Setup](docs/database/DATABASE_SETUP.md) - Schema and migrations
+- [Deployment Guide](docs/deployment/DEPLOYMENT.md) - Production deployment
 
 ## Support
 

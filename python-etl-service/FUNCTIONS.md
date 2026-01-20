@@ -231,7 +231,6 @@ Generated: 2026-01-17
 
 | Function | Count | Candidate for Refactoring |
 |----------|-------|---------------------------|
-| `parse_value_range` | 2 | ✅ Medium priority |
 | `parse_transaction_from_row` | 2 | ⚠️ May differ by chamber |
 | `parse_asset_type` | 2 | ✅ Medium priority |
 | `normalize_name` | 2 | ✅ Medium priority |

@@ -6,6 +6,11 @@ import subprocess
 import click
 import httpx
 from pathlib import Path
+from typing import Optional, List, Dict, Any
+from rich.console import Console
+from rich.table import Table
+
+console = Console()
 
 # ETL service configuration
 ETL_DIR = Path(__file__).parent.parent.parent / "python-etl-service"
@@ -1710,3 +1715,1864 @@ def dedup(dry_run: bool, limit: int):
     except httpx.HTTPError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
+
+
+# =============================================================================
+# Congress.gov API Commands (Subgroup)
+# =============================================================================
+
+CONGRESS_API_URL = "https://api.congress.gov/v3"
+CURRENT_CONGRESS = 119  # 119th Congress (2025-2027)
+
+
+def _get_congress_api_key() -> Optional[str]:
+    """Get Congress.gov API key from lsh."""
+    try:
+        result = subprocess.run(
+            ["lsh", "get", "CONGRESS_API_KEY"],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
+def _make_congress_request(endpoint: str, params: Dict[str, Any] = None) -> Dict:
+    """Make authenticated request to Congress.gov API."""
+    api_key = _get_congress_api_key()
+    if not api_key:
+        raise click.ClickException("CONGRESS_API_KEY not found. Set with: lsh set CONGRESS_API_KEY <key>")
+
+    url = f"{CONGRESS_API_URL}{endpoint}"
+    params = params or {}
+    params["api_key"] = api_key
+    params["format"] = "json"
+
+    response = httpx.get(url, params=params, timeout=30.0)
+
+    if response.status_code != 200:
+        raise click.ClickException(f"API error: HTTP {response.status_code} - {response.text[:200]}")
+
+    return response.json()
+
+
+def _normalize_congress_name(name: str) -> str:
+    """Normalize a name for matching."""
+    if not name:
+        return ""
+    # Handle "Last, First" format
+    if ", " in name:
+        parts = name.split(", ", 1)
+        name = f"{parts[1]} {parts[0]}"
+    # Remove common suffixes/prefixes
+    for suffix in [" Jr.", " Jr", " Sr.", " Sr", " III", " II", " IV"]:
+        name = name.replace(suffix, "")
+    return name.lower().strip()
+
+
+def _fetch_all_congress_members() -> List[Dict]:
+    """Fetch all current Congress members from Congress.gov API."""
+    all_members = []
+    offset = 0
+    page_size = 250
+
+    while True:
+        params = {
+            "limit": page_size,
+            "offset": offset,
+            "currentMember": "true"
+        }
+        data = _make_congress_request("/member", params)
+        members = data.get("members", [])
+
+        if not members:
+            break
+
+        for member in members:
+            terms = member.get("terms", {}).get("item", [])
+            current_term = terms[0] if terms else {}
+
+            all_members.append({
+                "bioguide_id": member.get("bioguideId", ""),
+                "name": member.get("name", ""),
+                "direct_name": member.get("directOrderName", ""),
+                "state": member.get("state", ""),
+                "district": member.get("district"),
+                "party": member.get("partyName", ""),
+                "chamber": current_term.get("chamber", ""),
+            })
+
+        offset += page_size
+        total = data.get("pagination", {}).get("count", 0)
+        if offset >= total:
+            break
+
+    return all_members
+
+
+def _get_congress_supabase_config() -> Dict[str, str]:
+    """Get Supabase configuration from lsh."""
+    config = {}
+    for key in ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]:
+        try:
+            result = subprocess.run(
+                ["lsh", "get", key],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                config[key] = result.stdout.strip()
+        except Exception:
+            pass
+    return config
+
+
+def _fetch_app_politicians(config: Dict[str, str]) -> List[Dict]:
+    """Fetch politicians from app database."""
+    url = config.get("SUPABASE_URL")
+    key = config.get("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not url or not key:
+        return []
+
+    response = httpx.get(
+        f"{url}/rest/v1/politicians",
+        headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json"
+        },
+        params={
+            "select": "id,full_name,first_name,last_name,bioguide_id,party,state_or_country,chamber",
+            "limit": 2000
+        },
+        timeout=30.0
+    )
+
+    if response.status_code == 200:
+        return response.json()
+    return []
+
+
+def _update_politician_bioguide(config: Dict[str, str], politician_id: str, bioguide_id: str) -> bool:
+    """Update a politician's bioguide_id in the database."""
+    url = config.get("SUPABASE_URL")
+    key = config.get("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not url or not key:
+        return False
+
+    response = httpx.patch(
+        f"{url}/rest/v1/politicians",
+        headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal"
+        },
+        params={"id": f"eq.{politician_id}"},
+        json={"bioguide_id": bioguide_id},
+        timeout=10.0
+    )
+
+    return response.status_code in [200, 204]
+
+
+@etl.group(name="congress")
+def congress():
+    """
+    Congress.gov API commands.
+
+    Fetch member data, bills, and voting records from Congress.gov.
+    """
+    pass
+
+
+@congress.command("test")
+def congress_test():
+    """
+    Test connection to Congress.gov API.
+
+    Example: mcli run etl congress test
+    """
+    api_key = _get_congress_api_key()
+
+    if not api_key:
+        console.print("[red]Error: CONGRESS_API_KEY not found[/red]")
+        console.print("Get a free API key at: https://api.congress.gov/sign-up/")
+        console.print("Then set it with: lsh set CONGRESS_API_KEY <your_key>")
+        raise SystemExit(1)
+
+    console.print("[cyan]Testing Congress.gov API connection...[/cyan]")
+    console.print(f"[dim]API Key: {api_key[:8]}...{api_key[-4:]}[/dim]")
+
+    try:
+        data = _make_congress_request("/member", {"limit": 1})
+
+        if "members" in data:
+            console.print("[green]Success: API connection works[/green]")
+            total = data.get("pagination", {}).get("count", "unknown")
+            console.print(f"  Total members in database: {total}")
+        else:
+            console.print("[yellow]Warning: Unexpected response format[/yellow]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)
+
+
+@congress.command("members")
+@click.option("--congress-num", "-c", "congress_num", default=CURRENT_CONGRESS, help=f"Congress number (default: {CURRENT_CONGRESS})")
+@click.option("--chamber", type=click.Choice(["house", "senate", "all"]), default="all", help="Chamber filter")
+@click.option("--state", "-s", help="Filter by state (e.g., CA, TX, NY)")
+@click.option("--party", "-p", type=click.Choice(["D", "R", "I", "all"]), default="all", help="Party filter")
+@click.option("--limit", "-l", default=50, help="Number of members to show")
+@click.option("--output", "-o", type=click.Choice(["table", "json", "csv"]), default="table")
+@click.option("--current/--all-time", default=True, help="Only current members")
+def congress_members(congress_num: int, chamber: str, state: str, party: str, limit: int, output: str, current: bool):
+    """
+    List members of Congress.
+
+    Examples:
+        mcli run etl congress members
+        mcli run etl congress members --chamber senate --state CA
+        mcli run etl congress members --party D --limit 100
+    """
+    console.print(f"[cyan]Fetching members of the {congress_num}th Congress...[/cyan]")
+
+    try:
+        all_members = []
+        offset = 0
+        page_size = 250  # Max allowed by API
+
+        # Fetch all members (paginated)
+        while True:
+            params = {
+                "limit": page_size,
+                "offset": offset,
+                "currentMember": "true" if current else None
+            }
+            # Remove None values
+            params = {k: v for k, v in params.items() if v is not None}
+
+            data = _make_congress_request("/member", params)
+            members = data.get("members", [])
+
+            if not members:
+                break
+
+            all_members.extend(members)
+            offset += page_size
+
+            # Check if we've fetched enough or reached the end
+            total = data.get("pagination", {}).get("count", 0)
+            if offset >= total or len(all_members) >= 1000:  # Safety limit
+                break
+
+        console.print(f"[dim]Fetched {len(all_members)} total members[/dim]")
+
+        # Filter members
+        filtered = []
+        for member in all_members:
+            # Get current term info
+            terms = member.get("terms", {}).get("item", [])
+            current_term = terms[0] if terms else {}
+
+            member_chamber = current_term.get("chamber", "").lower()
+            member_state = member.get("state", "")
+            member_party = member.get("partyName", "")
+
+            # Apply filters
+            if chamber != "all" and member_chamber != chamber:
+                continue
+            if state and member_state.upper() != state.upper():
+                continue
+            if party != "all":
+                party_letter = member_party[0].upper() if member_party else ""
+                if party_letter != party:
+                    continue
+
+            filtered.append({
+                "name": member.get("name", ""),
+                "bioguideId": member.get("bioguideId", ""),
+                "state": member_state,
+                "district": member.get("district"),
+                "party": member_party,
+                "chamber": member_chamber.title() if member_chamber else "",
+                "url": member.get("url", ""),
+            })
+
+        # Sort by state, then name
+        filtered.sort(key=lambda x: (x["state"], x["name"]))
+
+        # Apply limit
+        display_members = filtered[:limit]
+
+        if output == "json":
+            import json
+            console.print(json.dumps(display_members, indent=2))
+
+        elif output == "csv":
+            console.print("name,bioguideId,state,district,party,chamber")
+            for m in display_members:
+                console.print(f'"{m["name"]}",{m["bioguideId"]},{m["state"]},{m["district"] or ""},"{m["party"]}",{m["chamber"]}')
+
+        else:
+            # Table output
+            title = f"Members of {congress_num}th Congress"
+            if chamber != "all":
+                title += f" ({chamber.title()})"
+            if state:
+                title += f" - {state.upper()}"
+
+            table = Table(title=title)
+            table.add_column("Name", style="green", width=25)
+            table.add_column("State", width=6)
+            table.add_column("Dist", width=5)
+            table.add_column("Party", width=12)
+            table.add_column("Chamber", width=8)
+            table.add_column("BioGuide ID", style="dim", width=12)
+
+            for m in display_members:
+                party_style = "blue" if m["party"].startswith("Democrat") else "red" if m["party"].startswith("Republican") else "yellow"
+                table.add_row(
+                    m["name"][:24],
+                    m["state"],
+                    str(m["district"]) if m["district"] else "-",
+                    f"[{party_style}]{m['party'][:10]}[/{party_style}]",
+                    m["chamber"][:7],
+                    m["bioguideId"]
+                )
+
+            console.print(table)
+            console.print(f"\n[dim]Showing {len(display_members)} of {len(filtered)} filtered members[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)
+
+
+@congress.command("member")
+@click.argument("bioguide_id")
+def congress_member(bioguide_id: str):
+    """
+    Get details for a specific member by BioGuide ID.
+
+    Example: mcli run etl congress member P000197
+    """
+    console.print(f"[cyan]Fetching member {bioguide_id}...[/cyan]")
+
+    try:
+        data = _make_congress_request(f"/member/{bioguide_id}")
+        member = data.get("member", {})
+
+        if not member:
+            console.print(f"[red]Member not found: {bioguide_id}[/red]")
+            raise SystemExit(1)
+
+        console.print(f"\n[bold]{member.get('directOrderName', member.get('name', 'Unknown'))}[/bold]")
+        console.print("-" * 50)
+        console.print(f"BioGuide ID: {member.get('bioguideId', '-')}")
+        console.print(f"Party: {member.get('partyHistory', [{}])[0].get('partyName', '-')}")
+        console.print(f"State: {member.get('state', '-')}")
+        console.print(f"District: {member.get('district', '-')}")
+        console.print(f"Birth Year: {member.get('birthYear', '-')}")
+
+        # Terms
+        terms = member.get("terms", [])
+        if terms:
+            console.print(f"\n[bold]Terms ({len(terms)}):[/bold]")
+            for term in terms[:5]:  # Show last 5 terms
+                chamber = term.get("chamber", "-")
+                start = term.get("startYear", "-")
+                end = term.get("endYear", "present")
+                cong = term.get("congress", "-")
+                console.print(f"  {cong}th Congress: {chamber} ({start}-{end})")
+
+        # Sponsored legislation count
+        sponsored = member.get("sponsoredLegislation", {}).get("count", 0)
+        cosponsored = member.get("cosponsoredLegislation", {}).get("count", 0)
+        console.print(f"\n[bold]Legislation:[/bold]")
+        console.print(f"  Sponsored: {sponsored}")
+        console.print(f"  Co-sponsored: {cosponsored}")
+
+        # Official URL
+        if member.get("officialWebsiteUrl"):
+            console.print(f"\nWebsite: {member.get('officialWebsiteUrl')}")
+
+    except click.ClickException:
+        raise
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)
+
+
+@congress.command("stats")
+@click.option("--congress-num", "-c", "congress_num", default=CURRENT_CONGRESS, help=f"Congress number")
+def congress_stats(congress_num: int):
+    """
+    Show statistics about current Congress members.
+
+    Example: mcli run etl congress stats
+    """
+    console.print(f"[cyan]Fetching stats for {congress_num}th Congress...[/cyan]")
+
+    try:
+        all_members = []
+        offset = 0
+
+        # Fetch all current members
+        while True:
+            params = {"limit": 250, "offset": offset, "currentMember": "true"}
+            data = _make_congress_request("/member", params)
+            members = data.get("members", [])
+
+            if not members:
+                break
+
+            all_members.extend(members)
+            offset += 250
+
+            if offset >= data.get("pagination", {}).get("count", 0):
+                break
+
+        # Calculate stats
+        house = {"D": 0, "R": 0, "I": 0, "Other": 0}
+        senate = {"D": 0, "R": 0, "I": 0, "Other": 0}
+        states = {}
+
+        for member in all_members:
+            terms = member.get("terms", {}).get("item", [])
+            if not terms:
+                continue
+
+            current_term = terms[0]
+            chamber = current_term.get("chamber", "").lower()
+            party = member.get("partyName", "")
+            state = member.get("state", "Unknown")
+
+            party_key = party[0].upper() if party else "Other"
+            if party_key not in ["D", "R", "I"]:
+                party_key = "Other"
+
+            if chamber == "house of representatives":
+                house[party_key] += 1
+            elif chamber == "senate":
+                senate[party_key] += 1
+
+            states[state] = states.get(state, 0) + 1
+
+        console.print(f"\n[bold]{congress_num}th Congress Statistics[/bold]")
+        console.print("=" * 50)
+
+        # House
+        house_total = sum(house.values())
+        console.print(f"\n[bold]House of Representatives ({house_total} members):[/bold]")
+        console.print(f"  [blue]Democrats: {house['D']}[/blue]")
+        console.print(f"  [red]Republicans: {house['R']}[/red]")
+        if house["I"]:
+            console.print(f"  [yellow]Independents: {house['I']}[/yellow]")
+
+        # Senate
+        senate_total = sum(senate.values())
+        console.print(f"\n[bold]Senate ({senate_total} members):[/bold]")
+        console.print(f"  [blue]Democrats: {senate['D']}[/blue]")
+        console.print(f"  [red]Republicans: {senate['R']}[/red]")
+        if senate["I"]:
+            console.print(f"  [yellow]Independents: {senate['I']}[/yellow]")
+
+        # Top states
+        console.print(f"\n[bold]Top 10 States by Representation:[/bold]")
+        for state, count in sorted(states.items(), key=lambda x: -x[1])[:10]:
+            console.print(f"  {state}: {count}")
+
+        console.print(f"\n[dim]Total members: {len(all_members)}[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)
+
+
+@congress.command("health")
+def congress_health():
+    """
+    Quick health check of Congress.gov API.
+
+    Example: mcli run etl congress health
+    """
+    api_key = _get_congress_api_key()
+
+    console.print("\n[bold]Congress.gov API Health Check[/bold]")
+    console.print("-" * 40)
+
+    # Check API key
+    if api_key:
+        console.print(f"[green]OK[/green] API Key: configured")
+    else:
+        console.print("[red]FAIL[/red] API Key: missing")
+        console.print("Get one at: https://api.congress.gov/sign-up/")
+        raise SystemExit(1)
+
+    # Check connectivity
+    try:
+        data = _make_congress_request("/member", {"limit": 1})
+        if "members" in data:
+            console.print("[green]OK[/green] API Connection: healthy")
+        else:
+            console.print("[red]FAIL[/red] API Connection: unexpected response")
+            raise SystemExit(1)
+    except Exception as e:
+        console.print(f"[red]FAIL[/red] API Connection: {str(e)[:40]}")
+        raise SystemExit(1)
+
+    console.print("\n[green]All checks passed[/green]")
+
+
+@congress.command("backfill-bioguide")
+@click.option("--dry-run", is_flag=True, help="Show matches without updating database")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed matching info")
+def congress_backfill_bioguide(dry_run: bool, verbose: bool):
+    """
+    Backfill bioguide_id for politicians by matching with Congress.gov data.
+
+    Example: mcli run etl congress backfill-bioguide --dry-run
+    Example: mcli run etl congress backfill-bioguide
+    """
+    config = _get_congress_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found in lsh[/red]")
+        raise SystemExit(1)
+
+    console.print("[cyan]Fetching Congress members from Congress.gov...[/cyan]")
+    congress_members = _fetch_all_congress_members()
+    console.print(f"  Found {len(congress_members)} current members")
+
+    console.print("[cyan]Fetching politicians from app database...[/cyan]")
+    app_politicians = _fetch_app_politicians(config)
+    console.print(f"  Found {len(app_politicians)} politicians")
+
+    # Filter to those without bioguide_id
+    missing_bioguide = [p for p in app_politicians if not p.get("bioguide_id")]
+    already_have = len(app_politicians) - len(missing_bioguide)
+    console.print(f"  Already have bioguide_id: {already_have}")
+    console.print(f"  Missing bioguide_id: {len(missing_bioguide)}")
+
+    # Build lookup tables for Congress members
+    congress_by_name = {}
+    congress_by_direct_name = {}
+    for m in congress_members:
+        norm_name = _normalize_congress_name(m["name"])
+        norm_direct = _normalize_congress_name(m["direct_name"])
+        if norm_name:
+            congress_by_name[norm_name] = m
+        if norm_direct:
+            congress_by_direct_name[norm_direct] = m
+
+    # Match politicians
+    matches = []
+    no_match = []
+
+    for pol in missing_bioguide:
+        full_name = pol.get("full_name", "")
+        first_name = pol.get("first_name", "")
+        last_name = pol.get("last_name", "")
+
+        # Try different name formats
+        names_to_try = [
+            _normalize_congress_name(full_name),
+            _normalize_congress_name(f"{first_name} {last_name}"),
+            _normalize_congress_name(f"{last_name}, {first_name}"),
+        ]
+
+        match = None
+        matched_name = None
+        for name in names_to_try:
+            if name in congress_by_name:
+                match = congress_by_name[name]
+                matched_name = name
+                break
+            if name in congress_by_direct_name:
+                match = congress_by_direct_name[name]
+                matched_name = name
+                break
+
+        if match:
+            matches.append({
+                "politician": pol,
+                "congress_member": match,
+                "matched_on": matched_name
+            })
+        else:
+            no_match.append(pol)
+
+    console.print(f"\n[bold]Matching Results[/bold]")
+    console.print("-" * 60)
+    console.print(f"[green]Matched: {len(matches)}[/green]")
+    console.print(f"[yellow]No match: {len(no_match)}[/yellow]")
+
+    if verbose and matches:
+        console.print(f"\n[bold]Matches:[/bold]")
+        for m in matches[:20]:
+            pol = m["politician"]
+            cong = m["congress_member"]
+            console.print(f"  {pol['full_name']} -> {cong['bioguide_id']} ({cong['name']})")
+        if len(matches) > 20:
+            console.print(f"  ... and {len(matches) - 20} more")
+
+    if verbose and no_match:
+        console.print(f"\n[bold]No Match Found:[/bold]")
+        for pol in no_match[:10]:
+            console.print(f"  {pol['full_name']} ({pol.get('state_or_country', '?')})")
+        if len(no_match) > 10:
+            console.print(f"  ... and {len(no_match) - 10} more")
+
+    if dry_run:
+        console.print(f"\n[yellow]Dry run - no changes made[/yellow]")
+        return
+
+    if not matches:
+        console.print("[yellow]No matches to update[/yellow]")
+        return
+
+    # Update database
+    console.print(f"\n[cyan]Updating {len(matches)} politicians...[/cyan]")
+    updated = 0
+    failed = 0
+
+    for m in matches:
+        pol_id = m["politician"]["id"]
+        bioguide_id = m["congress_member"]["bioguide_id"]
+
+        if _update_politician_bioguide(config, pol_id, bioguide_id):
+            updated += 1
+        else:
+            failed += 1
+            if verbose:
+                console.print(f"  [red]Failed to update {m['politician']['full_name']}[/red]")
+
+    console.print(f"\n[bold]Update Results[/bold]")
+    console.print(f"  [green]Updated: {updated}[/green]")
+    if failed:
+        console.print(f"  [red]Failed: {failed}[/red]")
+
+
+@congress.command("lookup")
+@click.argument("name")
+def congress_lookup(name: str):
+    """
+    Look up a Congress member by name and show their BioGuide ID.
+
+    Example: mcli run etl congress lookup "Nancy Pelosi"
+    Example: mcli run etl congress lookup "Pelosi"
+    """
+    console.print(f"[cyan]Searching for '{name}'...[/cyan]")
+
+    try:
+        # Fetch all current members
+        all_members = _fetch_all_congress_members()
+
+        # Search by name (case-insensitive partial match)
+        search_lower = name.lower()
+        matches = []
+
+        for member in all_members:
+            if (search_lower in member["name"].lower() or
+                search_lower in member.get("direct_name", "").lower()):
+                matches.append(member)
+
+        if not matches:
+            console.print(f"[yellow]No members found matching '{name}'[/yellow]")
+            return
+
+        console.print(f"\n[bold]Found {len(matches)} match(es):[/bold]")
+        table = Table()
+        table.add_column("Name", style="green", width=30)
+        table.add_column("BioGuide ID", style="cyan", width=12)
+        table.add_column("State", width=6)
+        table.add_column("Party", width=12)
+        table.add_column("Chamber", width=10)
+
+        for m in matches[:20]:
+            party_style = "blue" if "Democrat" in m["party"] else "red" if "Republican" in m["party"] else "yellow"
+            table.add_row(
+                m["direct_name"] or m["name"],
+                m["bioguide_id"],
+                m["state"],
+                f"[{party_style}]{m['party'][:10]}[/{party_style}]",
+                m["chamber"][:10] if m["chamber"] else "-"
+            )
+
+        console.print(table)
+
+        if len(matches) > 20:
+            console.print(f"\n[dim]Showing first 20 of {len(matches)} matches[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)
+
+
+# =============================================================================
+# QuiverQuant API Commands (Subgroup)
+# =============================================================================
+
+QUIVERQUANT_API_URL = "https://api.quiverquant.com/beta/live/congresstrading"
+
+
+def _get_quiver_api_key() -> Optional[str]:
+    """Get QuiverQuant API key from lsh."""
+    try:
+        result = subprocess.run(
+            ["lsh", "get", "QUIVERQUANT_API_KEY"],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
+def _get_quiver_supabase_config():
+    """Get Supabase configuration from lsh."""
+    config = {}
+    for key in ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]:
+        try:
+            result = subprocess.run(
+                ["lsh", "get", key],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                config[key] = result.stdout.strip()
+        except Exception:
+            pass
+    return config
+
+
+def _fetch_quiverquant_data(api_key: str, limit: int = 1000, politician: str = None):
+    """Fetch data from QuiverQuant API."""
+    params = {"pagesize": limit}
+    url = QUIVERQUANT_API_URL
+    if politician:
+        url = f"{QUIVERQUANT_API_URL}/{politician}"
+
+    response = httpx.get(
+        url,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json"
+        },
+        timeout=60.0,
+        params=params
+    )
+    if response.status_code == 200:
+        return response.json()
+    return []
+
+
+def _fetch_quiver_supabase_data(config: dict, table: str, select: str = "*", limit: int = 1000, filters: dict = None, order: str = None):
+    """Fetch data from Supabase with optional filters."""
+    url = config.get("SUPABASE_URL")
+    key = config.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        return []
+
+    params = {"select": select, "limit": limit}
+    if filters:
+        params.update(filters)
+    if order:
+        params["order"] = order
+
+    response = httpx.get(
+        f"{url}/rest/v1/{table}",
+        headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json"
+        },
+        params=params,
+        timeout=30.0
+    )
+    if response.status_code == 200:
+        return response.json()
+    return []
+
+
+def _normalize_quiver_name(name: str) -> str:
+    """Normalize a name for fuzzy matching."""
+    if not name:
+        return ""
+    if ", " in name:
+        parts = name.split(", ", 1)
+        name = f"{parts[1]} {parts[0]}"
+    for term in ["Hon. ", "Rep. ", "Sen. ", " Jr.", " Jr", " Sr.", " Sr", " III", " II", " IV"]:
+        name = name.replace(term, "")
+    return name.lower().strip()
+
+
+@etl.group(name="quiver")
+def quiver():
+    """
+    QuiverQuant congressional trading API commands.
+
+    Test connection and fetch trading data from QuiverQuant.
+    """
+    pass
+
+
+@quiver.command("test")
+def quiver_test():
+    """
+    Test connection to QuiverQuant API.
+
+    Example: mcli run etl quiver test
+    """
+    api_key = _get_quiver_api_key()
+
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found in lsh[/red]")
+        console.print("Set it with: lsh set QUIVERQUANT_API_KEY <your_key>")
+        raise SystemExit(1)
+
+    console.print(f"[cyan]Testing QuiverQuant API connection...[/cyan]")
+    console.print(f"[dim]API Key: {api_key[:8]}...{api_key[-4:]}[/dim]")
+
+    try:
+        response = httpx.get(
+            QUIVERQUANT_API_URL,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Accept": "application/json"
+            },
+            timeout=30.0,
+            params={"pagesize": 1}
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            record_count = len(data) if isinstance(data, list) else 0
+            console.print(f"[green]Success: API connection works[/green]")
+            console.print(f"  Response: {record_count} record(s)")
+            if record_count > 0 and isinstance(data, list):
+                sample = data[0]
+                console.print(f"  Sample fields: {list(sample.keys())[:5]}...")
+        elif response.status_code == 401:
+            console.print(f"[red]Error: Unauthorized (401)[/red]")
+            console.print("  API key may be invalid or expired")
+            raise SystemExit(1)
+        elif response.status_code == 403:
+            console.print(f"[red]Error: Forbidden (403)[/red]")
+            console.print("  API access denied - check subscription")
+            raise SystemExit(1)
+        else:
+            console.print(f"[red]Error: HTTP {response.status_code}[/red]")
+            console.print(f"  Response: {response.text[:200]}")
+            raise SystemExit(1)
+
+    except httpx.TimeoutException:
+        console.print("[red]Error: Request timed out[/red]")
+        raise SystemExit(1)
+    except httpx.RequestError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)
+
+
+@quiver.command("fetch")
+@click.option("--limit", "-l", default=20, help="Number of records to fetch")
+@click.option("--output", "-o", type=click.Choice(["table", "json"]), default="table")
+def quiver_fetch(limit: int, output: str):
+    """
+    Fetch recent congressional trades from QuiverQuant.
+
+    Example: mcli run etl quiver fetch --limit 10
+    """
+    api_key = _get_quiver_api_key()
+
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    console.print(f"[cyan]Fetching {limit} trades from QuiverQuant...[/cyan]")
+
+    try:
+        response = httpx.get(
+            QUIVERQUANT_API_URL,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Accept": "application/json"
+            },
+            timeout=30.0,
+            params={"pagesize": limit}
+        )
+
+        if response.status_code != 200:
+            console.print(f"[red]Error: HTTP {response.status_code}[/red]")
+            raise SystemExit(1)
+
+        data = response.json()
+
+        if not isinstance(data, list) or len(data) == 0:
+            console.print("[yellow]No trades found[/yellow]")
+            return
+
+        if output == "json":
+            import json
+            console.print(json.dumps(data[:limit], indent=2))
+        else:
+            table = Table(title=f"QuiverQuant Congressional Trades ({len(data)} records)")
+            table.add_column("Date", style="cyan", width=12)
+            table.add_column("Representative", style="green", width=20)
+            table.add_column("Party", width=5)
+            table.add_column("Ticker", style="yellow", width=8)
+            table.add_column("Type", width=10)
+            table.add_column("Amount", width=20)
+
+            for trade in data[:limit]:
+                tx_date = trade.get("TransactionDate", "")[:10] if trade.get("TransactionDate") else "-"
+                rep = trade.get("Representative", "-")[:18]
+                party = trade.get("Party", "-")
+                ticker = trade.get("Ticker", "-")
+                tx_type = trade.get("Transaction", "-")
+                amount = trade.get("Range", trade.get("Amount", "-"))
+
+                table.add_row(tx_date, rep, party, ticker, tx_type, str(amount))
+
+            console.print(table)
+            console.print(f"\n[dim]Showing {min(limit, len(data))} of {len(data)} trades[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)
+
+
+@quiver.command("stats")
+def quiver_stats():
+    """
+    Show statistics about QuiverQuant data.
+
+    Example: mcli run etl quiver stats
+    """
+    api_key = _get_quiver_api_key()
+
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    console.print("[cyan]Fetching QuiverQuant stats...[/cyan]")
+
+    try:
+        response = httpx.get(
+            QUIVERQUANT_API_URL,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Accept": "application/json"
+            },
+            timeout=60.0,
+            params={"pagesize": 1000}
+        )
+
+        if response.status_code != 200:
+            console.print(f"[red]Error: HTTP {response.status_code}[/red]")
+            raise SystemExit(1)
+
+        data = response.json()
+
+        if not isinstance(data, list):
+            console.print("[yellow]Unexpected response format[/yellow]")
+            return
+
+        total_trades = len(data)
+        parties = {}
+        tickers = {}
+        tx_types = {}
+        representatives = set()
+
+        for trade in data:
+            party = trade.get("Party", "Unknown")
+            parties[party] = parties.get(party, 0) + 1
+
+            ticker = trade.get("Ticker", "Unknown")
+            tickers[ticker] = tickers.get(ticker, 0) + 1
+
+            tx_type = trade.get("Transaction", "Unknown")
+            tx_types[tx_type] = tx_types.get(tx_type, 0) + 1
+
+            rep = trade.get("Representative", "")
+            if rep:
+                representatives.add(rep)
+
+        console.print("\n[bold]QuiverQuant Statistics[/bold]")
+        console.print("-" * 40)
+        console.print(f"Total trades: {total_trades}")
+        console.print(f"Unique representatives: {len(representatives)}")
+
+        console.print("\n[bold]By Party:[/bold]")
+        for party, count in sorted(parties.items(), key=lambda x: -x[1]):
+            console.print(f"  {party}: {count} ({count/total_trades*100:.1f}%)")
+
+        console.print("\n[bold]By Transaction Type:[/bold]")
+        for tx, count in sorted(tx_types.items(), key=lambda x: -x[1]):
+            console.print(f"  {tx}: {count}")
+
+        console.print("\n[bold]Top 10 Tickers:[/bold]")
+        for ticker, count in sorted(tickers.items(), key=lambda x: -x[1])[:10]:
+            console.print(f"  {ticker}: {count}")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)
+
+
+@quiver.command("health")
+def quiver_health():
+    """
+    Quick health check of QuiverQuant API.
+
+    Example: mcli run etl quiver health
+    """
+    api_key = _get_quiver_api_key()
+
+    checks = []
+
+    if api_key:
+        checks.append(("API Key", "configured", True))
+    else:
+        checks.append(("API Key", "missing", False))
+        console.print("[red]API Key: MISSING[/red]")
+        console.print("Set with: lsh set QUIVERQUANT_API_KEY <key>")
+        raise SystemExit(1)
+
+    try:
+        response = httpx.get(
+            QUIVERQUANT_API_URL,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10.0,
+            params={"pagesize": 1}
+        )
+        if response.status_code == 200:
+            checks.append(("API Connection", "healthy", True))
+        else:
+            checks.append(("API Connection", f"HTTP {response.status_code}", False))
+    except Exception as e:
+        checks.append(("API Connection", str(e)[:30], False))
+
+    console.print("\n[bold]QuiverQuant Health Check[/bold]")
+    console.print("-" * 40)
+
+    all_healthy = True
+    for name, status, healthy in checks:
+        if healthy:
+            console.print(f"[green]OK[/green] {name}: {status}")
+        else:
+            console.print(f"[red]FAIL[/red] {name}: {status}")
+            all_healthy = False
+
+    if all_healthy:
+        console.print("\n[green]All checks passed[/green]")
+    else:
+        console.print("\n[red]Some checks failed[/red]")
+        raise SystemExit(1)
+
+
+@quiver.command("validate-politicians")
+def quiver_validate_politicians():
+    """
+    Compare politician data between QuiverQuant and app database.
+
+    Example: mcli run etl quiver validate-politicians
+    """
+    api_key = _get_quiver_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    config = _get_quiver_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found[/red]")
+        raise SystemExit(1)
+
+    console.print("[cyan]Fetching data from both sources...[/cyan]")
+
+    qq_data = _fetch_quiverquant_data(api_key)
+    qq_politicians = {}
+    for trade in qq_data:
+        rep = trade.get("Representative", "")
+        if rep:
+            if rep not in qq_politicians:
+                qq_politicians[rep] = {
+                    "name": rep,
+                    "bioguide_id": trade.get("BioGuideID"),
+                    "party": trade.get("Party"),
+                    "chamber": trade.get("House"),
+                    "trade_count": 0
+                }
+            qq_politicians[rep]["trade_count"] += 1
+
+    app_politicians = _fetch_quiver_supabase_data(
+        config, "politicians",
+        "full_name,bioguide_id,party,chamber,total_trades"
+    )
+    app_by_name = {p.get("full_name", ""): p for p in app_politicians}
+    app_by_bioguide = {p.get("bioguide_id", ""): p for p in app_politicians if p.get("bioguide_id")}
+
+    console.print(f"\n[bold]Politician Comparison[/bold]")
+    console.print("-" * 60)
+    console.print(f"QuiverQuant unique politicians: [cyan]{len(qq_politicians)}[/cyan]")
+    console.print(f"App database politicians: [cyan]{len(app_politicians)}[/cyan]")
+
+    matched_by_name = 0
+    matched_by_bioguide = 0
+    qq_only = []
+
+    for name, qq_pol in qq_politicians.items():
+        bioguide = qq_pol.get("bioguide_id")
+        if name in app_by_name:
+            matched_by_name += 1
+        elif bioguide and bioguide in app_by_bioguide:
+            matched_by_bioguide += 1
+        else:
+            qq_only.append(qq_pol)
+
+    console.print(f"\n[bold]Match Results:[/bold]")
+    console.print(f"  Matched by name: [green]{matched_by_name}[/green]")
+    console.print(f"  Matched by BioGuide ID: [green]{matched_by_bioguide}[/green]")
+    console.print(f"  QuiverQuant only (not in app): [yellow]{len(qq_only)}[/yellow]")
+
+    if qq_only and len(qq_only) <= 20:
+        console.print(f"\n[bold]Politicians in QuiverQuant but not in app:[/bold]")
+        for pol in sorted(qq_only, key=lambda x: -x["trade_count"])[:10]:
+            console.print(f"  {pol['name']} ({pol['party']}) - {pol['trade_count']} trades")
+
+
+@quiver.command("validate-trades")
+@click.option("--days", "-d", default=30, help="Number of days to compare")
+def quiver_validate_trades(days: int):
+    """
+    Compare recent trades between QuiverQuant and app database.
+
+    Example: mcli run etl quiver validate-trades --days 30
+    """
+    from datetime import datetime, timedelta
+
+    api_key = _get_quiver_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    config = _get_quiver_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found[/red]")
+        raise SystemExit(1)
+
+    console.print(f"[cyan]Comparing trades from last {days} days...[/cyan]")
+
+    qq_data = _fetch_quiverquant_data(api_key)
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    qq_recent = [t for t in qq_data if t.get("TransactionDate", "") >= cutoff]
+
+    app_trades = _fetch_quiver_supabase_data(
+        config, "trading_disclosures",
+        "asset_ticker,transaction_date,disclosure_date,transaction_type,politician_id",
+        limit=2000,
+        filters={"status": "eq.active"},
+        order="disclosure_date.desc"
+    )
+    app_recent = [t for t in app_trades if (t.get("transaction_date") or "")[:10] >= cutoff]
+
+    console.print(f"\n[bold]Trade Comparison (last {days} days)[/bold]")
+    console.print("-" * 60)
+    console.print(f"QuiverQuant trades: [cyan]{len(qq_recent)}[/cyan]")
+    console.print(f"App database trades: [cyan]{len(app_recent)}[/cyan]")
+
+
+@quiver.command("freshness-check")
+def quiver_freshness_check():
+    """
+    Compare data freshness between QuiverQuant and our database.
+
+    Example: mcli run etl quiver freshness-check
+    """
+    from datetime import datetime
+
+    api_key = _get_quiver_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    config = _get_quiver_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found[/red]")
+        raise SystemExit(1)
+
+    console.print("[cyan]Checking data freshness...[/cyan]\n")
+
+    qq_data = _fetch_quiverquant_data(api_key, limit=500)
+    qq_tx_dates = [t.get("TransactionDate", "")[:10] for t in qq_data if t.get("TransactionDate")]
+    qq_disc_dates = [t.get("ReportDate", t.get("DisclosureDate", ""))[:10] for t in qq_data if t.get("ReportDate") or t.get("DisclosureDate")]
+
+    qq_latest_tx = max(qq_tx_dates) if qq_tx_dates else "N/A"
+    qq_latest_disc = max(qq_disc_dates) if qq_disc_dates else "N/A"
+
+    app_trades = _fetch_quiver_supabase_data(
+        config, "trading_disclosures",
+        "transaction_date,disclosure_date",
+        limit=500,
+        filters={"status": "eq.active"},
+        order="disclosure_date.desc"
+    )
+
+    app_tx_dates = [(t.get("transaction_date") or "")[:10] for t in app_trades if t.get("transaction_date")]
+    app_disc_dates = [(t.get("disclosure_date") or "")[:10] for t in app_trades if t.get("disclosure_date")]
+
+    app_latest_tx = max(app_tx_dates) if app_tx_dates else "N/A"
+    app_latest_disc = max(app_disc_dates) if app_disc_dates else "N/A"
+
+    table = Table(title="Data Freshness Comparison")
+    table.add_column("Metric", style="bold")
+    table.add_column("QuiverQuant", style="cyan")
+    table.add_column("Our Database", style="green")
+    table.add_column("Status", style="yellow")
+
+    tx_status = "OK" if app_latest_tx >= qq_latest_tx else f"Behind by {qq_latest_tx}"
+    table.add_row("Latest Transaction Date", qq_latest_tx, app_latest_tx, tx_status)
+
+    disc_status = "OK" if app_latest_disc >= qq_latest_disc else f"Behind by {qq_latest_disc}"
+    table.add_row("Latest Disclosure Date", qq_latest_disc, app_latest_disc, disc_status)
+    table.add_row("Records Checked", str(len(qq_data)), str(len(app_trades)), "-")
+
+    console.print(table)
+
+
+@quiver.command("list-politicians")
+@click.option("--limit", "-l", default=100, help="Number of recent trades to scan")
+def quiver_list_politicians(limit: int):
+    """
+    List all politicians in the QuiverQuant dataset.
+
+    Example: mcli run etl quiver list-politicians
+    """
+    api_key = _get_quiver_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    console.print(f"[cyan]Fetching politicians from QuiverQuant...[/cyan]\n")
+
+    qq_data = _fetch_quiverquant_data(api_key, limit=limit)
+
+    if not qq_data:
+        console.print("[red]Failed to fetch data[/red]")
+        raise SystemExit(1)
+
+    politicians = {}
+    for trade in qq_data:
+        rep = trade.get("Representative", "")
+        party = trade.get("Party", "?")
+        house = trade.get("House", "?")
+        bioguide = trade.get("BioGuideID", "")
+
+        if rep:
+            if rep not in politicians:
+                politicians[rep] = {
+                    "party": party,
+                    "house": house,
+                    "bioguide": bioguide,
+                    "count": 0
+                }
+            politicians[rep]["count"] += 1
+
+    console.print(f"[bold]Politicians in QuiverQuant (from {len(qq_data)} trades)[/bold]")
+    console.print("=" * 70)
+
+    table = Table()
+    table.add_column("Name", style="cyan", width=30)
+    table.add_column("Party", width=6)
+    table.add_column("Chamber", width=15)
+    table.add_column("Trades", justify="right", width=8)
+    table.add_column("BioGuide", width=12)
+
+    for name, info in sorted(politicians.items(), key=lambda x: -x[1]["count"]):
+        table.add_row(
+            name[:28],
+            info["party"],
+            info["house"][:13] if info["house"] else "?",
+            str(info["count"]),
+            info["bioguide"] or "-"
+        )
+
+    console.print(table)
+    console.print(f"\n[dim]Total unique politicians: {len(politicians)}[/dim]")
+
+
+@quiver.command("politician-trades")
+@click.argument("name")
+@click.option("--limit", "-l", default=50, help="Maximum trades to return")
+@click.option("--output", "-o", type=click.Choice(["table", "json"]), default="table")
+@click.option("--local-filter", "-f", is_flag=True, help="Use local filtering instead of API filtering")
+def quiver_politician_trades(name: str, limit: int, output: str, local_filter: bool):
+    """
+    Fetch all trades for a specific politician from QuiverQuant.
+
+    Examples:
+        mcli run etl quiver politician-trades "Nancy Pelosi"
+        mcli run etl quiver politician-trades "Pelosi" --local-filter
+    """
+    api_key = _get_quiver_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    console.print(f"[cyan]Searching for trades by '{name}'...[/cyan]")
+
+    matching_trades = []
+
+    if local_filter:
+        console.print("[dim]Using local filtering (partial match)...[/dim]\n")
+        qq_data = _fetch_quiverquant_data(api_key, limit=5000)
+
+        if not qq_data:
+            console.print("[red]Failed to fetch data from QuiverQuant[/red]")
+            raise SystemExit(1)
+
+        name_lower = name.lower()
+        for trade in qq_data:
+            rep = trade.get("Representative", "")
+            if name_lower in rep.lower():
+                matching_trades.append(trade)
+    else:
+        console.print("[dim]Using API politician filter...[/dim]\n")
+        matching_trades = _fetch_quiverquant_data(api_key, limit=limit, politician=name)
+
+        if not matching_trades:
+            console.print("[dim]No exact match, trying local filter...[/dim]")
+            qq_data = _fetch_quiverquant_data(api_key, limit=5000)
+            if qq_data:
+                name_lower = name.lower()
+                for trade in qq_data:
+                    rep = trade.get("Representative", "")
+                    if name_lower in rep.lower():
+                        matching_trades.append(trade)
+
+    if not matching_trades:
+        console.print(f"[yellow]No trades found for '{name}'[/yellow]")
+        raise SystemExit(1)
+
+    trades_to_show = matching_trades[:limit]
+
+    if output == "json":
+        import json
+        console.print(json.dumps(trades_to_show, indent=2, default=str))
+    else:
+        first_trade = trades_to_show[0]
+        console.print(f"[bold]Politician: {first_trade.get('Representative', 'Unknown')}[/bold]")
+        console.print(f"Party: {first_trade.get('Party', '?')}")
+        console.print(f"Chamber: {first_trade.get('House', '?')}")
+        console.print(f"BioGuide ID: {first_trade.get('BioGuideID', 'N/A')}")
+        console.print(f"\n[bold]Total trades found: {len(matching_trades)}[/bold]")
+        console.print(f"Showing: {len(trades_to_show)}\n")
+
+        table = Table(title=f"Trades for {first_trade.get('Representative', name)}")
+        table.add_column("Date", style="cyan", width=12)
+        table.add_column("Ticker", style="yellow", width=8)
+        table.add_column("Asset", width=30)
+        table.add_column("Type", width=15)
+        table.add_column("Amount", width=20)
+
+        for trade in trades_to_show:
+            tx_date = (trade.get("TransactionDate") or "")[:10]
+            ticker = trade.get("Ticker", "-")
+            asset = (trade.get("Asset") or trade.get("Description") or "-")[:28]
+            tx_type = trade.get("Transaction", "-")
+            amount = trade.get("Range", trade.get("Amount", "-"))
+
+            table.add_row(tx_date, ticker, asset, tx_type, str(amount))
+
+        console.print(table)
+
+
+@quiver.command("missing-trades")
+@click.option("--days", "-d", default=30, help="Number of days to check")
+@click.option("--limit", "-l", default=20, help="Maximum trades to show")
+def quiver_missing_trades(days: int, limit: int):
+    """
+    List specific trades in QuiverQuant that are missing from our database.
+
+    Example: mcli run etl quiver missing-trades --days 14
+    """
+    from datetime import datetime, timedelta
+
+    api_key = _get_quiver_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    config = _get_quiver_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found[/red]")
+        raise SystemExit(1)
+
+    console.print(f"[cyan]Finding trades from last {days} days missing from our DB...[/cyan]\n")
+
+    qq_data = _fetch_quiverquant_data(api_key, limit=2000)
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    qq_recent = [t for t in qq_data if (t.get("TransactionDate") or "")[:10] >= cutoff]
+
+    app_trades = _fetch_quiver_supabase_data(
+        config, "trading_disclosures",
+        "asset_ticker,transaction_date,politician_id",
+        limit=10000,
+        filters={"status": "eq.active"}
+    )
+
+    app_trade_keys = set()
+    for t in app_trades:
+        ticker = t.get("asset_ticker", "")
+        date = (t.get("transaction_date") or "")[:10]
+        if ticker and date:
+            app_trade_keys.add(f"{ticker}:{date}")
+
+    missing = []
+    for t in qq_recent:
+        ticker = t.get("Ticker", "")
+        date = (t.get("TransactionDate") or "")[:10]
+        key = f"{ticker}:{date}"
+
+        if ticker and date and key not in app_trade_keys:
+            missing.append({
+                "ticker": ticker,
+                "date": date,
+                "politician": t.get("Representative", "Unknown"),
+                "type": t.get("Transaction", ""),
+                "amount": t.get("Range", ""),
+                "bioguide": t.get("BioGuideID", "")
+            })
+
+    console.print(f"[bold]Missing Trades Report (last {days} days)[/bold]")
+    console.print("=" * 70)
+    console.print(f"QuiverQuant trades in period: {len(qq_recent)}")
+    console.print(f"Missing from our DB: [{'red' if len(missing) > 20 else 'yellow' if missing else 'green'}]{len(missing)}[/]")
+
+    if missing:
+        by_politician = {}
+        for m in missing:
+            pol = m["politician"]
+            if pol not in by_politician:
+                by_politician[pol] = []
+            by_politician[pol].append(m)
+
+        console.print(f"\n[bold]Missing Trades by Politician:[/bold]")
+        shown = 0
+        for pol, trades in sorted(by_politician.items(), key=lambda x: -len(x[1])):
+            if shown >= limit:
+                console.print(f"\n... and {len(missing) - shown} more")
+                break
+
+            console.print(f"\n[cyan]{pol}[/cyan] ({len(trades)} missing):")
+            for t in trades[:5]:
+                console.print(f"  {t['date']} {t['ticker']:6} {t['type']:20} {t['amount']}")
+                shown += 1
+                if shown >= limit:
+                    break
+    else:
+        console.print("\n[green]No missing trades found![/green]")
+
+
+# =============================================================================
+# Backfill Commands (Subgroup)
+# =============================================================================
+
+def _load_env():
+    """Load environment variables from .env file."""
+    env_path = Path(__file__).parent.parent.parent / ".env"
+    if env_path.exists():
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, value = line.partition("=")
+                    value = value.strip().strip('"').strip("'")
+                    os.environ.setdefault(key.strip(), value)
+
+
+def _get_backfill_supabase_client():
+    """Create Supabase client for backfill operations."""
+    from supabase import create_client
+    _load_env()
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not url or not key:
+        raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
+    return create_client(url, key)
+
+
+def _extract_transaction_type(raw_data: dict) -> Optional[str]:
+    """Extract transaction type from raw_data."""
+    import re
+    if not raw_data:
+        return None
+    raw_row = raw_data.get("raw_row", [])
+    if not raw_row:
+        return None
+    full_text = " ".join(str(cell).replace("\x00", "") for cell in raw_row if cell)
+    full_lower = full_text.lower()
+    if any(kw in full_lower for kw in ["purchase", "bought", "buy"]):
+        return "purchase"
+    elif any(kw in full_lower for kw in ["sale", "sold", "sell", "exchange"]):
+        return "sale"
+    if re.search(r"\bP\s+\d{1,2}/\d{1,2}/\d{4}", full_text):
+        return "purchase"
+    elif re.search(r"\bS\s+\d{1,2}/\d{1,2}/\d{4}", full_text):
+        return "sale"
+    return None
+
+
+def _is_metadata_only(asset_name: str) -> bool:
+    """Check if an asset_name is just metadata."""
+    import re
+    if not asset_name:
+        return True
+    clean_name = asset_name.replace("\x00", "").strip()
+    metadata_patterns = [
+        r"^F\s*S\s*:", r"^S\s*O\s*:", r"^Owner\s*:", r"^Filing\s*(ID|Date)\s*:",
+        r"^Document\s*ID\s*:", r"^Filer\s*:", r"^Status\s*:", r"^Type\s*:",
+    ]
+    for pattern in metadata_patterns:
+        if re.match(pattern, clean_name, re.IGNORECASE):
+            return True
+    return False
+
+
+def _extract_ticker_from_name(asset_name: str) -> Optional[str]:
+    """Extract ticker from asset name."""
+    import re
+    if not asset_name:
+        return None
+    match = re.search(r"\(([A-Z]{1,5})\)", asset_name)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _extract_dates_from_raw_row(raw_data: dict):
+    """Extract dates from raw_data."""
+    import re
+    from datetime import datetime as dt
+    if not raw_data:
+        return None, None
+    raw_row = raw_data.get("raw_row", [])
+    if not raw_row:
+        return None, None
+    row_text = " ".join(str(cell).replace("\x00", "") for cell in raw_row if cell)
+    date_pattern = r"[PS]\s*(?:\(partial\))?\s*(\d{1,2}/\d{1,2}/\d{4})\s+(\d{1,2}/\d{1,2}/\d{4})"
+    match = re.search(date_pattern, row_text, re.IGNORECASE)
+    if match:
+        try:
+            tx_date = dt.strptime(match.group(1), "%m/%d/%Y").strftime("%Y-%m-%d")
+            notif_date = dt.strptime(match.group(2), "%m/%d/%Y").strftime("%Y-%m-%d")
+            return tx_date, notif_date
+        except ValueError:
+            pass
+    return None, None
+
+
+@etl.group(name="backfill")
+def backfill():
+    """Data quality backfill commands."""
+    pass
+
+
+@backfill.command(name="transaction-types")
+@click.option("--limit", "-l", type=int, default=None, help="Limit records to process")
+@click.option("--dry-run", is_flag=True, help="Show what would be done")
+@click.option("--delete-metadata", is_flag=True, help="Delete metadata-only records")
+def backfill_transaction_types(limit: Optional[int], dry_run: bool, delete_metadata: bool):
+    """
+    Backfill transaction_type for records with 'unknown' type.
+
+    Example: mcli run etl backfill transaction-types --dry-run
+    """
+    click.echo("Connecting to Supabase...")
+    supabase = _get_backfill_supabase_client()
+
+    click.echo("Querying records with unknown transaction_type...")
+    all_records = []
+    offset = 0
+    batch_size = 1000
+
+    while True:
+        response = (
+            supabase.table("trading_disclosures")
+            .select("id, transaction_type, raw_data, asset_name")
+            .eq("transaction_type", "unknown")
+            .range(offset, offset + batch_size - 1)
+            .execute()
+        )
+        records = response.data or []
+        if not records:
+            break
+        all_records.extend(records)
+        if len(records) < batch_size or (limit and len(all_records) >= limit):
+            break
+        offset += batch_size
+
+    if limit:
+        all_records = all_records[:limit]
+
+    click.echo(f"Found {len(all_records)} records")
+    updated = deleted = no_type_found = errors = 0
+
+    for record in all_records:
+        record_id = record["id"]
+        raw_data = record.get("raw_data") or {}
+        asset_name = record.get("asset_name", "")
+
+        if delete_metadata and _is_metadata_only(asset_name):
+            if not dry_run:
+                try:
+                    supabase.table("trading_disclosures").delete().eq("id", record_id).execute()
+                except Exception:
+                    errors += 1
+            deleted += 1
+            continue
+
+        tx_type = _extract_transaction_type(raw_data)
+        if tx_type:
+            if not dry_run:
+                try:
+                    supabase.table("trading_disclosures").update({"transaction_type": tx_type}).eq("id", record_id).execute()
+                except Exception:
+                    errors += 1
+            updated += 1
+        else:
+            no_type_found += 1
+
+    click.echo(f"\nResults: Updated={updated}, Deleted={deleted}, No type={no_type_found}, Errors={errors}")
+
+
+@backfill.command(name="tickers")
+@click.option("--limit", "-l", type=int, default=None)
+@click.option("--dry-run", is_flag=True)
+def backfill_tickers(limit: Optional[int], dry_run: bool):
+    """Backfill asset_ticker for records with missing tickers."""
+    supabase = _get_backfill_supabase_client()
+    response = supabase.table("trading_disclosures").select("id, asset_name").is_("asset_ticker", "null").limit(limit or 1000).execute()
+    records = response.data or []
+    click.echo(f"Found {len(records)} records with missing tickers")
+
+    updated = 0
+    for record in records:
+        ticker = _extract_ticker_from_name(record.get("asset_name", ""))
+        if ticker and not dry_run:
+            try:
+                supabase.table("trading_disclosures").update({"asset_ticker": ticker}).eq("id", record["id"]).execute()
+                updated += 1
+            except Exception:
+                pass
+
+    click.echo(f"Updated: {updated}")
+
+
+@backfill.command(name="stats")
+def backfill_stats():
+    """Show current data quality statistics."""
+    supabase = _get_backfill_supabase_client()
+
+    click.echo("\nTransaction Type Distribution:")
+    for tx_type in ["purchase", "sale", "holding", "unknown"]:
+        response = supabase.table("trading_disclosures").select("id", count="exact").eq("transaction_type", tx_type).execute()
+        click.echo(f"  {tx_type:12}: {response.count or 0:,}")
+
+
+# =============================================================================
+# ML Commands (Subgroup)
+# =============================================================================
+
+ML_ETL_SERVICE_URL = os.environ.get("ETL_SERVICE_URL", "https://politician-trading-etl.fly.dev")
+
+
+@etl.group(name="ml")
+def ml():
+    """ML model training, testing, and management."""
+    pass
+
+
+@ml.command(name="train")
+@click.option("--lookback", "-l", default=365, help="Days of training data")
+@click.option("--model", "-m", default="xgboost", type=click.Choice(["xgboost", "lightgbm"]))
+@click.option("--wait", "-w", is_flag=True, help="Wait for training to complete")
+def ml_train(lookback: int, model: str, wait: bool):
+    """
+    Train a new ML model.
+
+    Example: mcli run etl ml train --model lightgbm
+    """
+    click.echo(f"🧠 Training new ML model ({model}, {lookback} days)...")
+
+    try:
+        response = httpx.post(
+            f"{ML_ETL_SERVICE_URL}/ml/train",
+            json={"lookback_days": lookback, "model_type": model},
+            timeout=60.0
+        )
+        response.raise_for_status()
+        data = response.json()
+        job_id = data.get("job_id", "unknown")
+        click.echo(f"✓ Training job started: {job_id}")
+
+        if wait:
+            _ml_wait_for_training(job_id)
+
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@ml.command(name="status")
+@click.argument("job_id", required=False)
+def ml_status(job_id: Optional[str]):
+    """Check training job status or list all models."""
+    if job_id:
+        _ml_show_training_status(job_id)
+    else:
+        _ml_list_models()
+
+
+@ml.command(name="active")
+def ml_active():
+    """Show the currently active model."""
+    try:
+        response = httpx.get(f"{ML_ETL_SERVICE_URL}/ml/models/active", timeout=10.0)
+        if response.status_code == 404:
+            click.echo("❌ No active ML model found.")
+            return
+        response.raise_for_status()
+        data = response.json()
+        click.echo("🧠 Active ML Model")
+        click.echo(f"  Name: {data.get('model_name', 'unknown')}")
+        click.echo(f"  Type: {data.get('model_type', '?')}")
+        metrics = data.get("metrics", {})
+        if metrics:
+            click.echo(f"  Accuracy: {metrics.get('accuracy', 0):.2%}")
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+
+
+@ml.command(name="health")
+def ml_health():
+    """Check ML service health."""
+    try:
+        response = httpx.get(f"{ML_ETL_SERVICE_URL}/ml/health", timeout=10.0)
+        response.raise_for_status()
+        data = response.json()
+        status = data.get("status", "unknown")
+        click.echo(f"{'✓' if status == 'healthy' else '⚠'} ML service: {status}")
+    except httpx.HTTPError as e:
+        click.echo(f"✗ ML service unavailable: {e}", err=True)
+
+
+@ml.command(name="predict")
+@click.argument("ticker")
+@click.option("--politician-count", "-p", default=3)
+@click.option("--buy-sell-ratio", "-r", default=2.0)
+def ml_predict(ticker: str, politician_count: int, buy_sell_ratio: float):
+    """Get ML prediction for a ticker."""
+    features = {
+        "ticker": ticker.upper(),
+        "politician_count": politician_count,
+        "buy_sell_ratio": buy_sell_ratio,
+        "recent_activity_30d": 4,
+        "bipartisan": False,
+        "net_volume": 100000,
+        "volume_magnitude": 5,
+        "party_alignment": 0.5,
+        "committee_relevance": 0.5,
+        "disclosure_delay": 30,
+        "sentiment_score": 0.0,
+        "market_momentum": 0.0,
+        "sector_performance": 0.0,
+    }
+
+    try:
+        response = httpx.post(
+            f"{ML_ETL_SERVICE_URL}/ml/predict",
+            json={"features": features, "use_cache": False},
+            timeout=30.0
+        )
+        if response.status_code == 503:
+            click.echo("❌ No trained model available.")
+            return
+        response.raise_for_status()
+        data = response.json()
+        signal = data.get("signal_type", "unknown")
+        confidence = data.get("confidence", 0)
+        click.echo(f"🧠 {ticker.upper()}: {signal} ({confidence:.1%})")
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+
+
+@ml.command(name="list")
+@click.option("--limit", "-n", default=10)
+def ml_list(limit: int):
+    """List all trained models."""
+    try:
+        response = httpx.get(f"{ML_ETL_SERVICE_URL}/ml/models", timeout=10.0)
+        response.raise_for_status()
+        models = response.json().get("models", [])[:limit]
+        if not models:
+            click.echo("No models found. Train with: mcli run etl ml train")
+            return
+        for m in models:
+            status_icon = {"active": "✓", "archived": "○", "failed": "✗"}.get(m.get("status", ""), "?")
+            click.echo(f"  {status_icon} {m.get('model_name', 'unknown')} ({m.get('model_type', '?')})")
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+
+
+def _ml_show_training_status(job_id: str):
+    """Show training status."""
+    try:
+        response = httpx.get(f"{ML_ETL_SERVICE_URL}/ml/train/{job_id}", timeout=10.0)
+        response.raise_for_status()
+        data = response.json()
+        click.echo(f"Status: {data.get('status', 'unknown')} ({data.get('progress', 0)}%)")
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+
+
+def _ml_wait_for_training(job_id: str):
+    """Wait for training to complete."""
+    while True:
+        try:
+            response = httpx.get(f"{ML_ETL_SERVICE_URL}/ml/train/{job_id}", timeout=10.0)
+            if response.status_code == 200:
+                data = response.json()
+                status = data.get("status", "unknown")
+                if status in ("completed", "failed", "error"):
+                    click.echo(f"Training {status}")
+                    break
+        except Exception:
+            pass
+        time.sleep(10)
+
+
+def _ml_list_models():
+    """List trained models."""
+    try:
+        response = httpx.get(f"{ML_ETL_SERVICE_URL}/ml/models", timeout=10.0)
+        response.raise_for_status()
+        models = response.json().get("models", [])
+        if not models:
+            click.echo("No trained models found.")
+            return
+        for m in models:
+            click.echo(f"  {m.get('model_name', 'unknown')} - {m.get('status', '?')}")
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+
+# Entry point for mcli
+app = etl

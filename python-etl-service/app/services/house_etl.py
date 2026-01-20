@@ -28,6 +28,7 @@ from app.lib.parser import (
 from app.lib.database import get_supabase, upload_transaction_to_supabase
 from app.lib.pdf_utils import extract_text_from_pdf, extract_tables_from_pdf
 from app.lib.politician import find_or_create_politician
+from app.lib.job_logger import log_job_execution, cleanup_old_executions
 
 # Setup logging
 logging.basicConfig(
@@ -737,8 +738,9 @@ async def run_house_etl(
 
             # Complete
             stats = rate_limiter.get_stats()
+            completed_at = datetime.utcnow()
             JOB_STATUS[job_id]["status"] = "completed"
-            JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+            JOB_STATUS[job_id]["completed_at"] = completed_at.isoformat()
             JOB_STATUS[job_id]["rate_limiter_stats"] = stats
             JOB_STATUS[job_id][
                 "message"
@@ -751,8 +753,46 @@ async def run_house_etl(
                 f"Final delay: {stats['current_delay']:.1f}s"
             )
 
+            # Log job execution to database
+            log_job_execution(
+                supabase_client,
+                job_id="politician-trading-house",
+                status="success",
+                started_at=datetime.fromisoformat(JOB_STATUS[job_id]["started_at"]),
+                completed_at=completed_at,
+                metadata={
+                    "etl_job_id": job_id,
+                    "year": year,
+                    "pdfs_processed": len(to_process),
+                    "transactions_uploaded": transactions_uploaded,
+                    "politicians_created": politicians_created,
+                    "rate_limiter_stats": stats,
+                },
+            )
+
+            # Cleanup old records (1% chance per run)
+            import random
+            if random.random() < 0.01:
+                cleanup_old_executions(supabase_client, days=30)
+
     except Exception as e:
         logger.exception(f"ETL failed: {e}")
+        completed_at = datetime.utcnow()
         JOB_STATUS[job_id]["status"] = "failed"
         JOB_STATUS[job_id]["message"] = str(e)
-        JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+        JOB_STATUS[job_id]["completed_at"] = completed_at.isoformat()
+
+        # Log failed execution to database
+        try:
+            sb = get_supabase()
+            log_job_execution(
+                sb,
+                job_id="politician-trading-house",
+                status="failed",
+                started_at=datetime.fromisoformat(JOB_STATUS[job_id]["started_at"]),
+                completed_at=completed_at,
+                error_message=str(e),
+                metadata={"etl_job_id": job_id, "year": year},
+            )
+        except Exception as log_error:
+            logger.error(f"Failed to log job execution: {log_error}")
