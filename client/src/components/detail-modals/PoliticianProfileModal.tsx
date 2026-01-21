@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -20,7 +20,11 @@ import { Badge } from '@/components/ui/badge';
 import { usePoliticianDetail, type Politician } from '@/hooks/useSupabaseData';
 import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
+// Use public client to avoid auth blocking issues
+import { supabasePublic as supabase } from '@/integrations/supabase/client';
+
+// Timeout for profile generation (15 seconds)
+const PROFILE_FETCH_TIMEOUT = 15000;
 
 interface PoliticianProfileModalProps {
   politician: Politician | null;
@@ -47,44 +51,57 @@ export function PoliticianProfileModal({
     isLoading: false,
   });
 
-  // Fetch AI bio when modal opens
-  useEffect(() => {
-    if (open && politician && detail) {
-      fetchProfileBio();
-    }
-  }, [open, politician?.id, detail]);
+  // Track active request to abort if modal closes
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
 
-  // Reset bio when modal closes
+  // Cleanup on unmount
   useEffect(() => {
-    if (!open) {
-      setProfileBio({ bio: '', source: 'fallback', isLoading: false });
-    }
-  }, [open]);
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
-  const fetchProfileBio = async () => {
-    if (!politician || !detail) return;
+  const fetchProfileBio = useCallback(async (pol: Politician, det: NonNullable<typeof detail>) => {
+    // Abort any in-flight request
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     setProfileBio({ bio: '', source: 'fallback', isLoading: true });
 
+    // Create a timeout promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Request timeout')), PROFILE_FETCH_TIMEOUT);
+    });
+
     try {
-      const { data, error } = await supabase.functions.invoke('politician-profile', {
+      const fetchPromise = supabase.functions.invoke('politician-profile', {
         body: {
           politician: {
-            name: politician.name,
-            party: politician.party,
-            chamber: politician.chamber,
-            state: politician.state || politician.jurisdiction_id,
-            totalTrades: politician.total_trades,
-            totalVolume: politician.total_volume,
-            topTickers: detail.topTickers?.map(t => t.ticker),
+            name: pol.name,
+            party: pol.party,
+            chamber: pol.chamber,
+            state: pol.state || pol.jurisdiction_id,
+            totalTrades: pol.total_trades,
+            totalVolume: pol.total_volume,
+            topTickers: det.topTickers?.map(t => t.ticker),
           },
         },
       });
 
+      // Race between fetch and timeout
+      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+
+      // Check if request was aborted or component unmounted
+      if (controller.signal.aborted || !isMountedRef.current) return;
+
       if (error) {
         console.error('Profile fetch error:', error);
         setProfileBio({
-          bio: generateClientFallbackBio(politician, detail),
+          bio: generateClientFallbackBio(pol, det),
           source: 'fallback',
           isLoading: false,
           error: 'Could not fetch AI profile',
@@ -93,20 +110,39 @@ export function PoliticianProfileModal({
       }
 
       setProfileBio({
-        bio: data.bio || generateClientFallbackBio(politician, detail),
+        bio: data.bio || generateClientFallbackBio(pol, det),
         source: data.source || 'fallback',
         isLoading: false,
       });
     } catch (err) {
-      console.error('Profile fetch error:', err);
+      // Check if request was aborted or component unmounted
+      if (controller.signal.aborted || !isMountedRef.current) return;
+
+      const errorMessage = err instanceof Error ? err.message : 'Network error';
+      console.error('Profile fetch error:', errorMessage);
       setProfileBio({
-        bio: generateClientFallbackBio(politician, detail),
+        bio: generateClientFallbackBio(pol, det),
         source: 'fallback',
         isLoading: false,
-        error: 'Network error',
+        error: errorMessage === 'Request timeout' ? 'Profile generation timed out' : 'Network error',
       });
     }
-  };
+  }, []);
+
+  // Fetch AI bio when modal opens and detail is available
+  useEffect(() => {
+    if (open && politician && detail) {
+      fetchProfileBio(politician, detail);
+    }
+  }, [open, politician, detail, fetchProfileBio]);
+
+  // Reset bio and abort when modal closes
+  useEffect(() => {
+    if (!open) {
+      abortControllerRef.current?.abort();
+      setProfileBio({ bio: '', source: 'fallback', isLoading: false });
+    }
+  }, [open]);
 
   const generateClientFallbackBio = (pol: Politician, det: typeof detail): string => {
     const partyFull = pol.party === 'D' ? 'Democratic' :
