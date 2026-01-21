@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { AlertProvider, useAlerts, useAddAlert } from './AlertContext';
+import { AlertProvider, useAlerts, useAddAlert } from '../../../client/src/contexts/AlertContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 
@@ -19,15 +19,13 @@ vi.mock('@/integrations/supabase/client', () => ({
 }));
 
 // Mock sonner toast
-const mockToast = {
-  error: vi.fn(),
-  warning: vi.fn(),
-  success: vi.fn(),
-  info: vi.fn(),
-};
-
 vi.mock('sonner', () => ({
-  toast: mockToast,
+  toast: {
+    error: vi.fn(),
+    warning: vi.fn(),
+    success: vi.fn(),
+    info: vi.fn(),
+  },
 }));
 
 // Mock fetch for connection health check

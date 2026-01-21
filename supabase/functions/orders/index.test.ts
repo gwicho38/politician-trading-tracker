@@ -1,424 +1,419 @@
-// Deno tests for orders edge function
-// Run with: deno test --allow-env --allow-net index.test.ts
+/**
+ * Tests for orders Edge Function
+ *
+ * Tests:
+ * - Idempotency key generation
+ * - Order validation
+ * - Order status filtering
+ * - Order transformation
+ * - Statistics calculation
+ */
 
-import {
-  assertEquals,
-  assertExists,
-  assertStringIncludes,
-} from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { assertEquals, assertStringIncludes, assertNotEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 
-// ============================================================================
-// Idempotency Key Generation Tests
-// ============================================================================
+// Extracted idempotency key generation logic
+function generateIdempotencyKey(
+  userId: string,
+  ticker: string,
+  side: string,
+  quantity: number,
+  signalId: string | null
+): string {
+  const timestamp = Math.floor(Date.now() / 60000);
+  const components = [userId, ticker.toUpperCase(), side, quantity.toString(), signalId || 'no-signal', timestamp.toString()];
+  const uuid = crypto.randomUUID().substring(0, 8);
+  return `order_${components.join('_')}_${uuid}`;
+}
 
-Deno.test("generateIdempotencyKey - generates consistent key", async () => {
-  const generateIdempotencyKey = async (
-    userId: string,
-    ticker: string,
-    side: string,
-    quantity: number,
-    signalId?: string
-  ): Promise<string> => {
-    const data = `${userId}-${ticker}-${side}-${quantity}-${signalId || 'no-signal'}`;
-    const encoder = new TextEncoder();
-    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(data));
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  };
-
-  const key1 = await generateIdempotencyKey('user-123', 'AAPL', 'buy', 100, 'signal-456');
-  const key2 = await generateIdempotencyKey('user-123', 'AAPL', 'buy', 100, 'signal-456');
-
-  assertEquals(key1, key2); // Same inputs = same key
-  assertEquals(key1.length, 64); // SHA-256 = 64 hex chars
-});
-
-Deno.test("generateIdempotencyKey - different inputs produce different keys", async () => {
-  const generateIdempotencyKey = async (
-    userId: string,
-    ticker: string,
-    side: string,
-    quantity: number,
-    signalId?: string
-  ): Promise<string> => {
-    const data = `${userId}-${ticker}-${side}-${quantity}-${signalId || 'no-signal'}`;
-    const encoder = new TextEncoder();
-    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(data));
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  };
-
-  const key1 = await generateIdempotencyKey('user-123', 'AAPL', 'buy', 100);
-  const key2 = await generateIdempotencyKey('user-123', 'GOOGL', 'buy', 100);
-  const key3 = await generateIdempotencyKey('user-123', 'AAPL', 'sell', 100);
-  const key4 = await generateIdempotencyKey('user-123', 'AAPL', 'buy', 50);
-
-  // All should be different
-  const keys = [key1, key2, key3, key4];
-  const uniqueKeys = new Set(keys);
-  assertEquals(uniqueKeys.size, 4);
-});
-
-// ============================================================================
-// Order State Transition Tests
-// ============================================================================
-
-Deno.test("Order state machine - valid state transitions", () => {
-  const validTransitions: Record<string, string[]> = {
-    'draft': ['pending'],
-    'pending': ['submitted', 'canceled'],
-    'submitted': ['accepted', 'rejected'],
-    'accepted': ['filled', 'partially_filled', 'canceled', 'expired'],
-    'partially_filled': ['filled', 'canceled'],
-    'filled': [], // Terminal state
-    'rejected': [], // Terminal state
-    'canceled': [], // Terminal state
-    'expired': [], // Terminal state
-  };
-
-  const canTransition = (from: string, to: string): boolean => {
-    return validTransitions[from]?.includes(to) ?? false;
-  };
-
-  // Valid transitions
-  assertEquals(canTransition('draft', 'pending'), true);
-  assertEquals(canTransition('pending', 'submitted'), true);
-  assertEquals(canTransition('submitted', 'accepted'), true);
-  assertEquals(canTransition('accepted', 'filled'), true);
-  assertEquals(canTransition('accepted', 'canceled'), true);
-
-  // Invalid transitions
-  assertEquals(canTransition('draft', 'filled'), false);
-  assertEquals(canTransition('filled', 'canceled'), false);
-  assertEquals(canTransition('rejected', 'accepted'), false);
-});
-
-Deno.test("Order state machine - terminal states have no transitions", () => {
-  const terminalStates = ['filled', 'rejected', 'canceled', 'expired'];
-
-  const validTransitions: Record<string, string[]> = {
-    'filled': [],
-    'rejected': [],
-    'canceled': [],
-    'expired': [],
-  };
-
-  for (const state of terminalStates) {
-    assertEquals(validTransitions[state].length, 0);
-  }
-});
-
-// ============================================================================
-// Signal Lifecycle Tests
-// ============================================================================
-
-Deno.test("Signal lifecycle - valid state transitions", () => {
-  const validLifecycleTransitions: Record<string, string[]> = {
-    'generated': ['active', 'in_cart', 'expired'],
-    'active': ['in_cart', 'expired'],
-    'in_cart': ['ordered', 'active', 'expired'],
-    'ordered': ['filled', 'canceled', 'expired'],
-    'filled': [], // Terminal
-    'canceled': ['active'], // Can be re-activated
-    'expired': [], // Terminal
-  };
-
-  const canTransition = (from: string, to: string): boolean => {
-    return validLifecycleTransitions[from]?.includes(to) ?? false;
-  };
-
-  // Valid transitions
-  assertEquals(canTransition('generated', 'in_cart'), true);
-  assertEquals(canTransition('in_cart', 'ordered'), true);
-  assertEquals(canTransition('ordered', 'filled'), true);
-
-  // Invalid transitions
-  assertEquals(canTransition('generated', 'filled'), false);
-  assertEquals(canTransition('filled', 'active'), false);
-});
-
-// ============================================================================
-// Order Validation Tests
-// ============================================================================
-
-Deno.test("Order validation - validates required fields", () => {
-  interface OrderRequest {
-    ticker?: string;
-    side?: string;
-    quantity?: number;
-    type?: string;
+// Order validation logic
+function validateOrderParams(params: {
+  ticker?: string;
+  side?: string;
+  quantity?: number;
+}): { valid: boolean; error?: string } {
+  if (!params.ticker || !params.side || !params.quantity) {
+    return { valid: false, error: 'Missing required fields: ticker, side, quantity' };
   }
 
-  const validateOrder = (order: OrderRequest): { valid: boolean; errors: string[] } => {
-    const errors: string[] = [];
+  if (!['buy', 'sell'].includes(params.side)) {
+    return { valid: false, error: 'Side must be "buy" or "sell"' };
+  }
 
-    if (!order.ticker) errors.push('ticker is required');
-    if (!order.side) errors.push('side is required');
-    if (!order.quantity || order.quantity <= 0) errors.push('quantity must be positive');
-    if (!order.type) errors.push('type is required');
+  if (params.quantity <= 0) {
+    return { valid: false, error: 'Quantity must be greater than 0' };
+  }
 
-    return { valid: errors.length === 0, errors };
+  return { valid: true };
+}
+
+// Status filter mapping
+function mapStatusFilter(statusFilter: string): string[] {
+  if (statusFilter === 'open') {
+    return ['new', 'accepted', 'pending_new', 'partially_filled'];
+  } else if (statusFilter === 'closed') {
+    return ['filled', 'canceled', 'rejected', 'expired'];
+  }
+  return [statusFilter];
+}
+
+// Order transformation
+function transformOrder(order: {
+  id: string;
+  filled_qty?: number;
+  alpaca_order_id?: string;
+}): { id: string; filled_quantity: number; alpaca_order_id: string } {
+  return {
+    ...order,
+    filled_quantity: order.filled_qty || 0,
+    alpaca_order_id: order.alpaca_order_id || order.id,
+  };
+}
+
+// Statistics calculation
+function calculateOrderStats(orders: Array<{
+  status: string;
+  side: string;
+  quantity: number;
+  filled_avg_price?: number;
+}>): {
+  total_orders: number;
+  status_distribution: Record<string, number>;
+  side_distribution: Record<string, number>;
+  average_fill_price: number;
+  total_volume: number;
+  success_rate: number;
+} {
+  const stats = {
+    total_orders: orders.length,
+    status_distribution: {} as Record<string, number>,
+    side_distribution: {} as Record<string, number>,
+    average_fill_price: 0,
+    total_volume: 0,
+    success_rate: 0,
   };
 
-  // Valid order
-  const validOrder = { ticker: 'AAPL', side: 'buy', quantity: 100, type: 'market' };
-  assertEquals(validateOrder(validOrder).valid, true);
+  if (orders.length === 0) return stats;
 
-  // Missing ticker
-  const noTicker = { side: 'buy', quantity: 100, type: 'market' };
-  const result1 = validateOrder(noTicker);
-  assertEquals(result1.valid, false);
-  assertStringIncludes(result1.errors.join(','), 'ticker');
+  let totalFilledPrice = 0;
+  let filledOrderCount = 0;
 
-  // Invalid quantity
-  const badQuantity = { ticker: 'AAPL', side: 'buy', quantity: 0, type: 'market' };
-  const result2 = validateOrder(badQuantity);
-  assertEquals(result2.valid, false);
-  assertStringIncludes(result2.errors.join(','), 'quantity');
-});
+  orders.forEach(order => {
+    stats.status_distribution[order.status] = (stats.status_distribution[order.status] || 0) + 1;
+    stats.side_distribution[order.side] = (stats.side_distribution[order.side] || 0) + 1;
+    stats.total_volume += order.quantity;
 
-Deno.test("Order validation - validates side values", () => {
-  const validSides = ['buy', 'sell'];
-
-  const isValidSide = (side: string): boolean => {
-    return validSides.includes(side.toLowerCase());
-  };
-
-  assertEquals(isValidSide('buy'), true);
-  assertEquals(isValidSide('sell'), true);
-  assertEquals(isValidSide('BUY'), true);
-  assertEquals(isValidSide('SELL'), true);
-  assertEquals(isValidSide('hold'), false);
-  assertEquals(isValidSide(''), false);
-});
-
-Deno.test("Order validation - validates order types", () => {
-  const validTypes = ['market', 'limit', 'stop', 'stop_limit'];
-
-  const isValidType = (type: string): boolean => {
-    return validTypes.includes(type.toLowerCase());
-  };
-
-  assertEquals(isValidType('market'), true);
-  assertEquals(isValidType('limit'), true);
-  assertEquals(isValidType('stop'), true);
-  assertEquals(isValidType('stop_limit'), true);
-  assertEquals(isValidType('MARKET'), true);
-  assertEquals(isValidType('invalid'), false);
-});
-
-// ============================================================================
-// Circuit Breaker Tests (Same as alpaca-account)
-// ============================================================================
-
-Deno.test("Orders Circuit Breaker - configuration", () => {
-  const CIRCUIT_BREAKER_CONFIG = {
-    failureThreshold: 5,
-    resetTimeout: 30000,
-    halfOpenRequests: 2,
-  };
-
-  assertEquals(CIRCUIT_BREAKER_CONFIG.failureThreshold, 5);
-  assertEquals(CIRCUIT_BREAKER_CONFIG.resetTimeout, 30000);
-  assertEquals(CIRCUIT_BREAKER_CONFIG.halfOpenRequests, 2);
-});
-
-// ============================================================================
-// Order Response Formatting Tests
-// ============================================================================
-
-Deno.test("Order response formatting - formats Alpaca order correctly", () => {
-  const alpacaOrder = {
-    id: 'order-123',
-    client_order_id: 'client-456',
-    created_at: '2024-01-15T10:00:00Z',
-    updated_at: '2024-01-15T10:00:05Z',
-    submitted_at: '2024-01-15T10:00:01Z',
-    filled_at: '2024-01-15T10:00:05Z',
-    expired_at: null,
-    canceled_at: null,
-    failed_at: null,
-    asset_id: 'asset-789',
-    symbol: 'AAPL',
-    asset_class: 'us_equity',
-    qty: '100',
-    filled_qty: '100',
-    type: 'market',
-    side: 'buy',
-    time_in_force: 'day',
-    limit_price: null,
-    stop_price: null,
-    filled_avg_price: '150.50',
-    status: 'filled',
-  };
-
-  const formattedOrder = {
-    alpaca_order_id: alpacaOrder.id,
-    client_order_id: alpacaOrder.client_order_id,
-    ticker: alpacaOrder.symbol,
-    quantity: parseFloat(alpacaOrder.qty) || 0,
-    filled_quantity: parseFloat(alpacaOrder.filled_qty) || 0,
-    order_type: alpacaOrder.type,
-    side: alpacaOrder.side,
-    time_in_force: alpacaOrder.time_in_force,
-    limit_price: alpacaOrder.limit_price ? parseFloat(alpacaOrder.limit_price) : null,
-    stop_price: alpacaOrder.stop_price ? parseFloat(alpacaOrder.stop_price) : null,
-    filled_avg_price: alpacaOrder.filled_avg_price ? parseFloat(alpacaOrder.filled_avg_price) : null,
-    status: alpacaOrder.status,
-    created_at: alpacaOrder.created_at,
-    filled_at: alpacaOrder.filled_at,
-  };
-
-  assertEquals(formattedOrder.alpaca_order_id, 'order-123');
-  assertEquals(formattedOrder.ticker, 'AAPL');
-  assertEquals(formattedOrder.quantity, 100);
-  assertEquals(formattedOrder.filled_quantity, 100);
-  assertEquals(formattedOrder.filled_avg_price, 150.50);
-  assertEquals(formattedOrder.status, 'filled');
-});
-
-// ============================================================================
-// Order Status Mapping Tests
-// ============================================================================
-
-Deno.test("Order status mapping - maps Alpaca statuses correctly", () => {
-  const statusMap: Record<string, string> = {
-    'new': 'pending',
-    'partially_filled': 'partially_filled',
-    'filled': 'filled',
-    'done_for_day': 'completed',
-    'canceled': 'canceled',
-    'expired': 'expired',
-    'replaced': 'replaced',
-    'pending_cancel': 'canceling',
-    'pending_replace': 'replacing',
-    'accepted': 'accepted',
-    'pending_new': 'pending',
-    'accepted_for_bidding': 'accepted',
-    'stopped': 'stopped',
-    'rejected': 'rejected',
-    'suspended': 'suspended',
-    'calculated': 'calculated',
-  };
-
-  const mapStatus = (alpacaStatus: string): string => {
-    return statusMap[alpacaStatus] || alpacaStatus;
-  };
-
-  assertEquals(mapStatus('new'), 'pending');
-  assertEquals(mapStatus('filled'), 'filled');
-  assertEquals(mapStatus('canceled'), 'canceled');
-  assertEquals(mapStatus('rejected'), 'rejected');
-  assertEquals(mapStatus('unknown_status'), 'unknown_status'); // Passthrough
-});
-
-// ============================================================================
-// Duplicate Order Detection Tests
-// ============================================================================
-
-Deno.test("Duplicate order detection - identifies duplicate by idempotency key", async () => {
-  const existingOrders: Record<string, any> = {
-    'abc123': { id: 'order-1', ticker: 'AAPL', status: 'filled' },
-  };
-
-  const checkIdempotency = async (idempotencyKey: string): Promise<{
-    exists: boolean;
-    existingOrder?: any;
-  }> => {
-    const existing = existingOrders[idempotencyKey];
-    if (existing) {
-      return { exists: true, existingOrder: existing };
+    if (order.filled_avg_price) {
+      totalFilledPrice += order.filled_avg_price * order.quantity;
+      filledOrderCount++;
     }
-    return { exists: false };
-  };
+  });
 
-  const result1 = await checkIdempotency('abc123');
-  assertEquals(result1.exists, true);
-  assertExists(result1.existingOrder);
-  assertEquals(result1.existingOrder.ticker, 'AAPL');
+  if (filledOrderCount > 0) {
+    stats.average_fill_price = totalFilledPrice / filledOrderCount;
+  }
 
-  const result2 = await checkIdempotency('xyz789');
-  assertEquals(result2.exists, false);
-  assertEquals(result2.existingOrder, undefined);
+  const filledOrders = stats.status_distribution['filled'] || 0;
+  stats.success_rate = (filledOrders / orders.length) * 100;
+
+  return stats;
+}
+
+// Request sanitization
+function sanitizeHeadersForLogging(headers: Record<string, string>): Record<string, string> {
+  const sanitized = { ...headers };
+  const sensitiveHeaders = ['authorization', 'x-api-key', 'cookie', 'x-supabase-auth'];
+  sensitiveHeaders.forEach(header => {
+    if (sanitized[header]) {
+      sanitized[header] = '[REDACTED]';
+    }
+  });
+  return sanitized;
+}
+
+// Tests
+
+Deno.test("generateIdempotencyKey() - generates unique keys", () => {
+  const key1 = generateIdempotencyKey('user1', 'AAPL', 'buy', 10, null);
+  const key2 = generateIdempotencyKey('user1', 'AAPL', 'buy', 10, null);
+
+  // Keys should be different due to UUID component
+  assertNotEquals(key1, key2);
 });
 
-// ============================================================================
-// Order Amount Calculations Tests
-// ============================================================================
+Deno.test("generateIdempotencyKey() - includes order components", () => {
+  const key = generateIdempotencyKey('user123', 'TSLA', 'sell', 50, 'signal-abc');
 
-Deno.test("Order calculations - calculates total value", () => {
-  const calculateOrderValue = (quantity: number, price: number): number => {
-    return quantity * price;
-  };
-
-  assertEquals(calculateOrderValue(100, 150.50), 15050);
-  assertEquals(calculateOrderValue(50, 200), 10000);
-  assertEquals(calculateOrderValue(1, 500.25), 500.25);
+  assertStringIncludes(key, 'order_');
+  assertStringIncludes(key, 'user123');
+  assertStringIncludes(key, 'TSLA');
+  assertStringIncludes(key, 'sell');
+  assertStringIncludes(key, '50');
+  assertStringIncludes(key, 'signal-abc');
 });
 
-Deno.test("Order calculations - calculates commission estimate", () => {
-  const calculateCommission = (orderValue: number, rate: number = 0): number => {
-    // Alpaca has zero commission, but this tests the pattern
-    return orderValue * rate;
-  };
+Deno.test("generateIdempotencyKey() - uppercases ticker", () => {
+  const key = generateIdempotencyKey('user1', 'aapl', 'buy', 10, null);
 
-  assertEquals(calculateCommission(10000, 0), 0);
-  assertEquals(calculateCommission(10000, 0.001), 10);
+  assertStringIncludes(key, 'AAPL');
 });
 
-// ============================================================================
-// Order History Filtering Tests
-// ============================================================================
+Deno.test("generateIdempotencyKey() - handles null signal", () => {
+  const key = generateIdempotencyKey('user1', 'AAPL', 'buy', 10, null);
 
-Deno.test("Order history filtering - filters by status", () => {
+  assertStringIncludes(key, 'no-signal');
+});
+
+Deno.test("validateOrderParams() - valid order", () => {
+  const result = validateOrderParams({ ticker: 'AAPL', side: 'buy', quantity: 10 });
+
+  assertEquals(result.valid, true);
+  assertEquals(result.error, undefined);
+});
+
+Deno.test("validateOrderParams() - missing ticker", () => {
+  const result = validateOrderParams({ side: 'buy', quantity: 10 });
+
+  assertEquals(result.valid, false);
+  assertStringIncludes(result.error!, 'ticker');
+});
+
+Deno.test("validateOrderParams() - missing side", () => {
+  const result = validateOrderParams({ ticker: 'AAPL', quantity: 10 });
+
+  assertEquals(result.valid, false);
+  assertStringIncludes(result.error!, 'side');
+});
+
+Deno.test("validateOrderParams() - missing quantity", () => {
+  const result = validateOrderParams({ ticker: 'AAPL', side: 'buy' });
+
+  assertEquals(result.valid, false);
+  assertStringIncludes(result.error!, 'quantity');
+});
+
+Deno.test("validateOrderParams() - invalid side", () => {
+  const result = validateOrderParams({ ticker: 'AAPL', side: 'hold', quantity: 10 });
+
+  assertEquals(result.valid, false);
+  assertStringIncludes(result.error!, 'Side must be');
+});
+
+Deno.test("validateOrderParams() - zero quantity", () => {
+  const result = validateOrderParams({ ticker: 'AAPL', side: 'buy', quantity: 0 });
+
+  assertEquals(result.valid, false);
+  assertStringIncludes(result.error!, 'Quantity must be greater than 0');
+});
+
+Deno.test("validateOrderParams() - negative quantity", () => {
+  const result = validateOrderParams({ ticker: 'AAPL', side: 'buy', quantity: -5 });
+
+  assertEquals(result.valid, false);
+});
+
+Deno.test("mapStatusFilter() - open status", () => {
+  const result = mapStatusFilter('open');
+
+  assertEquals(result.includes('new'), true);
+  assertEquals(result.includes('accepted'), true);
+  assertEquals(result.includes('pending_new'), true);
+  assertEquals(result.includes('partially_filled'), true);
+});
+
+Deno.test("mapStatusFilter() - closed status", () => {
+  const result = mapStatusFilter('closed');
+
+  assertEquals(result.includes('filled'), true);
+  assertEquals(result.includes('canceled'), true);
+  assertEquals(result.includes('rejected'), true);
+  assertEquals(result.includes('expired'), true);
+});
+
+Deno.test("mapStatusFilter() - specific status", () => {
+  const result = mapStatusFilter('filled');
+
+  assertEquals(result, ['filled']);
+});
+
+Deno.test("transformOrder() - adds filled_quantity", () => {
+  const order = { id: 'order-1', filled_qty: 10 };
+  const result = transformOrder(order);
+
+  assertEquals(result.filled_quantity, 10);
+});
+
+Deno.test("transformOrder() - defaults filled_quantity to 0", () => {
+  const order = { id: 'order-1' };
+  const result = transformOrder(order);
+
+  assertEquals(result.filled_quantity, 0);
+});
+
+Deno.test("transformOrder() - uses alpaca_order_id if present", () => {
+  const order = { id: 'order-1', alpaca_order_id: 'alpaca-123' };
+  const result = transformOrder(order);
+
+  assertEquals(result.alpaca_order_id, 'alpaca-123');
+});
+
+Deno.test("transformOrder() - falls back to id for alpaca_order_id", () => {
+  const order = { id: 'order-1' };
+  const result = transformOrder(order);
+
+  assertEquals(result.alpaca_order_id, 'order-1');
+});
+
+Deno.test("calculateOrderStats() - empty orders", () => {
+  const result = calculateOrderStats([]);
+
+  assertEquals(result.total_orders, 0);
+  assertEquals(result.success_rate, 0);
+  assertEquals(result.total_volume, 0);
+});
+
+Deno.test("calculateOrderStats() - counts statuses", () => {
   const orders = [
-    { id: '1', status: 'filled' },
-    { id: '2', status: 'canceled' },
-    { id: '3', status: 'filled' },
-    { id: '4', status: 'pending' },
+    { status: 'filled', side: 'buy', quantity: 10 },
+    { status: 'filled', side: 'buy', quantity: 20 },
+    { status: 'canceled', side: 'sell', quantity: 5 },
   ];
 
-  const filterByStatus = (orders: any[], status: string) => {
-    return orders.filter(o => o.status === status);
-  };
+  const result = calculateOrderStats(orders);
 
-  assertEquals(filterByStatus(orders, 'filled').length, 2);
-  assertEquals(filterByStatus(orders, 'canceled').length, 1);
-  assertEquals(filterByStatus(orders, 'pending').length, 1);
-  assertEquals(filterByStatus(orders, 'rejected').length, 0);
+  assertEquals(result.status_distribution['filled'], 2);
+  assertEquals(result.status_distribution['canceled'], 1);
 });
 
-Deno.test("Order history filtering - filters by date range", () => {
+Deno.test("calculateOrderStats() - counts sides", () => {
   const orders = [
-    { id: '1', created_at: '2024-01-10T10:00:00Z' },
-    { id: '2', created_at: '2024-01-15T10:00:00Z' },
-    { id: '3', created_at: '2024-01-20T10:00:00Z' },
+    { status: 'filled', side: 'buy', quantity: 10 },
+    { status: 'filled', side: 'buy', quantity: 20 },
+    { status: 'filled', side: 'sell', quantity: 5 },
   ];
 
-  const filterByDateRange = (orders: any[], startDate: string, endDate: string) => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    return orders.filter(o => {
-      const created = new Date(o.created_at);
-      return created >= start && created <= end;
-    });
-  };
+  const result = calculateOrderStats(orders);
 
-  const filtered = filterByDateRange(orders, '2024-01-12', '2024-01-18');
-  assertEquals(filtered.length, 1);
-  assertEquals(filtered[0].id, '2');
+  assertEquals(result.side_distribution['buy'], 2);
+  assertEquals(result.side_distribution['sell'], 1);
 });
 
-// ============================================================================
-// CORS Headers Tests
-// ============================================================================
+Deno.test("calculateOrderStats() - calculates volume", () => {
+  const orders = [
+    { status: 'filled', side: 'buy', quantity: 10 },
+    { status: 'filled', side: 'buy', quantity: 20 },
+    { status: 'filled', side: 'sell', quantity: 5 },
+  ];
 
-Deno.test("Orders CORS headers - correct format", () => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  const result = calculateOrderStats(orders);
+
+  assertEquals(result.total_volume, 35);
+});
+
+Deno.test("calculateOrderStats() - calculates success rate", () => {
+  const orders = [
+    { status: 'filled', side: 'buy', quantity: 10 },
+    { status: 'filled', side: 'buy', quantity: 20 },
+    { status: 'canceled', side: 'sell', quantity: 5 },
+    { status: 'rejected', side: 'buy', quantity: 15 },
+  ];
+
+  const result = calculateOrderStats(orders);
+
+  assertEquals(result.success_rate, 50); // 2 filled out of 4
+});
+
+Deno.test("calculateOrderStats() - calculates average fill price", () => {
+  const orders = [
+    { status: 'filled', side: 'buy', quantity: 10, filled_avg_price: 100 },
+    { status: 'filled', side: 'buy', quantity: 10, filled_avg_price: 150 },
+  ];
+
+  const result = calculateOrderStats(orders);
+
+  assertEquals(result.average_fill_price, 1250); // (100*10 + 150*10) / 2
+});
+
+Deno.test("sanitizeHeadersForLogging() - redacts sensitive headers", () => {
+  const headers = {
+    'authorization': 'Bearer secret-token',
+    'x-api-key': 'api-key-value',
+    'content-type': 'application/json',
   };
 
-  assertEquals(corsHeaders['Access-Control-Allow-Origin'], '*');
-  assertStringIncludes(corsHeaders['Access-Control-Allow-Headers'], 'authorization');
+  const result = sanitizeHeadersForLogging(headers);
+
+  assertEquals(result['authorization'], '[REDACTED]');
+  assertEquals(result['x-api-key'], '[REDACTED]');
+  assertEquals(result['content-type'], 'application/json');
+});
+
+Deno.test("sanitizeHeadersForLogging() - handles missing headers", () => {
+  const headers = {
+    'content-type': 'application/json',
+  };
+
+  const result = sanitizeHeadersForLogging(headers);
+
+  assertEquals(result['authorization'], undefined);
+  assertEquals(result['content-type'], 'application/json');
+});
+
+// Test Alpaca order request building
+interface AlpacaOrderRequest {
+  symbol: string;
+  qty: number;
+  side: string;
+  type: string;
+  time_in_force: string;
+  limit_price?: number;
+}
+
+function buildAlpacaOrderRequest(params: {
+  ticker: string;
+  quantity: number;
+  side: string;
+  order_type?: string;
+  limit_price?: number;
+}): AlpacaOrderRequest {
+  const request: AlpacaOrderRequest = {
+    symbol: params.ticker.toUpperCase(),
+    qty: params.quantity,
+    side: params.side,
+    type: params.order_type || 'market',
+    time_in_force: 'day',
+  };
+
+  if (params.order_type === 'limit' && params.limit_price) {
+    request.limit_price = params.limit_price;
+  }
+
+  return request;
+}
+
+Deno.test("buildAlpacaOrderRequest() - market order", () => {
+  const result = buildAlpacaOrderRequest({
+    ticker: 'aapl',
+    quantity: 10,
+    side: 'buy',
+  });
+
+  assertEquals(result.symbol, 'AAPL');
+  assertEquals(result.qty, 10);
+  assertEquals(result.side, 'buy');
+  assertEquals(result.type, 'market');
+  assertEquals(result.time_in_force, 'day');
+  assertEquals(result.limit_price, undefined);
+});
+
+Deno.test("buildAlpacaOrderRequest() - limit order", () => {
+  const result = buildAlpacaOrderRequest({
+    ticker: 'TSLA',
+    quantity: 5,
+    side: 'sell',
+    order_type: 'limit',
+    limit_price: 250.50,
+  });
+
+  assertEquals(result.type, 'limit');
+  assertEquals(result.limit_price, 250.50);
 });
