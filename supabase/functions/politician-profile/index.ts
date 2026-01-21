@@ -79,11 +79,12 @@ serve(async (req) => {
       }
 
       const data = await response.json();
+      const cleanedBio = data.response ? cleanOllamaResponse(data.response) : null;
 
       return new Response(
         JSON.stringify({
-          bio: data.response || generateFallbackBio(politician),
-          source: data.response ? "ollama" : "fallback",
+          bio: cleanedBio || generateFallbackBio(politician),
+          source: cleanedBio ? "ollama" : "fallback",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -146,4 +147,30 @@ function formatVolume(volume: number): string {
     return (volume / 1000).toFixed(1) + "K";
   }
   return volume.toFixed(0);
+}
+
+function cleanOllamaResponse(response: string): string {
+  // Common LLM preamble patterns to strip
+  const preamblePatterns = [
+    /^here is a \d+-\d+ sentence (professional )?biography[^:]*:\s*/i,
+    /^here is the (professional )?biography[^:]*:\s*/i,
+    /^here is a (professional )?biography[^:]*:\s*/i,
+    /^here's a \d+-\d+ sentence[^:]*:\s*/i,
+    /^here's the[^:]*:\s*/i,
+    /^here you go[^:]*:\s*/i,
+    /^sure[,!]?\s*(here[^:]*:\s*)?/i,
+    /^certainly[,!]?\s*(here[^:]*:\s*)?/i,
+    /^of course[,!]?\s*(here[^:]*:\s*)?/i,
+  ];
+
+  let cleaned = response.trim();
+
+  for (const pattern of preamblePatterns) {
+    cleaned = cleaned.replace(pattern, "");
+  }
+
+  // Also strip any leading newlines after removing preamble
+  cleaned = cleaned.replace(/^\n+/, "").trim();
+
+  return cleaned;
 }
