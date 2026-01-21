@@ -29,10 +29,14 @@ vi.mock('@rainbow-me/rainbowkit', () => ({
 
 // Mock React Query
 vi.mock('@tanstack/react-query', () => ({
-  QueryClient: vi.fn(() => ({
+  QueryClient: vi.fn().mockImplementation(() => ({
     defaultOptions: {},
   })),
   QueryClientProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useQueryClient: vi.fn(() => ({
+    invalidateQueries: vi.fn(),
+    setQueryData: vi.fn(),
+  })),
 }));
 
 // Mock wallet config
@@ -43,8 +47,8 @@ vi.mock('@/config/wallet', () => ({
 }));
 
 // Import after mocks
-import { WalletProvider } from './WalletProvider';
-import { WALLET_SESSION_KEY } from '@/config/wallet';
+import { WalletProvider } from '../../../client/src/components/WalletProvider';
+import { WALLET_SESSION_KEY } from '../../../client/src/config/wallet';
 
 describe('WalletProvider', () => {
   const mockReconnect = vi.fn();

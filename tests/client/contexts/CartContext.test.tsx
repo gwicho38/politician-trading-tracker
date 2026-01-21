@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { CartProvider, useCart } from './CartContext';
+import { CartProvider, useCart } from '../../../client/src/contexts/CartContext';
 import type { CartSignal } from '@/types/cart';
 
 // Mock Supabase

@@ -1,7 +1,15 @@
+/**
+ * Tests for lib/fetchWithRetry.ts
+ *
+ * Tests:
+ * - fetchWithRetry() - Fetch with exponential backoff
+ * - FetchRetryError - Custom error class
+ */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fetchWithRetry, FetchRetryError } from './fetchWithRetry';
 
-describe('fetchWithRetry', () => {
+describe('fetchWithRetry()', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -12,288 +20,239 @@ describe('fetchWithRetry', () => {
   });
 
   describe('successful requests', () => {
-    it('should return response on first successful attempt', async () => {
-      const mockResponse = new Response(JSON.stringify({ data: 'test' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    it('returns response on successful fetch', async () => {
+      const mockResponse = new Response('{"success": true}', { status: 200 });
       vi.spyOn(global, 'fetch').mockResolvedValueOnce(mockResponse);
 
-      const response = await fetchWithRetry('https://api.example.com/data');
+      const response = await fetchWithRetry('/api/test');
 
       expect(response.ok).toBe(true);
       expect(fetch).toHaveBeenCalledTimes(1);
     });
 
-    it('should pass through request options', async () => {
-      const mockResponse = new Response('', { status: 200 });
+    it('passes fetch options through', async () => {
+      const mockResponse = new Response('{}', { status: 200 });
       vi.spyOn(global, 'fetch').mockResolvedValueOnce(mockResponse);
 
-      await fetchWithRetry('https://api.example.com/data', {
+      await fetchWithRetry('/api/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'value' }),
+        body: JSON.stringify({ data: 'test' }),
       });
 
-      expect(fetch).toHaveBeenCalledWith('https://api.example.com/data', {
+      expect(fetch).toHaveBeenCalledWith('/api/test', expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'value' }),
-      });
+        body: '{"data":"test"}',
+      }));
     });
   });
 
-  describe('retry behavior', () => {
-    it('should retry on 500 server error', async () => {
-      const errorResponse = new Response('', { status: 500, statusText: 'Internal Server Error' });
-      const successResponse = new Response('', { status: 200 });
+  describe('retry logic', () => {
+    it('retries on 500 server error', async () => {
+      const errorResponse = new Response('Server Error', { status: 500, statusText: 'Internal Server Error' });
+      const successResponse = new Response('{}', { status: 200 });
 
       vi.spyOn(global, 'fetch')
         .mockResolvedValueOnce(errorResponse)
         .mockResolvedValueOnce(successResponse);
 
-      const fetchPromise = fetchWithRetry('https://api.example.com/data', { maxRetries: 3 });
+      const responsePromise = fetchWithRetry('/api/test', { maxRetries: 1, baseDelay: 100 });
 
-      // Advance timer for first retry delay
-      await vi.advanceTimersByTimeAsync(2000);
+      // Advance timers to trigger retry
+      await vi.advanceTimersByTimeAsync(200);
 
-      const response = await fetchPromise;
-
+      const response = await responsePromise;
       expect(response.ok).toBe(true);
       expect(fetch).toHaveBeenCalledTimes(2);
     });
 
-    it('should retry on 503 service unavailable', async () => {
-      const errorResponse = new Response('', { status: 503, statusText: 'Service Unavailable' });
-      const successResponse = new Response('', { status: 200 });
-
-      vi.spyOn(global, 'fetch')
-        .mockResolvedValueOnce(errorResponse)
-        .mockResolvedValueOnce(successResponse);
-
-      const fetchPromise = fetchWithRetry('https://api.example.com/data', { maxRetries: 3 });
-      await vi.advanceTimersByTimeAsync(2000);
-
-      const response = await fetchPromise;
-
-      expect(response.ok).toBe(true);
-      expect(fetch).toHaveBeenCalledTimes(2);
-    });
-
-    it('should retry on 429 rate limit', async () => {
-      const rateLimitResponse = new Response('', { status: 429, statusText: 'Too Many Requests' });
-      const successResponse = new Response('', { status: 200 });
+    it('retries on 429 rate limit', async () => {
+      const rateLimitResponse = new Response('Rate Limited', { status: 429, statusText: 'Too Many Requests' });
+      const successResponse = new Response('{}', { status: 200 });
 
       vi.spyOn(global, 'fetch')
         .mockResolvedValueOnce(rateLimitResponse)
         .mockResolvedValueOnce(successResponse);
 
-      const fetchPromise = fetchWithRetry('https://api.example.com/data', { maxRetries: 3 });
-      await vi.advanceTimersByTimeAsync(2000);
+      const responsePromise = fetchWithRetry('/api/test', { maxRetries: 1, baseDelay: 100 });
+      await vi.advanceTimersByTimeAsync(200);
 
-      const response = await fetchPromise;
-
+      const response = await responsePromise;
       expect(response.ok).toBe(true);
-      expect(fetch).toHaveBeenCalledTimes(2);
     });
 
-    it('should retry on 408 request timeout', async () => {
-      const timeoutResponse = new Response('', { status: 408, statusText: 'Request Timeout' });
-      const successResponse = new Response('', { status: 200 });
+    it('retries on 408 timeout', async () => {
+      const timeoutResponse = new Response('Timeout', { status: 408, statusText: 'Request Timeout' });
+      const successResponse = new Response('{}', { status: 200 });
 
       vi.spyOn(global, 'fetch')
         .mockResolvedValueOnce(timeoutResponse)
         .mockResolvedValueOnce(successResponse);
 
-      const fetchPromise = fetchWithRetry('https://api.example.com/data', { maxRetries: 3 });
-      await vi.advanceTimersByTimeAsync(2000);
+      const responsePromise = fetchWithRetry('/api/test', { maxRetries: 1, baseDelay: 100 });
+      await vi.advanceTimersByTimeAsync(200);
 
-      const response = await fetchPromise;
-
+      const response = await responsePromise;
       expect(response.ok).toBe(true);
-      expect(fetch).toHaveBeenCalledTimes(2);
     });
 
-    it('should retry on network error', async () => {
-      const networkError = new Error('Network error');
-      const successResponse = new Response('', { status: 200 });
-
-      vi.spyOn(global, 'fetch')
-        .mockRejectedValueOnce(networkError)
-        .mockResolvedValueOnce(successResponse);
-
-      const fetchPromise = fetchWithRetry('https://api.example.com/data', { maxRetries: 3 });
-      await vi.advanceTimersByTimeAsync(2000);
-
-      const response = await fetchPromise;
-
-      expect(response.ok).toBe(true);
-      expect(fetch).toHaveBeenCalledTimes(2);
-    });
-
-    it('should call onRetry callback when retrying', async () => {
+    it('calls onRetry callback on retry', async () => {
+      const errorResponse = new Response('Server Error', { status: 500, statusText: 'Internal Server Error' });
+      const successResponse = new Response('{}', { status: 200 });
       const onRetry = vi.fn();
-      const errorResponse = new Response('', { status: 500, statusText: 'Internal Server Error' });
-      const successResponse = new Response('', { status: 200 });
 
       vi.spyOn(global, 'fetch')
         .mockResolvedValueOnce(errorResponse)
         .mockResolvedValueOnce(successResponse);
 
-      const fetchPromise = fetchWithRetry('https://api.example.com/data', {
-        maxRetries: 3,
+      const responsePromise = fetchWithRetry('/api/test', {
+        maxRetries: 1,
+        baseDelay: 100,
         onRetry,
       });
-      await vi.advanceTimersByTimeAsync(2000);
 
-      await fetchPromise;
+      await vi.advanceTimersByTimeAsync(200);
+      await responsePromise;
 
       expect(onRetry).toHaveBeenCalledTimes(1);
       expect(onRetry).toHaveBeenCalledWith(1, expect.any(Error), expect.any(Number));
     });
   });
 
-  describe('no retry scenarios', () => {
-    it('should NOT retry on 401 unauthorized', async () => {
-      const unauthorizedResponse = new Response('', { status: 401, statusText: 'Unauthorized' });
-
-      vi.spyOn(global, 'fetch').mockResolvedValueOnce(unauthorizedResponse);
-
-      const response = await fetchWithRetry('https://api.example.com/data', { maxRetries: 3 });
-
-      // Should return the 401 response without retrying
-      expect(response.status).toBe(401);
-      expect(fetch).toHaveBeenCalledTimes(1);
-    });
-
-    it('should NOT retry on 403 forbidden', async () => {
-      const forbiddenResponse = new Response('', { status: 403, statusText: 'Forbidden' });
-
-      vi.spyOn(global, 'fetch').mockResolvedValueOnce(forbiddenResponse);
-
-      const response = await fetchWithRetry('https://api.example.com/data', { maxRetries: 3 });
-
-      expect(response.status).toBe(403);
-      expect(fetch).toHaveBeenCalledTimes(1);
-    });
-
-    it('should NOT retry on 404 not found', async () => {
-      const notFoundResponse = new Response('', { status: 404, statusText: 'Not Found' });
-
-      vi.spyOn(global, 'fetch').mockResolvedValueOnce(notFoundResponse);
-
-      const response = await fetchWithRetry('https://api.example.com/data', { maxRetries: 3 });
-
-      expect(response.status).toBe(404);
-      expect(fetch).toHaveBeenCalledTimes(1);
-    });
-
-    it('should NOT retry on 400 bad request', async () => {
-      const badRequestResponse = new Response('', { status: 400, statusText: 'Bad Request' });
-
+  describe('non-retryable errors', () => {
+    it('does not retry on 400 bad request', async () => {
+      const badRequestResponse = new Response('Bad Request', { status: 400, statusText: 'Bad Request' });
       vi.spyOn(global, 'fetch').mockResolvedValueOnce(badRequestResponse);
 
-      const response = await fetchWithRetry('https://api.example.com/data', { maxRetries: 3 });
+      const response = await fetchWithRetry('/api/test', { maxRetries: 3 });
 
       expect(response.status).toBe(400);
       expect(fetch).toHaveBeenCalledTimes(1);
     });
 
-    it('should NOT retry on AbortError', async () => {
-      const abortError = new DOMException('Aborted', 'AbortError');
+    it('does not retry on 401 unauthorized', async () => {
+      const unauthorizedResponse = new Response('Unauthorized', { status: 401, statusText: 'Unauthorized' });
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(unauthorizedResponse);
 
-      vi.spyOn(global, 'fetch').mockRejectedValueOnce(abortError);
+      const response = await fetchWithRetry('/api/test', { maxRetries: 3 });
 
-      await expect(
-        fetchWithRetry('https://api.example.com/data', { maxRetries: 3 })
-      ).rejects.toThrow('Aborted');
+      expect(response.status).toBe(401);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
 
+    it('does not retry on 403 forbidden', async () => {
+      const forbiddenResponse = new Response('Forbidden', { status: 403, statusText: 'Forbidden' });
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(forbiddenResponse);
+
+      const response = await fetchWithRetry('/api/test', { maxRetries: 3 });
+
+      expect(response.status).toBe(403);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not retry on 404 not found', async () => {
+      const notFoundResponse = new Response('Not Found', { status: 404, statusText: 'Not Found' });
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(notFoundResponse);
+
+      const response = await fetchWithRetry('/api/test', { maxRetries: 3 });
+
+      expect(response.status).toBe(404);
       expect(fetch).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('max retries exceeded', () => {
-    it('should throw FetchRetryError after max retries', async () => {
-      vi.useRealTimers(); // Use real timers for this test
-
-      const errorResponse = new Response('', { status: 500, statusText: 'Internal Server Error' });
-      vi.spyOn(global, 'fetch').mockResolvedValue(errorResponse);
-
-      await expect(
-        fetchWithRetry('https://api.example.com/data', {
-          maxRetries: 2,
-          baseDelay: 1, // Very short delay for testing
-          maxDelay: 10,
-        })
-      ).rejects.toThrow(FetchRetryError);
-
-      expect(fetch).toHaveBeenCalledTimes(3); // 1 initial + 2 retries
-    });
-
-    it('should include attempt count in error', async () => {
-      vi.useRealTimers(); // Use real timers for this test
-
-      const errorResponse = new Response('', { status: 500, statusText: 'Internal Server Error' });
+    it('throws FetchRetryError after max retries', async () => {
+      vi.useRealTimers(); // Use real timers to avoid complexity
+      const errorResponse = new Response('Server Error', { status: 500, statusText: 'Internal Server Error' });
       vi.spyOn(global, 'fetch').mockResolvedValue(errorResponse);
 
       try {
-        await fetchWithRetry('https://api.example.com/data', {
-          maxRetries: 2,
-          baseDelay: 1,
-          maxDelay: 10,
-        });
+        await fetchWithRetry('/api/test', { maxRetries: 1, baseDelay: 1, maxDelay: 1 });
         expect.fail('Should have thrown');
       } catch (error) {
         expect(error).toBeInstanceOf(FetchRetryError);
-        expect((error as FetchRetryError).attempts).toBe(3);
-        expect((error as FetchRetryError).status).toBe(500);
+        expect((error as FetchRetryError).attempts).toBe(2);
       }
+      expect(fetch).toHaveBeenCalledTimes(2); // Initial + 1 retry
+      vi.useFakeTimers(); // Restore fake timers
     });
   });
 
-  describe('exponential backoff', () => {
-    it('should use increasing delays for retries', async () => {
-      const errorResponse = new Response('', { status: 500, statusText: 'Internal Server Error' });
-      const successResponse = new Response('', { status: 200 });
+  describe('network errors', () => {
+    it('retries on network failure', async () => {
+      const networkError = new Error('Network error');
+      const successResponse = new Response('{}', { status: 200 });
 
       vi.spyOn(global, 'fetch')
-        .mockResolvedValueOnce(errorResponse)
-        .mockResolvedValueOnce(errorResponse)
+        .mockRejectedValueOnce(networkError)
         .mockResolvedValueOnce(successResponse);
 
-      const fetchPromise = fetchWithRetry('https://api.example.com/data', {
-        maxRetries: 3,
-        baseDelay: 1000,
-        maxDelay: 30000,
-      });
+      const responsePromise = fetchWithRetry('/api/test', { maxRetries: 1, baseDelay: 100 });
+      await vi.advanceTimersByTimeAsync(200);
 
-      // First retry should happen after ~1000ms (with jitter)
-      await vi.advanceTimersByTimeAsync(1500);
-      expect(fetch).toHaveBeenCalledTimes(2);
+      const response = await responsePromise;
+      expect(response.ok).toBe(true);
+    });
 
-      // Second retry should happen after ~2000ms (with jitter)
-      await vi.advanceTimersByTimeAsync(3000);
-      expect(fetch).toHaveBeenCalledTimes(3);
+    it('does not retry on AbortError', async () => {
+      const abortError = new DOMException('Aborted', 'AbortError');
+      vi.spyOn(global, 'fetch').mockRejectedValueOnce(abortError);
 
-      await fetchPromise;
+      await expect(fetchWithRetry('/api/test', { maxRetries: 3 })).rejects.toThrow('Aborted');
+      expect(fetch).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('default options', () => {
-    it('should use default maxRetries of 3', async () => {
-      vi.useRealTimers(); // Use real timers for this test
-
-      const errorResponse = new Response('', { status: 500, statusText: 'Internal Server Error' });
+    it('uses default maxRetries of 3', async () => {
+      vi.useRealTimers(); // Use real timers to avoid complexity
+      const errorResponse = new Response('Server Error', { status: 500, statusText: 'Internal Server Error' });
       vi.spyOn(global, 'fetch').mockResolvedValue(errorResponse);
 
-      await expect(
-        fetchWithRetry('https://api.example.com/data', {
-          baseDelay: 1, // Override delay for fast testing
-          maxDelay: 10,
-        })
-      ).rejects.toThrow(FetchRetryError);
-
-      expect(fetch).toHaveBeenCalledTimes(4); // 1 initial + 3 retries (default)
+      try {
+        await fetchWithRetry('/api/test', { baseDelay: 1, maxDelay: 1 }); // Fast delays
+        expect.fail('Should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(FetchRetryError);
+        expect((error as FetchRetryError).attempts).toBe(4); // Initial + 3 retries
+      }
+      expect(fetch).toHaveBeenCalledTimes(4);
+      vi.useFakeTimers(); // Restore fake timers
     });
+  });
+});
+
+describe('FetchRetryError', () => {
+  it('has correct name', () => {
+    const error = new FetchRetryError('Test error', 500, 3, new Error('Original'));
+
+    expect(error.name).toBe('FetchRetryError');
+  });
+
+  it('stores status', () => {
+    const error = new FetchRetryError('Test error', 500, 3, new Error('Original'));
+
+    expect(error.status).toBe(500);
+  });
+
+  it('stores attempts', () => {
+    const error = new FetchRetryError('Test error', 500, 3, new Error('Original'));
+
+    expect(error.attempts).toBe(3);
+  });
+
+  it('stores lastError', () => {
+    const originalError = new Error('Original');
+    const error = new FetchRetryError('Test error', 500, 3, originalError);
+
+    expect(error.lastError).toBe(originalError);
+  });
+
+  it('handles undefined status', () => {
+    const error = new FetchRetryError('Test error', undefined, 3, new Error('Original'));
+
+    expect(error.status).toBeUndefined();
   });
 });

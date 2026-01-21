@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
-import { SignalLineage } from './SignalLineage';
+import { SignalLineage } from '../../../client/src/components/signal-playground/SignalLineage';
 
 // Mock Supabase
 const mockSupabaseFrom = vi.fn();
@@ -207,7 +207,7 @@ describe('SignalLineage', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/model details/i)).toBeInTheDocument();
-        expect(screen.getByText('xgboost')).toBeInTheDocument();
+        expect(screen.getAllByText('xgboost')).toHaveLength(2); // Badge and detail
         expect(screen.getByText('active')).toBeInTheDocument();
       });
     });
@@ -266,7 +266,7 @@ describe('SignalLineage', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/lifecycle/i)).toBeInTheDocument();
-        expect(screen.getByText('generated')).toBeInTheDocument();
+        expect(screen.getAllByText('generated')).toHaveLength(2); // Badge and entry
         expect(screen.getByText('in_cart')).toBeInTheDocument();
       });
     });

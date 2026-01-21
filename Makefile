@@ -1,7 +1,9 @@
 # Politician Trading Tracker - React + Supabase
 # Comprehensive Makefile for project management
 
-.PHONY: help setup dev build test clean deploy lint format install-frontend install-backend install-all
+.PHONY: help setup dev build test clean deploy lint format install-frontend install-backend install-all \
+	test-all test-python test-etl test-elixir test-client test-react test-edge test-deno \
+	test-python-cov test-python-fast test-elixir-cov test-react-cov test-watch
 
 # Default target
 help:
@@ -14,7 +16,6 @@ help:
 	@echo "  dev-python       - Run Python workflow once"
 	@echo "  dev-python-watch - Run Python workflow continuously"
 	@echo "  build            - Build for production"
-	@echo "  test             - Run all tests"
 	@echo "  clean            - Clean build artifacts and caches"
 	@echo "  deploy           - Deploy to production"
 	@echo "  deploy-functions - Deploy Supabase Edge Functions"
@@ -23,6 +24,19 @@ help:
 	@echo "  install-frontend - Install React dependencies"
 	@echo "  install-backend  - Install Python dependencies"
 	@echo "  install-all      - Install all dependencies"
+	@echo ""
+	@echo "Testing commands:"
+	@echo "  test             - Run all tests (Python, Elixir, React, Edge Functions)"
+	@echo "  test-python      - Run Python ETL service tests"
+	@echo "  test-python-cov  - Run Python tests with coverage report"
+	@echo "  test-python-fast - Run Python tests without coverage (faster)"
+	@echo "  test-elixir      - Run Elixir Phoenix server tests"
+	@echo "  test-elixir-cov  - Run Elixir tests with coverage"
+	@echo "  test-react       - Run React client tests"
+	@echo "  test-react-cov   - Run React tests with coverage"
+	@echo "  test-react-watch - Run React tests in watch mode"
+	@echo "  test-edge        - Run Supabase Edge Function tests (Deno)"
+	@echo "  test-edge-watch  - Run Edge Function tests in watch mode"
 	@echo ""
 	@echo "Quick start:"
 	@echo "  make setup && make dev"
@@ -82,17 +96,188 @@ build-backend:
 	@echo "🔨 Building Python package..."
 	uv build
 
-# Testing
-test: test-backend test-frontend
-	@echo "✅ All tests passed!"
+# Testing - Run all tests
+test: test-all
+	@echo "✅ All tests completed!"
 
-test-backend:
-	@echo "🧪 Running Python tests..."
-	uv run pytest tests/ -v --cov=server/politician_trading --cov-report=term-missing
+test-all: test-python test-elixir test-react test-edge
+	@echo ""
+	@echo "=========================================="
+	@echo "✅ All test suites completed!"
+	@echo "=========================================="
 
-test-frontend:
-	@echo "🧪 Running React tests..."
-	cd client && npm test -- --watchAll=false --passWithNoTests
+# Legacy aliases
+test-backend: test-python
+test-frontend: test-react
+
+# ============================================
+# Python Tests - All Python tests
+# ============================================
+test-python: test-python-server test-python-etl
+	@echo "✅ All Python tests completed!"
+
+# Server/Core Python tests (tests/ at root)
+test-python-server:
+	@echo "🐍 Running Python server/core tests..."
+	uv run pytest tests/ -v
+
+test-python-server-cov:
+	@echo "🐍 Running Python server tests with coverage..."
+	uv run pytest tests/ -v \
+		--cov=server/politician_trading \
+		--cov-report=term-missing \
+		--cov-report=html:coverage-html
+
+# ETL Service Python tests (python-etl-service/tests/)
+test-python-etl:
+	@echo "🐍 Running Python ETL service tests..."
+	@if [ -f python-etl-service/.venv/bin/pytest ]; then \
+		cd python-etl-service && .venv/bin/pytest tests/ -v; \
+	elif [ -f python-etl-service/venv/bin/pytest ]; then \
+		cd python-etl-service && venv/bin/pytest tests/ -v; \
+	else \
+		cd python-etl-service && python -m pytest tests/ -v; \
+	fi
+
+test-etl: test-python-etl
+
+test-python-cov: test-python-server-cov
+	@echo "✅ Python coverage report generated!"
+
+test-python-fast:
+	@echo "🐍 Running Python tests (fast mode)..."
+	uv run pytest tests/ -q --tb=short
+	@if [ -f python-etl-service/.venv/bin/pytest ]; then \
+		cd python-etl-service && .venv/bin/pytest tests/ -q --tb=short; \
+	elif [ -f python-etl-service/venv/bin/pytest ]; then \
+		cd python-etl-service && venv/bin/pytest tests/ -q --tb=short; \
+	fi
+
+# ============================================
+# Elixir Phoenix Server Tests
+# ============================================
+test-elixir:
+	@echo "🧪 Running Elixir Phoenix server tests..."
+	cd server && mix test
+
+test-elixir-cov:
+	@echo "🧪 Running Elixir tests with coverage..."
+	cd server && mix test --cover
+
+test-elixir-verbose:
+	@echo "🧪 Running Elixir tests (verbose)..."
+	cd server && mix test --trace
+
+# ============================================
+# React Client Tests (Vitest)
+# ============================================
+test-react:
+	@echo "⚛️ Running React client tests..."
+	cd client && npm run test
+
+test-react-cov:
+	@echo "⚛️ Running React tests with coverage..."
+	cd client && npm run test:coverage
+
+test-react-watch:
+	@echo "⚛️ Running React tests in watch mode..."
+	cd client && npm run test:watch
+
+test-client: test-react
+
+# ============================================
+# Supabase Edge Function Tests (Deno)
+# ============================================
+test-edge:
+	@echo "🦕 Running Supabase Edge Function tests (Deno)..."
+	@if command -v deno >/dev/null 2>&1; then \
+		cd supabase/functions && deno test --allow-all; \
+	else \
+		echo "⚠️  Deno not installed. Install with: curl -fsSL https://deno.land/install.sh | sh"; \
+		echo "   Or: brew install deno"; \
+		exit 1; \
+	fi
+
+test-edge-watch:
+	@echo "🦕 Running Edge Function tests in watch mode..."
+	@if command -v deno >/dev/null 2>&1; then \
+		cd supabase/functions && deno test --allow-all --watch; \
+	else \
+		echo "⚠️  Deno not installed. Install with: curl -fsSL https://deno.land/install.sh | sh"; \
+		exit 1; \
+	fi
+
+test-edge-verbose:
+	@echo "🦕 Running Edge Function tests (verbose)..."
+	@if command -v deno >/dev/null 2>&1; then \
+		cd supabase/functions && deno test --allow-all --reporter=verbose; \
+	else \
+		echo "⚠️  Deno not installed."; \
+		exit 1; \
+	fi
+
+test-deno: test-edge
+
+# ============================================
+# Individual Test Files
+# ============================================
+test-python-file:
+	@echo "🐍 Running specific Python test file..."
+	@echo "Usage: make test-python-file FILE=tests/test_example.py"
+	cd python-etl-service && uv run pytest $(FILE) -v
+
+test-elixir-file:
+	@echo "🧪 Running specific Elixir test file..."
+	@echo "Usage: make test-elixir-file FILE=test/server_test.exs"
+	cd server && mix test $(FILE)
+
+test-edge-file:
+	@echo "🦕 Running specific Edge Function test..."
+	@echo "Usage: make test-edge-file FILE=functions/orders/index.test.ts"
+	@if command -v deno >/dev/null 2>&1; then \
+		cd supabase && deno test --allow-all $(FILE); \
+	else \
+		echo "⚠️  Deno not installed."; \
+		exit 1; \
+	fi
+
+# ============================================
+# Test Summary
+# ============================================
+test-summary:
+	@echo ""
+	@echo "📊 Test Suite Summary"
+	@echo "=========================================="
+	@echo ""
+	@echo "Python Server/Core (tests/):"
+	@printf "  %d test files\n" $$(find tests -name "test_*.py" 2>/dev/null | wc -l)
+	@printf "  %d test functions\n" $$(grep -r "def test_" tests/ 2>/dev/null | wc -l)
+	@echo ""
+	@echo "Python ETL Service (python-etl-service/tests/):"
+	@printf "  %d test files\n" $$(find python-etl-service/tests -name "test_*.py" 2>/dev/null | wc -l)
+	@printf "  %d test functions\n" $$(grep -r "def test_" python-etl-service/tests/ 2>/dev/null | wc -l)
+	@echo ""
+	@echo "Elixir Server (server/test/):"
+	@printf "  %d test files\n" $$(find server/test -name "*_test.exs" 2>/dev/null | wc -l)
+	@printf "  %d test cases\n" $$(grep -r 'test "' server/test/ 2>/dev/null | wc -l)
+	@echo ""
+	@echo "React Client (client/src/):"
+	@printf "  %d test files\n" $$(find client/src \( -name "*.test.ts" -o -name "*.test.tsx" \) 2>/dev/null | wc -l)
+	@printf "  %d test cases\n" $$(grep -rh "it(" client/src/ --include="*.test.ts" --include="*.test.tsx" 2>/dev/null | wc -l)
+	@echo ""
+	@echo "Edge Functions (supabase/functions/):"
+	@printf "  %d test files\n" $$(find supabase/functions -name "*.test.ts" 2>/dev/null | wc -l)
+	@printf "  %d Deno tests\n" $$(grep -r "Deno.test" supabase/functions/ 2>/dev/null | wc -l)
+	@echo ""
+	@echo "=========================================="
+	@echo ""
+	@echo "Total test files: $$(( \
+		$$(find tests -name "test_*.py" 2>/dev/null | wc -l) + \
+		$$(find python-etl-service/tests -name "test_*.py" 2>/dev/null | wc -l) + \
+		$$(find server/test -name "*_test.exs" 2>/dev/null | wc -l) + \
+		$$(find client/src \( -name "*.test.ts" -o -name "*.test.tsx" \) 2>/dev/null | wc -l) + \
+		$$(find supabase/functions -name "*.test.ts" 2>/dev/null | wc -l) \
+	))"
 
 # Code Quality
 lint: lint-backend lint-frontend
@@ -208,8 +393,23 @@ db-logs:
 	@uv run python scripts/show_action_logs.py
 
 # CI/CD
-ci: lint test build
+ci: lint test-all build
 	@echo "✅ CI pipeline passed!"
+
+ci-fast: lint-frontend test-python-fast test-react build-frontend
+	@echo "✅ Fast CI pipeline passed!"
+
+ci-python: lint-backend test-python-cov
+	@echo "✅ Python CI passed!"
+
+ci-react: lint-frontend test-react-cov build-frontend
+	@echo "✅ React CI passed!"
+
+ci-elixir: test-elixir-cov
+	@echo "✅ Elixir CI passed!"
+
+ci-edge: test-edge
+	@echo "✅ Edge Functions CI passed!"
 
 # Utility
 update-deps:

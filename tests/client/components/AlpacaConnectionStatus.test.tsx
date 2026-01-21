@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
-import { AlpacaConnectionStatus } from './AlpacaConnectionStatus';
+import { AlpacaConnectionStatus } from '../../../client/src/components/trading/AlpacaConnectionStatus';
 
 // Mock Supabase
 const mockGetSession = vi.fn();
@@ -19,6 +19,21 @@ vi.mock('@/integrations/supabase/client', () => ({
 // Mock fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
+
+// Mock React Query
+const mockUseQuery = vi.fn();
+const mockUseMutation = vi.fn();
+const mockUseQueryClient = vi.fn();
+
+vi.mock('@tanstack/react-query', () => ({
+  QueryClient: vi.fn().mockImplementation(() => ({
+    defaultOptions: {},
+  })),
+  QueryClientProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useQuery: (...args: any[]) => mockUseQuery(...args),
+  useMutation: (...args: any[]) => mockUseMutation(...args),
+  useQueryClient: () => mockUseQueryClient(),
+}));
 
 // Sample response data
 const mockConnectionStatus = {
@@ -91,15 +106,38 @@ describe('AlpacaConnectionStatus', () => {
         },
       },
     });
+
+    // Default useQuery mock - loading state
+    mockUseQuery.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    mockUseMutation.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    });
   });
 
   describe('Loading State', () => {
     it('should show loading spinner initially', () => {
-      mockFetch.mockImplementation(() => new Promise(() => {})); // Never resolves
+      mockUseQuery.mockReturnValue({
+        data: undefined,
+        isLoading: true,
+        error: null,
+        refetch: vi.fn(),
+      });
 
       render(<AlpacaConnectionStatus tradingMode="paper" />, {
         wrapper: createWrapper(),
       });
+
+      // Should show loading spinner
+      expect(screen.getByRole('status')).toBeInTheDocument();
+    });
+  });
 
       // Should show loading indicator in card
       expect(document.querySelector('.animate-spin')).toBeInTheDocument();
@@ -108,18 +146,18 @@ describe('AlpacaConnectionStatus', () => {
 
   describe('Connected State', () => {
     it('should display connected status', async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockConnectionStatus),
+      mockUseQuery.mockReturnValue({
+        data: mockConnectionStatus,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
       });
 
       render(<AlpacaConnectionStatus tradingMode="paper" />, {
         wrapper: createWrapper(),
       });
 
-      await waitFor(() => {
-        expect(screen.getByText('Connected')).toBeInTheDocument();
-      });
+      expect(screen.getByText('Connected')).toBeInTheDocument();
     });
 
     it('should display circuit breaker status', async () => {

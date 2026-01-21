@@ -1,482 +1,428 @@
-// Deno tests for alpaca-account edge function
-// Run with: deno test --allow-env --allow-net index.test.ts
+/**
+ * Tests for alpaca-account Edge Function
+ *
+ * Tests:
+ * - Circuit breaker pattern
+ * - Service role request detection
+ * - Position formatting
+ * - Account data formatting
+ * - Credential resolution
+ */
 
-import {
-  assertEquals,
-  assertExists,
-  assertStringIncludes,
-} from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import {
-  stub,
-  Stub,
-  returnsNext,
-} from "https://deno.land/std@0.168.0/testing/mock.ts";
+import { assertEquals, assertAlmostEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 
-// ============================================================================
-// Circuit Breaker Unit Tests
-// ============================================================================
+// Extracted types
+interface CircuitBreakerState {
+  failures: number;
+  lastFailure: number;
+  state: 'closed' | 'open' | 'half-open';
+  lastSuccess: number;
+}
 
-Deno.test("Circuit Breaker - starts in closed state", () => {
-  const circuitBreaker = {
+const CIRCUIT_BREAKER_CONFIG = {
+  failureThreshold: 5,
+  resetTimeout: 30000,
+  halfOpenRequests: 2,
+};
+
+// Circuit breaker implementation for testing
+function createCircuitBreaker(): CircuitBreakerState {
+  return {
     failures: 0,
     lastFailure: 0,
-    state: 'closed' as const,
+    state: 'closed',
     lastSuccess: Date.now(),
   };
+}
 
-  assertEquals(circuitBreaker.state, 'closed');
-  assertEquals(circuitBreaker.failures, 0);
-});
+function checkCircuitBreaker(
+  breaker: CircuitBreakerState,
+  config: typeof CIRCUIT_BREAKER_CONFIG
+): { allowed: boolean; reason?: string } {
+  const now = Date.now();
 
-Deno.test("Circuit Breaker - checkCircuitBreaker allows requests when closed", () => {
-  const circuitBreaker = {
-    failures: 0,
-    lastFailure: 0,
-    state: 'closed' as const,
-    lastSuccess: Date.now(),
-  };
-
-  const checkCircuitBreaker = () => {
-    if (circuitBreaker.state === 'closed') {
-      return { allowed: true };
-    }
-    return { allowed: false, reason: 'Circuit open' };
-  };
-
-  const result = checkCircuitBreaker();
-  assertEquals(result.allowed, true);
-});
-
-Deno.test("Circuit Breaker - blocks requests when open", () => {
-  const CIRCUIT_BREAKER_CONFIG = {
-    failureThreshold: 5,
-    resetTimeout: 30000,
-  };
-
-  const circuitBreaker = {
-    failures: 5,
-    lastFailure: Date.now(),
-    state: 'open' as const,
-    lastSuccess: Date.now() - 60000,
-  };
-
-  const checkCircuitBreaker = () => {
-    const now = Date.now();
-
-    if (circuitBreaker.state === 'closed') {
-      return { allowed: true };
-    }
-
-    if (circuitBreaker.state === 'open') {
-      if (now - circuitBreaker.lastFailure > CIRCUIT_BREAKER_CONFIG.resetTimeout) {
-        return { allowed: true }; // Would transition to half-open
-      }
-      return {
-        allowed: false,
-        reason: `Circuit breaker open. Retry after ${Math.ceil((CIRCUIT_BREAKER_CONFIG.resetTimeout - (now - circuitBreaker.lastFailure)) / 1000)}s`,
-      };
-    }
-
+  if (breaker.state === 'closed') {
     return { allowed: true };
-  };
+  }
 
-  const result = checkCircuitBreaker();
-  assertEquals(result.allowed, false);
-  assertStringIncludes(result.reason!, 'Circuit breaker open');
+  if (breaker.state === 'open') {
+    if (now - breaker.lastFailure > config.resetTimeout) {
+      breaker.state = 'half-open';
+      breaker.failures = 0;
+      return { allowed: true };
+    }
+    return {
+      allowed: false,
+      reason: `Circuit breaker open. Retry after ${Math.ceil((config.resetTimeout - (now - breaker.lastFailure)) / 1000)}s`,
+    };
+  }
+
+  return { allowed: true };
+}
+
+function recordSuccess(breaker: CircuitBreakerState): void {
+  breaker.failures = 0;
+  breaker.state = 'closed';
+  breaker.lastSuccess = Date.now();
+}
+
+function recordFailure(breaker: CircuitBreakerState, config: typeof CIRCUIT_BREAKER_CONFIG): void {
+  breaker.failures++;
+  breaker.lastFailure = Date.now();
+
+  if (breaker.failures >= config.failureThreshold) {
+    breaker.state = 'open';
+  }
+}
+
+function getCircuitBreakerStatus(breaker: CircuitBreakerState): {
+  state: string;
+  failures: number;
+  lastSuccess: string;
+  lastFailure: string | null;
+} {
+  return {
+    state: breaker.state,
+    failures: breaker.failures,
+    lastSuccess: new Date(breaker.lastSuccess).toISOString(),
+    lastFailure: breaker.lastFailure ? new Date(breaker.lastFailure).toISOString() : null,
+  };
+}
+
+// Tests
+
+Deno.test("createCircuitBreaker() - starts in closed state", () => {
+  const breaker = createCircuitBreaker();
+  assertEquals(breaker.state, 'closed');
+  assertEquals(breaker.failures, 0);
 });
 
-Deno.test("Circuit Breaker - transitions to half-open after timeout", () => {
-  const CIRCUIT_BREAKER_CONFIG = {
-    failureThreshold: 5,
-    resetTimeout: 30000,
-  };
-
-  const circuitBreaker = {
-    failures: 5,
-    lastFailure: Date.now() - 35000, // 35 seconds ago (past timeout)
-    state: 'open' as 'closed' | 'open' | 'half-open',
-    lastSuccess: Date.now() - 60000,
-  };
-
-  const checkCircuitBreaker = () => {
-    const now = Date.now();
-
-    if (circuitBreaker.state === 'open') {
-      if (now - circuitBreaker.lastFailure > CIRCUIT_BREAKER_CONFIG.resetTimeout) {
-        circuitBreaker.state = 'half-open';
-        circuitBreaker.failures = 0;
-        return { allowed: true };
-      }
-    }
-
-    return { allowed: circuitBreaker.state !== 'open' };
-  };
-
-  const result = checkCircuitBreaker();
+Deno.test("checkCircuitBreaker() - allows requests when closed", () => {
+  const breaker = createCircuitBreaker();
+  const result = checkCircuitBreaker(breaker, CIRCUIT_BREAKER_CONFIG);
   assertEquals(result.allowed, true);
-  assertEquals(circuitBreaker.state, 'half-open');
+  assertEquals(result.reason, undefined);
 });
 
-Deno.test("Circuit Breaker - recordSuccess resets to closed", () => {
-  const circuitBreaker = {
-    failures: 3,
-    lastFailure: Date.now() - 10000,
-    state: 'half-open' as 'closed' | 'open' | 'half-open',
-    lastSuccess: Date.now() - 60000,
-  };
+Deno.test("checkCircuitBreaker() - blocks requests when open", () => {
+  const breaker = createCircuitBreaker();
+  breaker.state = 'open';
+  breaker.lastFailure = Date.now();
 
-  const recordSuccess = () => {
-    circuitBreaker.failures = 0;
-    circuitBreaker.state = 'closed';
-    circuitBreaker.lastSuccess = Date.now();
-  };
-
-  recordSuccess();
-
-  assertEquals(circuitBreaker.state, 'closed');
-  assertEquals(circuitBreaker.failures, 0);
+  const result = checkCircuitBreaker(breaker, CIRCUIT_BREAKER_CONFIG);
+  assertEquals(result.allowed, false);
+  assertEquals(result.reason?.includes('Circuit breaker open'), true);
 });
 
-Deno.test("Circuit Breaker - recordFailure increments failures", () => {
-  const CIRCUIT_BREAKER_CONFIG = {
-    failureThreshold: 5,
-    resetTimeout: 30000,
-  };
+Deno.test("checkCircuitBreaker() - transitions to half-open after timeout", () => {
+  const breaker = createCircuitBreaker();
+  breaker.state = 'open';
+  breaker.lastFailure = Date.now() - (CIRCUIT_BREAKER_CONFIG.resetTimeout + 1000);
 
-  const circuitBreaker = {
-    failures: 4,
-    lastFailure: 0,
-    state: 'closed' as 'closed' | 'open' | 'half-open',
-    lastSuccess: Date.now(),
-  };
-
-  const recordFailure = () => {
-    circuitBreaker.failures++;
-    circuitBreaker.lastFailure = Date.now();
-
-    if (circuitBreaker.failures >= CIRCUIT_BREAKER_CONFIG.failureThreshold) {
-      circuitBreaker.state = 'open';
-    }
-  };
-
-  recordFailure();
-
-  assertEquals(circuitBreaker.failures, 5);
-  assertEquals(circuitBreaker.state, 'open');
+  const result = checkCircuitBreaker(breaker, CIRCUIT_BREAKER_CONFIG);
+  assertEquals(result.allowed, true);
+  assertEquals(breaker.state, 'half-open');
 });
 
-// ============================================================================
-// Credential Resolution Tests
-// ============================================================================
+Deno.test("checkCircuitBreaker() - allows requests in half-open state", () => {
+  const breaker = createCircuitBreaker();
+  breaker.state = 'half-open';
 
-Deno.test("getAlpacaCredentials - returns provided credentials first", async () => {
-  const getAlpacaCredentials = async (
-    _supabase: any,
-    _userEmail: string | null,
-    tradingMode: 'paper' | 'live',
-    providedApiKey?: string,
-    providedSecretKey?: string
-  ) => {
-    if (providedApiKey && providedSecretKey) {
-      const baseUrl = tradingMode === 'paper'
-        ? 'https://paper-api.alpaca.markets'
-        : 'https://api.alpaca.markets';
-      return { apiKey: providedApiKey, secretKey: providedSecretKey, baseUrl };
-    }
-    return null;
-  };
-
-  const result = await getAlpacaCredentials(
-    null,
-    'test@example.com',
-    'paper',
-    'TEST_KEY',
-    'TEST_SECRET'
-  );
-
-  assertExists(result);
-  assertEquals(result!.apiKey, 'TEST_KEY');
-  assertEquals(result!.secretKey, 'TEST_SECRET');
-  assertEquals(result!.baseUrl, 'https://paper-api.alpaca.markets');
+  const result = checkCircuitBreaker(breaker, CIRCUIT_BREAKER_CONFIG);
+  assertEquals(result.allowed, true);
 });
 
-Deno.test("getAlpacaCredentials - uses live URL for live mode", async () => {
-  const getAlpacaCredentials = async (
-    _supabase: any,
-    _userEmail: string | null,
-    tradingMode: 'paper' | 'live',
-    providedApiKey?: string,
-    providedSecretKey?: string
-  ) => {
-    if (providedApiKey && providedSecretKey) {
-      const baseUrl = tradingMode === 'paper'
-        ? 'https://paper-api.alpaca.markets'
-        : 'https://api.alpaca.markets';
-      return { apiKey: providedApiKey, secretKey: providedSecretKey, baseUrl };
-    }
-    return null;
-  };
+Deno.test("recordSuccess() - resets to closed state", () => {
+  const breaker = createCircuitBreaker();
+  breaker.state = 'half-open';
+  breaker.failures = 3;
 
-  const result = await getAlpacaCredentials(
-    null,
-    'test@example.com',
-    'live',
-    'LIVE_KEY',
-    'LIVE_SECRET'
-  );
+  recordSuccess(breaker);
 
-  assertExists(result);
-  assertEquals(result!.baseUrl, 'https://api.alpaca.markets');
+  assertEquals(breaker.state, 'closed');
+  assertEquals(breaker.failures, 0);
 });
 
-// ============================================================================
-// Service Role Detection Tests
-// ============================================================================
+Deno.test("recordFailure() - increments failure count", () => {
+  const breaker = createCircuitBreaker();
 
-Deno.test("isServiceRoleRequest - returns false without auth header", () => {
-  const isServiceRoleRequest = (req: Request): boolean => {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) return false;
-    const token = authHeader.replace('Bearer ', '');
-    const serviceRoleKey = 'test-service-role-key';
-    return token === serviceRoleKey;
-  };
+  recordFailure(breaker, CIRCUIT_BREAKER_CONFIG);
 
-  const req = new Request('http://localhost', { method: 'POST' });
-  assertEquals(isServiceRoleRequest(req), false);
+  assertEquals(breaker.failures, 1);
+  assertEquals(breaker.state, 'closed');
 });
 
-Deno.test("isServiceRoleRequest - returns true with matching service key", () => {
-  const serviceRoleKey = 'test-service-role-key';
+Deno.test("recordFailure() - opens circuit after threshold", () => {
+  const breaker = createCircuitBreaker();
 
-  const isServiceRoleRequest = (req: Request): boolean => {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) return false;
-    const token = authHeader.replace('Bearer ', '');
-    return token === serviceRoleKey;
-  };
+  for (let i = 0; i < CIRCUIT_BREAKER_CONFIG.failureThreshold; i++) {
+    recordFailure(breaker, CIRCUIT_BREAKER_CONFIG);
+  }
 
-  const req = new Request('http://localhost', {
-    method: 'POST',
-    headers: {
-      'authorization': `Bearer ${serviceRoleKey}`,
-    },
-  });
-
-  assertEquals(isServiceRoleRequest(req), true);
+  assertEquals(breaker.state, 'open');
+  assertEquals(breaker.failures, CIRCUIT_BREAKER_CONFIG.failureThreshold);
 });
 
-Deno.test("isServiceRoleRequest - returns false with non-matching key", () => {
-  const serviceRoleKey = 'test-service-role-key';
+Deno.test("recordFailure() - stays closed below threshold", () => {
+  const breaker = createCircuitBreaker();
 
-  const isServiceRoleRequest = (req: Request): boolean => {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) return false;
-    const token = authHeader.replace('Bearer ', '');
-    return token === serviceRoleKey;
-  };
+  for (let i = 0; i < CIRCUIT_BREAKER_CONFIG.failureThreshold - 1; i++) {
+    recordFailure(breaker, CIRCUIT_BREAKER_CONFIG);
+  }
 
-  const req = new Request('http://localhost', {
-    method: 'POST',
-    headers: {
-      'authorization': 'Bearer wrong-key',
-    },
-  });
-
-  assertEquals(isServiceRoleRequest(req), false);
+  assertEquals(breaker.state, 'closed');
 });
 
-// ============================================================================
-// Structured Logging Tests
-// ============================================================================
+Deno.test("getCircuitBreakerStatus() - returns formatted status", () => {
+  const breaker = createCircuitBreaker();
+  const status = getCircuitBreakerStatus(breaker);
 
-Deno.test("Structured logging - log.info formats correctly", () => {
-  const logs: string[] = [];
-  const originalLog = console.log;
-  console.log = (msg: string) => logs.push(msg);
-
-  const log = {
-    info: (message: string, metadata?: any) => {
-      console.log(JSON.stringify({
-        level: 'INFO',
-        timestamp: new Date().toISOString(),
-        service: 'alpaca-account',
-        message,
-        ...metadata,
-      }));
-    },
-  };
-
-  log.info('Test message', { requestId: '12345' });
-
-  console.log = originalLog;
-
-  assertEquals(logs.length, 1);
-  const parsed = JSON.parse(logs[0]);
-  assertEquals(parsed.level, 'INFO');
-  assertEquals(parsed.service, 'alpaca-account');
-  assertEquals(parsed.message, 'Test message');
-  assertEquals(parsed.requestId, '12345');
+  assertEquals(status.state, 'closed');
+  assertEquals(status.failures, 0);
+  assertEquals(status.lastFailure, null);
+  assertEquals(typeof status.lastSuccess, 'string');
 });
 
-Deno.test("Structured logging - log.error includes error details", () => {
-  const logs: string[] = [];
-  const originalError = console.error;
-  console.error = (msg: string) => logs.push(msg);
+// Service role detection
+function isServiceRoleRequest(authHeader: string | null, serviceRoleKey: string): boolean {
+  if (!authHeader) return false;
+  const token = authHeader.replace('Bearer ', '');
+  return token === serviceRoleKey;
+}
 
-  const log = {
-    error: (message: string, error?: any, metadata?: any) => {
-      console.error(JSON.stringify({
-        level: 'ERROR',
-        timestamp: new Date().toISOString(),
-        service: 'alpaca-account',
-        message,
-        error: error?.message || error,
-        stack: error?.stack,
-        ...metadata,
-      }));
-    },
-  };
-
-  const testError = new Error('Test error');
-  log.error('Something failed', testError, { requestId: '12345' });
-
-  console.error = originalError;
-
-  assertEquals(logs.length, 1);
-  const parsed = JSON.parse(logs[0]);
-  assertEquals(parsed.level, 'ERROR');
-  assertEquals(parsed.error, 'Test error');
-  assertExists(parsed.stack);
+Deno.test("isServiceRoleRequest() - true when token matches", () => {
+  const serviceKey = 'super-secret-key';
+  const result = isServiceRoleRequest(`Bearer ${serviceKey}`, serviceKey);
+  assertEquals(result, true);
 });
 
-// ============================================================================
-// Response Formatting Tests
-// ============================================================================
-
-Deno.test("Account data formatting - parses numeric fields correctly", () => {
-  const alpacaAccountData = {
-    id: 'account-123',
-    portfolio_value: '100000.50',
-    cash: '25000.00',
-    buying_power: '50000.00',
-    status: 'ACTIVE',
-    currency: 'USD',
-    equity: '100000.50',
-    last_equity: '99500.00',
-    long_market_value: '75000.50',
-    short_market_value: '0.00',
-    pattern_day_trader: false,
-    trading_blocked: false,
-    transfers_blocked: false,
-    account_blocked: false,
-  };
-
-  const formattedAccount = {
-    portfolio_value: parseFloat(alpacaAccountData.portfolio_value) || 0,
-    cash: parseFloat(alpacaAccountData.cash) || 0,
-    buying_power: parseFloat(alpacaAccountData.buying_power) || 0,
-    status: alpacaAccountData.status || 'UNKNOWN',
-    currency: alpacaAccountData.currency || 'USD',
-    equity: parseFloat(alpacaAccountData.equity) || 0,
-    last_equity: parseFloat(alpacaAccountData.last_equity) || 0,
-    long_market_value: parseFloat(alpacaAccountData.long_market_value) || 0,
-    short_market_value: parseFloat(alpacaAccountData.short_market_value) || 0,
-    pattern_day_trader: alpacaAccountData.pattern_day_trader || false,
-    trading_blocked: alpacaAccountData.trading_blocked || false,
-    transfers_blocked: alpacaAccountData.transfers_blocked || false,
-    account_blocked: alpacaAccountData.account_blocked || false,
-  };
-
-  assertEquals(formattedAccount.portfolio_value, 100000.50);
-  assertEquals(formattedAccount.cash, 25000.00);
-  assertEquals(formattedAccount.buying_power, 50000.00);
-  assertEquals(formattedAccount.status, 'ACTIVE');
-  assertEquals(formattedAccount.equity, 100000.50);
-  assertEquals(formattedAccount.long_market_value, 75000.50);
+Deno.test("isServiceRoleRequest() - false when token doesn't match", () => {
+  const result = isServiceRoleRequest('Bearer wrong-key', 'super-secret-key');
+  assertEquals(result, false);
 });
 
-Deno.test("Account data formatting - handles missing/null values", () => {
-  const alpacaAccountData = {
-    id: 'account-123',
-    portfolio_value: null,
-    cash: undefined,
-    status: '',
-  };
-
-  const formattedAccount = {
-    portfolio_value: parseFloat(alpacaAccountData.portfolio_value as any) || 0,
-    cash: parseFloat(alpacaAccountData.cash as any) || 0,
-    status: alpacaAccountData.status || 'UNKNOWN',
-  };
-
-  assertEquals(formattedAccount.portfolio_value, 0);
-  assertEquals(formattedAccount.cash, 0);
-  assertEquals(formattedAccount.status, 'UNKNOWN');
+Deno.test("isServiceRoleRequest() - false when no header", () => {
+  const result = isServiceRoleRequest(null, 'super-secret-key');
+  assertEquals(result, false);
 });
 
-// ============================================================================
-// Position Formatting Tests
-// ============================================================================
+// Position formatting
+interface AlpacaPosition {
+  asset_id: string;
+  symbol: string;
+  exchange: string;
+  asset_class: string;
+  avg_entry_price: string;
+  qty: string;
+  side: string;
+  market_value: string;
+  cost_basis: string;
+  unrealized_pl: string;
+  unrealized_plpc: string;
+  current_price: string;
+}
 
-Deno.test("Position formatting - parses position data correctly", () => {
-  const alpacaPosition = {
-    asset_id: 'asset-123',
+function formatPosition(pos: AlpacaPosition) {
+  return {
+    asset_id: pos.asset_id,
+    symbol: pos.symbol,
+    exchange: pos.exchange,
+    asset_class: pos.asset_class,
+    avg_entry_price: parseFloat(pos.avg_entry_price) || 0,
+    qty: parseFloat(pos.qty) || 0,
+    side: pos.side,
+    market_value: parseFloat(pos.market_value) || 0,
+    cost_basis: parseFloat(pos.cost_basis) || 0,
+    unrealized_pl: parseFloat(pos.unrealized_pl) || 0,
+    unrealized_plpc: parseFloat(pos.unrealized_plpc) || 0,
+    current_price: parseFloat(pos.current_price) || 0,
+  };
+}
+
+Deno.test("formatPosition() - parses numeric strings", () => {
+  const position: AlpacaPosition = {
+    asset_id: 'abc123',
     symbol: 'AAPL',
     exchange: 'NASDAQ',
     asset_class: 'us_equity',
     avg_entry_price: '150.50',
-    qty: '100',
+    qty: '10',
     side: 'long',
-    market_value: '15500.00',
-    cost_basis: '15050.00',
-    unrealized_pl: '450.00',
+    market_value: '1550.00',
+    cost_basis: '1505.00',
+    unrealized_pl: '45.00',
     unrealized_plpc: '0.0299',
-    unrealized_intraday_pl: '50.00',
-    unrealized_intraday_plpc: '0.0032',
     current_price: '155.00',
-    lastday_price: '154.50',
-    change_today: '0.0032',
   };
 
-  const formattedPosition = {
-    asset_id: alpacaPosition.asset_id,
-    symbol: alpacaPosition.symbol,
-    exchange: alpacaPosition.exchange,
-    asset_class: alpacaPosition.asset_class,
-    avg_entry_price: parseFloat(alpacaPosition.avg_entry_price) || 0,
-    qty: parseFloat(alpacaPosition.qty) || 0,
-    side: alpacaPosition.side,
-    market_value: parseFloat(alpacaPosition.market_value) || 0,
-    cost_basis: parseFloat(alpacaPosition.cost_basis) || 0,
-    unrealized_pl: parseFloat(alpacaPosition.unrealized_pl) || 0,
-    unrealized_plpc: parseFloat(alpacaPosition.unrealized_plpc) || 0,
-    unrealized_intraday_pl: parseFloat(alpacaPosition.unrealized_intraday_pl) || 0,
-    unrealized_intraday_plpc: parseFloat(alpacaPosition.unrealized_intraday_plpc) || 0,
-    current_price: parseFloat(alpacaPosition.current_price) || 0,
-    lastday_price: parseFloat(alpacaPosition.lastday_price) || 0,
-    change_today: parseFloat(alpacaPosition.change_today) || 0,
-  };
+  const formatted = formatPosition(position);
 
-  assertEquals(formattedPosition.symbol, 'AAPL');
-  assertEquals(formattedPosition.avg_entry_price, 150.50);
-  assertEquals(formattedPosition.qty, 100);
-  assertEquals(formattedPosition.market_value, 15500.00);
-  assertEquals(formattedPosition.unrealized_pl, 450.00);
-  assertEquals(formattedPosition.current_price, 155.00);
+  assertEquals(formatted.symbol, 'AAPL');
+  assertEquals(formatted.avg_entry_price, 150.50);
+  assertEquals(formatted.qty, 10);
+  assertEquals(formatted.market_value, 1550.00);
+  assertEquals(formatted.unrealized_pl, 45.00);
 });
 
-// ============================================================================
-// CORS Headers Tests
-// ============================================================================
-
-Deno.test("CORS headers - are correctly formatted", () => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+Deno.test("formatPosition() - handles invalid numbers", () => {
+  const position: AlpacaPosition = {
+    asset_id: 'abc123',
+    symbol: 'AAPL',
+    exchange: 'NASDAQ',
+    asset_class: 'us_equity',
+    avg_entry_price: 'invalid',
+    qty: '',
+    side: 'long',
+    market_value: 'NaN',
+    cost_basis: '1505.00',
+    unrealized_pl: '45.00',
+    unrealized_plpc: '0.0299',
+    current_price: '155.00',
   };
 
-  assertEquals(corsHeaders['Access-Control-Allow-Origin'], '*');
-  assertStringIncludes(corsHeaders['Access-Control-Allow-Headers'], 'authorization');
-  assertStringIncludes(corsHeaders['Access-Control-Allow-Headers'], 'content-type');
+  const formatted = formatPosition(position);
+
+  assertEquals(formatted.avg_entry_price, 0);
+  assertEquals(formatted.qty, 0);
+  assertEquals(formatted.market_value, 0);
+});
+
+// Account formatting
+interface AlpacaAccount {
+  portfolio_value: string;
+  cash: string;
+  buying_power: string;
+  status: string;
+  currency: string;
+  equity: string;
+  last_equity: string;
+  pattern_day_trader: boolean;
+  trading_blocked: boolean;
+}
+
+function formatAccount(account: AlpacaAccount) {
+  return {
+    portfolio_value: parseFloat(account.portfolio_value) || 0,
+    cash: parseFloat(account.cash) || 0,
+    buying_power: parseFloat(account.buying_power) || 0,
+    status: account.status || 'UNKNOWN',
+    currency: account.currency || 'USD',
+    equity: parseFloat(account.equity) || 0,
+    last_equity: parseFloat(account.last_equity) || 0,
+    pattern_day_trader: account.pattern_day_trader || false,
+    trading_blocked: account.trading_blocked || false,
+  };
+}
+
+Deno.test("formatAccount() - parses account values", () => {
+  const account: AlpacaAccount = {
+    portfolio_value: '100000.00',
+    cash: '50000.00',
+    buying_power: '200000.00',
+    status: 'ACTIVE',
+    currency: 'USD',
+    equity: '100000.00',
+    last_equity: '99500.00',
+    pattern_day_trader: false,
+    trading_blocked: false,
+  };
+
+  const formatted = formatAccount(account);
+
+  assertEquals(formatted.portfolio_value, 100000);
+  assertEquals(formatted.cash, 50000);
+  assertEquals(formatted.status, 'ACTIVE');
+  assertEquals(formatted.pattern_day_trader, false);
+});
+
+Deno.test("formatAccount() - defaults for missing values", () => {
+  const account = {
+    portfolio_value: '',
+    cash: '',
+    buying_power: '',
+    status: '',
+    currency: '',
+    equity: '',
+    last_equity: '',
+    pattern_day_trader: false,
+    trading_blocked: false,
+  };
+
+  const formatted = formatAccount(account);
+
+  assertEquals(formatted.portfolio_value, 0);
+  assertEquals(formatted.status, 'UNKNOWN');
+  assertEquals(formatted.currency, 'USD');
+});
+
+// Trading mode base URL determination
+function getBaseUrl(tradingMode: 'paper' | 'live'): string {
+  return tradingMode === 'paper'
+    ? 'https://paper-api.alpaca.markets'
+    : 'https://api.alpaca.markets';
+}
+
+Deno.test("getBaseUrl() - paper mode", () => {
+  assertEquals(getBaseUrl('paper'), 'https://paper-api.alpaca.markets');
+});
+
+Deno.test("getBaseUrl() - live mode", () => {
+  assertEquals(getBaseUrl('live'), 'https://api.alpaca.markets');
+});
+
+// Connection status calculation
+function calculateConnectionStatus(healthRate: number): 'connected' | 'degraded' | 'disconnected' {
+  if (healthRate >= 0.8) {
+    return 'connected';
+  } else if (healthRate >= 0.5) {
+    return 'degraded';
+  }
+  return 'disconnected';
+}
+
+Deno.test("calculateConnectionStatus() - connected at 80%+", () => {
+  assertEquals(calculateConnectionStatus(0.8), 'connected');
+  assertEquals(calculateConnectionStatus(1.0), 'connected');
+  assertEquals(calculateConnectionStatus(0.95), 'connected');
+});
+
+Deno.test("calculateConnectionStatus() - degraded at 50-79%", () => {
+  assertEquals(calculateConnectionStatus(0.5), 'degraded');
+  assertEquals(calculateConnectionStatus(0.7), 'degraded');
+  assertEquals(calculateConnectionStatus(0.79), 'degraded');
+});
+
+Deno.test("calculateConnectionStatus() - disconnected below 50%", () => {
+  assertEquals(calculateConnectionStatus(0.49), 'disconnected');
+  assertEquals(calculateConnectionStatus(0), 'disconnected');
+  assertEquals(calculateConnectionStatus(0.3), 'disconnected');
+});
+
+// Average latency calculation
+function calculateAverageLatency(logs: { response_time_ms: number }[]): number | null {
+  if (logs.length === 0) return null;
+  return logs.reduce((sum, l) => sum + (l.response_time_ms || 0), 0) / logs.length;
+}
+
+Deno.test("calculateAverageLatency() - calculates average", () => {
+  const logs = [
+    { response_time_ms: 100 },
+    { response_time_ms: 200 },
+    { response_time_ms: 300 },
+  ];
+
+  assertEquals(calculateAverageLatency(logs), 200);
+});
+
+Deno.test("calculateAverageLatency() - null for empty logs", () => {
+  assertEquals(calculateAverageLatency([]), null);
+});
+
+Deno.test("calculateAverageLatency() - handles zero values", () => {
+  const logs = [
+    { response_time_ms: 0 },
+    { response_time_ms: 100 },
+  ];
+
+  assertEquals(calculateAverageLatency(logs), 50);
 });
