@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Helper to check if request is using service role key (for scheduled jobs)
+// TODO: Review isServiceRoleRequest - checks if request uses service role key for scheduled jobs
 function isServiceRoleRequest(req: Request): boolean {
   const authHeader = req.headers.get('authorization')
   if (!authHeader) return false
@@ -17,7 +17,9 @@ function isServiceRoleRequest(req: Request): boolean {
   return token === serviceRoleKey
 }
 
-// Get Alpaca credentials - supports per-user credentials or environment variables
+// TODO: Review getAlpacaCredentials - retrieves Alpaca API credentials
+// - Priority: user_api_keys table > environment variables
+// - Supports both paper and live trading modes
 async function getAlpacaCredentials(
   supabase: any,
   userEmail: string | null,
@@ -66,7 +68,8 @@ async function getAlpacaCredentials(
 // ORDER STATE MACHINE AND AUDIT FUNCTIONS
 // =============================================================================
 
-// Generate idempotency key for an order
+// TODO: Review generateIdempotencyKey - creates unique key to prevent duplicate orders
+// - Combines user, ticker, side, quantity, signal_id, and timestamp
 function generateIdempotencyKey(
   userId: string,
   ticker: string,
@@ -79,7 +82,7 @@ function generateIdempotencyKey(
   return `order_${components.join('_')}_${crypto.randomUUID().substring(0, 8)}`
 }
 
-// Check if an order with the same idempotency key exists
+// TODO: Review checkIdempotency - checks if order already exists by idempotency key
 async function checkIdempotency(
   supabaseClient: any,
   idempotencyKey: string
@@ -102,7 +105,8 @@ async function checkIdempotency(
   }
 }
 
-// Record order state transition
+// TODO: Review recordOrderStateTransition - records order status changes to audit log
+// - Tracks previous/new status, source, fill details, and raw event
 async function recordOrderStateTransition(
   supabaseClient: any,
   orderId: string,
@@ -144,7 +148,8 @@ async function recordOrderStateTransition(
   }
 }
 
-// Update signal lifecycle when order is placed
+// TODO: Review recordSignalLifecycleOnOrder - updates signal lifecycle when order placed
+// - Records transition from generated -> ordered -> filled states
 async function recordSignalLifecycleOnOrder(
   supabaseClient: any,
   signalId: string,
@@ -174,7 +179,7 @@ async function recordSignalLifecycleOnOrder(
   }
 }
 
-// Get current signal lifecycle state
+// TODO: Review getCurrentSignalState - gets most recent signal lifecycle state
 async function getCurrentSignalState(
   supabaseClient: any,
   signalId: string
@@ -198,7 +203,7 @@ async function getCurrentSignalState(
   }
 }
 
-// Structured logging utility
+// TODO: Review log object - structured JSON logging with levels (info, error, warn)
 const log = {
   info: (message: string, metadata?: any) => {
     console.log(JSON.stringify({
@@ -231,7 +236,7 @@ const log = {
   }
 }
 
-// Sanitize request for logging (remove sensitive headers)
+// TODO: Review sanitizeRequestForLogging - redacts sensitive headers for logging
 function sanitizeRequestForLogging(req: Request): any {
   const headers = Object.fromEntries(req.headers.entries())
 
@@ -254,7 +259,7 @@ function sanitizeRequestForLogging(req: Request): any {
   }
 }
 
-// Sanitize response for logging
+// TODO: Review sanitizeResponseForLogging - truncates response body for logging
 function sanitizeResponseForLogging(response: Response, body?: any): any {
   return {
     status: response.status,
@@ -266,6 +271,10 @@ function sanitizeResponseForLogging(response: Response, body?: any): any {
   }
 }
 
+// TODO: Review serve handler - main order management endpoint
+// - Actions: get-orders, get-order-stats, place-order, place-orders, sync-orders
+// - Supports user-specific and service role authentication
+// - Records order state transitions and signal lifecycle updates
 serve(async (req) => {
   const startTime = Date.now()
   const requestId = crypto.randomUUID().substring(0, 8)
@@ -400,6 +409,9 @@ serve(async (req) => {
   }
 })
 
+// TODO: Review handleGetOrders - fetches user's orders with filtering/pagination
+// - Supports status filter (all, open, closed, specific status)
+// - Returns transformed orders with filled_quantity field
 async function handleGetOrders(supabaseClient: any, req: Request, requestId: string, bodyParams: any = {}) {
   const handlerStartTime = Date.now()
 
@@ -551,6 +563,8 @@ async function handleGetOrders(supabaseClient: any, req: Request, requestId: str
   }
 }
 
+// TODO: Review handleGetOrderStats - calculates order statistics for user
+// - Returns status distribution, side distribution, avg fill price, success rate
 async function handleGetOrderStats(supabaseClient: any, req: Request) {
   try {
     const url = new URL(req.url)
@@ -662,6 +676,10 @@ async function handleGetOrderStats(supabaseClient: any, req: Request) {
 // PLACE ORDER HANDLER
 // =============================================================================
 
+// TODO: Review handlePlaceOrder - places single order via Alpaca API
+// - Validates order parameters and idempotency
+// - Saves order to database with state transition audit
+// - Updates signal lifecycle if order is from a signal
 async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: string, bodyParams: any = {}) {
   const handlerStartTime = Date.now()
 
@@ -901,6 +919,9 @@ async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: st
 // PLACE MULTIPLE ORDERS HANDLER (for cart checkout)
 // =============================================================================
 
+// TODO: Review handlePlaceOrders - places multiple orders for cart checkout
+// - Processes array of orders with idempotency checks
+// - Returns individual success/failure results for each order
 async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: string, bodyParams: any = {}) {
   const handlerStartTime = Date.now()
 
@@ -1142,6 +1163,10 @@ async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: s
 // SYNC ORDERS FROM ALPACA
 // =============================================================================
 
+// TODO: Review handleSyncOrders - syncs orders from Alpaca for specific user
+// - Fetches orders from Alpaca API and updates local database
+// - Records state transitions for status changes
+// - Updates signal lifecycle when orders fill
 async function handleSyncOrders(supabaseClient: any, req: Request, requestId: string, bodyParams: any = {}) {
   const handlerStartTime = Date.now()
 
@@ -1382,6 +1407,9 @@ async function handleSyncOrders(supabaseClient: any, req: Request, requestId: st
 // SERVICE ROLE SYNC ORDERS (for scheduled jobs)
 // =============================================================================
 
+// TODO: Review handleServiceRoleSyncOrders - syncs orders for all users via scheduled job
+// - Uses environment credentials to sync existing orders only
+// - Does not create new orders (only updates existing)
 async function handleServiceRoleSyncOrders(
   supabaseClient: any,
   requestId: string,

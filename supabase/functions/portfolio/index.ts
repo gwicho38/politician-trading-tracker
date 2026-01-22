@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Helper to check if request is using service role key (for scheduled jobs)
+// TODO: Review isServiceRoleRequest - checks if request uses service role key for scheduled jobs
 function isServiceRoleRequest(req: Request): boolean {
   const authHeader = req.headers.get('authorization')
   if (!authHeader) return false
@@ -17,7 +17,7 @@ function isServiceRoleRequest(req: Request): boolean {
   return token === serviceRoleKey
 }
 
-// Structured logging utility
+// TODO: Review log object - structured JSON logging with levels (info, error, warn)
 const log = {
   info: (message: string, metadata?: any) => {
     console.log(JSON.stringify({
@@ -50,7 +50,7 @@ const log = {
   }
 }
 
-// Sanitize request for logging (remove sensitive headers)
+// TODO: Review sanitizeRequestForLogging - redacts sensitive headers for logging
 function sanitizeRequestForLogging(req: Request): any {
   const headers = Object.fromEntries(req.headers.entries())
 
@@ -73,7 +73,7 @@ function sanitizeRequestForLogging(req: Request): any {
   }
 }
 
-// Sanitize response for logging
+// TODO: Review sanitizeResponseForLogging - truncates response body for logging
 function sanitizeResponseForLogging(response: Response, body?: any): any {
   return {
     status: response.status,
@@ -85,6 +85,9 @@ function sanitizeResponseForLogging(response: Response, body?: any): any {
   }
 }
 
+// TODO: Review serve handler - portfolio management endpoint
+// - Actions: get-portfolio, get-account-info, place-order, sync-positions, reconcile-positions
+// - Supports user-specific and service role authentication
 serve(async (req) => {
   const startTime = Date.now()
   const requestId = crypto.randomUUID().substring(0, 8)
@@ -230,6 +233,8 @@ serve(async (req) => {
   }
 })
 
+// TODO: Review handleGetPortfolio - fetches user's open positions
+// - Returns positions sorted by market value
 async function handleGetPortfolio(supabaseClient: any, req: Request, requestId: string) {
   const handlerStartTime = Date.now()
 
@@ -338,6 +343,9 @@ async function handleGetPortfolio(supabaseClient: any, req: Request, requestId: 
   }
 }
 
+// TODO: Review handlePlaceOrder - places order via Alpaca API
+// - Validates order parameters and authentication
+// - Saves order to trading_orders table
 async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: string, bodyParams: any) {
   const handlerStartTime = Date.now()
 
@@ -524,6 +532,7 @@ async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: st
   }
 }
 
+// TODO: Review handleGetAccountInfo - returns account info (currently mock data)
 async function handleGetAccountInfo(supabaseClient: any, req: Request, requestId: string) {
   try {
     const url = new URL(req.url)
@@ -592,6 +601,10 @@ async function handleGetAccountInfo(supabaseClient: any, req: Request, requestId
 // POSITION SYNC HANDLER - Syncs positions from Alpaca to local database
 // =============================================================================
 
+// TODO: Review handleSyncPositions - syncs positions from Alpaca to local database
+// - Fetches positions from Alpaca API
+// - Creates/updates position records in positions table
+// - Marks positions as closed if no longer in Alpaca
 async function handleSyncPositions(supabaseClient: any, req: Request, requestId: string, bodyParams: any) {
   const handlerStartTime = Date.now()
 
@@ -781,6 +794,11 @@ async function handleSyncPositions(supabaseClient: any, req: Request, requestId:
 // =============================================================================
 // POSITION RECONCILIATION HANDLER - Detects drift between Alpaca and local
 // =============================================================================
+
+// TODO: Review handleReconcilePositions - detects and optionally corrects drift between Alpaca and local
+// - Compares quantity, avg_entry_price, market_value between sources
+// - Can auto-correct drift if autoCorrect=true
+// - Logs health check results to connection_health_log
 
 interface PositionDrift {
   ticker: string

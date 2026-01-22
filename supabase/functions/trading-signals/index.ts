@@ -10,7 +10,9 @@ const corsHeaders = {
 const REFERENCE_PORTFOLIO_MIN_CONFIDENCE = 0.70
 const REFERENCE_PORTFOLIO_SIGNAL_TYPES = ['buy', 'strong_buy', 'sell', 'strong_sell']
 
-// Queue high-confidence signals for reference portfolio processing
+// TODO: Review queueSignalsForReferencePortfolio - queues high-confidence signals for automated portfolio
+// - Filters signals meeting min confidence threshold (0.70)
+// - Upserts to reference_portfolio_signal_queue table for background processing
 async function queueSignalsForReferencePortfolio(supabaseClient: any, signals: any[], requestId: string) {
   if (!signals || signals.length === 0) return
 
@@ -66,7 +68,7 @@ async function queueSignalsForReferencePortfolio(supabaseClient: any, signals: a
   }
 }
 
-// Structured logging utility
+// TODO: Review log object - structured JSON logging utility with service identification
 const log = {
   info: (message: string, metadata?: any) => {
     console.log(JSON.stringify({
@@ -99,7 +101,8 @@ const log = {
   }
 }
 
-// Sanitize request for logging (remove sensitive headers)
+// TODO: Review sanitizeRequestForLogging - removes sensitive headers before logging
+// - Redacts authorization, x-api-key, cookie, x-supabase-auth
 function sanitizeRequestForLogging(req: Request): any {
   const headers = Object.fromEntries(req.headers.entries())
 
@@ -122,7 +125,8 @@ function sanitizeRequestForLogging(req: Request): any {
   }
 }
 
-// Sanitize response for logging
+// TODO: Review sanitizeResponseForLogging - extracts loggable response metadata
+// - Truncates body to 500 chars to prevent log bloat
 function sanitizeResponseForLogging(response: Response, body?: any): any {
   return {
     status: response.status,
@@ -134,6 +138,10 @@ function sanitizeResponseForLogging(response: Response, body?: any): any {
   }
 }
 
+// TODO: Review serve handler - main entry point for trading signals edge function
+// - Routes to: get-signals, generate-signals, regenerate-signals, get-signal-stats,
+//   update-target-prices, preview-signals, test
+// - Logs full request/response details with timing metrics
 serve(async (req) => {
   const startTime = Date.now()
   const requestId = crypto.randomUUID().substring(0, 8)
@@ -267,6 +275,9 @@ serve(async (req) => {
   }
 })
 
+// TODO: Review handleGetSignals - retrieves active trading signals with pagination
+// - Supports filtering by signal_type and min_confidence via query params
+// - Returns paginated results with total count for UI
 async function handleGetSignals(supabaseClient: any, req: Request, requestId: string) {
   const handlerStartTime = Date.now()
   try {
@@ -376,6 +387,11 @@ async function handleGetSignals(supabaseClient: any, req: Request, requestId: st
   }
 }
 
+// TODO: Review handleGenerateSignals - generates new trading signals from disclosure data
+// - Requires authentication; aggregates disclosures by ticker over lookback period
+// - Calculates confidence from politician count, bipartisan activity, volume
+// - Optionally fetches market data and calculates target prices
+// - Records audit trail and queues for reference portfolio
 async function handleGenerateSignals(supabaseClient: any, req: Request, requestId: string) {
   const handlerStartTime = Date.now()
   try {
@@ -822,7 +838,10 @@ async function handleGenerateSignals(supabaseClient: any, req: Request, requestI
   }
 }
 
-// Handler to update existing signals with target prices
+// TODO: Review handleUpdateTargetPrices - updates existing signals with current market prices
+// - Fetches all active signals and retrieves current stock prices
+// - Calculates target_price, stop_loss, and take_profit based on signal type
+// - Batch updates signals with new price targets
 async function handleUpdateTargetPrices(supabaseClient: any, req: Request, requestId: string) {
   const handlerStartTime = Date.now()
   try {
@@ -918,7 +937,9 @@ async function handleUpdateTargetPrices(supabaseClient: any, req: Request, reque
   }
 }
 
-// Fetch current stock price from Yahoo Finance
+// TODO: Review fetchStockPrice - fetches single stock price from Yahoo Finance API
+// - Uses chart endpoint with 1-day interval
+// - Returns regularMarketPrice or null on failure
 async function fetchStockPrice(ticker: string): Promise<number | null> {
   try {
     const response = await fetch(
@@ -943,7 +964,9 @@ async function fetchStockPrice(ticker: string): Promise<number | null> {
   }
 }
 
-// Batch fetch stock prices with rate limiting
+// TODO: Review fetchStockPrices - batch fetches stock prices with rate limiting
+// - Processes tickers in batches of 5 with 200ms delay between batches
+// - Returns map of ticker -> price for successful fetches
 async function fetchStockPrices(tickers: string[]): Promise<Record<string, number>> {
   const prices: Record<string, number> = {}
   const BATCH_SIZE = 5
@@ -969,7 +992,9 @@ async function fetchStockPrices(tickers: string[]): Promise<Record<string, numbe
   return prices
 }
 
-// Calculate target price based on signal type and current price
+// TODO: Review calculateTargetPrice - computes price targets based on signal type/strength
+// - Uses strength multipliers: very_strong=10%, strong=7%, moderate=5%, weak=3%
+// - Buy signals: target higher, stop_loss lower; Sell signals: inverse
 function calculateTargetPrice(
   currentPrice: number,
   signalType: string,
@@ -1015,7 +1040,10 @@ function calculateTargetPrice(
   }
 }
 
-// Service-level signal regeneration (for scheduled jobs, no user auth required)
+// TODO: Review handleRegenerateSignals - service-level signal regeneration for scheduled jobs
+// - No user auth required; optionally clears old signals before regenerating
+// - Uses ML predictions when available, with heuristic fallback
+// - Records audit trail and queues high-confidence signals for reference portfolio
 async function handleRegenerateSignals(supabaseClient: any, req: Request, requestId: string) {
   const handlerStartTime = Date.now()
   try {
@@ -1469,6 +1497,9 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
   }
 }
 
+// TODO: Review handleGetSignalStats - retrieves aggregate statistics for active signals
+// - Calculates total count, average confidence, and signal type distribution
+// - Returns high_confidence_signals count (>=0.8 confidence)
 async function handleGetSignalStats(supabaseClient: any, req: Request) {
   try {
     // Get signal statistics
@@ -1578,7 +1609,9 @@ interface ActiveModelInfo {
   weights_hash?: string
 }
 
-// Get the currently active ML model
+// TODO: Review getActiveModel - retrieves the currently active ML model for signal generation
+// - Queries ml_models table for active status, ordered by training completion
+// - Returns model ID and version for lineage tracking
 async function getActiveModel(supabaseClient: any): Promise<ActiveModelInfo | null> {
   try {
     const { data, error } = await supabaseClient
@@ -1602,7 +1635,9 @@ async function getActiveModel(supabaseClient: any): Promise<ActiveModelInfo | nu
   }
 }
 
-// Get or create a legacy model reference for heuristic signals
+// TODO: Review getOrCreateLegacyModel - creates/retrieves heuristic model reference for lineage
+// - First checks for existing legacy model with matching version
+// - Creates new 'heuristic' model entry if none exists
 async function getOrCreateLegacyModel(supabaseClient: any, modelVersion: string): Promise<string | null> {
   try {
     // First try to find existing legacy model
@@ -1645,7 +1680,9 @@ async function getOrCreateLegacyModel(supabaseClient: any, modelVersion: string)
   }
 }
 
-// Compute reproducibility hash for a signal
+// TODO: Review computeReproducibilityHash - generates hash for signal reproducibility tracking
+// - Combines features, model ID, and hour-level timestamp
+// - Enables verification that same inputs produce same outputs
 function computeReproducibilityHash(features: any, modelId: string | null): string {
   const data = JSON.stringify({
     features: features,
@@ -1662,7 +1699,9 @@ function computeReproducibilityHash(features: any, modelId: string | null): stri
   return `hash_${Math.abs(hash).toString(16)}`
 }
 
-// Record audit trail entry for a signal
+// TODO: Review recordSignalAudit - records audit trail entry for signal lifecycle events
+// - Captures signal snapshot, model lineage, and triggering system/user
+// - Events: created, updated, executed, expired, invalidated
 async function recordSignalAudit(
   supabaseClient: any,
   signalId: string,
@@ -1696,7 +1735,9 @@ async function recordSignalAudit(
   }
 }
 
-// Record signal lifecycle transition
+// TODO: Review recordSignalLifecycle - records state transitions in signal lifecycle
+// - Tracks previous_state -> current_state with reason and actor
+// - Enables signal journey analysis and debugging
 async function recordSignalLifecycle(
   supabaseClient: any,
   signalId: string,
@@ -1757,7 +1798,9 @@ let mlModelCheckTime = 0
 const ML_MODEL_CHECK_CACHE_SUCCESS_MS = 60000 // Cache successful checks for 1 minute
 const ML_MODEL_CHECK_CACHE_FAIL_MS = 5000 // Cache failures for 5 seconds only (allow retries)
 
-// Quick check if ML model is available
+// TODO: Review checkMlModelAvailable - checks if ML prediction service is available
+// - Caches result for 1 minute (success) or 5 seconds (failure)
+// - Uses 5s timeout to prevent blocking on cold starts
 async function checkMlModelAvailable(): Promise<boolean> {
   const now = Date.now()
   const cacheMs = mlModelAvailable ? ML_MODEL_CHECK_CACHE_SUCCESS_MS : ML_MODEL_CHECK_CACHE_FAIL_MS
@@ -1790,7 +1833,9 @@ async function checkMlModelAvailable(): Promise<boolean> {
   }
 }
 
-// Batch ML prediction - single call for all tickers
+// TODO: Review getBatchMlPredictions - fetches ML predictions for multiple tickers in single call
+// - Builds feature vectors and calls ETL batch-predict endpoint
+// - Returns map of ticker -> {prediction, confidence} for successful predictions
 async function getBatchMlPredictions(
   featuresList: MlFeatures[]
 ): Promise<Map<string, { prediction: number; confidence: number }>> {
@@ -1865,7 +1910,9 @@ async function getBatchMlPredictions(
   return results
 }
 
-// Helper to blend heuristic and ML signals
+// TODO: Review blendSignals - combines heuristic and ML signal predictions
+// - Uses 40% ML / 60% heuristic blend weight
+// - Boosts confidence when signals agree, reduces when they disagree
 function blendSignals(
   heuristicType: string,
   heuristicConfidence: number,
@@ -1912,7 +1959,9 @@ interface LambdaResult {
   error: string | null
 }
 
-// Apply user lambda to signals via Python service
+// TODO: Review applyUserLambda - executes user-defined Python lambda on signals
+// - Calls ETL apply-lambda endpoint with 15s timeout
+// - Returns transformed signals with execution trace for debugging
 async function applyUserLambda(
   signals: any[],
   lambdaCode: string,
@@ -1977,8 +2026,10 @@ async function applyUserLambda(
   }
 }
 
-// Handler for preview-signals endpoint
-// Similar to generate-signals but with configurable weights and NO database persistence
+// TODO: Review handlePreviewSignals - previews signals with custom weights without persisting
+// - Supports configurable weight parameters for signal calculation
+// - Optionally applies ML predictions and user-defined lambdas
+// - Returns preview results without database writes for experimentation
 async function handlePreviewSignals(supabaseClient: any, req: Request, requestId: string) {
   const handlerStartTime = Date.now()
   try {

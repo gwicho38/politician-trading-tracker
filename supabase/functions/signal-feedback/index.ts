@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Structured logging
+// TODO: Review log object - structured JSON logging with levels (info, error)
 const log = {
   info: (message: string, metadata?: any) => {
     console.log(JSON.stringify({
@@ -29,6 +29,9 @@ const log = {
   }
 }
 
+// TODO: Review serve handler - ML feedback loop endpoint
+// - Actions: record-outcomes, analyze-features, evaluate-model, get-summary
+// - Records signal outcomes and correlates features with returns
 serve(async (req) => {
   const requestId = crypto.randomUUID().substring(0, 8)
 
@@ -85,6 +88,10 @@ serve(async (req) => {
 // =============================================================================
 // RECORD OUTCOMES - Label closed positions with outcomes
 // =============================================================================
+// TODO: Review handleRecordOutcomes - labels closed positions with trading outcomes
+// - Creates signal_outcomes records for closed positions
+// - Calculates return percentages, holding days, win/loss labels
+// - Updates portfolio state win/loss counts
 async function handleRecordOutcomes(supabaseClient: any, requestId: string) {
   log.info('Recording signal outcomes', { requestId })
 
@@ -287,6 +294,10 @@ async function handleRecordOutcomes(supabaseClient: any, requestId: string) {
 // =============================================================================
 // ANALYZE FEATURES - Correlate features with outcomes
 // =============================================================================
+// TODO: Review handleAnalyzeFeatures - correlates signal features with trading outcomes
+// - Calculates Pearson correlation between features and returns
+// - Splits by median to compare high/low feature groups
+// - Saves analysis to feature_importance_history table
 async function handleAnalyzeFeatures(supabaseClient: any, requestId: string, params: any) {
   const windowDays = params.windowDays || 90
 
@@ -438,6 +449,10 @@ async function handleAnalyzeFeatures(supabaseClient: any, requestId: string, par
 // =============================================================================
 // EVALUATE MODEL - Calculate model performance metrics
 // =============================================================================
+// TODO: Review handleEvaluateModel - calculates model performance metrics
+// - Computes win rate, avg return, Sharpe ratio, max drawdown
+// - Analyzes confidence calibration (high vs low confidence outcomes)
+// - Saves performance to model_performance_history table
 async function handleEvaluateModel(supabaseClient: any, requestId: string, params: any) {
   const windowDays = params.windowDays || 30
   const modelId = params.modelId
@@ -572,6 +587,9 @@ async function handleEvaluateModel(supabaseClient: any, requestId: string, param
 // =============================================================================
 // GET SUMMARY - Get overall feedback loop summary
 // =============================================================================
+// TODO: Review handleGetSummary - retrieves overall feedback loop summary
+// - Aggregates outcome counts and win rate
+// - Includes latest feature importance and model performance
 async function handleGetSummary(supabaseClient: any, requestId: string) {
   log.info('Getting feedback summary', { requestId })
 

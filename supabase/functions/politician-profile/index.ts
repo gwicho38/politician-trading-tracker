@@ -15,6 +15,10 @@ interface PoliticianData {
   topTickers?: string[];
 }
 
+// TODO: Review serve handler - handles politician profile bio generation requests
+// - Validates politician data input
+// - Calls Ollama API for AI-generated bios
+// - Falls back to template-based bios on API failure
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -108,6 +112,9 @@ serve(async (req) => {
   }
 });
 
+// TODO: Review buildPrompt - constructs LLM prompt for biography generation
+// - Formats politician data into structured prompt
+// - Includes trading statistics and top securities
 function buildPrompt(politician: PoliticianData): string {
   const tickersList = politician.topTickers?.slice(0, 5).join(", ") || "various securities";
 
@@ -123,6 +130,9 @@ Requirements:
 - Focus on role and trading activity`;
 }
 
+// TODO: Review generateFallbackBio - creates template-based biography when LLM unavailable
+// - Expands party abbreviations to full names
+// - Formats chamber type and trading statistics
 function generateFallbackBio(politician: PoliticianData): string {
   const partyFull = politician.party === "D" ? "Democratic" :
                     politician.party === "R" ? "Republican" :
@@ -138,6 +148,7 @@ function generateFallbackBio(politician: PoliticianData): string {
   return `${politician.name} is a ${partyFull} ${chamberFull} from ${politician.state || "the United States"}. According to public financial disclosure filings, they have reported ${politician.totalTrades} trades with an estimated trading volume of $${formatVolume(politician.totalVolume)}.${tickersNote}`;
 }
 
+// TODO: Review formatVolume - formats dollar amounts with K/M/B suffixes
 function formatVolume(volume: number): string {
   if (volume >= 1000000000) {
     return (volume / 1000000000).toFixed(1) + "B";
@@ -149,6 +160,9 @@ function formatVolume(volume: number): string {
   return volume.toFixed(0);
 }
 
+// TODO: Review cleanOllamaResponse - strips LLM preamble text from generated bios
+// - Removes common patterns like "Here is...", "Sure!", etc.
+// - Returns clean biography text starting with politician name
 function cleanOllamaResponse(response: string): string {
   // Common LLM preamble patterns to strip
   const preamblePatterns = [

@@ -31,7 +31,7 @@ interface ProcessingResult {
   admin_notes: string
 }
 
-// Structured logging
+// TODO: Review log object - structured JSON logging with levels (info, error)
 const log = {
   info: (message: string, metadata?: any) => {
     console.log(JSON.stringify({
@@ -54,6 +54,9 @@ const log = {
   }
 }
 
+// TODO: Review serve handler - routes error report processing requests
+// - Endpoints: process-pending, process-one, preview
+// - Uses Claude API for LLM-powered correction interpretation
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -107,7 +110,9 @@ serve(async (req) => {
   }
 })
 
-// Process all pending error reports
+// TODO: Review handleProcessPending - batch processes pending error reports
+// - Fetches up to 10 pending reports
+// - Processes each through LLM interpretation pipeline
 async function handleProcessPending(supabase: any, anthropic: any): Promise<Response> {
   log.info('Processing all pending error reports')
 
@@ -164,7 +169,7 @@ async function handleProcessPending(supabase: any, anthropic: any): Promise<Resp
   )
 }
 
-// Process a single report by ID
+// TODO: Review handleProcessOne - processes a single error report by ID
 async function handleProcessOne(supabase: any, anthropic: any, reportId: string): Promise<Response> {
   if (!reportId) {
     return new Response(
@@ -194,7 +199,8 @@ async function handleProcessOne(supabase: any, anthropic: any, reportId: string)
   )
 }
 
-// Preview what corrections would be made without applying them
+// TODO: Review handlePreview - previews corrections without applying them
+// - Returns proposed corrections and confidence levels
 async function handlePreview(supabase: any, anthropic: any, reportId: string): Promise<Response> {
   if (!reportId) {
     return new Response(
@@ -234,7 +240,10 @@ async function handlePreview(supabase: any, anthropic: any, reportId: string): P
   )
 }
 
-// Main processing logic for a single report
+// TODO: Review processReport - main processing logic for a single report
+// - Uses LLM to interpret user correction request
+// - Auto-applies high-confidence corrections, flags low-confidence for review
+// - Updates trading_disclosures table with corrections
 async function processReport(supabase: any, anthropic: any, report: ErrorReport): Promise<ProcessingResult> {
   log.info('Processing report', { reportId: report.id, errorType: report.error_type })
 
@@ -316,7 +325,9 @@ async function processReport(supabase: any, anthropic: any, report: ErrorReport)
   }
 }
 
-// Use Claude to interpret what correction the user is requesting
+// TODO: Review interpretCorrections - uses Claude to interpret user correction requests
+// - Parses error type and description into structured field corrections
+// - Returns confidence scores and reasoning for each correction
 async function interpretCorrections(anthropic: any, report: ErrorReport): Promise<CorrectionResult[]> {
   const prompt = `You are analyzing a user-submitted error report for a financial disclosure database record.
 
@@ -381,7 +392,9 @@ Respond with ONLY the JSON object, no other text.`
   }
 }
 
-// Apply corrections to related disclosures from the same source
+// TODO: Review applyToRelatedDisclosures - propagates amount corrections to related records
+// - Finds disclosures from same source_url with null amounts
+// - Applies same amount correction to maintain consistency
 async function applyToRelatedDisclosures(
   supabase: any,
   excludeId: string,
@@ -426,7 +439,7 @@ async function applyToRelatedDisclosures(
   }
 }
 
-// Update error report status
+// TODO: Review updateReportStatus - updates error report status and admin notes
 async function updateReportStatus(
   supabase: any,
   reportId: string,

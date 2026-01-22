@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Helper to check if request is using service role key (for scheduled jobs)
+// TODO: Review isServiceRoleRequest - checks if request uses service role key for scheduled jobs
 function isServiceRoleRequest(req: Request): boolean {
   const authHeader = req.headers.get('authorization')
   if (!authHeader) return false
@@ -42,6 +42,9 @@ const CIRCUIT_BREAKER_CONFIG = {
   halfOpenRequests: 2       // Allow 2 requests in half-open state
 }
 
+// TODO: Review checkCircuitBreaker - implements circuit breaker pattern for API resilience
+// - Returns whether request is allowed based on circuit state (closed/open/half-open)
+// - Automatically transitions between states based on failure threshold and timeout
 function checkCircuitBreaker(): { allowed: boolean; reason?: string } {
   const now = Date.now()
 
@@ -66,12 +69,14 @@ function checkCircuitBreaker(): { allowed: boolean; reason?: string } {
   return { allowed: true }
 }
 
+// TODO: Review recordSuccess - resets circuit breaker on successful API call
 function recordSuccess() {
   circuitBreaker.failures = 0
   circuitBreaker.state = 'closed'
   circuitBreaker.lastSuccess = Date.now()
 }
 
+// TODO: Review recordFailure - increments failure count and opens circuit if threshold reached
 function recordFailure() {
   circuitBreaker.failures++
   circuitBreaker.lastFailure = Date.now()
@@ -81,6 +86,7 @@ function recordFailure() {
   }
 }
 
+// TODO: Review getCircuitBreakerStatus - returns current circuit breaker state for diagnostics
 function getCircuitBreakerStatus(): {
   state: string
   failures: number
@@ -95,7 +101,7 @@ function getCircuitBreakerStatus(): {
   }
 }
 
-// Structured logging utility
+// TODO: Review log object - structured JSON logging with levels (info, error, warn)
 const log = {
   info: (message: string, metadata?: any) => {
     console.log(JSON.stringify({
@@ -128,7 +134,9 @@ const log = {
   }
 }
 
-// Get Alpaca credentials - supports per-user credentials or environment variables
+// TODO: Review getAlpacaCredentials - retrieves Alpaca API credentials
+// - Priority: provided params > user_api_keys table > environment variables
+// - Supports both paper and live trading modes
 async function getAlpacaCredentials(
   supabase: any,
   userEmail: string | null,
@@ -187,6 +195,10 @@ async function getAlpacaCredentials(
 // HANDLER FUNCTIONS
 // =============================================================================
 
+// TODO: Review handleHealthCheck - tests Alpaca API connectivity
+// - Calls /v2/account endpoint to verify connection
+// - Records results to connection_health_log table
+// - Updates circuit breaker state based on result
 async function handleHealthCheck(
   supabaseClient: any,
   credentials: { apiKey: string; secretKey: string; baseUrl: string },
@@ -287,6 +299,9 @@ async function handleHealthCheck(
   }
 }
 
+// TODO: Review handleValidateCredentials - validates Alpaca API credentials
+// - Tests credentials by calling account endpoint
+// - Updates last_validated_at in user_api_keys table on success
 async function handleValidateCredentials(
   supabaseClient: any,
   credentials: { apiKey: string; secretKey: string; baseUrl: string },
@@ -365,6 +380,9 @@ async function handleValidateCredentials(
   }
 }
 
+// TODO: Review handleConnectionStatus - retrieves connection statistics
+// - Fetches recent health check logs from connection_health_log
+// - Calculates overall status (connected/degraded/disconnected) based on health rate
 async function handleConnectionStatus(
   supabaseClient: any,
   requestId: string
@@ -435,6 +453,10 @@ async function handleConnectionStatus(
   }
 }
 
+// TODO: Review serve handler - main Alpaca account management endpoint
+// - Actions: get-account, get-positions, health-check, validate-credentials, connection-status, test-connection
+// - Supports user-specific and service role authentication
+// - Implements circuit breaker protection for API calls
 serve(async (req) => {
   const startTime = Date.now()
   const requestId = crypto.randomUUID().substring(0, 8)
