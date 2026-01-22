@@ -16,6 +16,8 @@ interface LogMetadata {
   [key: string]: unknown
 }
 
+// TODO: Review log function - structured logging with timestamp, level, and function name
+// - Outputs JSON-formatted metadata for log aggregation
 function log(level: LogLevel, fn: string, message: string, metadata?: LogMetadata) {
   const timestamp = new Date().toISOString()
   const prefix = `[${timestamp}] [${level}] [${fn}]`
@@ -27,6 +29,7 @@ function log(level: LogLevel, fn: string, message: string, metadata?: LogMetadat
   }
 }
 
+// TODO: Review logger object - convenience wrapper providing debug/info/warn/error methods
 const logger = {
   debug: (fn: string, message: string, metadata?: LogMetadata) => log('DEBUG', fn, message, metadata),
   info: (fn: string, message: string, metadata?: LogMetadata) => log('INFO', fn, message, metadata),
@@ -38,6 +41,10 @@ const logger = {
 // MAIN HANDLER
 // =============================================================================
 
+// TODO: Review serve handler - main entry point routing requests to sync endpoints
+// - Routes to: sync-all, sync-politicians, sync-trades, update-stats, sync-full,
+//   update-chart-data, update-politician-totals, update-politician-parties
+// - Initializes Supabase client with service role key for full database access
 serve(async (req) => {
   const requestId = crypto.randomUUID().slice(0, 8)
   logger.info('serve', `Request received`, { requestId, method: req.method, url: req.url })
@@ -99,6 +106,9 @@ serve(async (req) => {
   }
 })
 
+// TODO: Review handleSyncAll - syncs all politicians from complex to simplified schema
+// - Fetches all politicians and upserts with standardized fields
+// - Logs progress every 50 records for monitoring
 async function handleSyncAll(supabaseClient: any, requestId: string) {
   const fn = 'handleSyncAll'
   logger.info(fn, 'START - Syncing all politicians', { requestId })
@@ -181,11 +191,16 @@ async function handleSyncAll(supabaseClient: any, requestId: string) {
   )
 }
 
+// TODO: Review handleSyncPoliticians - alias for handleSyncAll
 async function handleSyncPoliticians(supabaseClient: any, requestId: string) {
   logger.debug('handleSyncPoliticians', 'Alias for handleSyncAll', { requestId })
   return await handleSyncAll(supabaseClient, requestId)
 }
 
+// TODO: Review handleSyncTrades - syncs trading disclosures to simplified trades table
+// - Joins disclosures with politician data
+// - Deduplicates by politician_id, ticker, and transaction_date
+// - Updates politician totals after sync completes
 async function handleSyncTrades(supabaseClient: any, requestId: string) {
   const fn = 'handleSyncTrades'
   logger.info(fn, 'START - Syncing all trades', { requestId })
@@ -305,6 +320,10 @@ async function handleSyncTrades(supabaseClient: any, requestId: string) {
   )
 }
 
+// TODO: Review handleUpdateStats - updates dashboard statistics in singleton row
+// - Calculates totals for trades, volume, active politicians, jurisdictions
+// - Computes average trade size and recent filings count (last 7 days)
+// - Upserts to dashboard_stats table with fixed ID
 async function handleUpdateStats(supabaseClient: any, requestId: string) {
   const fn = 'handleUpdateStats'
   logger.info(fn, 'START - Updating dashboard statistics', { requestId })
@@ -350,6 +369,10 @@ async function handleUpdateStats(supabaseClient: any, requestId: string) {
   )
 }
 
+// TODO: Review handleUpdateChartData - aggregates trading data by month/year for charts
+// - Fetches all active disclosures with pagination (1000 per batch)
+// - Aggregates buys, sells, and volume per month
+// - Clears and rebuilds chart_data table with new aggregations
 async function handleUpdateChartData(supabaseClient: any, requestId: string) {
   const fn = 'handleUpdateChartData'
   logger.info(fn, 'START - Updating chart data', { requestId })
@@ -464,6 +487,11 @@ async function handleUpdateChartData(supabaseClient: any, requestId: string) {
   }
 }
 
+// TODO: Review handleSyncFull - orchestrates complete data synchronization
+// - Step 1: Syncs all politicians
+// - Step 2: Syncs all trades from disclosures
+// - Step 3: Updates dashboard statistics
+// - Returns combined results with total duration
 async function handleSyncFull(supabaseClient: any, requestId: string) {
   const fn = 'handleSyncFull'
   const startTime = Date.now()
@@ -512,6 +540,10 @@ async function handleSyncFull(supabaseClient: any, requestId: string) {
   )
 }
 
+// TODO: Review handleUpdatePoliticianTotals - HTTP handler for updating politician trade totals
+// - Iterates all politicians and recalculates total_trades and total_volume
+// - Computes volume as midpoint of amount ranges from active disclosures
+// - Returns count of updated politicians
 async function handleUpdatePoliticianTotals(supabaseClient: any, requestId: string) {
   const fn = 'handleUpdatePoliticianTotals'
   logger.info(fn, 'START - Updating politician totals', { requestId })
@@ -604,6 +636,10 @@ async function handleUpdatePoliticianTotals(supabaseClient: any, requestId: stri
 // HELPER FUNCTIONS
 // =============================================================================
 
+// TODO: Review transformPolitician - converts raw politician data to standardized schema
+// - Maps role strings to chamber (House/Senate) and jurisdiction_id
+// - Standardizes party codes to D/R/I/Other
+// - Returns normalized politician object with defaults
 function transformPolitician(politician: any) {
   const fn = 'transformPolitician'
   const originalRole = politician.role || ''
@@ -643,6 +679,10 @@ function transformPolitician(politician: any) {
   return result
 }
 
+// TODO: Review transformTrade - converts disclosure record to simplified trade schema
+// - Maps transaction_type to buy/sell
+// - Calculates estimated_value from amount ranges or exact amounts
+// - Formats amount_range string and extracts date components
 function transformTrade(disclosure: any, politicianId: string) {
   const fn = 'transformTrade'
   const originalTransactionType = disclosure.transaction_type || ''
@@ -692,6 +732,10 @@ function transformTrade(disclosure: any, politicianId: string) {
   return result
 }
 
+// TODO: Review updatePoliticianTotals - internal helper to recalculate politician trading metrics
+// - Called after trade sync to update totals
+// - Computes trade count and volume midpoint for each politician
+// - Logs progress every 50 records
 async function updatePoliticianTotals(supabaseClient: any, requestId: string) {
   const fn = 'updatePoliticianTotals'
   logger.info(fn, 'START - Updating politician totals', { requestId })
@@ -749,6 +793,10 @@ async function updatePoliticianTotals(supabaseClient: any, requestId: string) {
   logger.info(fn, 'END', { requestId, updated: totalCount })
 }
 
+// TODO: Review calculateDashboardStats - computes aggregate statistics for dashboard display
+// - Counts total active disclosures and calculates total volume
+// - Counts active politicians and unique jurisdictions/roles
+// - Calculates average trade size and recent filings (last 7 days)
 async function calculateDashboardStats(supabaseClient: any, requestId: string) {
   const fn = 'calculateDashboardStats'
   logger.debug(fn, 'START', { requestId })
@@ -891,6 +939,10 @@ const KNOWN_PARTIES: Record<string, string> = {
   'dade phelan': 'R',
 }
 
+// TODO: Review lookupPartyFromOllama - queries Ollama LLM to determine politician party affiliation
+// - Sends structured prompt requesting JSON response with party code
+// - Parses response and falls back to text analysis if JSON fails
+// - Returns R/D/I or null if party cannot be determined
 async function lookupPartyFromOllama(politicianName: string, role: string): Promise<string | null> {
   try {
     const prompt = `What is the political party of ${politicianName}${role ? ` (${role})` : ''} in US politics? Reply with ONLY a JSON object: {"party": "R"} for Republican, {"party": "D"} for Democrat, {"party": "I"} for Independent. No other text.`
@@ -946,6 +998,10 @@ async function lookupPartyFromOllama(politicianName: string, role: string): Prom
   }
 }
 
+// TODO: Review handleUpdatePoliticianParties - fills in missing politician party affiliations
+// - Fetches politicians with null or empty party fields (batch of 100)
+// - First checks KNOWN_PARTIES mapping for instant lookup
+// - Falls back to Ollama LLM for unknown politicians with rate limiting
 async function handleUpdatePoliticianParties(supabaseClient: any, requestId: string) {
   const fn = 'handleUpdatePoliticianParties'
   logger.info(fn, 'START - Updating politician parties via Ollama', { requestId })

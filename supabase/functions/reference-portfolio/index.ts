@@ -6,8 +6,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Structured logging utility
+// TODO: Review - Structured logging utility object with info, error, and warn methods
+// Logs JSON-formatted messages with timestamp, service name, and optional metadata
 const log = {
+  // TODO: Review - Log info level messages with optional metadata
   info: (message: string, metadata?: any) => {
     console.log(JSON.stringify({
       level: 'INFO',
@@ -17,6 +19,7 @@ const log = {
       ...metadata
     }))
   },
+  // TODO: Review - Log error level messages with error details and stack trace
   error: (message: string, error?: any, metadata?: any) => {
     console.error(JSON.stringify({
       level: 'ERROR',
@@ -28,6 +31,7 @@ const log = {
       ...metadata
     }))
   },
+  // TODO: Review - Log warning level messages with optional metadata
   warn: (message: string, metadata?: any) => {
     console.warn(JSON.stringify({
       level: 'WARN',
@@ -89,7 +93,8 @@ interface TradingSignal {
   take_profit: number | null
 }
 
-// Get Alpaca credentials from environment (reference portfolio uses app-level credentials)
+// TODO: Review - Retrieves Alpaca API credentials from environment variables
+// Returns null if credentials are not configured, otherwise returns apiKey, secretKey, baseUrl, and dataUrl
 function getAlpacaCredentials(): { apiKey: string; secretKey: string; baseUrl: string; dataUrl: string } | null {
   const apiKey = Deno.env.get('ALPACA_API_KEY')
   const secretKey = Deno.env.get('ALPACA_SECRET_KEY')
@@ -105,7 +110,8 @@ function getAlpacaCredentials(): { apiKey: string; secretKey: string; baseUrl: s
   return { apiKey, secretKey, baseUrl, dataUrl }
 }
 
-// Calculate position size based on confidence (confidence-weighted)
+// TODO: Review - Calculates position size based on portfolio value, signal confidence, and config constraints
+// Returns shares count, position value, and confidence multiplier applied
 function calculatePositionSize(
   portfolioValue: number,
   confidence: number,
@@ -137,7 +143,8 @@ function calculatePositionSize(
   return { shares, positionValue: shares * currentPrice, multiplier }
 }
 
-// Check if market is currently open (US Eastern Time)
+// TODO: Review - Checks if US stock market is currently open based on Eastern Time
+// Returns true if within market hours (9:30 AM - 4:00 PM ET) on weekdays
 function isMarketOpen(): boolean {
   const now = new Date()
   const etOffset = -5 // EST (simplified - should handle DST)
@@ -152,6 +159,8 @@ function isMarketOpen(): boolean {
   return isWeekday && isMarketHours
 }
 
+// TODO: Review - Main HTTP request handler that routes actions to appropriate handlers
+// Supports actions: get-state, get-positions, get-trades, get-performance, execute-signals, update-positions, take-snapshot, reset-daily-trades, check-exits
 serve(async (req) => {
   const startTime = Date.now()
   const requestId = crypto.randomUUID().substring(0, 8)
@@ -239,6 +248,8 @@ serve(async (req) => {
 // GET STATE - Public endpoint to get current portfolio state
 // Always fetches live data from Alpaca first, falls back to database
 // =============================================================================
+// TODO: Review - Fetches current portfolio state, merging live Alpaca data with database records
+// Returns portfolio value, cash, positions value, returns, drawdown, and market status
 async function handleGetState(supabaseClient: any, requestId: string) {
   try {
     // Get config and state from database
@@ -362,6 +373,8 @@ async function handleGetState(supabaseClient: any, requestId: string) {
 // GET POSITIONS - Public endpoint to get current open positions
 // Always fetches live position data from Alpaca first
 // =============================================================================
+// TODO: Review - Retrieves portfolio positions, optionally including closed positions
+// Merges live Alpaca position data with database records for current prices and P&L
 async function handleGetPositions(supabaseClient: any, requestId: string, bodyParams: any) {
   try {
     const includesClosed = bodyParams.include_closed === true
@@ -470,6 +483,8 @@ async function handleGetPositions(supabaseClient: any, requestId: string, bodyPa
 // =============================================================================
 // GET TRADES - Public endpoint to get trade history
 // =============================================================================
+// TODO: Review - Retrieves paginated trade history from the transactions table
+// Supports limit and offset parameters for pagination
 async function handleGetTrades(supabaseClient: any, requestId: string, bodyParams: any) {
   try {
     const limit = bodyParams.limit || 50
@@ -511,6 +526,8 @@ async function handleGetTrades(supabaseClient: any, requestId: string, bodyParam
 // =============================================================================
 // GET PERFORMANCE - Fetch portfolio history directly from Alpaca API
 // =============================================================================
+// TODO: Review - Fetches portfolio performance history from Alpaca API
+// Supports timeframes: 1d, 1w, 1m, 3m, ytd, 1y and transforms data to snapshot format
 async function handleGetPerformance(supabaseClient: any, requestId: string, bodyParams: any) {
   try {
     const timeframe = bodyParams.timeframe || '1m' // 1d, 1w, 1m, 3m, ytd, 1y
@@ -678,6 +695,8 @@ async function handleGetPerformance(supabaseClient: any, requestId: string, body
 // =============================================================================
 // EXECUTE SIGNALS - Process pending signals and execute trades
 // =============================================================================
+// TODO: Review - Processes pending trading signals from queue and executes buy/sell orders via Alpaca
+// Handles position sizing, confidence thresholds, daily trade limits, and updates portfolio state
 async function handleExecuteSignals(supabaseClient: any, requestId: string, bodyParams: any) {
   try {
     log.info('Starting signal execution', { requestId })
@@ -1181,7 +1200,8 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
   }
 }
 
-// Helper to update queue status
+// TODO: Review - Helper function to update signal queue entry status after processing
+// Updates status, skip reason, transaction ID, and processed timestamp
 async function updateQueueStatus(
   supabaseClient: any,
   queueId: string,
@@ -1203,6 +1223,8 @@ async function updateQueueStatus(
 // =============================================================================
 // UPDATE POSITIONS - Sync prices and P&L from Alpaca
 // =============================================================================
+// TODO: Review - Syncs position prices and P&L from Alpaca, updates portfolio state
+// Calculates day return, total return, drawdown, and updates peak portfolio value
 async function handleUpdatePositions(supabaseClient: any, requestId: string) {
   try {
     log.info('Updating positions', { requestId })
@@ -1446,6 +1468,8 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
 // =============================================================================
 // SYNC POSITIONS WITH ALPACA - Helper function for position value updates
 // =============================================================================
+// TODO: Review - Internal helper that syncs position data from Alpaca before taking snapshots
+// Updates position prices, market values, unrealized P&L, and portfolio state
 async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, initialCapital: number) {
   try {
     // Get open positions from database
@@ -1636,6 +1660,8 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
 // =============================================================================
 // TAKE SNAPSHOT - Record daily performance snapshot
 // =============================================================================
+// TODO: Review - Records daily portfolio performance snapshot for historical tracking
+// Syncs with Alpaca first, calculates returns, Sharpe ratio, and benchmark comparison
 async function handleTakeSnapshot(supabaseClient: any, requestId: string) {
   try {
     log.info('Taking performance snapshot', { requestId })
@@ -1839,6 +1865,8 @@ async function handleTakeSnapshot(supabaseClient: any, requestId: string) {
 // =============================================================================
 // RESET DAILY TRADES - Called at market open
 // =============================================================================
+// TODO: Review - Resets daily trade counter and day return at market open
+// Should be called via scheduled job at start of each trading day
 async function handleResetDailyTrades(supabaseClient: any, requestId: string) {
   try {
     // Get the current state ID first
@@ -1894,6 +1922,8 @@ async function handleResetDailyTrades(supabaseClient: any, requestId: string) {
 // =============================================================================
 // CHECK EXITS - Monitor positions for stop-loss and take-profit triggers
 // =============================================================================
+// TODO: Review - Monitors open positions for stop-loss and take-profit triggers
+// Automatically closes positions when price thresholds are hit, updates win/loss stats
 async function handleCheckExits(supabaseClient: any, requestId: string) {
   try {
     log.info('Checking exit conditions', { requestId })

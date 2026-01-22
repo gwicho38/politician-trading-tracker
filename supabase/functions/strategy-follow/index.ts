@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Structured logging utility
+// TODO: Review log object - structured JSON logging utility with service identification
 const log = {
   info: (message: string, metadata?: any) => {
     console.log(JSON.stringify({
@@ -39,7 +39,9 @@ const log = {
   }
 }
 
-// Check if market is currently open (US Eastern Time)
+// TODO: Review isMarketOpen - checks if US stock market is currently open
+// - Market hours: 9:30 AM - 4:00 PM ET, Monday-Friday
+// - Note: simplified DST handling (EST offset hardcoded)
 function isMarketOpen(): boolean {
   const now = new Date()
   const etOffset = -5 // EST (simplified - should handle DST)
@@ -56,7 +58,8 @@ function isMarketOpen(): boolean {
   return isWeekday && isAfterOpen && isBeforeClose
 }
 
-// Check if account can trade
+// TODO: Review canAccountTrade - validates Alpaca account can execute trades
+// - Checks for blocked status flags and minimum buying power ($100)
 function canAccountTrade(account: any): { canTrade: boolean; reason?: string } {
   if (account.trading_blocked) {
     return { canTrade: false, reason: 'Account trading is blocked' }
@@ -74,7 +77,9 @@ function canAccountTrade(account: any): { canTrade: boolean; reason?: string } {
   return { canTrade: true }
 }
 
-// Get user's Alpaca credentials
+// TODO: Review getAlpacaCredentials - retrieves user's Alpaca API keys from database
+// - Supports paper and live trading modes with separate credentials
+// - Returns baseUrl and dataUrl configured for trading mode
 async function getAlpacaCredentials(
   supabase: any,
   userEmail: string,
@@ -110,7 +115,8 @@ async function getAlpacaCredentials(
   }
 }
 
-// Get account info from Alpaca
+// TODO: Review getAlpacaAccount - fetches account information from Alpaca API
+// - Returns account object with equity, buying power, and status flags
 async function getAlpacaAccount(credentials: { apiKey: string; secretKey: string; baseUrl: string }) {
   const response = await fetch(`${credentials.baseUrl}/v2/account`, {
     headers: {
@@ -126,7 +132,8 @@ async function getAlpacaAccount(credentials: { apiKey: string; secretKey: string
   return response.json()
 }
 
-// Get current positions from Alpaca
+// TODO: Review getAlpacaPositions - fetches current portfolio positions from Alpaca
+// - Returns array of positions with symbol, quantity, and market value
 async function getAlpacaPositions(credentials: { apiKey: string; secretKey: string; baseUrl: string }) {
   const response = await fetch(`${credentials.baseUrl}/v2/positions`, {
     headers: {
@@ -142,7 +149,8 @@ async function getAlpacaPositions(credentials: { apiKey: string; secretKey: stri
   return response.json()
 }
 
-// Get current quote from Alpaca
+// TODO: Review getQuote - fetches latest quote for a ticker from Alpaca data API
+// - Returns ask price (ap) or bid price (bp), null on failure
 async function getQuote(
   ticker: string,
   credentials: { apiKey: string; secretKey: string; dataUrl: string }
@@ -162,6 +170,9 @@ async function getQuote(
   return data.quote?.ap || data.quote?.bp || null
 }
 
+// TODO: Review serve handler - main entry point for strategy subscription management
+// - Routes to: get-subscription, subscribe, unsubscribe, sync-now, get-trades, sync-all-active
+// - Validates user auth for user actions, service role key for scheduled actions
 serve(async (req) => {
   const startTime = Date.now()
   const requestId = crypto.randomUUID().substring(0, 8)
@@ -276,6 +287,9 @@ serve(async (req) => {
 // =============================================================================
 // GET SUBSCRIPTION - Get user's current strategy subscription
 // =============================================================================
+// TODO: Review handleGetSubscription - retrieves user's active strategy subscription
+// - Calls get_user_subscription RPC function
+// - Returns subscription details and isFollowing status
 async function handleGetSubscription(supabaseClient: any, requestId: string, userEmail: string) {
   try {
     const { data: subscription, error } = await supabaseClient
@@ -312,6 +326,10 @@ async function handleGetSubscription(supabaseClient: any, requestId: string, use
 // =============================================================================
 // SUBSCRIBE - Create or update strategy subscription
 // =============================================================================
+// TODO: Review handleSubscribe - creates/updates user's strategy subscription
+// - Supports reference, preset, or custom strategy types
+// - Validates Alpaca credentials before creating subscription
+// - Upserts to user_strategy_subscriptions table
 async function handleSubscribe(
   supabaseClient: any,
   requestId: string,
@@ -450,6 +468,8 @@ async function handleSubscribe(
 // =============================================================================
 // UNSUBSCRIBE - Deactivate strategy subscription
 // =============================================================================
+// TODO: Review handleUnsubscribe - deactivates user's strategy subscription
+// - Sets is_active to false rather than deleting the record
 async function handleUnsubscribe(supabaseClient: any, requestId: string, userEmail: string) {
   try {
     const { error } = await supabaseClient
@@ -488,6 +508,11 @@ async function handleUnsubscribe(supabaseClient: any, requestId: string, userEma
 // =============================================================================
 // SYNC NOW - Manually trigger position sync with followed strategy
 // =============================================================================
+// TODO: Review handleSyncNow - manually triggers portfolio sync with subscribed strategy
+// - Validates market is open (unless force=true)
+// - Calculates target allocations based on strategy type
+// - Executes rebalancing trades (buy under-allocated, sell over-allocated)
+// - Records trade history in user_strategy_trades table
 async function handleSyncNow(
   supabaseClient: any,
   requestId: string,
@@ -845,7 +870,9 @@ async function handleSyncNow(
   }
 }
 
-// Helper to get preset weights
+// TODO: Review getPresetWeights - retrieves signal weights from a preset configuration
+// - Fetches from signal_weight_presets table by ID
+// - Returns weight parameters for signal generation
 async function getPresetWeights(supabaseClient: any, presetId: string) {
   const { data: preset } = await supabaseClient
     .from('signal_weight_presets')
@@ -877,6 +904,8 @@ async function getPresetWeights(supabaseClient: any, presetId: string) {
 // =============================================================================
 // GET TRADES - Get user's strategy trade history
 // =============================================================================
+// TODO: Review handleGetTrades - retrieves user's strategy trade history
+// - Calls get_recent_strategy_trades RPC function with configurable limit
 async function handleGetTrades(
   supabaseClient: any,
   requestId: string,
@@ -921,6 +950,10 @@ async function handleGetTrades(
 // =============================================================================
 // SYNC ALL ACTIVE - Scheduled job to sync all active subscriptions
 // =============================================================================
+// TODO: Review handleSyncAllActive - scheduled job to sync all active user subscriptions
+// - Requires service role authentication
+// - Checks market is open before processing
+// - Iterates all active subscriptions with 500ms rate limiting
 async function handleSyncAllActive(supabaseClient: any, requestId: string) {
   try {
     // Check if market is open first
@@ -1044,8 +1077,10 @@ async function handleSyncAllActive(supabaseClient: any, requestId: string) {
   }
 }
 
-// Internal sync function that doesn't return Response (for scheduled use)
-// This performs FULL trade execution, same as handleSyncNow
+// TODO: Review performSyncForUser - internal sync implementation for scheduled jobs
+// - Performs full trade execution (same logic as handleSyncNow)
+// - Returns structured result instead of Response for batch processing
+// - Calculates target allocations, computes trades, and executes orders
 async function performSyncForUser(
   supabaseClient: any,
   requestId: string,

@@ -13,11 +13,16 @@ interface ScrapingConfig {
   requestDelay: number
 }
 
+// TODO: Review PoliticianTradingCollector class - web scraper for politician trading disclosures
+// - Collects data from US House, Senate, QuiverQuant, EU Parliament, California NetFile
+// - Uses retry logic with exponential backoff
+// - Caches politician lookups to reduce database queries
 class PoliticianTradingCollector {
   private supabase: any
   private config: ScrapingConfig
   private politicianCache: Map<string, string> = new Map() // name -> id cache
 
+  // TODO: Review constructor - initializes scraping configuration
   constructor(supabaseClient: any) {
     this.supabase = supabaseClient
     this.config = {
@@ -28,7 +33,9 @@ class PoliticianTradingCollector {
     }
   }
 
-  // Get or create a politician and return their UUID
+  // TODO: Review getOrCreatePolitician - gets or creates politician record and returns UUID
+  // - Uses cache to minimize database lookups
+  // - Parses name into first/last components
   async getOrCreatePolitician(name: string, role: string = 'Unknown', party: string = 'Unknown'): Promise<string | null> {
     // Check cache first
     const cacheKey = `${name}:${role}`
@@ -76,6 +83,7 @@ class PoliticianTradingCollector {
     return newPolitician.id
   }
 
+  // TODO: Review fetchWithRetry - HTTP fetch with retry logic and rate limiting
   async fetchWithRetry(url: string, options: RequestInit = {}): Promise<Response | null> {
     for (let attempt = 0; attempt < this.config.maxRetries; attempt++) {
       try {
@@ -112,10 +120,12 @@ class PoliticianTradingCollector {
     return null
   }
 
+  // TODO: Review delay - promise-based delay for rate limiting
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
   }
 
+  // TODO: Review collectUSHouseData - scrapes US House financial disclosures
   async collectUSHouseData() {
     console.log("Collecting US House financial disclosures...")
     const baseUrl = "https://disclosures-clerk.house.gov"
@@ -170,6 +180,7 @@ class PoliticianTradingCollector {
     }
   }
 
+  // TODO: Review collectUSSenateData - scrapes US Senate financial disclosures
   async collectUSSenateData() {
     console.log("Collecting US Senate financial disclosures...")
     const baseUrl = "https://efdsearch.senate.gov"
@@ -224,6 +235,7 @@ class PoliticianTradingCollector {
     }
   }
 
+  // TODO: Review collectQuiverQuantData - scrapes QuiverQuant congress trading data
   async collectQuiverQuantData() {
     console.log("Collecting QuiverQuant congress trading data...")
     const url = "https://www.quiverquant.com/congresstrading/"
@@ -273,6 +285,7 @@ class PoliticianTradingCollector {
     }
   }
 
+  // TODO: Review collectEUParliamentData - scrapes EU Parliament MEP declarations
   async collectEUParliamentData() {
     console.log("Collecting EU Parliament declarations...")
     // NOTE: The old URL returns 404, trying the new structure
@@ -328,6 +341,7 @@ class PoliticianTradingCollector {
     }
   }
 
+  // TODO: Review collectCaliforniaData - scrapes California NetFile portals (SF, LA)
   async collectCaliforniaData() {
     console.log("Collecting California NetFile data...")
     // NOTE: NetFile sites are often slow/unreliable, reduce expectations
@@ -396,6 +410,9 @@ class PoliticianTradingCollector {
     }
   }
 
+  // TODO: Review runFullCollection - runs collection from all sources
+  // - Creates data_pull_jobs record for tracking
+  // - Stores disclosures to trading_disclosures table
   async runFullCollection() {
     const startTime = new Date()
     const results = {
@@ -502,7 +519,8 @@ class PoliticianTradingCollector {
     return results
   }
 
-  // Collect from a single source (for faster, targeted collection)
+  // TODO: Review collectSingleSource - collects from single specified source
+  // - Maps source names (house, senate, quiver, eu, california) to collector methods
   async collectSingleSource(source: string): Promise<{ source: string; disclosures_found: number; disclosures: any[] }> {
     const sourceMap: Record<string, () => Promise<any>> = {
       'house': () => this.collectUSHouseData(),
@@ -538,6 +556,9 @@ class PoliticianTradingCollector {
   }
 }
 
+// TODO: Review Deno.serve handler - politician trading collection endpoint
+// - Supports ?source param for single-source collection
+// - Runs full collection when no source specified
 Deno.serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {

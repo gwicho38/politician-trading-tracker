@@ -16,6 +16,7 @@ interface LogMetadata {
   [key: string]: unknown
 }
 
+// TODO: Review log function - structured logging with timestamp and metadata
 function log(level: LogLevel, fn: string, message: string, metadata?: LogMetadata) {
   const timestamp = new Date().toISOString()
   const prefix = `[${timestamp}] [${level}] [${fn}]`
@@ -27,6 +28,7 @@ function log(level: LogLevel, fn: string, message: string, metadata?: LogMetadat
   }
 }
 
+// TODO: Review logger object - convenience wrapper for log levels
 const logger = {
   debug: (fn: string, message: string, metadata?: LogMetadata) => log('DEBUG', fn, message, metadata),
   info: (fn: string, message: string, metadata?: LogMetadata) => log('INFO', fn, message, metadata),
@@ -38,6 +40,9 @@ const logger = {
 // SYNC-DATA ENDPOINT CALLER
 // =============================================================================
 
+// TODO: Review callSyncDataEndpoint - calls sync-data edge function endpoints
+// - Makes authenticated POST requests to sync-data sub-endpoints
+// - Returns success/failure with data or error message
 async function callSyncDataEndpoint(endpoint: string, supabaseUrl: string, serviceRoleKey: string): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
     const response = await fetch(`${supabaseUrl}/functions/v1/sync-data/${endpoint}`, {
@@ -65,6 +70,10 @@ async function callSyncDataEndpoint(endpoint: string, supabaseUrl: string, servi
 // MAIN SCHEDULED SYNC HANDLER
 // =============================================================================
 
+// TODO: Review serve handler - orchestrates scheduled sync operations
+// - Supports 'daily', 'full', and 'quick' sync modes
+// - Calls chart data, stats, party updates, strategy follow, and reference portfolio endpoints
+// - Logs sync results to sync_logs table for monitoring
 serve(async (req) => {
   const requestId = crypto.randomUUID().slice(0, 8)
   const fn = 'scheduled-sync'
