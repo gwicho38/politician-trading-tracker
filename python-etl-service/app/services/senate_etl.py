@@ -528,6 +528,7 @@ async def search_all_ptr_disclosures_playwright(
     return disclosures
 
 
+# TODO: Review this function
 async def parse_ptr_page_playwright(
     page,  # Playwright page object
     url: str,
@@ -646,6 +647,7 @@ async def parse_ptr_page_playwright(
     return transactions
 
 
+# TODO: Review this function
 async def process_disclosures_playwright(
     disclosures: List[Dict[str, Any]],
     supabase: Client,
@@ -753,6 +755,7 @@ async def process_disclosures_playwright(
     return total_transactions, errors
 
 
+# TODO: Review this function
 def parse_datatables_record(record: List, senator: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Parse a DataTables record from the EFD search results.
@@ -808,6 +811,7 @@ def parse_datatables_record(record: List, senator: Dict[str, Any]) -> Optional[D
         return None
 
 
+# TODO: Review this function
 async def fetch_senate_ptr_list_playwright(
     senators: List[Dict[str, Any]],
     lookback_days: int = 30,
@@ -862,6 +866,7 @@ async def fetch_senate_ptr_list_playwright(
     return matched_disclosures
 
 
+# TODO: Review this function
 async def parse_ptr_page(
     client: httpx.AsyncClient,
     url: str,
@@ -1012,6 +1017,7 @@ async def parse_ptr_page(
     return transactions
 
 
+# TODO: Review this function
 async def download_senate_pdf(
     client: httpx.AsyncClient,
     url: str,
@@ -1048,6 +1054,7 @@ async def download_senate_pdf(
     return None
 
 
+# TODO: Review this function
 async def process_senate_disclosure(
     client: httpx.AsyncClient,
     supabase: Client,
@@ -1104,6 +1111,7 @@ async def process_senate_disclosure(
 # =============================================================================
 
 
+# TODO: Review this function
 async def run_senate_etl(
     job_id: str,
     lookback_days: int = 30,
