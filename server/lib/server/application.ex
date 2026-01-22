@@ -46,8 +46,10 @@ defmodule Server.Application do
     opts = [strategy: :one_for_one, name: Server.Supervisor]
     result = Supervisor.start_link(children, opts)
 
-    # Register scheduled jobs after supervisor starts
-    register_jobs()
+    # Register scheduled jobs after supervisor starts (skip in test mode)
+    unless Application.get_env(:server, :skip_job_registration, false) do
+      register_jobs()
+    end
 
     result
   end

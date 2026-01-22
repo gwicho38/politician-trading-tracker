@@ -11,9 +11,9 @@ defmodule ServerWeb.HealthControllerTest do
   Note: These tests require a database connection.
   """
 
-  @moduletag :database
-
   use ServerWeb.ConnCase, async: true
+
+  @moduletag :database
 
   import Mox
 

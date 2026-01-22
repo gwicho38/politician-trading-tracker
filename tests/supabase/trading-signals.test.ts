@@ -5,6 +5,7 @@ import {
   assertEquals,
   assertExists,
   assertStringIncludes,
+  assertAlmostEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
 // ============================================================================
@@ -472,13 +473,13 @@ Deno.test("blendSignals - signals agree (confidence boosted)", () => {
   const agreeResult = blendSignals('buy', 0.70, 1, 0.80);
   assertEquals(agreeResult.mlEnhanced, true);
   // Confidence boosted by 1.1x: (0.70 * 0.6 + 0.80 * 0.4) * 1.1 = (0.42 + 0.32) * 1.1 = 0.814
-  assertEquals(agreeResult.confidence, 0.814);
+  assertAlmostEquals(agreeResult.confidence, 0.814, 0.0001);
 
   // Signals disagree: buy (1) != sell (-1)
   const disagreeResult = blendSignals('buy', 0.70, -1, 0.80);
   assertEquals(disagreeResult.mlEnhanced, true);
   // Confidence reduced by 0.85x: (0.70 * 0.6 + 0.80 * 0.4) * 0.85 = 0.74 * 0.85 = 0.629
-  assertEquals(disagreeResult.confidence, 0.629);
+  assertAlmostEquals(disagreeResult.confidence, 0.629, 0.0001);
 });
 
 // ============================================================================

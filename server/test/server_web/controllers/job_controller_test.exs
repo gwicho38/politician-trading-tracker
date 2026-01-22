@@ -12,9 +12,9 @@ defmodule ServerWeb.JobControllerTest do
   Note: These tests require a database connection.
   """
 
-  @moduletag :database
-
   use ServerWeb.ConnCase, async: false
+
+  @moduletag :database
 
   import Mox
 

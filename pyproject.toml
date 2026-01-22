@@ -134,12 +134,7 @@ ignore = ["E501"]  # Ignore line too long - handled by black formatter
 
 [tool.ruff.lint.per-file-ignores]
 # Ignore E402 (module level import not at top of file) in files that manipulate sys.path
-"server/politician_trading/models/__init__.py" = ["E402"]
-"server/*_*.py" = ["E402"]
-"tests/**/*.py" = ["E402"]
-# Ignore F401 (unused import) for optional dependency checks in try/except blocks
-"tests/integration/test_*.py" = ["F401"]
-"tests/manual/test_*.py" = ["F401"]
+"python-etl-service/**/*.py" = ["E402"]
 
 [tool.mypy]
 python_version = "3.9"
@@ -162,37 +157,30 @@ disable_error_code = ["import-untyped"]
 # Per-module overrides for gradual strictness adoption
 [[tool.mypy.overrides]]
 module = [
-    "politician_trading.scrapers.*",
-    "politician_trading.workflow",
-    "politician_trading.scheduler.*",
+    "python-etl-service.app.*",
 ]
 # These modules need cleanup before strict mode
 disallow_untyped_defs = false
 allow_untyped_calls = true
-
-[[tool.mypy.overrides]]
-module = "tests.*"
-# Tests can be more lenient
-disallow_untyped_defs = false
 
 [build-system]
 requires = ["setuptools>=65.0.0", "wheel>=0.40.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = { find = { where = ["server"] } }
+packages = { find = { where = ["python-etl-service"] } }
 include-package-data = true
 
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = [
     "--strict-markers",
-    "--cov=server/politician_trading",
+    "--cov=python-etl-service/app",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
 ]
-testpaths = ["tests"]
+testpaths = ["python-etl-service/tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -202,9 +190,5 @@ markers = [
     "unit: marks tests as unit tests",
 ]
 
-[project.scripts]
-politician-trading = "politician_trading.workflow:main"
-politician-trading-seed = "politician_trading.scripts.seed_database:main"
-politician-trading-signals = "politician_trading.signals.cli:main"
-politician-trading-trade = "politician_trading.trading.cli:main"
-ptt-analyze = "politician_trading.cli.analyze:main"
+# Scripts for deprecated politician_trading module have been removed
+# Python ETL service runs via: cd python-etl-service && uvicorn app.main:app

@@ -113,20 +113,8 @@ test-frontend: test-react
 # ============================================
 # Python Tests - All Python tests
 # ============================================
-test-python: test-python-server test-python-etl
+test-python: test-python-etl
 	@echo "✅ All Python tests completed!"
-
-# Server/Core Python tests (tests/ at root)
-test-python-server:
-	@echo "🐍 Running Python server/core tests..."
-	uv run pytest tests/ -v
-
-test-python-server-cov:
-	@echo "🐍 Running Python server tests with coverage..."
-	uv run pytest tests/ -v \
-		--cov=server/politician_trading \
-		--cov-report=term-missing \
-		--cov-report=html:coverage-html
 
 # ETL Service Python tests (python-etl-service/tests/)
 test-python-etl:
@@ -141,16 +129,28 @@ test-python-etl:
 
 test-etl: test-python-etl
 
-test-python-cov: test-python-server-cov
+test-python-cov: test-python-etl
+	@echo "🐍 Running Python ETL tests with coverage..."
+	@if [ -f python-etl-service/.venv/bin/pytest ]; then \
+		cd python-etl-service && .venv/bin/pytest tests/ -v \
+			--cov=app --cov-report=term-missing --cov-report=html:coverage-html; \
+	elif [ -f python-etl-service/venv/bin/pytest ]; then \
+		cd python-etl-service && venv/bin/pytest tests/ -v \
+			--cov=app --cov-report=term-missing --cov-report=html:coverage-html; \
+	else \
+		cd python-etl-service && python -m pytest tests/ -v \
+			--cov=app --cov-report=term-missing --cov-report=html:coverage-html; \
+	fi
 	@echo "✅ Python coverage report generated!"
 
 test-python-fast:
 	@echo "🐍 Running Python tests (fast mode)..."
-	uv run pytest tests/ -q --tb=short
 	@if [ -f python-etl-service/.venv/bin/pytest ]; then \
 		cd python-etl-service && .venv/bin/pytest tests/ -q --tb=short; \
 	elif [ -f python-etl-service/venv/bin/pytest ]; then \
 		cd python-etl-service && venv/bin/pytest tests/ -q --tb=short; \
+	else \
+		cd python-etl-service && python -m pytest tests/ -q --tb=short; \
 	fi
 
 # ============================================

@@ -18,10 +18,10 @@ defmodule Server.SchedulerTest do
   Note: These tests require a database connection.
   """
 
+  use Server.DataCase, async: false
+
   # All tests in this module require database
   @moduletag :database
-
-  use Server.DataCase, async: false
 
   alias Server.Scheduler
 
