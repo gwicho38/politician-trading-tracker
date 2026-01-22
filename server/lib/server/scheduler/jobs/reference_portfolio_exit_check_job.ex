@@ -15,17 +15,21 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioExitCheckJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "reference-portfolio-exit-check"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Reference Portfolio Exit Check"
 
   @impl true
   # Run every 5 minutes during US market hours (14:30-21:00 UTC = 9:30 AM-4:00 PM EST)
   # Cron: every 5 minutes (0,5,10,...,55) of hours 14-20 UTC, Monday-Friday
+  # TODO: Review this function
   def schedule, do: "*/5 14-20 * * 1-5"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[ReferencePortfolioExitCheckJob] Checking positions for exit triggers")
@@ -39,6 +43,7 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioExitCheckJob do
     end
   end
 
+  # TODO: Review this function
   defp check_exits do
     case Server.SupabaseClient.invoke("reference-portfolio",
            body: %{"action" => "check-exits"},
@@ -72,6 +77,7 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioExitCheckJob do
     end
   end
 
+  # TODO: Review this function
   # Quick check if we're likely in market hours (UTC-based)
   defp market_likely_open? do
     now = DateTime.utc_now()
@@ -82,6 +88,7 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioExitCheckJob do
     day_of_week >= 1 and day_of_week <= 5 and hour >= 14 and hour < 21
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

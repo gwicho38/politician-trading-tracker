@@ -7,6 +7,7 @@ defmodule ServerWeb.JobController do
 
   alias Server.Scheduler
 
+  # TODO: Review this function
   @doc """
   Lists all registered jobs with their status.
   GET /api/jobs
@@ -16,6 +17,7 @@ defmodule ServerWeb.JobController do
     json(conn, %{jobs: jobs})
   end
 
+  # TODO: Review this function
   @doc """
   Gets the status of a specific job.
   GET /api/jobs/:job_id
@@ -49,6 +51,7 @@ defmodule ServerWeb.JobController do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Manually triggers a job to run immediately.
   POST /api/jobs/:job_id/run
@@ -73,6 +76,7 @@ defmodule ServerWeb.JobController do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Gets the latest sync status across all data collection jobs.
   GET /api/jobs/sync-status
@@ -118,6 +122,7 @@ defmodule ServerWeb.JobController do
     })
   end
 
+  # TODO: Review this function
   @doc """
   Runs all jobs manually (async).
   POST /api/jobs/run-all

@@ -10,16 +10,20 @@ defmodule Server.Scheduler.Jobs.OrdersJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "orders-sync"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Orders Sync"
 
+  # TODO: Review this function
   @impl true
   # Every minute (testing)
   def schedule, do: "* * * * *"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[OrdersJob] Starting orders sync")
@@ -38,6 +42,7 @@ defmodule Server.Scheduler.Jobs.OrdersJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

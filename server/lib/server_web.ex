@@ -18,8 +18,10 @@ defmodule ServerWeb do
   All endpoints return JSON responses.
   """
 
+  # TODO: Review this function
   def static_paths, do: ~w(favicon.ico robots.txt)
 
+  # TODO: Review this function
   def router do
     quote do
       use Phoenix.Router, helpers: false
@@ -29,12 +31,14 @@ defmodule ServerWeb do
     end
   end
 
+  # TODO: Review this function
   def channel do
     quote do
       use Phoenix.Channel
     end
   end
 
+  # TODO: Review this function
   def controller do
     quote do
       use Phoenix.Controller, formats: [:json]
@@ -45,6 +49,7 @@ defmodule ServerWeb do
     end
   end
 
+  # TODO: Review this function
   def verified_routes do
     quote do
       use Phoenix.VerifiedRoutes,

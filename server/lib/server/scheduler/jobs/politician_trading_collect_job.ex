@@ -10,16 +10,20 @@ defmodule Server.Scheduler.Jobs.PoliticianTradingCollectJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "politician-trading-collect"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Politician Trading Collection"
 
+  # TODO: Review this function
   @impl true
   # Every minute (testing)
   def schedule, do: "* * * * *"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[PoliticianTradingCollectJob] Starting collection")
@@ -37,6 +41,7 @@ defmodule Server.Scheduler.Jobs.PoliticianTradingCollectJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

@@ -9,16 +9,20 @@ defmodule Server.Scheduler.Jobs.PoliticianTradingCaliforniaJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "politician-trading-california"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "California NetFile Disclosures"
 
+  # TODO: Review this function
   @impl true
   # Every minute (testing) - production: every 6 hours
   def schedule, do: "* * * * *"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[PoliticianTradingCaliforniaJob] Starting California collection")
@@ -39,6 +43,7 @@ defmodule Server.Scheduler.Jobs.PoliticianTradingCaliforniaJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

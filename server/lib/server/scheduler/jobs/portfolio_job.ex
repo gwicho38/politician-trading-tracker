@@ -10,16 +10,20 @@ defmodule Server.Scheduler.Jobs.PortfolioJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "portfolio-sync"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Portfolio Sync"
 
+  # TODO: Review this function
   @impl true
   # Every minute (testing)
   def schedule, do: "* * * * *"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[PortfolioJob] Starting portfolio sync")
@@ -36,6 +40,7 @@ defmodule Server.Scheduler.Jobs.PortfolioJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

@@ -11,17 +11,21 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioSyncJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "reference-portfolio-sync"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Reference Portfolio Position Sync"
 
   @impl true
   # Run every minute during US market hours (14:30-21:00 UTC = 9:30 AM-4:00 PM EST)
   # Cron: every minute of hours 14-20 UTC, Monday-Friday
+  # TODO: Review this function
   def schedule, do: "* 14-20 * * 1-5"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.debug("[ReferencePortfolioSyncJob] Syncing reference portfolio positions")
@@ -34,6 +38,7 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioSyncJob do
     end
   end
 
+  # TODO: Review this function
   defp sync_positions do
     case Server.SupabaseClient.invoke("reference-portfolio",
            body: %{"action" => "update-positions"},
@@ -65,6 +70,7 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioSyncJob do
     end
   end
 
+  # TODO: Review this function
   # Quick check if we're likely in market hours (UTC-based)
   defp market_likely_open? do
     now = DateTime.utc_now()
@@ -75,6 +81,7 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioSyncJob do
     day_of_week >= 1 and day_of_week <= 5 and hour >= 14 and hour < 21
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

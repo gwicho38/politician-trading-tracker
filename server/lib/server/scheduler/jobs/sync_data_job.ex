@@ -10,16 +10,20 @@ defmodule Server.Scheduler.Jobs.SyncDataJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "sync-data"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Data Sync"
 
+  # TODO: Review this function
   @impl true
   # Every minute (testing)
   def schedule, do: "* * * * *"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[SyncDataJob] Starting data sync")
@@ -36,6 +40,7 @@ defmodule Server.Scheduler.Jobs.SyncDataJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

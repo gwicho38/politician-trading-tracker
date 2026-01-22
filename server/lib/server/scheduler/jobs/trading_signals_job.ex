@@ -13,17 +13,21 @@ defmodule Server.Scheduler.Jobs.TradingSignalsJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "trading-signals"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Trading Signals Generation"
 
   @impl true
   # Hourly during market hours: 14:00-20:00 UTC (9 AM - 3 PM EST), Monday-Friday
   # This ensures fresh ML-enhanced signals for each trading window
+  # TODO: Review this function
   def schedule, do: "0 14-20 * * 1-5"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[TradingSignalsJob] Starting signal regeneration")
@@ -51,6 +55,7 @@ defmodule Server.Scheduler.Jobs.TradingSignalsJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

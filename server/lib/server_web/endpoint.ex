@@ -68,6 +68,7 @@ defmodule ServerWeb.Endpoint do
     "https://www.govmarket.trade"
   ]
 
+  # TODO: Review this function
   @doc false
   def cors_origin_allowed?(_conn, origin) do
     origin in @allowed_origins or

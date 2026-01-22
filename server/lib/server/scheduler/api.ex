@@ -14,6 +14,7 @@ defmodule Server.Scheduler.API do
 
   require Logger
 
+  # TODO: Review this function
   @doc """
   Registers a job module with the scheduler.
 
@@ -66,6 +67,7 @@ defmodule Server.Scheduler.API do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Registers multiple job modules at once.
   """
@@ -73,6 +75,7 @@ defmodule Server.Scheduler.API do
     Enum.map(modules, &register_job/1)
   end
 
+  # TODO: Review this function
   @doc """
   Runs a job immediately by its job_id.
 
@@ -98,6 +101,7 @@ defmodule Server.Scheduler.API do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Enables a job by its job_id.
   """
@@ -105,6 +109,7 @@ defmodule Server.Scheduler.API do
     update_job_enabled(job_id, true)
   end
 
+  # TODO: Review this function
   @doc """
   Disables a job by its job_id.
   """
@@ -112,6 +117,7 @@ defmodule Server.Scheduler.API do
     update_job_enabled(job_id, false)
   end
 
+  # TODO: Review this function
   @doc """
   Lists all registered jobs with their current status.
   """
@@ -133,6 +139,7 @@ defmodule Server.Scheduler.API do
     end)
   end
 
+  # TODO: Review this function
   @doc """
   Gets the status of a specific job.
   """
@@ -143,6 +150,7 @@ defmodule Server.Scheduler.API do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Gets recent executions for a job.
   """
@@ -154,6 +162,7 @@ defmodule Server.Scheduler.API do
     |> Repo.all()
   end
 
+  # TODO: Review this function
   # Private functions
 
   defp add_to_quantum(module) do
@@ -209,6 +218,7 @@ defmodule Server.Scheduler.API do
     end
   end
 
+  # TODO: Review this function
   defp execute_job_async(module) do
     Task.start(fn ->
       job_record = Repo.get_by(ScheduledJob, job_id: module.job_id())
@@ -219,6 +229,7 @@ defmodule Server.Scheduler.API do
     end)
   end
 
+  # TODO: Review this function
   defp execute_job(module, job_record) do
     job_id = job_record.job_id
     started_at = DateTime.utc_now()
@@ -294,6 +305,7 @@ defmodule Server.Scheduler.API do
     result
   end
 
+  # TODO: Review this function
   defp update_job_enabled(job_id, enabled) do
     case Repo.get_by(ScheduledJob, job_id: job_id) do
       nil ->

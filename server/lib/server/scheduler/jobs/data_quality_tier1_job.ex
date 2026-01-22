@@ -18,18 +18,23 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
   @job_id "data-quality-tier1"
   @supabase_base_url "https://uljsqvwkomdrlnofmlad.supabase.co"
 
+  # TODO: Review this function
   @impl true
   def job_id, do: @job_id
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Data Quality - Tier 1 (Hourly)"
 
+  # TODO: Review this function
   @impl true
   def schedule, do: "0 * * * *"
 
+  # TODO: Review this function
   @impl true
   def schedule_type, do: :cron
 
+  # TODO: Review this function
   @impl true
   def run do
     start_time = System.monotonic_time(:millisecond)
@@ -98,6 +103,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
   # CHECK: Required Fields
   # ============================================================================
 
+  # TODO: Review this function
   defp check_required_fields do
     Logger.debug("[DataQualityTier1] Checking required fields")
 
@@ -125,6 +131,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
     end
   end
 
+  # TODO: Review this function
   defp check_required_fields_via_rest do
     # Check for missing politician_id, transaction_date, and invalid amount ranges
     checks = [
@@ -160,6 +167,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
   # CHECK: ETL Freshness
   # ============================================================================
 
+  # TODO: Review this function
   defp check_etl_freshness do
     Logger.debug("[DataQualityTier1] Checking ETL job freshness")
 
@@ -212,6 +220,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
     end
   end
 
+  # TODO: Review this function
   defp stale_threshold do
     # Jobs not run in 12 hours
     DateTime.utc_now()
@@ -223,6 +232,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
   # CHECK: Orphaned Records
   # ============================================================================
 
+  # TODO: Review this function
   defp check_orphaned_records do
     Logger.debug("[DataQualityTier1] Checking for orphaned records")
 
@@ -274,6 +284,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
     end
   end
 
+  # TODO: Review this function
   defp check_orphaned_records_fallback(_service_key) do
     # Count disclosures where politician_id is set but doesn't match any politician
     # This is a simplified check using the REST API
@@ -284,6 +295,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
   # CHECK: Constraint Violations
   # ============================================================================
 
+  # TODO: Review this function
   defp check_constraints do
     Logger.debug("[DataQualityTier1] Checking constraint violations")
 
@@ -356,6 +368,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
     {:ok, future_issues ++ ancient_issues ++ extreme_issues}
   end
 
+  # TODO: Review this function
   defp tomorrow do
     Date.utc_today()
     |> Date.add(1)
@@ -366,6 +379,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
   # HELPERS
   # ============================================================================
 
+  # TODO: Review this function
   defp count_records_with_filter(table, filter) do
     case get_service_key() do
       {:ok, service_key} ->
@@ -407,6 +421,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
     end
   end
 
+  # TODO: Review this function
   defp call_supabase_rpc(function_name, params \\ %{}) do
     case get_service_key() do
       {:ok, service_key} ->
@@ -438,6 +453,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
     end
   end
 
+  # TODO: Review this function
   defp record_check_result(check_id, status, issue_count, issues, duration_ms) do
     case get_service_key() do
       {:ok, service_key} ->
@@ -471,6 +487,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
     end
   end
 
+  # TODO: Review this function
   defp send_critical_alert(issues) do
     # Call the email alerter (to be implemented)
     Logger.warning("[DataQualityTier1] Would send critical alert for #{length(issues)} issues")
@@ -481,6 +498,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
     end)
   end
 
+  # TODO: Review this function
   defp get_service_key do
     case Application.get_env(:server, :supabase_service_key) do
       nil -> {:error, :missing_service_key}
@@ -489,6 +507,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier1Job do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

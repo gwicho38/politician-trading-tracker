@@ -23,6 +23,7 @@ defmodule Server.DataQuality.EmailAlerter do
   # Public API
   # ============================================================================
 
+  # TODO: Review this function
   @doc """
   Sends an immediate alert for critical issues.
 
@@ -59,6 +60,7 @@ defmodule Server.DataQuality.EmailAlerter do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Queues an issue for the daily digest.
 
@@ -70,6 +72,7 @@ defmodule Server.DataQuality.EmailAlerter do
     DigestStore.add_issue(issue)
   end
 
+  # TODO: Review this function
   @doc """
   Sends the daily digest email with accumulated issues.
 
@@ -110,6 +113,7 @@ defmodule Server.DataQuality.EmailAlerter do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Sends a weekly summary report.
 
@@ -146,6 +150,7 @@ defmodule Server.DataQuality.EmailAlerter do
   # Email Rendering - Critical Alert
   # ============================================================================
 
+  # TODO: Review this function
   defp render_critical_email(issues) do
     issue_rows =
       issues
@@ -214,6 +219,7 @@ defmodule Server.DataQuality.EmailAlerter do
     """
   end
 
+  # TODO: Review this function
   defp render_critical_text(issues) do
     issue_lines =
       issues
@@ -245,6 +251,7 @@ defmodule Server.DataQuality.EmailAlerter do
   # Email Rendering - Daily Digest
   # ============================================================================
 
+  # TODO: Review this function
   defp render_digest_email(issues) do
     grouped = Enum.group_by(issues, fn i -> i[:severity] || :info end)
 
@@ -298,6 +305,7 @@ defmodule Server.DataQuality.EmailAlerter do
     """
   end
 
+  # TODO: Review this function
   defp render_severity_section(severity, items) do
     severity_str = normalize_severity(severity)
     color = severity_color(severity_str)
@@ -326,6 +334,7 @@ defmodule Server.DataQuality.EmailAlerter do
     """
   end
 
+  # TODO: Review this function
   defp render_digest_text(issues) do
     grouped = Enum.group_by(issues, fn i -> normalize_severity(i[:severity]) end)
 
@@ -374,6 +383,7 @@ defmodule Server.DataQuality.EmailAlerter do
   # Email Rendering - Weekly Summary
   # ============================================================================
 
+  # TODO: Review this function
   defp render_weekly_email(summary) do
     """
     <!DOCTYPE html>
@@ -434,6 +444,7 @@ defmodule Server.DataQuality.EmailAlerter do
     """
   end
 
+  # TODO: Review this function
   defp render_weekly_sections(summary) do
     sections = []
 
@@ -485,6 +496,7 @@ defmodule Server.DataQuality.EmailAlerter do
     Enum.join(sections, "\n")
   end
 
+  # TODO: Review this function
   defp render_weekly_text(summary) do
     """
     WEEKLY DATA QUALITY REPORT
@@ -509,6 +521,7 @@ defmodule Server.DataQuality.EmailAlerter do
     """
   end
 
+  # TODO: Review this function
   defp render_weekly_text_sections(summary) do
     sections = []
 
@@ -565,34 +578,46 @@ defmodule Server.DataQuality.EmailAlerter do
   # Helpers
   # ============================================================================
 
+  # TODO: Review this function
   defp email_enabled? do
     Application.get_env(:server, :email_enabled, false)
   end
 
+  # TODO: Review this function
   defp from_email do
     Application.get_env(:server, :email_from, "alerts@politiciantrading.app")
   end
 
+  # TODO: Review this function
   defp admin_email do
     Application.get_env(:server, :email_admin, "admin@politiciantrading.app")
   end
 
+  # TODO: Review this function
   defp app_name, do: "Politician Trading Tracker"
 
+  # TODO: Review this function
   defp normalize_severity(severity) when is_atom(severity), do: to_string(severity)
   defp normalize_severity(severity) when is_binary(severity), do: severity
+  # TODO: Review this function
   defp normalize_severity(_), do: "info"
 
+  # TODO: Review this function
   defp severity_color("critical"), do: "#dc2626"
   defp severity_color("warning"), do: "#f59e0b"
+  # TODO: Review this function
   defp severity_color(_), do: "#3b82f6"
 
+  # TODO: Review this function
   defp severity_icon("critical"), do: "🔴"
   defp severity_icon("warning"), do: "🟡"
+  # TODO: Review this function
   defp severity_icon(_), do: "🔵"
 
+  # TODO: Review this function
   defp escape_html(nil), do: ""
 
+  # TODO: Review this function
   defp escape_html(text) when is_binary(text) do
     text
     |> String.replace("&", "&amp;")
@@ -601,8 +626,10 @@ defmodule Server.DataQuality.EmailAlerter do
     |> String.replace("\"", "&quot;")
   end
 
+  # TODO: Review this function
   defp escape_html(other), do: escape_html(to_string(other))
 
+  # TODO: Review this function
   defp log_email_sent(alert_type, issue_count) do
     case get_service_key() do
       {:ok, service_key} ->
@@ -632,6 +659,7 @@ defmodule Server.DataQuality.EmailAlerter do
     end
   end
 
+  # TODO: Review this function
   defp get_service_key do
     case Application.get_env(:server, :supabase_service_key) do
       nil -> {:error, :missing_service_key}

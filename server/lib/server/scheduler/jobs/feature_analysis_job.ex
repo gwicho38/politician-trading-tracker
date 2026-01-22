@@ -15,16 +15,20 @@ defmodule Server.Scheduler.Jobs.FeatureAnalysisJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "feature-analysis"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Feature Importance Analysis"
 
+  # TODO: Review this function
   @impl true
   # Run weekly on Sunday at 2 AM UTC
   def schedule, do: "0 2 * * 0"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[FeatureAnalysisJob] Analyzing feature importance from trade outcomes")
@@ -71,6 +75,7 @@ defmodule Server.Scheduler.Jobs.FeatureAnalysisJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

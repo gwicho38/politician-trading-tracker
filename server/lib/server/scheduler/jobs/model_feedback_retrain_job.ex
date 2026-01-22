@@ -16,16 +16,20 @@ defmodule Server.Scheduler.Jobs.ModelFeedbackRetrainJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "model-feedback-retrain"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "ML Model Feedback Retraining"
 
+  # TODO: Review this function
   @impl true
   # Run monthly on the 1st at 3 AM UTC
   def schedule, do: "0 3 1 * *"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[ModelFeedbackRetrainJob] Starting outcome-based model retraining")
@@ -83,6 +87,7 @@ defmodule Server.Scheduler.Jobs.ModelFeedbackRetrainJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

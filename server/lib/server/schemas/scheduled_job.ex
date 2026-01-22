@@ -35,6 +35,7 @@ defmodule Server.Schemas.ScheduledJob do
                       next_scheduled_run consecutive_failures max_consecutive_failures
                       auto_retry_on_startup metadata)a
 
+  # TODO: Review this function
   def changeset(job, attrs) do
     job
     |> cast(attrs, @required_fields ++ @optional_fields)
@@ -43,6 +44,7 @@ defmodule Server.Schemas.ScheduledJob do
     |> unique_constraint(:job_id)
   end
 
+  # TODO: Review this function
   def update_execution_changeset(job, attrs) do
     job
     |> cast(attrs, [

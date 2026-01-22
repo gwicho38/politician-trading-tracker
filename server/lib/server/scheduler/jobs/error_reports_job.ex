@@ -16,16 +16,20 @@ defmodule Server.Scheduler.Jobs.ErrorReportsJob do
   @etl_service_url "https://politician-trading-etl.fly.dev"
   @supabase_base_url "https://uljsqvwkomdrlnofmlad.supabase.co"
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "error-reports"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Error Report Processing (Ollama)"
 
+  # TODO: Review this function
   @impl true
   # Run every 4 hours
   def schedule, do: "0 */4 * * *"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[ErrorReportsJob] Starting error report processing")
@@ -46,6 +50,7 @@ defmodule Server.Scheduler.Jobs.ErrorReportsJob do
     end
   end
 
+  # TODO: Review this function
   defp count_pending_reports do
     case get_service_key() do
       {:ok, service_key} ->
@@ -87,6 +92,7 @@ defmodule Server.Scheduler.Jobs.ErrorReportsJob do
     end
   end
 
+  # TODO: Review this function
   defp process_reports do
     url = "#{@etl_service_url}/error-reports/process"
 
@@ -131,6 +137,7 @@ defmodule Server.Scheduler.Jobs.ErrorReportsJob do
     end
   end
 
+  # TODO: Review this function
   defp get_service_key do
     case Application.get_env(:server, :supabase_service_key) do
       nil -> {:error, :missing_service_key}
@@ -139,6 +146,7 @@ defmodule Server.Scheduler.Jobs.ErrorReportsJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

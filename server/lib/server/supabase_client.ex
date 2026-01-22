@@ -11,6 +11,7 @@ defmodule Server.SupabaseClient do
   @base_url "https://uljsqvwkomdrlnofmlad.supabase.co/functions/v1"
   @timeout 30_000
 
+  # TODO: Review this function
   @doc """
   Invokes a Supabase Edge Function by name.
 
@@ -63,6 +64,7 @@ defmodule Server.SupabaseClient do
     end
   end
 
+  # TODO: Review this function
   defp do_request(method, url, body, service_key, timeout) do
     headers = [
       {"Authorization", "Bearer #{service_key}"},
@@ -92,10 +94,12 @@ defmodule Server.SupabaseClient do
     end
   end
 
+  # TODO: Review this function
   defp parse_response(body) when byte_size(body) == 0 do
     {:ok, %{}}
   end
 
+  # TODO: Review this function
   defp parse_response(body) do
     case Jason.decode(body) do
       {:ok, parsed} -> {:ok, parsed}
@@ -103,6 +107,7 @@ defmodule Server.SupabaseClient do
     end
   end
 
+  # TODO: Review this function
   defp get_service_key do
     case Application.get_env(:server, :supabase_service_key) do
       nil -> {:error, :missing_service_key}

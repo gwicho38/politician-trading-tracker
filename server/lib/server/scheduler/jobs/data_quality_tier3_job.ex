@@ -18,19 +18,24 @@ defmodule Server.Scheduler.Jobs.DataQualityTier3Job do
   @supabase_base_url "https://uljsqvwkomdrlnofmlad.supabase.co"
   @etl_service_url "https://politician-trading-etl.fly.dev"
 
+  # TODO: Review this function
   @impl true
   def job_id, do: @job_id
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Data Quality - Tier 3 (Weekly)"
 
+  # TODO: Review this function
   @impl true
   # Every Sunday at 4 AM UTC
   def schedule, do: "0 4 * * 0"
 
+  # TODO: Review this function
   @impl true
   def schedule_type, do: :cron
 
+  # TODO: Review this function
   @impl true
   def run do
     start_time = System.monotonic_time(:millisecond)
@@ -85,6 +90,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier3Job do
     {:ok, %{issues: length(all_issues), duration_ms: total_duration}}
   end
 
+  # TODO: Review this function
   defp status_for_issues([]), do: "passed"
   defp status_for_issues(issues) do
     if Enum.any?(issues, &(&1.severity == :critical)), do: "failed", else: "warning"
@@ -94,6 +100,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier3Job do
   # CHECK: Source Accuracy Audit
   # ============================================================================
 
+  # TODO: Review this function
   defp audit_source_accuracy do
     Logger.debug("[DataQualityTier3] Auditing source accuracy")
 
@@ -175,6 +182,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier3Job do
   # CHECK: Signal Backtesting
   # ============================================================================
 
+  # TODO: Review this function
   defp backtest_signal_accuracy do
     Logger.debug("[DataQualityTier3] Backtesting signal accuracy")
 
@@ -236,6 +244,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier3Job do
     end
   end
 
+  # TODO: Review this function
   defp backtest_signals_fallback(service_key) do
     # Simplified: just count signals from last 30 days
     url =
@@ -291,6 +300,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier3Job do
   # CHECK: User Report Triage
   # ============================================================================
 
+  # TODO: Review this function
   defp triage_user_reports do
     Logger.debug("[DataQualityTier3] Triaging user error reports")
 
@@ -359,6 +369,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier3Job do
     end
   end
 
+  # TODO: Review this function
   defp mark_reports_reviewed(service_key, report_ids) when length(report_ids) > 0 do
     url = "#{@supabase_base_url}/rest/v1/user_error_reports"
 
@@ -380,12 +391,14 @@ defmodule Server.Scheduler.Jobs.DataQualityTier3Job do
     :ok
   end
 
+  # TODO: Review this function
   defp mark_reports_reviewed(_, _), do: :ok
 
   # ============================================================================
   # WEEKLY SUMMARY
   # ============================================================================
 
+  # TODO: Review this function
   defp generate_weekly_summary(issues) do
     Logger.info("[DataQualityTier3] Generating weekly summary")
 
@@ -412,6 +425,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier3Job do
     end
   end
 
+  # TODO: Review this function
   defp get_weekly_metrics do
     case get_service_key() do
       {:ok, service_key} ->
@@ -457,6 +471,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier3Job do
     end
   end
 
+  # TODO: Review this function
   defp store_weekly_summary(summary) do
     case get_service_key() do
       {:ok, service_key} ->
@@ -491,16 +506,19 @@ defmodule Server.Scheduler.Jobs.DataQualityTier3Job do
   # HELPERS
   # ============================================================================
 
+  # TODO: Review this function
   defp days_ago(days) do
     Date.utc_today()
     |> Date.add(-days)
     |> Date.to_iso8601()
   end
 
+  # TODO: Review this function
   defp week_number do
     Date.utc_today() |> Date.day_of_year() |> div(7) |> Kernel.+(1)
   end
 
+  # TODO: Review this function
   defp record_check_result(check_id, status, issue_count, issues, duration_ms) do
     case get_service_key() do
       {:ok, service_key} ->
@@ -534,6 +552,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier3Job do
     end
   end
 
+  # TODO: Review this function
   defp get_service_key do
     case Application.get_env(:server, :supabase_service_key) do
       nil -> {:error, :missing_service_key}
@@ -542,6 +561,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier3Job do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

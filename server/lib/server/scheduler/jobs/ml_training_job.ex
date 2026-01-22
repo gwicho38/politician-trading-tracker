@@ -15,16 +15,20 @@ defmodule Server.Scheduler.Jobs.MlTrainingJob do
 
   @etl_service_url "https://politician-trading-etl.fly.dev"
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "ml-training"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "ML Model Training"
 
+  # TODO: Review this function
   @impl true
   # Run weekly on Sunday at 2 AM UTC
   def schedule, do: "0 2 * * 0"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[MlTrainingJob] Triggering ML model training")
@@ -41,6 +45,7 @@ defmodule Server.Scheduler.Jobs.MlTrainingJob do
     end
   end
 
+  # TODO: Review this function
   defp trigger_training do
     url = "#{@etl_service_url}/ml/train"
 
@@ -85,6 +90,7 @@ defmodule Server.Scheduler.Jobs.MlTrainingJob do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Manually trigger training (useful for testing or on-demand retraining).
   """
@@ -120,6 +126,7 @@ defmodule Server.Scheduler.Jobs.MlTrainingJob do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Check training job status.
   """
@@ -145,6 +152,7 @@ defmodule Server.Scheduler.Jobs.MlTrainingJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

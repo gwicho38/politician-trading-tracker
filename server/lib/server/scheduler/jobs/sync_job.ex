@@ -10,16 +10,20 @@ defmodule Server.Scheduler.Jobs.SyncJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "scheduled-sync"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Scheduled Sync"
 
+  # TODO: Review this function
   @impl true
   # Every minute (testing)
   def schedule, do: "* * * * *"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[SyncJob] Starting scheduled sync (quick mode)")
@@ -36,6 +40,7 @@ defmodule Server.Scheduler.Jobs.SyncJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{
