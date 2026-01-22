@@ -4,15 +4,19 @@ Last tested: 2026-01-21
 
 ## Test Results Summary
 
-| Suite          | Passed | Failed | Status         |
-|----------------|--------|--------|----------------|
-| React (Vitest) | 106    | 0      | ✅             |
-| Python ETL     | 729    | 20     | ⚠️             |
-| Python Server  | -      | -      | ❌ Setup issue |
-| Elixir         | -      | -      | ❌ DB required |
-| Edge Functions | 363    | 3      | ⚠️             |
+| Suite              | Passed | Failed | Status         |
+|--------------------|--------|--------|----------------|
+| React (Vitest)     | 106    | 0      | ✅             |
+| Python ETL         | 729    | 20     | ⚠️             |
+| Elixir             | 28     | 0      | ✅ (36 excluded) |
+| Edge Functions     | 387    | 3      | ⚠️             |
+| Playwright E2E     | ~500   | ~50    | ⚠️ Some failures |
+| tests/supabase     | 104    | 0      | ✅             |
 
-**Total working tests: 1,198 passing**
+**Total working tests: ~1,854 passing**
+
+> **Note:** Python Server tests were removed (legacy tests for deprecated `politician_trading` module).
+> Python tests now only run via `make test-python-etl` for the ETL service.
 
 ---
 
@@ -88,72 +92,32 @@ Review `app/lib/parser.py` and ensure `parse_value_range()` returns proper numer
 
 ---
 
-## Python Server Tests
-
-**Status: ❌ Cannot run - module import errors**
-
-```bash
-make test-python-server
-```
-
-### Issue
-
-The `tests/` directory at the project root contains tests that import from `politician_trading` module:
-
-```python
-from politician_trading.trading.alpaca_client import AlpacaTradingClient
-from politician_trading.config import WorkflowConfig
-```
-
-However, this module is located in a deprecated location:
-```
-resources/deprecated/python-micro-service/politician_trading/
-```
-
-The `pyproject.toml` has:
-```toml
-[tool.setuptools]
-packages = { find = { where = ["server"] } }
-```
-
-But `server/` is the Elixir Phoenix server, not a Python package.
-
-### Fix Required
-
-1. Either move/restore the `politician_trading` Python package to a proper location
-2. Or update the tests to use the correct import paths
-3. Or remove these legacy tests if they're no longer needed
-
----
-
 ## Elixir Tests
 
-**Status: ❌ Cannot run - database required**
+**Status: ✅ Passing (28 tests, 36 excluded)**
 
 ```bash
 make test-elixir
 ```
 
-### Issue
+### What's Tested
 
-The Elixir tests require a PostgreSQL database connection with the proper schema. When running tests, the application tries to start and query the `scheduled_jobs` table:
+- Health controller endpoints
+- ML controller endpoints
+- Job controller endpoints
+- Supabase client functionality
+- Scheduler delegation
 
-```
-** (Postgrex.Error) ERROR 42P01 (undefined_table) relation "scheduled_jobs" does not exist
-```
+### Excluded Tests
 
-### Prerequisites
+36 tests are excluded because they require a database connection:
+- Tests tagged with `@moduletag :database`
+- These test scheduler jobs, database aggregations, etc.
 
+To run database tests, you would need:
 1. PostgreSQL database running on `localhost:5432`
-2. Database created with proper migrations applied
-3. Environment variables configured in `server/.env`
-
-### Fix Required
-
-Either:
-1. Set up a local test database with migrations
-2. Or configure tests to use the production Supabase database (not recommended)
-3. Or mock the database layer for unit tests
+2. Database `server_test` created
+3. Migrations applied: `cd server && mix ecto.migrate`
 
 ---
 
@@ -223,6 +187,70 @@ assertAlmostEquals(calculateRecommendedWeight(-0.5), 0.05, 0.0001);
 
 ---
 
+## Playwright E2E Tests
+
+**Status: ⚠️ Running with some failures**
+
+```bash
+cd client && npm run test:e2e
+```
+
+### Setup Required
+
+Before running tests, install Playwright browsers:
+
+```bash
+cd client && npx playwright install
+```
+
+### Test Files
+
+23+ E2E test files in `client/e2e/`:
+- `admin.spec.ts`, `auth.spec.ts`, `dashboard.spec.ts`
+- `alpaca-trading.spec.ts`, `orders.spec.ts`, `portfolio.spec.ts`
+- `trading-signals.spec.ts`, `filings-view.spec.ts`, etc.
+
+### Current Status
+
+- Server auto-starts via `playwright.config.ts` webServer config
+- ~500 tests passing, ~50 failing
+- Failing tests are likely due to missing test data or API mocking issues
+
+### Running Tests
+
+```bash
+# Run all E2E tests
+cd client && npm run test:e2e
+
+# Run specific test file
+npm run test:e2e -- e2e/index.spec.ts
+
+# Run with UI for debugging
+npm run test:e2e:ui
+```
+
+---
+
+## tests/supabase TypeScript Tests
+
+**Status: ✅ All passing**
+
+```bash
+deno test tests/supabase/*.test.ts
+```
+
+### Test Files
+
+4 test files in `tests/supabase/`:
+- `alpaca-account.test.ts` (circuit breaker tests)
+- `orders.test.ts` (order validation tests)
+- `sync-data.test.ts` (data sync tests)
+- `trading-signals.test.ts` (signal generation tests)
+
+All 104 tests passing.
+
+---
+
 ## How to Run All Tests
 
 ```bash
@@ -232,9 +260,15 @@ make test
 # Run individual test suites
 make test-react        # React/Vitest
 make test-python-etl   # Python ETL service
-make test-python-server # Python server (currently broken)
 make test-elixir       # Elixir (requires DB)
 make test-edge         # Deno Edge Functions
+
+# Playwright E2E (install browsers first)
+cd client && npx playwright install
+cd client && npm run test:e2e
+
+# tests/supabase
+deno test tests/supabase/*.test.ts
 
 # Get test summary
 make test-summary
@@ -246,5 +280,5 @@ make test-summary
 
 1. **High:** Fix `parse_value_range()` in Python ETL (affects 20 tests)
 2. **Medium:** Fix 3 Edge Function test assertions
-3. **Low:** Resolve Python server module structure or remove legacy tests
-4. **Low:** Set up Elixir test database or add mocking
+3. **Medium:** Fix ~50 failing Playwright E2E tests (likely API mocking issues)
+4. **Low:** Set up local PostgreSQL for Elixir database tests (36 excluded)

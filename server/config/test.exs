@@ -37,3 +37,6 @@ config :logger, level: :warning
 
 # Runtime plug initialization for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
+
+# Skip job registration during tests (avoids database queries on startup)
+config :server, skip_job_registration: true

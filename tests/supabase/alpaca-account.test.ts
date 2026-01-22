@@ -56,7 +56,7 @@ Deno.test("Circuit Breaker - blocks requests when open", () => {
   const circuitBreaker = {
     failures: 5,
     lastFailure: Date.now(),
-    state: 'open' as const,
+    state: 'open' as 'closed' | 'open' | 'half-open',
     lastSuccess: Date.now() - 60000,
   };
 

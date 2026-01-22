@@ -20,22 +20,11 @@ tests/
 │   │   └── useSupabaseData.test.tsx
 │   └── lib/                         # Utility library tests
 │       └── fetchWithRetry.test.ts
-├── supabase/                        # Edge Function tests
-│   ├── trading-signals.test.ts
-│   ├── sync-data.test.ts
-│   ├── alpaca-account.test.ts
-│   └── orders.test.ts
-├── integration/                     # Cross-service integration tests
-│   └── test_database_aggregations.py
-├── unit/                           # Python unit tests
-│   ├── test_signal_generator.py
-│   ├── test_alpaca_client.py
-│   └── ...
-├── pipeline/                       # ETL pipeline tests
-│   └── test_pipeline_e2e.py
-├── fixtures/                       # Test data fixtures
-│   └── test_data.py
-└── __init__.py                     # Python test package
+└── supabase/                        # Edge Function tests
+    ├── trading-signals.test.ts
+    ├── sync-data.test.ts
+    ├── alpaca-account.test.ts
+    └── orders.test.ts
 
 python-etl-service/tests/           # ETL service specific tests
 ├── test_base_etl.py
@@ -59,23 +48,11 @@ python-etl-service/tests/           # ETL service specific tests
 # React tests
 cd client && npm run test
 
-# Python tests (with virtual env)
+# Python ETL tests
 cd python-etl-service && source venv/bin/activate && python -m pytest
 
-# Supabase tests
+# Supabase edge function tests
 deno test tests/supabase/*.test.ts
-```
-
-### Specific Test Categories
-```bash
-# React component tests
-cd client && npm run test tests/client/components/
-
-# Python unit tests
-cd python-etl-service && python -m pytest tests/unit/
-
-# Integration tests
-cd python-etl-service && python -m pytest tests/integration/
 ```
 
 ## Test Organization Principles

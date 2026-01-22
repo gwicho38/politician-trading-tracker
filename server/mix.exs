@@ -66,7 +66,10 @@ defmodule Server.MixProject do
       # Email (Swoosh with Resend adapter)
       {:swoosh, "~> 1.16"},
       {:hackney, "~> 1.9"},
-      {:req, "~> 0.5"}
+      {:req, "~> 0.5"},
+
+      # Test dependencies
+      {:mox, "~> 1.0", only: :test}
     ]
   end
 
