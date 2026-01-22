@@ -18,18 +18,23 @@ defmodule Server.Scheduler.Jobs.DataQualityTier2Job do
   @supabase_base_url "https://uljsqvwkomdrlnofmlad.supabase.co"
   @etl_service_url "https://politician-trading-etl.fly.dev"
 
+  # TODO: Review this function
   @impl true
   def job_id, do: @job_id
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Data Quality - Tier 2 (Daily)"
 
+  # TODO: Review this function
   @impl true
   def schedule, do: "0 3 * * *"
 
+  # TODO: Review this function
   @impl true
   def schedule_type, do: :cron
 
+  # TODO: Review this function
   @impl true
   def run do
     start_time = System.monotonic_time(:millisecond)
@@ -86,6 +91,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier2Job do
     {:ok, %{issues: length(all_issues), duration_ms: total_duration}}
   end
 
+  # TODO: Review this function
   defp status_for_issues([]), do: "passed"
   defp status_for_issues(issues) do
     if Enum.any?(issues, &(&1.severity == :critical)), do: "failed", else: "warning"
@@ -95,6 +101,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier2Job do
   # CHECK: Cross-Source Reconciliation
   # ============================================================================
 
+  # TODO: Review this function
   defp check_cross_source_reconciliation do
     Logger.debug("[DataQualityTier2] Checking cross-source reconciliation")
 
@@ -155,6 +162,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier2Job do
     end
   end
 
+  # TODO: Review this function
   defp check_cross_source_fallback(service_key) do
     # Simplified fallback: count records with same politician+ticker+date but different sources
     url =
@@ -211,6 +219,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier2Job do
   # CHECK: Statistical Anomalies
   # ============================================================================
 
+  # TODO: Review this function
   defp check_statistical_anomalies do
     Logger.debug("[DataQualityTier2] Checking statistical anomalies")
 
@@ -265,6 +274,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier2Job do
     end
   end
 
+  # TODO: Review this function
   defp check_anomalies_simple(service_key) do
     # Simple check: flag days with more than 5x average volume
     # Get recent daily counts
@@ -329,6 +339,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier2Job do
   # CHECK: Ticker Validation
   # ============================================================================
 
+  # TODO: Review this function
   defp check_ticker_validation do
     Logger.debug("[DataQualityTier2] Validating tickers via ETL service")
 
@@ -401,12 +412,14 @@ defmodule Server.Scheduler.Jobs.DataQualityTier2Job do
   # HELPERS
   # ============================================================================
 
+  # TODO: Review this function
   defp days_ago(days) do
     Date.utc_today()
     |> Date.add(-days)
     |> Date.to_iso8601()
   end
 
+  # TODO: Review this function
   defp record_check_result(check_id, status, issue_count, issues, duration_ms) do
     case get_service_key() do
       {:ok, service_key} ->
@@ -440,6 +453,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier2Job do
     end
   end
 
+  # TODO: Review this function
   defp store_issues_for_digest(issues) do
     # Store issues in data_quality_issues table for daily digest
     case get_service_key() do
@@ -486,6 +500,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier2Job do
     end
   end
 
+  # TODO: Review this function
   defp get_service_key do
     case Application.get_env(:server, :supabase_service_key) do
       nil -> {:error, :missing_service_key}
@@ -494,6 +509,7 @@ defmodule Server.Scheduler.Jobs.DataQualityTier2Job do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

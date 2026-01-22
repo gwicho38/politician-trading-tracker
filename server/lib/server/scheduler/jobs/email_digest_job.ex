@@ -14,18 +14,23 @@ defmodule Server.Scheduler.Jobs.EmailDigestJob do
 
   @job_id "email-digest"
 
+  # TODO: Review this function
   @impl true
   def job_id, do: @job_id
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Email Digest (Daily)"
 
+  # TODO: Review this function
   @impl true
   def schedule, do: "0 8 * * *"
 
+  # TODO: Review this function
   @impl true
   def schedule_type, do: :cron
 
+  # TODO: Review this function
   @impl true
   def run do
     start_time = System.monotonic_time(:millisecond)
@@ -51,6 +56,7 @@ defmodule Server.Scheduler.Jobs.EmailDigestJob do
     result
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

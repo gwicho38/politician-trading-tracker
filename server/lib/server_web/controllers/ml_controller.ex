@@ -12,6 +12,7 @@ defmodule ServerWeb.MlController do
 
   @etl_service_url "https://politician-trading-etl.fly.dev"
 
+  # TODO: Review this function
   @doc """
   Get ML prediction for a ticker's features.
   POST /api/ml/predict
@@ -43,6 +44,7 @@ defmodule ServerWeb.MlController do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Batch prediction for multiple tickers.
   POST /api/ml/batch-predict
@@ -72,6 +74,7 @@ defmodule ServerWeb.MlController do
     end
   end
 
+  # TODO: Review this function
   @doc """
   List trained models.
   GET /api/ml/models
@@ -90,6 +93,7 @@ defmodule ServerWeb.MlController do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Get the active model's info.
   GET /api/ml/models/active
@@ -111,6 +115,7 @@ defmodule ServerWeb.MlController do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Get model details.
   GET /api/ml/models/:model_id
@@ -132,6 +137,7 @@ defmodule ServerWeb.MlController do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Get feature importance for a model.
   GET /api/ml/models/:model_id/feature-importance
@@ -153,6 +159,7 @@ defmodule ServerWeb.MlController do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Trigger model training.
   POST /api/ml/train
@@ -174,6 +181,7 @@ defmodule ServerWeb.MlController do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Get training job status.
   GET /api/ml/train/:job_id
@@ -195,6 +203,7 @@ defmodule ServerWeb.MlController do
     end
   end
 
+  # TODO: Review this function
   @doc """
   ML service health check.
   GET /api/ml/health
@@ -215,16 +224,19 @@ defmodule ServerWeb.MlController do
   # Private HTTP Helpers
   # ============================================================================
 
+  # TODO: Review this function
   defp call_etl_predict(features, use_cache) do
     body = Jason.encode!(%{features: features, use_cache: use_cache})
     call_etl_post("/ml/predict", body, raw: true)
   end
 
+  # TODO: Review this function
   defp call_etl_batch_predict(tickers, use_cache) do
     body = Jason.encode!(%{tickers: tickers, use_cache: use_cache})
     call_etl_post("/ml/batch-predict", body, raw: true)
   end
 
+  # TODO: Review this function
   defp call_etl_get(path) do
     url = "#{@etl_service_url}#{path}"
 
@@ -247,12 +259,15 @@ defmodule ServerWeb.MlController do
     end
   end
 
+  # TODO: Review this function
   defp call_etl_post(path, body, opts \\ [])
 
+  # TODO: Review this function
   defp call_etl_post(path, body, opts) when is_map(body) do
     call_etl_post(path, Jason.encode!(body), opts)
   end
 
+  # TODO: Review this function
   defp call_etl_post(path, body, _opts) when is_binary(body) do
     url = "#{@etl_service_url}#{path}"
 

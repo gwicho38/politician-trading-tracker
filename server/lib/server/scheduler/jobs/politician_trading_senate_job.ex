@@ -15,16 +15,20 @@ defmodule Server.Scheduler.Jobs.PoliticianTradingSenateJob do
 
   @etl_service_url "https://politician-trading-etl.fly.dev"
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "politician-trading-senate"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "US Senate Disclosures (ETL)"
 
+  # TODO: Review this function
   @impl true
   # Every 6 hours (same as House)
   def schedule, do: "0 */6 * * *"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[PoliticianTradingSenateJob] Triggering Python ETL service")
@@ -40,6 +44,7 @@ defmodule Server.Scheduler.Jobs.PoliticianTradingSenateJob do
     end
   end
 
+  # TODO: Review this function
   defp trigger_etl do
     url = "#{@etl_service_url}/etl/trigger"
 
@@ -83,6 +88,7 @@ defmodule Server.Scheduler.Jobs.PoliticianTradingSenateJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

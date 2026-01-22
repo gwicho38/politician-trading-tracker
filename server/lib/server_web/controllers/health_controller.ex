@@ -5,6 +5,7 @@ defmodule ServerWeb.HealthController do
 
   use ServerWeb, :controller
 
+  # TODO: Review this function
   @doc """
   Basic liveness check - returns 200 if the server is running.
 
@@ -14,6 +15,7 @@ defmodule ServerWeb.HealthController do
     json(conn, %{status: "ok", version: Server.version()})
   end
 
+  # TODO: Review this function
   @doc """
   Readiness check - verifies database connectivity.
 

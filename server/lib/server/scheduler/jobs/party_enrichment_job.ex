@@ -14,16 +14,20 @@ defmodule Server.Scheduler.Jobs.PartyEnrichmentJob do
 
   @etl_service_url "https://politician-trading-etl.fly.dev"
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "party-enrichment"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Party Data Enrichment (Ollama)"
 
+  # TODO: Review this function
   @impl true
   # Run daily at 3 AM UTC
   def schedule, do: "0 3 * * *"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[PartyEnrichmentJob] Triggering party enrichment service")
@@ -39,6 +43,7 @@ defmodule Server.Scheduler.Jobs.PartyEnrichmentJob do
     end
   end
 
+  # TODO: Review this function
   defp trigger_enrichment do
     url = "#{@etl_service_url}/enrichment/trigger"
 
@@ -78,6 +83,7 @@ defmodule Server.Scheduler.Jobs.PartyEnrichmentJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

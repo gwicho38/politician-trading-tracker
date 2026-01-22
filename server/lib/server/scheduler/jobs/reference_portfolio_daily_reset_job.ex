@@ -14,16 +14,20 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioDailyResetJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "reference-portfolio-daily-reset"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Reference Portfolio Daily Reset"
 
+  # TODO: Review this function
   @impl true
   # Run at 2:30 PM UTC (9:30 AM EST) - market open, Monday-Friday
   def schedule, do: "30 14 * * 1-5"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[ReferencePortfolioDailyResetJob] Resetting daily trading counters")
@@ -46,6 +50,7 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioDailyResetJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

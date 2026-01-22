@@ -67,6 +67,7 @@ rate_limiter = RateLimiter()
 # =============================================================================
 
 
+# TODO: Review this function
 async def fetch_senators_from_xml() -> List[Dict[str, Any]]:
     """
     Fetch current senators from the official Senate.gov XML feed.
@@ -116,6 +117,7 @@ async def fetch_senators_from_xml() -> List[Dict[str, Any]]:
     return senators
 
 
+# TODO: Review this function
 def upsert_senator_to_db(supabase: Client, senator: Dict[str, Any]) -> Optional[str]:
     """
     Upsert a senator to the politicians table.
@@ -161,6 +163,7 @@ def upsert_senator_to_db(supabase: Client, senator: Dict[str, Any]) -> Optional[
     return None
 
 
+# TODO: Review this function
 def _upsert_senator_by_name(supabase: Client, senator: Dict[str, Any]) -> Optional[str]:
     """Fallback: upsert senator by name matching only."""
     try:
@@ -236,6 +239,7 @@ def _upsert_senator_by_name(supabase: Client, senator: Dict[str, Any]) -> Option
 # Note: is_header_row moved to app.lib.parser
 
 
+# TODO: Review this function
 def parse_transaction_from_row(row: List[str], disclosure: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Parse a transaction from a Senate PDF table row."""
     if not row or len(row) < 2:
@@ -343,6 +347,7 @@ def parse_transaction_from_row(row: List[str], disclosure: Dict[str, Any]) -> Op
 # =============================================================================
 
 
+# TODO: Review this function
 async def search_all_ptr_disclosures_playwright(
     lookback_days: int = 30,
     limit: Optional[int] = None,

@@ -31,15 +31,19 @@ defmodule Server.Scheduler do
       defmodule MyApp.Jobs.DailySync do
         @behaviour Server.Scheduler.Job
 
+        # TODO: Review this function
         @impl true
         def job_id, do: "daily-sync"
 
+        # TODO: Review this function
         @impl true
         def job_name, do: "Daily Data Sync"
 
+        # TODO: Review this function
         @impl true
         def schedule, do: "0 2 * * *"  # 2 AM daily
 
+        # TODO: Review this function
         @impl true
         def run do
           # Your job logic here
@@ -117,6 +121,7 @@ defmodule Server.Scheduler do
   # QUANTUM ACCESS (for advanced usage)
   # ═══════════════════════════════════════════════════════════════
 
+  # TODO: Review this function
   @doc """
   Returns the child spec for the Quantum scheduler.
 

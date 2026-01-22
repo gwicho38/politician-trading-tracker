@@ -11,16 +11,20 @@ defmodule Server.Scheduler.Jobs.PortfolioSnapshotJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "portfolio-snapshot"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Portfolio Daily Snapshot"
 
+  # TODO: Review this function
   @impl true
   # Run at 10:30 PM UTC (5:30 PM EST) - after market close
   def schedule, do: "30 22 * * *"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[PortfolioSnapshotJob] Taking daily portfolio snapshot")
@@ -50,6 +54,7 @@ defmodule Server.Scheduler.Jobs.PortfolioSnapshotJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

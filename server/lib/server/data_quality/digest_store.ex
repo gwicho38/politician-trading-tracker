@@ -14,6 +14,7 @@ defmodule Server.DataQuality.DigestStore do
   # Client API
   # ============================================================================
 
+  # TODO: Review this function
   @doc """
   Starts the DigestStore GenServer.
   """
@@ -21,6 +22,7 @@ defmodule Server.DataQuality.DigestStore do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
+  # TODO: Review this function
   @doc """
   Adds an issue to the digest queue.
 
@@ -32,6 +34,7 @@ defmodule Server.DataQuality.DigestStore do
     GenServer.cast(__MODULE__, {:add_issue, issue})
   end
 
+  # TODO: Review this function
   @doc """
   Gets all accumulated issues without clearing them.
   """
@@ -40,6 +43,7 @@ defmodule Server.DataQuality.DigestStore do
     GenServer.call(__MODULE__, :get_issues)
   end
 
+  # TODO: Review this function
   @doc """
   Gets and clears all accumulated issues (used when sending digest).
   """
@@ -48,6 +52,7 @@ defmodule Server.DataQuality.DigestStore do
     GenServer.call(__MODULE__, :flush_issues)
   end
 
+  # TODO: Review this function
   @doc """
   Gets the count of accumulated issues by severity.
   """
@@ -56,6 +61,7 @@ defmodule Server.DataQuality.DigestStore do
     GenServer.call(__MODULE__, :get_counts)
   end
 
+  # TODO: Review this function
   @doc """
   Clears all accumulated issues without returning them.
   """
@@ -68,34 +74,40 @@ defmodule Server.DataQuality.DigestStore do
   # Server Callbacks
   # ============================================================================
 
+  # TODO: Review this function
   @impl true
   def init(_opts) do
     Logger.info("[DigestStore] Started data quality digest store")
     {:ok, %{issues: [], started_at: DateTime.utc_now()}}
   end
 
+  # TODO: Review this function
   @impl true
   def handle_cast({:add_issue, issue}, state) do
     issue_with_timestamp = Map.put(issue, :queued_at, DateTime.utc_now())
     {:noreply, %{state | issues: [issue_with_timestamp | state.issues]}}
   end
 
+  # TODO: Review this function
   @impl true
   def handle_cast(:clear, state) do
     {:noreply, %{state | issues: [], started_at: DateTime.utc_now()}}
   end
 
+  # TODO: Review this function
   @impl true
   def handle_call(:get_issues, _from, state) do
     {:reply, Enum.reverse(state.issues), state}
   end
 
+  # TODO: Review this function
   @impl true
   def handle_call(:flush_issues, _from, state) do
     issues = Enum.reverse(state.issues)
     {:reply, issues, %{state | issues: [], started_at: DateTime.utc_now()}}
   end
 
+  # TODO: Review this function
   @impl true
   def handle_call(:get_counts, _from, state) do
     counts =

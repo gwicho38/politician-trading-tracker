@@ -9,16 +9,20 @@ defmodule Server.Scheduler.Jobs.PoliticianTradingQuiverJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "politician-trading-quiver"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "QuiverQuant Congress Trading"
 
+  # TODO: Review this function
   @impl true
   # Every minute (testing) - production: every 6 hours
   def schedule, do: "* * * * *"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[PoliticianTradingQuiverJob] Starting QuiverQuant collection")
@@ -38,6 +42,7 @@ defmodule Server.Scheduler.Jobs.PoliticianTradingQuiverJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

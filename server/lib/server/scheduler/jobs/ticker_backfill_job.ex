@@ -14,16 +14,20 @@ defmodule Server.Scheduler.Jobs.TickerBackfillJob do
 
   @etl_service_url "https://politician-trading-etl.fly.dev"
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "ticker_backfill_daily"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Daily Ticker Backfill"
 
+  # TODO: Review this function
   @impl true
   # Run daily at 2 AM UTC
   def schedule, do: "0 2 * * *"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[TickerBackfillJob] Triggering ticker backfill")
@@ -39,6 +43,7 @@ defmodule Server.Scheduler.Jobs.TickerBackfillJob do
     end
   end
 
+  # TODO: Review this function
   defp trigger_backfill do
     url = "#{@etl_service_url}/etl/backfill-tickers"
 
@@ -77,6 +82,7 @@ defmodule Server.Scheduler.Jobs.TickerBackfillJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

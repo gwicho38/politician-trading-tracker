@@ -2,10 +2,12 @@ defmodule ServerWeb.Telemetry do
   use Supervisor
   import Telemetry.Metrics
 
+  # TODO: Review this function
   def start_link(arg) do
     Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
   end
 
+  # TODO: Review this function
   @impl true
   def init(_arg) do
     children = [
@@ -19,6 +21,7 @@ defmodule ServerWeb.Telemetry do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  # TODO: Review this function
   def metrics do
     [
       # Phoenix Metrics
@@ -83,6 +86,7 @@ defmodule ServerWeb.Telemetry do
     ]
   end
 
+  # TODO: Review this function
   defp periodic_measurements do
     [
       # A module, function and arguments to be invoked periodically.

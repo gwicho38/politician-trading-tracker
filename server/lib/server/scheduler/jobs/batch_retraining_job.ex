@@ -21,19 +21,24 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
   @etl_base_url "https://politician-trading-etl.fly.dev"
   @supabase_base_url "https://uljsqvwkomdrlnofmlad.supabase.co"
 
+  # TODO: Review this function
   @impl true
   def job_id, do: @job_id
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Batch ML Retraining Check"
 
+  # TODO: Review this function
   @impl true
   # Every hour at :00 minutes
   def schedule, do: "0 * * * *"
 
+  # TODO: Review this function
   @impl true
   def schedule_type, do: :cron
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[BatchRetrainingJob] Checking for data changes...")
@@ -49,6 +54,7 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
     end
   end
 
+  # TODO: Review this function
   # Get current retraining stats from Supabase via RPC
   defp get_retraining_stats do
     case get_service_key() do
@@ -96,6 +102,7 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
     end
   end
 
+  # TODO: Review this function
   defp parse_stats(stats) do
     %{
       last_training_at: stats["last_training_at"],
@@ -104,6 +111,7 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
     }
   end
 
+  # TODO: Review this function
   # Trigger training if threshold reached
   defp maybe_trigger_retrain(%{current_change_count: count, threshold: threshold} = _stats)
        when count >= threshold do
@@ -138,6 +146,7 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
     end
   end
 
+  # TODO: Review this function
   defp maybe_trigger_retrain(%{current_change_count: count, threshold: threshold}) do
     Logger.info(
       "[BatchRetrainingJob] Below threshold: #{count} changes < #{threshold}, skipping"
@@ -150,6 +159,7 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
     }}
   end
 
+  # TODO: Review this function
   # Trigger ML training via Python ETL service
   defp trigger_training do
     url = "#{@etl_base_url}/ml/train"
@@ -191,6 +201,7 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
     end
   end
 
+  # TODO: Review this function
   # Reset retraining stats baseline after triggering training
   defp reset_stats_after_trigger do
     case get_service_key() do
@@ -225,6 +236,7 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
     end
   end
 
+  # TODO: Review this function
   defp get_service_key do
     case Application.get_env(:server, :supabase_service_key) do
       nil -> {:error, :missing_service_key}
@@ -233,6 +245,7 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{
@@ -244,6 +257,7 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
     }
   end
 
+  # TODO: Review this function
   @doc """
   Manually check retraining status (useful for debugging).
   Returns current change count and threshold.
@@ -252,6 +266,7 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
     get_retraining_stats()
   end
 
+  # TODO: Review this function
   @doc """
   Force trigger training regardless of threshold (useful for testing).
   """

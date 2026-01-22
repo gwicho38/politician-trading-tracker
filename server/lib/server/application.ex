@@ -15,6 +15,7 @@ defmodule Server.Application do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def start(_type, _args) do
     children = [
@@ -54,6 +55,7 @@ defmodule Server.Application do
     result
   end
 
+  # TODO: Review this function
   defp register_jobs do
     jobs = [
       # Core sync jobs
@@ -112,6 +114,7 @@ defmodule Server.Application do
     end)
   end
 
+  # TODO: Review this function
   @impl true
   def config_change(changed, _new, removed) do
     ServerWeb.Endpoint.config_change(changed, removed)

@@ -15,16 +15,20 @@ defmodule Server.Scheduler.Jobs.PoliticianDedupJob do
 
   @etl_service_url "https://politician-trading-etl.fly.dev"
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "politician-dedup"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Politician Deduplication"
 
+  # TODO: Review this function
   @impl true
   # Run weekly on Sunday at 5 AM UTC
   def schedule, do: "0 5 * * 0"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[PoliticianDedupJob] Starting politician deduplication")
@@ -40,6 +44,7 @@ defmodule Server.Scheduler.Jobs.PoliticianDedupJob do
     end
   end
 
+  # TODO: Review this function
   defp trigger_dedup do
     url = "#{@etl_service_url}/dedup/process"
 
@@ -78,6 +83,7 @@ defmodule Server.Scheduler.Jobs.PoliticianDedupJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

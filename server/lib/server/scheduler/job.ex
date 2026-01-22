@@ -10,15 +10,19 @@ defmodule Server.Scheduler.Job do
       defmodule MyApp.Jobs.DailyReport do
         @behaviour Server.Scheduler.Job
 
+        # TODO: Review this function
         @impl true
         def job_id, do: "daily-report"
 
+        # TODO: Review this function
         @impl true
         def job_name, do: "Daily Report Generation"
 
+        # TODO: Review this function
         @impl true
         def schedule, do: "0 8 * * *"  # 8 AM daily
 
+        # TODO: Review this function
         @impl true
         def run do
           # Your job logic here
@@ -50,6 +54,7 @@ defmodule Server.Scheduler.Job do
 
   @optional_callbacks [enabled?: 0, metadata: 0, schedule_type: 0]
 
+  # TODO: Review this function
   @doc """
   Returns the schedule type for a job module.
   Falls back to :cron if not implemented.
@@ -62,6 +67,7 @@ defmodule Server.Scheduler.Job do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Returns whether the job is enabled.
   Falls back to true if not implemented.
@@ -74,6 +80,7 @@ defmodule Server.Scheduler.Job do
     end
   end
 
+  # TODO: Review this function
   @doc """
   Returns the job metadata.
   Falls back to empty map if not implemented.

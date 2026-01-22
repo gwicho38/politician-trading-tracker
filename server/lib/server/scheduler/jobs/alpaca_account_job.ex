@@ -10,16 +10,20 @@ defmodule Server.Scheduler.Jobs.AlpacaAccountJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "alpaca-account"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Alpaca Account Sync"
 
+  # TODO: Review this function
   @impl true
   # Every minute (testing)
   def schedule, do: "* * * * *"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[AlpacaAccountJob] Starting account sync")
@@ -35,6 +39,7 @@ defmodule Server.Scheduler.Jobs.AlpacaAccountJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

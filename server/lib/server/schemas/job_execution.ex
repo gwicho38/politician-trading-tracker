@@ -26,6 +26,7 @@ defmodule Server.Schemas.JobExecution do
 
   @valid_statuses ~w(running success failed completed cancelled)
 
+  # TODO: Review this function
   def changeset(execution, attrs) do
     execution
     |> cast(attrs, [
@@ -42,6 +43,7 @@ defmodule Server.Schemas.JobExecution do
     |> validate_inclusion(:status, @valid_statuses)
   end
 
+  # TODO: Review this function
   def start_changeset(job_id) do
     %__MODULE__{}
     |> cast(%{job_id: job_id, started_at: DateTime.utc_now(), status: "running"}, [
@@ -51,6 +53,7 @@ defmodule Server.Schemas.JobExecution do
     ])
   end
 
+  # TODO: Review this function
   def complete_changeset(execution, result) do
     now = DateTime.utc_now()
     duration = DateTime.diff(now, execution.started_at, :millisecond) / 1000

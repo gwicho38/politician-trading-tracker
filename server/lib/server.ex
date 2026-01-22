@@ -73,11 +73,13 @@ defmodule Server do
   | Production | Supabase via env vars | `config/runtime.exs` |
   """
 
+  # TODO: Review this function
   @doc """
   Returns the current application version.
   """
   def version, do: "0.1.0"
 
+  # TODO: Review this function
   @doc """
   Checks if the database connection is healthy.
 

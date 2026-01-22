@@ -12,16 +12,20 @@ defmodule Server.Scheduler.Jobs.JobExecutionCleanupJob do
 
   @etl_service_url "https://politician-trading-etl.fly.dev"
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "job-execution-cleanup"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Job Execution Cleanup"
 
+  # TODO: Review this function
   @impl true
   # Weekly on Sunday at 6 AM UTC
   def schedule, do: "0 6 * * 0"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[JobExecutionCleanupJob] Starting cleanup of old job executions")
@@ -37,6 +41,7 @@ defmodule Server.Scheduler.Jobs.JobExecutionCleanupJob do
     end
   end
 
+  # TODO: Review this function
   defp trigger_cleanup do
     url = "#{@etl_service_url}/etl/cleanup-executions"
 
@@ -77,6 +82,7 @@ defmodule Server.Scheduler.Jobs.JobExecutionCleanupJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{

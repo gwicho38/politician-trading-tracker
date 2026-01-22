@@ -15,16 +15,20 @@ defmodule Server.Scheduler.Jobs.SignalOutcomeJob do
 
   require Logger
 
+  # TODO: Review this function
   @impl true
   def job_id, do: "signal-outcomes"
 
+  # TODO: Review this function
   @impl true
   def job_name, do: "Signal Outcome Recording"
 
+  # TODO: Review this function
   @impl true
   # Run daily at 11 PM UTC (6 PM EST) - after market close
   def schedule, do: "0 23 * * *"
 
+  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[SignalOutcomeJob] Recording signal outcomes for closed positions")
@@ -54,6 +58,7 @@ defmodule Server.Scheduler.Jobs.SignalOutcomeJob do
     end
   end
 
+  # TODO: Review this function
   @impl true
   def metadata do
     %{
