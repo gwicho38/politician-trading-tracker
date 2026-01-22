@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "generated_at": "2026-01-19T20:19:06.870918Z",
+  "generated_at": "2026-01-21T13:19:13.098025Z",
   "commands": {
     "client": {
       "file": "client.py",
@@ -18,15 +18,15 @@
     "context": {
       "file": "context.py",
       "language": "python",
-      "content_hash": "sha256:719c385c37f1f3fa619ab40527a3fb6a134decfde946eeb9ed308697b778af94",
+      "content_hash": "sha256:92833dae3ebc0763d065c06e39e2a53d0577952dd5f40bc9eadf05af228f1358",
       "version": "1.0.0",
       "group": "workflows",
-      "description": "Context command",
+      "description": "Generate comprehensive repository context for LLM consumption",
       "author": "",
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-01-19T21:13:09.196894Z"
+      "last_modified": "2026-01-19T21:29:23.719811Z"
     },
     "etl": {
       "file": "etl.py",
