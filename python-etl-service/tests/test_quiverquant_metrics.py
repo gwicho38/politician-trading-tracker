@@ -226,15 +226,15 @@ class TestQuiverQuantAmountRangeMin:
         """Test parsing minimum from Range field."""
         record = sample_quiverquant_response[0]
         range_str = record["Range"]
-        min_val, max_val = parse_value_range(range_str)
-        assert min_val == 15001
+        result = parse_value_range(range_str)
+        assert result["value_low"] == 15001
 
     def test_parse_large_range_min(self, sample_quiverquant_response):
         """Test parsing large range minimum."""
         record = sample_quiverquant_response[1]
         range_str = record["Range"]
-        min_val, max_val = parse_value_range(range_str)
-        assert min_val == 1000001
+        result = parse_value_range(range_str)
+        assert result["value_low"] == 1000001
 
 
 class TestQuiverQuantAmountRangeMax:
@@ -244,15 +244,15 @@ class TestQuiverQuantAmountRangeMax:
         """Test parsing maximum from Range field."""
         record = sample_quiverquant_response[0]
         range_str = record["Range"]
-        min_val, max_val = parse_value_range(range_str)
-        assert max_val == 50000
+        result = parse_value_range(range_str)
+        assert result["value_high"] == 50000
 
     def test_parse_large_range_max(self, sample_quiverquant_response):
         """Test parsing large range maximum."""
         record = sample_quiverquant_response[1]
         range_str = record["Range"]
-        min_val, max_val = parse_value_range(range_str)
-        assert max_val == 5000000
+        result = parse_value_range(range_str)
+        assert result["value_high"] == 5000000
 
 
 class TestQuiverQuantSourceUrl:
@@ -411,10 +411,10 @@ class TestQuiverQuantDataQuality:
         """Test amount ranges can be parsed."""
         for record in sample_quiverquant_response:
             range_str = record["Range"]
-            min_val, max_val = parse_value_range(range_str)
-            assert min_val is not None
-            assert max_val is not None
-            assert max_val >= min_val
+            result = parse_value_range(range_str)
+            assert result["value_low"] is not None
+            assert result["value_high"] is not None
+            assert result["value_high"] >= result["value_low"]
 
     def test_bioguide_ids_unique(self):
         """Test BioGuide IDs are unique per politician."""

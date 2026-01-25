@@ -222,7 +222,8 @@ class TestHouseAssetName:
     def test_empty_asset_name(self):
         """Test handling empty asset name."""
         cleaned = clean_asset_name("")
-        assert cleaned is not None  # Should return empty string or None
+        # Empty string returns None per the function contract
+        assert cleaned is None
 
 
 class TestHouseAssetTicker:
@@ -270,28 +271,29 @@ class TestHouseAssetType:
 
     def test_parse_stock_type(self):
         """Test parsing stock type."""
-        asset_type = parse_asset_type("ST")
-        assert asset_type.lower() in ["stock", "st"]
+        # parse_asset_type returns (code, name) tuple and requires [XX] bracket format
+        code, name = parse_asset_type("[ST]")
+        assert code == "ST"
 
     def test_parse_bond_type(self):
         """Test parsing bond type."""
-        asset_type = parse_asset_type("BD")
-        assert asset_type is not None
+        code, name = parse_asset_type("[BD]")
+        assert code == "BD"
 
     def test_parse_option_type(self):
         """Test parsing option type."""
-        asset_type = parse_asset_type("OP")
-        assert asset_type is not None
+        code, name = parse_asset_type("[OP]")
+        assert code == "OP"
 
     def test_parse_mutual_fund_type(self):
         """Test parsing mutual fund type."""
-        asset_type = parse_asset_type("MF")
-        assert asset_type is not None
+        code, name = parse_asset_type("[MF]")
+        assert code == "MF"
 
     def test_parse_unknown_type(self):
         """Test parsing unknown type."""
-        asset_type = parse_asset_type("XX")
-        assert asset_type is not None  # Should return something, even if "unknown"
+        code, name = parse_asset_type("[XX]")
+        assert code == "XX"  # Returns the code even if unknown
 
 
 class TestHouseTransactionType:
@@ -379,23 +381,23 @@ class TestHouseAmountRangeMin:
 
     def test_parse_amount_min_1001(self):
         """Test parsing $1,001 - $15,000 range."""
-        min_val, max_val = parse_value_range("$1,001 - $15,000")
-        assert min_val == 1001
+        result = parse_value_range("$1,001 - $15,000")
+        assert result["value_low"] == 1001
 
     def test_parse_amount_min_15001(self):
         """Test parsing $15,001 - $50,000 range."""
-        min_val, max_val = parse_value_range("$15,001 - $50,000")
-        assert min_val == 15001
+        result = parse_value_range("$15,001 - $50,000")
+        assert result["value_low"] == 15001
 
     def test_parse_amount_min_50001(self):
         """Test parsing $50,001 - $100,000 range."""
-        min_val, max_val = parse_value_range("$50,001 - $100,000")
-        assert min_val == 50001
+        result = parse_value_range("$50,001 - $100,000")
+        assert result["value_low"] == 50001
 
     def test_parse_amount_min_over_1m(self):
         """Test parsing over $1,000,000 range."""
-        min_val, max_val = parse_value_range("$1,000,001 - $5,000,000")
-        assert min_val == 1000001
+        result = parse_value_range("$1,000,001 - $5,000,000")
+        assert result["value_low"] == 1000001
 
 
 class TestHouseAmountRangeMax:
@@ -403,23 +405,23 @@ class TestHouseAmountRangeMax:
 
     def test_parse_amount_max_15000(self):
         """Test parsing $1,001 - $15,000 range."""
-        min_val, max_val = parse_value_range("$1,001 - $15,000")
-        assert max_val == 15000
+        result = parse_value_range("$1,001 - $15,000")
+        assert result["value_high"] == 15000
 
     def test_parse_amount_max_50000(self):
         """Test parsing $15,001 - $50,000 range."""
-        min_val, max_val = parse_value_range("$15,001 - $50,000")
-        assert max_val == 50000
+        result = parse_value_range("$15,001 - $50,000")
+        assert result["value_high"] == 50000
 
     def test_parse_amount_max_100000(self):
         """Test parsing $50,001 - $100,000 range."""
-        min_val, max_val = parse_value_range("$50,001 - $100,000")
-        assert max_val == 100000
+        result = parse_value_range("$50,001 - $100,000")
+        assert result["value_high"] == 100000
 
     def test_amount_range_midpoint(self):
         """Test calculating midpoint of range."""
-        min_val, max_val = parse_value_range("$1,001 - $15,000")
-        midpoint = (min_val + max_val) / 2
+        result = parse_value_range("$1,001 - $15,000")
+        midpoint = (result["value_low"] + result["value_high"]) / 2
         assert midpoint == 8000.5
 
 
@@ -532,13 +534,15 @@ class TestHeaderRowDetection:
 
     def test_detect_header_row(self):
         """Test detecting header row."""
-        header = ["Transaction Date", "Owner", "Asset", "Type", "Amount"]
-        assert is_header_row(header)
+        # is_header_row expects a string, not a list
+        header_text = "Transaction Date Owner Asset Type Amount"
+        assert is_header_row(header_text)
 
     def test_detect_data_row(self):
         """Test detecting data row (not header)."""
-        data_row = ["01/15/2024", "SP", "Apple Inc.", "ST", "$1,001 - $15,000"]
-        assert not is_header_row(data_row)
+        # Data row text doesn't contain header keywords
+        data_text = "01/15/2024 SP Apple Inc. ST $1,001 - $15,000"
+        assert not is_header_row(data_text)
 
 
 # =============================================================================
@@ -567,9 +571,9 @@ class TestHouseRowParsing:
         """Test extracting amount range from row."""
         row = sample_house_pdf_row
         amount_str = row[6]  # Amount column
-        min_val, max_val = parse_value_range(amount_str)
-        assert min_val == 1001
-        assert max_val == 15000
+        result = parse_value_range(amount_str)
+        assert result["value_low"] == 1001
+        assert result["value_high"] == 15000
 
 
 # =============================================================================
