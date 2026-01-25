@@ -17,10 +17,16 @@ async function queueSignalsForReferencePortfolio(supabaseClient: any, signals: a
   if (!signals || signals.length === 0) return
 
   // Filter signals that meet reference portfolio criteria
-  const eligibleSignals = signals.filter(signal =>
-    signal.confidence_score >= REFERENCE_PORTFOLIO_MIN_CONFIDENCE &&
-    REFERENCE_PORTFOLIO_SIGNAL_TYPES.includes(signal.signal_type)
-  )
+  // Use lower confidence threshold for sell signals to exit positions faster
+  const eligibleSignals = signals.filter(signal => {
+    const isSellSignal = ['sell', 'strong_sell'].includes(signal.signal_type)
+    const confidenceThreshold = isSellSignal 
+      ? REFERENCE_PORTFOLIO_MIN_CONFIDENCE * 0.85  // 85% of buy threshold (0.60 if buy is 0.70)
+      : REFERENCE_PORTFOLIO_MIN_CONFIDENCE
+    
+    return signal.confidence_score >= confidenceThreshold &&
+      REFERENCE_PORTFOLIO_SIGNAL_TYPES.includes(signal.signal_type)
+  })
 
   if (eligibleSignals.length === 0) {
     console.log(JSON.stringify({
@@ -1596,8 +1602,157 @@ const DEFAULT_WEIGHTS: SignalWeights = {
 const ETL_API_URL = Deno.env.get('ETL_API_URL') || 'https://politician-trading-etl.fly.dev'
 // ML enabled by default - quick health check prevents blocking on cold starts
 const ML_ENABLED = Deno.env.get('ML_ENABLED') !== 'false'
-const ML_BLEND_WEIGHT = 0.4 // 40% ML, 60% heuristic
+const ML_BLEND_WEIGHT = 0.2 // 20% ML, 80% heuristic (reduced from 0.4 to test if ML is adding noise)
 const ML_TIMEOUT_MS = 10000 // 10 second timeout for batch prediction
+
+// Alpaca API configuration for market data
+const ALPACA_API_KEY = Deno.env.get('ALPACA_API_KEY')
+const ALPACA_SECRET_KEY = Deno.env.get('ALPACA_SECRET_KEY')
+const ALPACA_DATA_URL = 'https://data.alpaca.markets'
+
+// Market data cache (1 hour TTL)
+const marketDataCache = new Map<string, { value: number; timestamp: number }>()
+const MARKET_DATA_CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
+
+// Sector ETF mapping
+const SECTOR_ETF_MAP: Record<string, string> = {
+  // Technology
+  'AAPL': 'XLK', 'MSFT': 'XLK', 'GOOGL': 'XLK', 'GOOG': 'XLK', 'NVDA': 'XLK', 'META': 'XLK',
+  'TSLA': 'XLK', 'NFLX': 'XLK', 'ADBE': 'XLK', 'CRM': 'XLK', 'ORCL': 'XLK', 'CSCO': 'XLK',
+  
+  // Healthcare
+  'JNJ': 'XLV', 'UNH': 'XLV', 'PFE': 'XLV', 'ABBV': 'XLV', 'TMO': 'XLV', 'MRK': 'XLV',
+  'LLY': 'XLV', 'ABT': 'XLV', 'DHR': 'XLV', 'BMY': 'XLV',
+  
+  // Finance
+  'JPM': 'XLF', 'BAC': 'XLF', 'WFC': 'XLF', 'GS': 'XLF', 'MS': 'XLF', 'C': 'XLF',
+  'BLK': 'XLF', 'SCHW': 'XLF', 'AXP': 'XLF', 'USB': 'XLF',
+  
+  // Consumer
+  'AMZN': 'XLY', 'HD': 'XLY', 'MCD': 'XLY', 'NKE': 'XLY', 'SBUX': 'XLY', 'TGT': 'XLY',
+  'WMT': 'XLP', 'PG': 'XLP', 'KO': 'XLP', 'PEP': 'XLP', 'COST': 'XLP',
+  
+  // Energy
+  'XOM': 'XLE', 'CVX': 'XLE', 'COP': 'XLE', 'SLB': 'XLE', 'EOG': 'XLE',
+  
+  // Industrials
+  'BA': 'XLI', 'CAT': 'XLI', 'GE': 'XLI', 'MMM': 'XLI', 'HON': 'XLI', 'UPS': 'XLI',
+  
+  // Real Estate
+  'AMT': 'XLRE', 'PLD': 'XLRE', 'CCI': 'XLRE', 'EQIX': 'XLRE',
+  
+  // Utilities
+  'NEE': 'XLU', 'DUK': 'XLU', 'SO': 'XLU', 'D': 'XLU',
+  
+  // Materials
+  'LIN': 'XLB', 'APD': 'XLB', 'SHW': 'XLB', 'FCX': 'XLB',
+  
+  // Communication
+  'DIS': 'XLC', 'CMCSA': 'XLC', 'VZ': 'XLC', 'T': 'XLC', 'TMUS': 'XLC',
+}
+
+// TODO: Review getMarketMomentum - calculates 20-day price momentum for a ticker
+// Uses Alpaca bars API to get historical prices and calculate percentage change
+// Returns 0 if data unavailable or error occurs
+async function getMarketMomentum(ticker: string): Promise<number> {
+  const cacheKey = `momentum_${ticker}`
+  const cached = marketDataCache.get(cacheKey)
+  
+  if (cached && Date.now() - cached.timestamp < MARKET_DATA_CACHE_TTL_MS) {
+    return cached.value
+  }
+
+  if (!ALPACA_API_KEY || !ALPACA_SECRET_KEY) {
+    return 0 // No credentials, return neutral
+  }
+
+  try {
+    const endDate = new Date()
+    const startDate = new Date()
+    startDate.setDate(startDate.getDate() - 25) // 25 days to ensure 20 trading days
+
+    const url = `${ALPACA_DATA_URL}/v2/stocks/${ticker}/bars?timeframe=1Day&start=${startDate.toISOString().split('T')[0]}&end=${endDate.toISOString().split('T')[0]}&limit=25`
+    
+    const response = await fetch(url, {
+      headers: {
+        'APCA-API-KEY-ID': ALPACA_API_KEY,
+        'APCA-API-SECRET-KEY': ALPACA_SECRET_KEY
+      }
+    })
+
+    if (!response.ok) return 0
+
+    const data = await response.json()
+    const bars = data.bars || []
+
+    if (bars.length < 2) return 0
+
+    // Calculate momentum: (current - 20 days ago) / 20 days ago
+    const oldestPrice = bars[0].c
+    const latestPrice = bars[bars.length - 1].c
+    const momentum = ((latestPrice - oldestPrice) / oldestPrice) * 100
+
+    // Cache the result
+    marketDataCache.set(cacheKey, { value: momentum, timestamp: Date.now() })
+
+    return momentum
+  } catch (error) {
+    log.warn('Failed to fetch market momentum', { ticker, error: error.message })
+    return 0
+  }
+}
+
+// TODO: Review getSectorPerformance - calculates sector ETF performance for a ticker
+// Maps ticker to sector ETF (e.g., AAPL -> XLK), fetches 20-day performance
+// Returns 0 if sector unknown or data unavailable
+async function getSectorPerformance(ticker: string): Promise<number> {
+  const sectorETF = SECTOR_ETF_MAP[ticker] || 'SPY' // Default to S&P 500
+  const cacheKey = `sector_${sectorETF}`
+  
+  const cached = marketDataCache.get(cacheKey)
+  if (cached && Date.now() - cached.timestamp < MARKET_DATA_CACHE_TTL_MS) {
+    return cached.value
+  }
+
+  if (!ALPACA_API_KEY || !ALPACA_SECRET_KEY) {
+    return 0 // No credentials, return neutral
+  }
+
+  try {
+    const endDate = new Date()
+    const startDate = new Date()
+    startDate.setDate(startDate.getDate() - 25) // 25 days to ensure 20 trading days
+
+    const url = `${ALPACA_DATA_URL}/v2/stocks/${sectorETF}/bars?timeframe=1Day&start=${startDate.toISOString().split('T')[0]}&end=${endDate.toISOString().split('T')[0]}&limit=25`
+    
+    const response = await fetch(url, {
+      headers: {
+        'APCA-API-KEY-ID': ALPACA_API_KEY,
+        'APCA-API-SECRET-KEY': ALPACA_SECRET_KEY
+      }
+    })
+
+    if (!response.ok) return 0
+
+    const data = await response.json()
+    const bars = data.bars || []
+
+    if (bars.length < 2) return 0
+
+    // Calculate sector performance: (current - 20 days ago) / 20 days ago
+    const oldestPrice = bars[0].c
+    const latestPrice = bars[bars.length - 1].c
+    const performance = ((latestPrice - oldestPrice) / oldestPrice) * 100
+
+    // Cache the result
+    marketDataCache.set(cacheKey, { value: performance, timestamp: Date.now() })
+
+    return performance
+  } catch (error) {
+    log.warn('Failed to fetch sector performance', { ticker, sector: sectorETF, error: error.message })
+    return 0
+  }
+}
 
 // =============================================================================
 // MODEL LINEAGE AND AUDIT TRAIL FUNCTIONS
@@ -1854,22 +2009,38 @@ async function getBatchMlPredictions(
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), ML_TIMEOUT_MS)
 
+    // Fetch market momentum and sector performance for all tickers in parallel
+    log.info('Fetching market data for ML features', { tickerCount: featuresList.length })
+    const marketDataPromises = featuresList.map(async (f) => {
+      const [momentum, sector] = await Promise.all([
+        getMarketMomentum(f.ticker),
+        getSectorPerformance(f.ticker)
+      ])
+      return { ticker: f.ticker, momentum, sector }
+    })
+
+    const marketData = await Promise.all(marketDataPromises)
+    const marketDataMap = new Map(marketData.map(d => [d.ticker, { momentum: d.momentum, sector: d.sector }]))
+
     // Build batch request with all tickers - API expects flat FeatureVector objects
-    const tickers = featuresList.map(f => ({
-      ticker: f.ticker,
-      politician_count: f.politician_count,
-      buy_sell_ratio: f.buy_sell_ratio,
-      recent_activity_30d: f.recent_activity_30d,
-      bipartisan: f.bipartisan,
-      net_volume: f.net_volume,
-      volume_magnitude: Math.log1p(Math.abs(f.net_volume)),
-      party_alignment: 0.5,
-      committee_relevance: 0.5,
-      disclosure_delay: 30,
-      sentiment_score: 0,
-      market_momentum: 0,
-      sector_performance: 0,
-    }))
+    const tickers = featuresList.map(f => {
+      const data = marketDataMap.get(f.ticker) || { momentum: 0, sector: 0 }
+      return {
+        ticker: f.ticker,
+        politician_count: f.politician_count,
+        buy_sell_ratio: f.buy_sell_ratio,
+        recent_activity_30d: f.recent_activity_30d,
+        bipartisan: f.bipartisan,
+        net_volume: f.net_volume,
+        volume_magnitude: Math.log1p(Math.abs(f.net_volume)),
+        party_alignment: 0.5,
+        committee_relevance: 0.5,
+        disclosure_delay: 30,
+        sentiment_score: 0,
+        market_momentum: data.momentum,
+        sector_performance: data.sector,
+      }
+    })
 
     log.info('Calling ETL batch-predict', { tickerCount: tickers.length, url: `${ETL_API_URL}/ml/batch-predict` })
 

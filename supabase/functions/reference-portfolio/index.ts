@@ -1085,9 +1085,12 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
 
         log.info('Order placed successfully', { requestId, orderId: orderResult.id, ticker: signal.ticker })
 
-        // Calculate stop loss and take profit prices
+        // Calculate stop loss, take profit, and trailing stop prices
         const stopLossPrice = currentPrice * (1 - config.default_stop_loss_pct / 100)
         const takeProfitPrice = currentPrice * (1 + config.default_take_profit_pct / 100)
+        const trailingStopPrice = config.trailing_stop_pct 
+          ? currentPrice * (1 - config.trailing_stop_pct / 100)
+          : null
 
         // Record the position
         const { data: position, error: positionError } = await supabaseClient
@@ -1106,6 +1109,8 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
             market_value: positionValue,
             stop_loss_price: stopLossPrice,
             take_profit_price: takeProfitPrice,
+            highest_price: currentPrice,  // Initialize highest price at entry
+            trailing_stop_price: trailingStopPrice,  // Initialize trailing stop
             position_size_pct: (positionValue / state.portfolio_value) * 100,
             confidence_weight: multiplier,
             is_open: true
@@ -2010,12 +2015,63 @@ async function handleCheckExits(supabaseClient: any, requestId: string) {
 
         if (!currentPrice || currentPrice <= 0) continue
 
+        // Update highest price and trailing stop (for all positions, even if not exiting)
+        const highestPrice = Math.max(position.highest_price || position.entry_price, currentPrice)
+        const trailingStopPrice = config.trailing_stop_pct 
+          ? highestPrice * (1 - config.trailing_stop_pct / 100)
+          : null
+
+        // Update position with new highest price and trailing stop
+        if (highestPrice > (position.highest_price || 0) || !position.trailing_stop_price) {
+          await supabaseClient
+            .from('reference_portfolio_positions')
+            .update({
+              highest_price: highestPrice,
+              trailing_stop_price: trailingStopPrice,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', position.id)
+        }
+
         // Check exit conditions
         let exitReason: string | null = null
 
-        if (position.stop_loss_price && currentPrice <= position.stop_loss_price) {
+        // 1. Check time-based exit (stale position)
+        if (config.max_hold_days) {
+          const entryDate = new Date(position.entry_date)
+          const now = new Date()
+          const daysHeld = Math.floor((now.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24))
+          
+          if (daysHeld >= config.max_hold_days) {
+            exitReason = 'time_exit'
+            log.info('Time-based exit triggered', {
+              requestId,
+              ticker: position.ticker,
+              daysHeld,
+              maxHoldDays: config.max_hold_days
+            })
+          }
+        }
+
+        // 2. Check trailing stop (dynamic stop that follows price up)
+        if (!exitReason && trailingStopPrice && currentPrice <= trailingStopPrice) {
+          exitReason = 'trailing_stop'
+          log.info('Trailing stop triggered', {
+            requestId,
+            ticker: position.ticker,
+            currentPrice,
+            trailingStopPrice,
+            highestPrice
+          })
+        }
+
+        // 3. Check fixed stop-loss (only if trailing stop not triggered)
+        if (!exitReason && position.stop_loss_price && currentPrice <= position.stop_loss_price) {
           exitReason = 'stop_loss'
-        } else if (position.take_profit_price && currentPrice >= position.take_profit_price) {
+        }
+        
+        // 4. Check take-profit
+        if (!exitReason && position.take_profit_price && currentPrice >= position.take_profit_price) {
           exitReason = 'take_profit'
         }
 
