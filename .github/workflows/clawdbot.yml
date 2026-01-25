@@ -1,0 +1,302 @@
+name: ClawdBot Autonomous Agent
+
+on:
+  # Run on schedule (every 6 hours)
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  
+  # Manual trigger with optional task specification
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'Specific task for ClawdBot (optional)'
+        required: false
+        default: 'auto'
+      priority:
+        description: 'Task priority filter'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - P0
+          - P1
+          - P2
+  
+  # Run on new issues
+  issues:
+    types: [opened, labeled]
+  
+  # Run on PR comments requesting review
+  issue_comment:
+    types: [created]
+
+env:
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+jobs:
+  clawdbot-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60  # Prevent runaway sessions
+    
+    # Only run on issue_comment if it's a specific trigger
+    if: |
+      github.event_name != 'issue_comment' || 
+      contains(github.event.comment.body, '@clawdbot')
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for git log analysis
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install Dependencies
+        run: |
+          npm ci
+          pip install -r requirements.txt
+      
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      
+      - name: Prepare ClawdBot Context
+        id: context
+        run: |
+          # Determine task type
+          if [ "${{ github.event_name }}" == "issues" ]; then
+            echo "task_type=new_issue" >> $GITHUB_OUTPUT
+            echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+            echo "issue_title=${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "issue_comment" ]; then
+            echo "task_type=pr_comment" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "schedule" ]; then
+            echo "task_type=scheduled" >> $GITHUB_OUTPUT
+          else
+            echo "task_type=${{ github.event.inputs.task }}" >> $GITHUB_OUTPUT
+          fi
+          
+          # Get current date for progress tracking
+          echo "run_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+      
+      - name: Run ClawdBot - Scheduled Maintenance
+        if: steps.context.outputs.task_type == 'scheduled'
+        run: |
+          claude --dangerously-skip-permissions --print \
+            "You are ClawdBot, the autonomous development agent for govmarket.trade.
+            
+            Read CLAWDBOT_INSTRUCTIONS.md for your full operating manual.
+            
+            This is a SCHEDULED RUN. Follow your 6-hour task rotation:
+            1. Read claude-progress.txt to understand current state
+            2. Check for new GitHub issues and prioritize them
+            3. Run full test suite and fix any failures
+            4. Run database integrity checks
+            5. Check error logs for new issues
+            6. Pick the highest priority task from FEATURES.md and work on it
+            7. Update claude-progress.txt with your work
+            8. Create a commit with your changes
+            
+            Current timestamp: ${{ steps.context.outputs.run_date }}
+            
+            Begin your work cycle now."
+      
+      - name: Run ClawdBot - New Issue
+        if: steps.context.outputs.task_type == 'new_issue'
+        run: |
+          claude --dangerously-skip-permissions --print \
+            "You are ClawdBot, the autonomous development agent for govmarket.trade.
+            
+            Read CLAWDBOT_INSTRUCTIONS.md for your full operating manual.
+            
+            A NEW ISSUE has been created: #${{ steps.context.outputs.issue_number }}
+            Title: ${{ steps.context.outputs.issue_title }}
+            
+            Your task:
+            1. Read and understand the issue
+            2. Triage it (categorize, assign priority)
+            3. If it's P0 or P1, attempt to implement a fix
+            4. If you implement a fix:
+               - Write tests first (TDD)
+               - Make the minimum changes needed
+               - Verify with browser automation if UI-related
+            5. Create a PR if you have a fix
+            6. Comment on the issue with your analysis/progress
+            7. Update claude-progress.txt
+            
+            Begin your analysis now."
+      
+      - name: Run ClawdBot - Manual Task
+        if: |
+          steps.context.outputs.task_type != 'scheduled' && 
+          steps.context.outputs.task_type != 'new_issue' &&
+          steps.context.outputs.task_type != 'pr_comment'
+        run: |
+          claude --dangerously-skip-permissions --print \
+            "You are ClawdBot, the autonomous development agent for govmarket.trade.
+            
+            Read CLAWDBOT_INSTRUCTIONS.md for your full operating manual.
+            
+            MANUAL TASK REQUESTED: ${{ github.event.inputs.task }}
+            Priority Filter: ${{ github.event.inputs.priority }}
+            
+            Execute this task following your standard protocols:
+            1. Read claude-progress.txt
+            2. Plan your approach
+            3. Implement with TDD
+            4. Test thoroughly
+            5. Update progress
+            6. Commit changes
+            
+            Begin work now."
+      
+      - name: Commit Progress Updates
+        run: |
+          git config user.name "ClawdBot"
+          git config user.email "clawdbot@govmarket.trade"
+          
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "chore(clawdbot): automated progress update
+            
+            Run type: ${{ steps.context.outputs.task_type }}
+            Timestamp: ${{ steps.context.outputs.run_date }}
+            
+            [skip ci]"
+            git push
+          else
+            echo "No changes to commit"
+          fi
+      
+      - name: Create Summary
+        run: |
+          echo "## ClawdBot Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Run Type:** ${{ steps.context.outputs.task_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp:** ${{ steps.context.outputs.run_date }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Progress File" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          head -50 claude-progress.txt >> $GITHUB_STEP_SUMMARY || echo "No progress file found"
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # Weekly comprehensive review
+  weekly-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    if: github.event_name == 'schedule' && github.event.schedule == '0 0 * * 0'  # Sundays at midnight
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Environment
+        run: |
+          npm ci
+          pip install -r requirements.txt
+          npm install -g @anthropic-ai/claude-code
+      
+      - name: Run Weekly Review
+        run: |
+          claude --dangerously-skip-permissions --print \
+            "You are ClawdBot performing your WEEKLY REVIEW.
+            
+            Read CLAWDBOT_INSTRUCTIONS.md for your full operating manual.
+            
+            Complete these weekly tasks:
+            
+            1. FULL FRONTEND REVIEW
+               - Run Lighthouse audit
+               - Check all pages load correctly
+               - Test all interactive elements
+               - Identify UX improvements
+            
+            2. PERFORMANCE OPTIMIZATION
+               - Analyze bundle size
+               - Check database query performance
+               - Review API response times
+               - Optimize where possible
+            
+            3. SECURITY AUDIT
+               - Run dependency vulnerability scan
+               - Check for exposed secrets
+               - Review authentication flows
+               - Test rate limiting
+            
+            4. CODE QUALITY
+               - Run full test suite
+               - Check test coverage
+               - Identify technical debt
+               - Refactor problem areas
+            
+            5. DOCUMENTATION UPDATE
+               - Update README if needed
+               - Update API docs
+               - Update FEATURES.md status
+            
+            6. METRICS ANALYSIS
+               - Review user analytics
+               - Check monetization metrics
+               - Analyze error rates
+               - Compare to last week
+            
+            7. CREATE WEEKLY REPORT
+               - Summarize accomplishments
+               - Highlight issues found
+               - List recommendations
+               - Update claude-progress.txt
+            
+            Begin your comprehensive weekly review now."
+      
+      - name: Commit Weekly Review
+        run: |
+          git config user.name "ClawdBot"
+          git config user.email "clawdbot@govmarket.trade"
+          
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "chore(clawdbot): weekly review complete
+            
+            Comprehensive weekly audit performed.
+            See claude-progress.txt for details.
+            
+            [skip ci]"
+            git push
+          fi
+
+  # Notify on failure
+  notify-failure:
+    needs: [clawdbot-run]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Failure Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🤖 ClawdBot Run Failed',
+              body: `ClawdBot encountered an error during its automated run.
+              
+              **Workflow Run:** [View Logs](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+              **Timestamp:** ${new Date().toISOString()}
+              
+              Please review the logs and fix any issues.`,
+              labels: ['bug', 'clawdbot', 'automated']
+            });
