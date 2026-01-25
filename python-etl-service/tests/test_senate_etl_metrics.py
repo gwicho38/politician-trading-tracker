@@ -311,8 +311,8 @@ class TestSenateAmountRangeMin:
     def test_amount_min_senate_format(self, sample_senate_disclosure_row):
         """Test parsing Senate amount range format."""
         amount_str = sample_senate_disclosure_row["amount"]
-        min_val, max_val = parse_value_range(amount_str)
-        assert min_val == 50001
+        result = parse_value_range(amount_str)
+        assert result["value_low"] == 50001
 
 
 class TestSenateAmountRangeMax:
@@ -321,8 +321,8 @@ class TestSenateAmountRangeMax:
     def test_amount_max_senate_format(self, sample_senate_disclosure_row):
         """Test parsing Senate amount range upper bound."""
         amount_str = sample_senate_disclosure_row["amount"]
-        min_val, max_val = parse_value_range(amount_str)
-        assert max_val == 100000
+        result = parse_value_range(amount_str)
+        assert result["value_high"] == 100000
 
 
 class TestSenateSourceUrl:
