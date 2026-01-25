@@ -2,8 +2,8 @@
 # This file is ClawdBot's persistent memory across context windows
 # ALWAYS read this first and update after each session
 
-Last Updated: 2026-01-25T22:15:00Z
-Session Count: 2
+Last Updated: 2026-01-26T00:15:00Z
+Session Count: 3
 
 ---
 
@@ -57,8 +57,8 @@ Priority for this week:
 | alpaca-account | Deployed | Trading account management |
 | orders | Deployed | Order execution |
 | portfolio | Deployed | Portfolio tracking |
-| reference-portfolio | Modified | Has sell signal support now |
-| trading-signals | Modified | Enhanced logging, portfolio queue |
+| reference-portfolio | Modified | Trailing stops, time-based exits |
+| trading-signals | Modified | Market momentum, sector performance features |
 | scheduled-sync | Deployed | Data synchronization |
 | sync-data | Deployed | Data sync utilities |
 | politician-trading-collect | Deployed | Trade collection |
@@ -67,33 +67,55 @@ Priority for this week:
 
 ## Last Session Summary
 
-### Date: 2026-01-25 (Session #2)
-### Duration: ~15 minutes
+### Date: 2026-01-26 (Session #3)
+### Duration: ~20 minutes
 
 #### Completed:
-- [x] Ran full test suite - all tests passing
+- [x] Ran full test suite - all 883 tests passing
   - Frontend: 106 tests passing
   - Backend (Phoenix): 28 tests passing (36 excluded)
-  - ETL Service: 749 tests passing (fixed from 729)
-- [x] Fixed 20 failing ETL tests (API signature mismatches)
-  - parse_value_range returns Dict, not tuple
-  - parse_asset_type returns tuple, requires [XX] format
-  - clean_asset_name returns None for empty strings
-  - is_header_row expects string, not list
-- [x] Addressed GitHub Issue #59 (Database cleanup)
-  - Created migration: 20260126_cleanup_non_us_house_politicians.sql
-  - Commented on issue with migration details
-- [x] Committed test fixes
+  - ETL Service: 749 tests passing
+- [x] Committed frontend error handling improvements
+  - LandingTradesTable: Added error state for mobile/desktop views
+  - TopTickers: Added proper error display with messages
+- [x] Committed major Supabase edge function improvements
+  - reference-portfolio: Trailing stops, time-based exits, improved exit logic
+  - trading-signals: Market momentum, sector performance features, ML blend tuning
+- [x] Committed 4 SQL migrations for portfolio improvements
+  - RLS policies, widened stop/take-profit, time-based exits, trailing stops
+- [x] Added ClawdBot autonomous agent configuration
+  - GitHub Actions workflow (6-hour schedule, issue triggers, weekly review)
+  - CLAWDBOT_INSTRUCTIONS.md operating manual
+  - FEATURES.md requirements tracker
+- [x] Cleaned up repo organization
+  - Removed duplicate SQL files from root
+  - Removed temporary session artifact files
+  - Expanded .claude/CLAUDE.md with comprehensive documentation
 
 #### Code Changes:
 ```
 Modified:
-- python-etl-service/tests/test_house_etl_metrics.py (test fixes)
-- python-etl-service/tests/test_quiverquant_metrics.py (test fixes)
-- python-etl-service/tests/test_senate_etl_metrics.py (test fixes)
+- client/src/components/LandingTradesTable.tsx (error handling)
+- client/src/components/TopTickers.tsx (error handling)
+- supabase/functions/reference-portfolio/index.ts (trailing stops, time exits)
+- supabase/functions/trading-signals/index.ts (market data features)
+- .claude/CLAUDE.md (comprehensive project config)
 
 Created:
-- supabase/migrations/20260126_cleanup_non_us_house_politicians.sql
+- .github/workflows/clawdbot.yml
+- CLAWDBOT_INSTRUCTIONS.md
+- FEATURES.md
+- ETL_ISSUE_DIAGNOSIS.md
+- TO_IMPLEMENT.md
+- supabase/migrations/20260125110544_ensure_rls_policies.sql
+- supabase/migrations/20260125112539_widen_stop_loss_take_profit.sql
+- supabase/migrations/20260125113129_add_time_based_exits.sql
+- supabase/migrations/20260125113209_add_trailing_stop.sql
+
+Deleted (cleanup):
+- APPLY_THESE_SQL_MIGRATIONS.sql (duplicate)
+- fix_rls_policies.sql (duplicate)
+- AGENTS.md, AGENT_PROMPT.md, etc. (temp files)
 ```
 
 #### Tests Run:
@@ -101,30 +123,45 @@ Created:
 - Backend ExUnit: 28 passed (36 excluded)
 - ETL pytest: 749 passed
 
-#### Issues Addressed:
-- GitHub Issue #59: Migration created, awaiting deployment
-
 #### Commits Made:
-- ed71f76: fix: Correct test assertions to match parser API signatures
+- 79d10fc: fix: Add error state handling to LandingTradesTable and TopTickers
+- 2bebafa: feat: Add trailing stops, time-based exits, and market data features
+- 1971614: feat: Add SQL migrations for reference portfolio improvements
+- 97fac1d: feat: Add ClawdBot autonomous agent configuration
+- f79a167: docs: Add ETL diagnosis and improvement tracking documents
+- f0ff9ef: docs: Expand project CLAUDE.md with comprehensive configuration
+
+---
+
+## Previous Session Summary
+
+### Date: 2026-01-25 (Session #2)
+### Duration: ~15 minutes
+
+#### Completed:
+- [x] Ran full test suite - all tests passing
+- [x] Fixed 20 failing ETL tests (API signature mismatches)
+- [x] Addressed GitHub Issue #59 (Database cleanup)
+- [x] Committed test fixes
 
 ---
 
 ## Next Session Priorities
 
 ### P0 - Must Do
-1. Deploy database cleanup migration (Issue #59)
-2. Review and commit modified frontend components
-3. Review pending SQL migrations in repo
+1. Deploy SQL migrations to Supabase (5 pending)
+2. Close GitHub Issue #59 after migration applied
+3. Deploy edge functions with new features
 
 ### P1 - Should Do
-1. Review ETL_ISSUE_DIAGNOSIS.md and address issues
-2. Implement improvements from TO_IMPLEMENT.md
-3. Run Lighthouse audit on frontend
+1. Run Lighthouse audit on frontend
+2. Address ETL_ISSUE_DIAGNOSIS.md items
+3. Test trailing stop and time-based exit features
 
 ### P2 - Nice to Have
 1. Improve mobile responsiveness
-2. Add more comprehensive error handling
-3. Optimize database queries
+2. Implement items from TO_IMPLEMENT.md
+3. Add monitoring for new portfolio features
 
 ---
 
@@ -142,9 +179,9 @@ Created:
 | Item | Impact | Effort | Notes |
 |------|--------|--------|-------|
 | Review TODO comments | Medium | Medium | Added to all edge functions |
-| Apply SQL migrations | High | Low | 5 pending migrations |
-| Clean up untracked files | Low | Low | Multiple .md docs |
-| Commit modified frontend files | Medium | Low | LandingTradesTable, TopTickers |
+| Apply SQL migrations | High | Low | 5 migrations ready to deploy |
+| Deploy edge functions | High | Low | New features committed |
+| Test new portfolio features | High | Medium | Trailing stops, time exits |
 
 ---
 
@@ -187,6 +224,15 @@ Last Security Scan: TBD
 ---
 
 ## Changelog
+
+### 2026-01-26 - Session #3
+- Added error handling to LandingTradesTable and TopTickers
+- Major edge function improvements (trailing stops, time exits, market data)
+- Committed 4 SQL migrations for portfolio features
+- Added ClawdBot GitHub Actions workflow
+- Created CLAWDBOT_INSTRUCTIONS.md and FEATURES.md
+- Cleaned up repo (removed duplicates and temp files)
+- Expanded .claude/CLAUDE.md with comprehensive docs
 
 ### 2026-01-25 - Session #2
 - Fixed 20 failing ETL tests (API mismatches)
