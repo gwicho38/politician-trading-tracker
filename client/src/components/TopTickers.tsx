@@ -25,9 +25,12 @@ const TopTickers = () => {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : error ? (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              No data available yet
-            </p>
+            <div className="text-center py-8">
+              <p className="text-sm text-destructive font-semibold mb-1">Failed to load data</p>
+              <p className="text-xs text-muted-foreground">
+                {error instanceof Error ? error.message : 'Please try again later'}
+              </p>
+            </div>
           ) : !tickers || tickers.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
               No tickers tracked yet
