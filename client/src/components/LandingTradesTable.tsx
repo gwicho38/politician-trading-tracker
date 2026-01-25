@@ -146,7 +146,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
   const offset = page * ROWS_PER_PAGE;
 
   // Fetch data with all filters
-  const { data, isLoading } = useTradingDisclosures({
+  const { data, isLoading, error } = useTradingDisclosures({
     limit: ROWS_PER_PAGE,
     offset,
     searchQuery: debouncedSearch || undefined,
@@ -506,7 +506,19 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
 
       {/* Mobile Card View */}
       <div className="sm:hidden">
-        {isLoading ? (
+        {error ? (
+          <div className="py-12 px-4 text-center">
+            <div className="text-destructive font-semibold mb-2">Failed to load data</div>
+            <div className="text-sm text-muted-foreground">
+              There was an error loading trading disclosures. Please try again later.
+            </div>
+            {error instanceof Error && (
+              <div className="text-xs text-muted-foreground mt-2 font-mono">
+                {error.message}
+              </div>
+            )}
+          </div>
+        ) : isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
@@ -662,7 +674,21 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
+            {error ? (
+              <TableRow>
+                <TableCell colSpan={7} className="h-32 text-center">
+                  <div className="text-destructive font-semibold mb-2">Failed to load data</div>
+                  <div className="text-sm text-muted-foreground">
+                    There was an error loading trading disclosures. Please try again later.
+                  </div>
+                  {error instanceof Error && (
+                    <div className="text-xs text-muted-foreground mt-2 font-mono">
+                      {error.message}
+                    </div>
+                  )}
+                </TableCell>
+              </TableRow>
+            ) : isLoading ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-32 text-center">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
