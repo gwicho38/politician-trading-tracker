@@ -1,0 +1,221 @@
+# GovMarket Progress Tracker
+# This file is ClawdBot's persistent memory across context windows
+# ALWAYS read this first and update after each session
+
+Last Updated: 2026-01-25T22:15:00Z
+Session Count: 2
+
+---
+
+## Current Sprint Focus
+Priority for this week:
+1. ClawdBot autonomous agent setup and integration
+2. ETL pipeline stability and data quality
+3. Frontend polish and mobile responsiveness
+
+---
+
+## Current Status
+
+### Core Features
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Politician Listings | Complete | Live on govmarket.trade |
+| Trade History Display | Complete | Real-time data from Supabase |
+| Landing Trades Table | Complete | Reviewed and working |
+| Top Tickers Display | Complete | Error handling added |
+| Search & Filtering | In Progress | Basic implementation |
+| User Authentication | Not Started | Planned for Pro tier |
+| Payment Integration | Not Started | Stripe integration planned |
+| API Access | Not Started | Planned for Enterprise tier |
+| Email Alerts | Not Started | Planned feature |
+| Mobile Responsive | In Progress | Active development |
+
+### Data Pipeline
+| Component | Status | Last Run | Notes |
+|-----------|--------|----------|-------|
+| Senate Scraper | Working | 2026-01-25 | python-etl-service |
+| House Scraper | Needs Work | 2026-01-25 | PDF parsing issues documented |
+| QuiverQuant API | Working | 2026-01-25 | Trading signals active |
+| Data Validation | Working | 2026-01-25 | 749 tests passing |
+| Deduplication | Working | - | Edge function active |
+
+### Infrastructure
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Frontend (Fly.io) | Live | govmarket-client |
+| Backend (Fly.io) | Live | politician-trading-server |
+| ETL Service (Fly.io) | Live | python-etl-service |
+| Database (Supabase) | Live | PostgreSQL pooler |
+| Edge Functions | Live | Multiple functions deployed |
+| SSL/Security | Configured | HTTPS forced |
+| CI/CD | Active | GitHub Actions |
+
+### Supabase Edge Functions
+| Function | Status | Notes |
+|----------|--------|-------|
+| alpaca-account | Deployed | Trading account management |
+| orders | Deployed | Order execution |
+| portfolio | Deployed | Portfolio tracking |
+| reference-portfolio | Modified | Has sell signal support now |
+| trading-signals | Modified | Enhanced logging, portfolio queue |
+| scheduled-sync | Deployed | Data synchronization |
+| sync-data | Deployed | Data sync utilities |
+| politician-trading-collect | Deployed | Trade collection |
+
+---
+
+## Last Session Summary
+
+### Date: 2026-01-25 (Session #2)
+### Duration: ~15 minutes
+
+#### Completed:
+- [x] Ran full test suite - all tests passing
+  - Frontend: 106 tests passing
+  - Backend (Phoenix): 28 tests passing (36 excluded)
+  - ETL Service: 749 tests passing (fixed from 729)
+- [x] Fixed 20 failing ETL tests (API signature mismatches)
+  - parse_value_range returns Dict, not tuple
+  - parse_asset_type returns tuple, requires [XX] format
+  - clean_asset_name returns None for empty strings
+  - is_header_row expects string, not list
+- [x] Addressed GitHub Issue #59 (Database cleanup)
+  - Created migration: 20260126_cleanup_non_us_house_politicians.sql
+  - Commented on issue with migration details
+- [x] Committed test fixes
+
+#### Code Changes:
+```
+Modified:
+- python-etl-service/tests/test_house_etl_metrics.py (test fixes)
+- python-etl-service/tests/test_quiverquant_metrics.py (test fixes)
+- python-etl-service/tests/test_senate_etl_metrics.py (test fixes)
+
+Created:
+- supabase/migrations/20260126_cleanup_non_us_house_politicians.sql
+```
+
+#### Tests Run:
+- Frontend Vitest: 106 passed
+- Backend ExUnit: 28 passed (36 excluded)
+- ETL pytest: 749 passed
+
+#### Issues Addressed:
+- GitHub Issue #59: Migration created, awaiting deployment
+
+#### Commits Made:
+- ed71f76: fix: Correct test assertions to match parser API signatures
+
+---
+
+## Next Session Priorities
+
+### P0 - Must Do
+1. Deploy database cleanup migration (Issue #59)
+2. Review and commit modified frontend components
+3. Review pending SQL migrations in repo
+
+### P1 - Should Do
+1. Review ETL_ISSUE_DIAGNOSIS.md and address issues
+2. Implement improvements from TO_IMPLEMENT.md
+3. Run Lighthouse audit on frontend
+
+### P2 - Nice to Have
+1. Improve mobile responsiveness
+2. Add more comprehensive error handling
+3. Optimize database queries
+
+---
+
+## Known Bugs
+
+| ID | Severity | Description | Status |
+|----|----------|-------------|--------|
+| #1 | Medium | House PDF parsing unreliable | Open |
+| #2 | Low | Some politician name variations | Open |
+
+---
+
+## Technical Debt
+
+| Item | Impact | Effort | Notes |
+|------|--------|--------|-------|
+| Review TODO comments | Medium | Medium | Added to all edge functions |
+| Apply SQL migrations | High | Low | 5 pending migrations |
+| Clean up untracked files | Low | Low | Multiple .md docs |
+| Commit modified frontend files | Medium | Low | LandingTradesTable, TopTickers |
+
+---
+
+## Metrics Snapshot
+
+### Test Health (2026-01-25)
+- Frontend Tests: 106 passing
+- Backend Tests: 28 passing
+- ETL Tests: 749 passing
+- Total: 883 tests all green
+
+### Performance (Last Check: TBD)
+- Page Load Time: TBD
+- API Response Time: TBD
+- Lighthouse Score: TBD
+
+### Data Health (Last Check: 2026-01-25)
+- Total Politicians: ~1000 (61 US House after cleanup)
+- Total Trades: Growing daily
+- Last Data Update: Today
+- Data Freshness: Current
+
+---
+
+## GitHub Issues Summary
+
+### Open Issues:
+- #59: Database cleanup: Remove non-US House politicians (Migration created)
+
+### Recently Closed: Check with `gh issue list --state closed`
+
+---
+
+## Security Notes
+
+Last Security Scan: TBD
+- Dependency scanning active in CI
+- Supabase RLS policies in place
+
+---
+
+## Changelog
+
+### 2026-01-25 - Session #2
+- Fixed 20 failing ETL tests (API mismatches)
+- Created database cleanup migration for Issue #59
+- All 883 tests now passing
+
+### 2026-01-25 - Session #1
+- Initial ClawdBot setup and configuration
+- Created progress tracking system
+- Documented current project state
+
+---
+
+## Ideas & Opportunities
+
+1. Browser extension for quick trade lookups
+2. Mobile app (React Native)
+3. Portfolio simulator ("What if you invested like...")
+4. Newsletter/weekly digest
+
+---
+
+## Quick Links
+
+- Repo: https://github.com/gwicho38/politician-trading-tracker
+- Live Site: https://govmarket.trade
+- Issues: https://github.com/gwicho38/politician-trading-tracker/issues
+- Actions: https://github.com/gwicho38/politician-trading-tracker/actions
+
+---
+
+*Remember: Update this file before ending each session!*
