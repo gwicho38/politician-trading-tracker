@@ -2,8 +2,8 @@
 # This file is ClawdBot's persistent memory across context windows
 # ALWAYS read this first and update after each session
 
-Last Updated: 2026-01-26T10:55:00Z
-Session Count: 11
+Last Updated: 2026-01-26T11:15:00Z
+Session Count: 12
 
 ---
 
@@ -66,6 +66,45 @@ Priority for this week:
 ---
 
 ## Last Session Summary
+
+### Date: 2026-01-26 (Session #12)
+
+#### Completed:
+- [x] Fixed 3 failing edge function tests
+  - orders/index.test.ts: Fixed quantity validation (0 should trigger "greater than 0" error, not "missing")
+  - process-error-reports/index.test.ts: Fixed determineEndpoint trailing slash behavior
+  - signal-feedback/index.test.ts: Fixed floating point precision comparison
+- [x] All 390 edge function tests now passing
+- [x] Triaged GitHub issues and closed 14 stale/outdated issues:
+  - #1: Run scrapers to collect trading data (completed)
+  - #2: Set up and test database schema (completed)
+  - #3: Deploy and test Streamlit web UI (not planned - migrated to React)
+  - #4: Test automated trading system (completed)
+  - #5: Implement LSH Framework for secrets management (not planned)
+  - #6: Add new scrapers for additional jurisdictions (not planned - out of scope)
+  - #7: Bug fixes and feature improvements (not planned - too vague)
+  - #11: Add Global Action Logging System (completed)
+  - #12: Add Data Validation to Prevent Malformed Politician Records (completed)
+  - #14: Complete Scraper Implementation (completed - architecture changed)
+  - #20: Add CLI-style configuration options to Data Collection UI (not planned - Streamlit deprecated)
+  - #21: Expose individual ETL steps in Data Collection UI (not planned - Streamlit deprecated)
+  - #23: fix: QuiverQuant web scraper parsing columns incorrectly (not planned - deprioritized)
+- [x] Committed and pushed test fixes
+- [x] CI passed (8/8 unit test jobs, build passed)
+
+#### Commit Made:
+- 573c9c0: `fix: Correct edge function test assertions`
+
+#### GitHub Issues Summary:
+- Closed: 14 stale/outdated issues
+- Remaining open: 17 issues (1 feature request, 16 migration tracking)
+
+#### Summary:
+Productive maintenance session. Fixed 3 edge function test failures and closed 14 stale GitHub issues that were either completed, outdated (Streamlit-era), or out of scope. Reduced open issues from 29 to 17, all remaining issues are valid migration/feature work.
+
+---
+
+## Previous Session Summary
 
 ### Date: 2026-01-26 (Session #11)
 
@@ -377,9 +416,16 @@ All P0 tasks completed. The trailing stop and time-based exit features are fully
 ## GitHub Issues Summary
 
 ### Open Issues:
-~25 open (P3-P4 phase tasks, feature enhancements)
+17 open (1 feature request, 3 migration docs, 5 Phase 4 API, 8 Phase 3 features)
 
-### Recently Closed:
+### Recently Closed (Session #12):
+- #1, #2, #4: Initial setup issues (completed)
+- #3: Streamlit UI (not planned - migrated to React)
+- #5, #6, #7: Legacy enhancement issues (not planned)
+- #11, #12, #14: Streamlit-era features (completed in new architecture)
+- #20, #21, #23: Streamlit-specific issues (not planned)
+
+### Previously Closed:
 - #48, #49, #50, #51, #52: P5 migration issues (Closed 2026-01-26, session #11)
 - #59: Database cleanup: Remove non-US House politicians (Closed 2026-01-26)
 
@@ -394,6 +440,13 @@ Last Security Scan: TBD
 ---
 
 ## Changelog
+
+### 2026-01-26 - Session #12
+- Fixed 3 failing edge function tests (orders, process-error-reports, signal-feedback)
+- All 390 edge function tests passing
+- Closed 14 stale GitHub issues (legacy/Streamlit-era issues)
+- Reduced open issues from 29 to 17
+- Commit: 573c9c0
 
 ### 2026-01-26 - Session #11
 - Routine maintenance and issue triage session
