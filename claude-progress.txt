@@ -2,8 +2,8 @@
 # This file is ClawdBot's persistent memory across context windows
 # ALWAYS read this first and update after each session
 
-Last Updated: 2026-01-26T02:30:00Z
-Session Count: 7
+Last Updated: 2026-01-26T10:15:00Z
+Session Count: 8
 
 ---
 
@@ -66,6 +66,38 @@ Priority for this week:
 ---
 
 ## Last Session Summary
+
+### Date: 2026-01-26 (Session #8)
+
+#### Completed:
+- [x] Successfully deployed code splitting changes to Fly.io (Depot builder working again)
+- [x] Ran Lighthouse audit to verify performance gains
+- [x] Added .dockerignore to client to speed up future Docker builds (reduces context from ~800MB to ~10MB)
+- [x] Committed and pushed .dockerignore (commit bfede03)
+
+#### Lighthouse Results (Post Code Splitting):
+- **Performance**: 76/100 (+8 from baseline)
+- **Accessibility**: 87/100 (+4 from baseline)
+- **Best Practices**: 100/100
+- **SEO**: 100/100
+- FCP: 3.9s (-0.4s improvement)
+- LCP: 4.2s (-0.4s improvement)
+- TBT: 30ms (-210ms, 87.5% reduction!)
+- CLS: 0.003
+
+#### Commits Made:
+- bfede03: `chore: Add .dockerignore to client to speed up Docker builds`
+
+#### Summary:
+Code splitting deployment successful! Performance improved significantly:
+- Performance score up 8 points (68 → 76)
+- Accessibility score up 4 points (83 → 87)
+- Total Blocking Time dropped 87.5% (240ms → 30ms)
+- FCP and LCP both improved by ~0.4s
+
+---
+
+## Previous Session Summary
 
 ### Date: 2026-01-26 (Session #7)
 
@@ -202,15 +234,13 @@ All P0 tasks completed. The trailing stop and time-based exit features are fully
 ## Next Session Priorities
 
 ### P0 - Must Do
-1. Retry Fly.io deployment (code splitting changes pending)
-   - If still failing, check Fly.io status page or contact support
-   - Alternative: Try local Docker build if available
-2. Re-run Lighthouse audit after deployment to verify performance gains
+1. Improve mobile responsiveness (sprint focus item)
+2. Test new portfolio features end-to-end in staging
 
 ### P1 - Should Do
-1. Improve mobile responsiveness
-2. Test new portfolio features end-to-end in staging
-3. Add remaining aria-labels to other components (Sidebar, TopTickers, etc.)
+1. Add remaining aria-labels to other components (Sidebar, TopTickers, etc.)
+2. Further performance optimizations (FCP/LCP still above 3s target)
+3. Review and address Lighthouse performance opportunities
 
 ### P2 - Nice to Have
 1. Implement items from TO_IMPLEMENT.md
@@ -245,14 +275,14 @@ All P0 tasks completed. The trailing stop and time-based exit features are fully
 - Edge Function Tests: 76 passing
 - Total: 931 tests all green
 
-### Performance (Last Check: 2026-01-26, Session #7)
-- **Lighthouse Performance**: 68/100 (baseline before code splitting)
-- **Lighthouse Accessibility**: 83/100
+### Performance (Last Check: 2026-01-26, Session #8)
+- **Lighthouse Performance**: 76/100 (+8 from session #7)
+- **Lighthouse Accessibility**: 87/100 (+4 from session #7)
 - **Lighthouse Best Practices**: 100/100
 - **Lighthouse SEO**: 100/100
-- FCP: 4.3s (needs improvement)
-- LCP: 4.6s (needs improvement)
-- TBT: 240ms (needs improvement)
+- FCP: 3.9s (improved from 4.3s)
+- LCP: 4.2s (improved from 4.6s)
+- TBT: 30ms (improved from 240ms - excellent!)
 - CLS: 0.003 (excellent)
 
 ### Data Health (2026-01-26)
@@ -282,6 +312,16 @@ Last Security Scan: TBD
 ---
 
 ## Changelog
+
+### 2026-01-26 - Session #8
+- Successfully deployed code splitting changes to Fly.io
+- Lighthouse metrics improved significantly:
+  - Performance: 68 → 76 (+8 points)
+  - Accessibility: 83 → 87 (+4 points)
+  - TBT: 240ms → 30ms (87.5% reduction)
+  - FCP: 4.3s → 3.9s, LCP: 4.6s → 4.2s
+- Added .dockerignore to client to speed up Docker builds (commit bfede03)
+- Build context reduced from ~800MB to ~10MB
 
 ### 2026-01-26 - Session #7
 - Ran all frontend tests (106 passing)
