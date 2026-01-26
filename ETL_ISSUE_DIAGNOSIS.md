@@ -331,5 +331,9 @@ config :sentry,
 
 ---
 
-**Status**: READY TO FIX  
-**Action Required**: Start Elixir server
+**Status**: RESOLVED (Production)
+**Note**: This document describes local development setup. Production ETL on Fly.io is healthy:
+- politician-trading-server.fly.dev: ✅ Running (health check OK)
+- politician-trading-etl.fly.dev: ✅ Running (health check OK)
+
+For local development, follow the steps above to start the Elixir server.
