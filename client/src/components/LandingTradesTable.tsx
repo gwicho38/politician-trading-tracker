@@ -530,7 +530,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
               : 'No trading disclosures found'}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 p-4">
+          <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 p-3 sm:p-4">
             {disclosures.map((disclosure) => {
               const politician = disclosure.politician;
               const partyValue = (politician?.party || 'Unknown') as 'D' | 'R' | 'I' | 'Other';

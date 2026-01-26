@@ -64,20 +64,20 @@ const VolumeChart = () => {
 
   return (
     <>
-      <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-6">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-4 sm:p-6">
+      <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold text-foreground">Trade Volume</h3>
-          <p className="text-sm text-muted-foreground">
+          <h3 className="text-base sm:text-lg font-semibold text-foreground">Trade Volume</h3>
+          <p className="text-xs sm:text-sm text-muted-foreground">
             Total disclosed trading volume by month
-            <span className="text-xs ml-2 text-primary/70">• Click chart for details</span>
+            <span className="text-xs ml-2 text-primary/70 hidden sm:inline">• Click chart for details</span>
           </p>
         </div>
         <Select
           value={typeof timeRange === 'number' ? String(timeRange) : timeRange}
           onValueChange={handleTimeRangeChange}
         >
-          <SelectTrigger className="w-[140px] h-8 text-xs">
+          <SelectTrigger className="w-[120px] sm:w-[140px] h-8 text-xs">
             <SelectValue placeholder="Time range" />
           </SelectTrigger>
           <SelectContent>
@@ -92,8 +92,8 @@ const VolumeChart = () => {
           </SelectContent>
         </Select>
       </div>
-      
-      <div className="h-72">
+
+      <div className="h-56 sm:h-72">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -120,17 +120,19 @@ const VolumeChart = () => {
                 stroke="hsl(var(--border))" 
                 vertical={false}
               />
-              <XAxis 
-                dataKey="month" 
+              <XAxis
+                dataKey="month"
                 stroke="hsl(var(--muted-foreground))"
-                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
                 axisLine={{ stroke: 'hsl(var(--border))' }}
+                interval="preserveStartEnd"
               />
-              <YAxis 
+              <YAxis
                 stroke="hsl(var(--muted-foreground))"
-                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
                 axisLine={{ stroke: 'hsl(var(--border))' }}
                 tickFormatter={(value) => formatCurrency(value)}
+                width={55}
               />
               <Tooltip content={<CustomVolumeTooltip />} />
               <Area 

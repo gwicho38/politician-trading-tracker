@@ -10,16 +10,16 @@ const TopTickers = () => {
 
   return (
     <>
-      <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-6">
-        <div className="mb-6 flex items-center justify-between">
+      <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-4 sm:p-6">
+        <div className="mb-4 sm:mb-6 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-foreground">Most Traded Tickers</h3>
-            <p className="text-sm text-muted-foreground">By number of transactions</p>
+            <h3 className="text-base sm:text-lg font-semibold text-foreground">Most Traded Tickers</h3>
+            <p className="text-xs sm:text-sm text-muted-foreground">By number of transactions</p>
           </div>
-          <TrendingUp className="h-5 w-5 text-muted-foreground" />
+          <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2 sm:space-y-3">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -40,24 +40,24 @@ const TopTickers = () => {
               <div
                 key={ticker.ticker}
                 onClick={() => setSelectedTicker(ticker.ticker)}
-                className="group flex items-center justify-between rounded-lg p-3 transition-all duration-200 hover:bg-secondary/50 cursor-pointer"
+                className="group flex items-center justify-between rounded-lg p-2 sm:p-3 transition-all duration-200 hover:bg-secondary/50 cursor-pointer gap-2"
               >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary font-mono text-sm font-bold text-muted-foreground">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                  <div className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-secondary font-mono text-xs sm:text-sm font-bold text-muted-foreground flex-shrink-0">
                     #{index + 1}
                   </div>
-                  <div>
-                    <span className="font-mono font-semibold text-foreground group-hover:text-primary transition-colors">
+                  <div className="min-w-0 flex-1">
+                    <span className="font-mono text-sm sm:text-base font-semibold text-foreground group-hover:text-primary transition-colors">
                       {ticker.ticker}
                     </span>
-                    <p className="text-xs text-muted-foreground truncate max-w-[180px]">
+                    <p className="text-xs text-muted-foreground truncate">
                       {ticker.name}
                     </p>
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <p className="font-mono text-sm font-semibold text-foreground">
+                <div className="text-right flex-shrink-0">
+                  <p className="font-mono text-xs sm:text-sm font-semibold text-foreground">
                     {ticker.count} trades
                   </p>
                   <p className="text-xs text-muted-foreground">

@@ -67,21 +67,21 @@ const TradeChart = () => {
 
   return (
     <>
-      <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-6">
-        <div className="mb-6 flex items-center justify-between">
+      <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-4 sm:p-6">
+        <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h3 className="text-lg font-semibold text-foreground">Trading Activity</h3>
-            <p className="text-sm text-muted-foreground">
+            <h3 className="text-base sm:text-lg font-semibold text-foreground">Trading Activity</h3>
+            <p className="text-xs sm:text-sm text-muted-foreground">
               Buy vs Sell transactions over time
-              <span className="text-xs ml-2 text-primary/70">• Click bars for details</span>
+              <span className="text-xs ml-2 text-primary/70 hidden sm:inline">• Click bars for details</span>
             </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <Select
               value={typeof timeRange === 'number' ? String(timeRange) : timeRange}
               onValueChange={handleTimeRangeChange}
             >
-              <SelectTrigger className="w-[140px] h-8 text-xs">
+              <SelectTrigger className="w-[120px] sm:w-[140px] h-8 text-xs">
                 <SelectValue placeholder="Time range" />
               </SelectTrigger>
               <SelectContent>
@@ -95,20 +95,20 @@ const TradeChart = () => {
                 ))}
               </SelectContent>
             </Select>
-            <div className="flex items-center gap-3 text-sm">
-              <div className="flex items-center gap-1.5">
-                <div className="h-2.5 w-2.5 rounded-full bg-success" />
+            <div className="flex items-center gap-2 sm:gap-3 text-sm">
+              <div className="flex items-center gap-1">
+                <div className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-success" />
                 <span className="text-muted-foreground text-xs">Buys</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <div className="h-2.5 w-2.5 rounded-full bg-destructive" />
+              <div className="flex items-center gap-1">
+                <div className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-destructive" />
                 <span className="text-muted-foreground text-xs">Sells</span>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="h-72">
+        <div className="h-56 sm:h-72">
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -133,13 +133,15 @@ const TradeChart = () => {
                 <XAxis
                   dataKey="month"
                   stroke="hsl(var(--muted-foreground))"
-                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
                   axisLine={{ stroke: 'hsl(var(--border))' }}
+                  interval="preserveStartEnd"
                 />
                 <YAxis
                   stroke="hsl(var(--muted-foreground))"
-                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
                   axisLine={{ stroke: 'hsl(var(--border))' }}
+                  width={40}
                 />
                 <Tooltip
                   content={<CustomChartTooltip />}
