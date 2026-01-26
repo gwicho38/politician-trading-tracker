@@ -305,8 +305,9 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                 <button
                   onClick={() => handleSearchChange('')}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Clear search"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-4 w-4" aria-hidden="true" />
                 </button>
               )}
             </div>
@@ -462,40 +463,40 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
               {debouncedSearch && (
                 <Badge variant="secondary" className="gap-1">
                   Search: "{debouncedSearch}"
-                  <button onClick={() => handleSearchChange('')}>
-                    <X className="h-3 w-3" />
+                  <button onClick={() => handleSearchChange('')} aria-label="Clear search filter">
+                    <X className="h-3 w-3" aria-hidden="true" />
                   </button>
                 </Badge>
               )}
               {transactionType && (
                 <Badge variant="secondary" className="gap-1">
                   Type: {transactionType}
-                  <button onClick={() => { setTransactionType(''); setPage(0); }}>
-                    <X className="h-3 w-3" />
+                  <button onClick={() => { setTransactionType(''); setPage(0); }} aria-label="Clear transaction type filter">
+                    <X className="h-3 w-3" aria-hidden="true" />
                   </button>
                 </Badge>
               )}
               {party && (
                 <Badge variant="secondary" className="gap-1">
                   Party: {party}
-                  <button onClick={() => { setParty(''); setPage(0); }}>
-                    <X className="h-3 w-3" />
+                  <button onClick={() => { setParty(''); setPage(0); }} aria-label="Clear party filter">
+                    <X className="h-3 w-3" aria-hidden="true" />
                   </button>
                 </Badge>
               )}
               {dateFrom && (
                 <Badge variant="secondary" className="gap-1">
                   From: {dateFrom}
-                  <button onClick={() => { setDateFrom(''); setPage(0); }}>
-                    <X className="h-3 w-3" />
+                  <button onClick={() => { setDateFrom(''); setPage(0); }} aria-label="Clear start date filter">
+                    <X className="h-3 w-3" aria-hidden="true" />
                   </button>
                 </Badge>
               )}
               {dateTo && (
                 <Badge variant="secondary" className="gap-1">
                   To: {dateTo}
-                  <button onClick={() => { setDateTo(''); setPage(0); }}>
-                    <X className="h-3 w-3" />
+                  <button onClick={() => { setDateTo(''); setPage(0); }} aria-label="Clear end date filter">
+                    <X className="h-3 w-3" aria-hidden="true" />
                   </button>
                 </Badge>
               )}
@@ -562,8 +563,9 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-muted-foreground hover:text-foreground"
+                        aria-label="View original disclosure document"
                       >
-                        <ExternalLink className="h-3.5 w-3.5" />
+                        <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                       </a>
                     )}
                   </div>
@@ -751,12 +753,12 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                                 copyTicker(disclosure.asset_ticker!);
                               }}
                               className="p-1 rounded hover:bg-secondary transition-colors opacity-0 group-hover:opacity-100"
-                              title="Copy ticker"
+                              aria-label={`Copy ticker ${disclosure.asset_ticker}`}
                             >
                               {copiedTicker === disclosure.asset_ticker ? (
-                                <Check className="h-3 w-3 text-success" />
+                                <Check className="h-3 w-3 text-success" aria-hidden="true" />
                               ) : (
-                                <Copy className="h-3 w-3 text-muted-foreground" />
+                                <Copy className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
                               )}
                             </button>
                           </div>
@@ -801,9 +803,9 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                            title="View original disclosure"
+                            aria-label="View original disclosure document"
                           >
-                            <ExternalLink className="h-4 w-4" />
+                            <ExternalLink className="h-4 w-4" aria-hidden="true" />
                           </a>
                         ) : (
                           <span className="text-muted-foreground/50 p-2">-</span>
@@ -811,9 +813,9 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                         <button
                           onClick={() => handleReportClick(disclosure)}
                           className="inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:bg-warning/10 hover:text-warning transition-colors opacity-0 group-hover:opacity-100"
-                          title="Report data error"
+                          aria-label="Report data error"
                         >
-                          <Flag className="h-4 w-4" />
+                          <Flag className="h-4 w-4" aria-hidden="true" />
                         </button>
                       </div>
                     </TableCell>

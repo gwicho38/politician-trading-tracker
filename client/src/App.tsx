@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,20 +11,25 @@ import { FloatingCart } from "@/components/cart";
 import { RootErrorBoundary } from "@/components/RootErrorBoundary";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Index from "./pages/Index";
-import Auth from "./pages/Auth";
-import SignalPlayground from "./pages/SignalPlayground";
-import Showcase from "./pages/Showcase";
-import Trading from "./pages/Trading";
-import TradingSignals from "./pages/TradingSignals";
-import Drops from "./pages/Drops";
-import DataQuality from "./pages/DataQuality";
-import ReferencePortfolio from "./pages/ReferencePortfolio";
-// COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready
-// import Admin from "./pages/Admin";
-// import AdminDataCollection from "./pages/AdminDataCollection";
-// import Settings from "./pages/Settings";
-// import Subscription from "./pages/Subscription";
 import NotFound from "./pages/NotFound";
+
+// Lazy-load pages with heavy dependencies (Monaco, Recharts, Web3)
+// This reduces initial bundle size by ~300KB
+const Auth = lazy(() => import("./pages/Auth"));
+const SignalPlayground = lazy(() => import("./pages/SignalPlayground"));
+const Showcase = lazy(() => import("./pages/Showcase"));
+const Trading = lazy(() => import("./pages/Trading"));
+const TradingSignals = lazy(() => import("./pages/TradingSignals"));
+const Drops = lazy(() => import("./pages/Drops"));
+const DataQuality = lazy(() => import("./pages/DataQuality"));
+const ReferencePortfolio = lazy(() => import("./pages/ReferencePortfolio"));
+
+// Loading fallback component
+const PageLoader = () => (
+  <div className="flex items-center justify-center min-h-screen">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+  </div>
+);
 
 const App = () => (
   <RootErrorBoundary>
@@ -43,42 +49,58 @@ const App = () => (
               } />
               <Route path="/auth" element={
                 <ErrorBoundary name="Authentication">
-                  <Auth />
+                  <Suspense fallback={<PageLoader />}>
+                    <Auth />
+                  </Suspense>
                 </ErrorBoundary>
               } />
               <Route path="/playground" element={
                 <ErrorBoundary name="Signal Playground">
-                  <SignalPlayground />
+                  <Suspense fallback={<PageLoader />}>
+                    <SignalPlayground />
+                  </Suspense>
                 </ErrorBoundary>
               } />
               <Route path="/showcase" element={
                 <ErrorBoundary name="Showcase">
-                  <Showcase />
+                  <Suspense fallback={<PageLoader />}>
+                    <Showcase />
+                  </Suspense>
                 </ErrorBoundary>
               } />
               <Route path="/drops" element={
                 <ErrorBoundary name="Drops">
-                  <Drops />
+                  <Suspense fallback={<PageLoader />}>
+                    <Drops />
+                  </Suspense>
                 </ErrorBoundary>
               } />
               <Route path="/trading" element={
                 <ErrorBoundary name="Trading">
-                  <Trading />
+                  <Suspense fallback={<PageLoader />}>
+                    <Trading />
+                  </Suspense>
                 </ErrorBoundary>
               } />
               <Route path="/trading-signals" element={
                 <ErrorBoundary name="Trading Signals">
-                  <TradingSignals />
+                  <Suspense fallback={<PageLoader />}>
+                    <TradingSignals />
+                  </Suspense>
                 </ErrorBoundary>
               } />
               <Route path="/admin/data-quality" element={
                 <ErrorBoundary name="Data Quality">
-                  <DataQuality />
+                  <Suspense fallback={<PageLoader />}>
+                    <DataQuality />
+                  </Suspense>
                 </ErrorBoundary>
               } />
               <Route path="/reference-portfolio" element={
                 <ErrorBoundary name="Reference Portfolio">
-                  <ReferencePortfolio />
+                  <Suspense fallback={<PageLoader />}>
+                    <ReferencePortfolio />
+                  </Suspense>
                 </ErrorBoundary>
               } />
               {/* COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready */}
