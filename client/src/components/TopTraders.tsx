@@ -14,21 +14,21 @@ const TopTraders = () => {
 
   return (
     <>
-      <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-6">
-        <div className="mb-6 flex items-center justify-between">
+      <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-4 sm:p-6">
+        <div className="mb-4 sm:mb-6 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-foreground">Top Traders</h3>
-            <p className="text-sm text-muted-foreground">By total trading volume</p>
+            <h3 className="text-base sm:text-lg font-semibold text-foreground">Top Traders</h3>
+            <p className="text-xs sm:text-sm text-muted-foreground">By total trading volume</p>
           </div>
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('navigate-section', { detail: 'politicians' }))}
-            className="text-sm text-primary hover:underline flex items-center gap-1"
+            className="text-xs sm:text-sm text-primary hover:underline flex items-center gap-1"
           >
             View all <ArrowUpRight className="h-3 w-3" />
           </button>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2 sm:space-y-3">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -46,32 +46,32 @@ const TopTraders = () => {
               <div
                 key={politician.id}
                 onClick={() => setSelectedPolitician(politician)}
-                className="group flex items-center justify-between rounded-lg p-3 transition-all duration-200 hover:bg-secondary/50 cursor-pointer"
+                className="group flex items-center justify-between rounded-lg p-2 sm:p-3 transition-all duration-200 hover:bg-secondary/50 cursor-pointer gap-2"
               >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary font-mono text-sm font-bold text-muted-foreground">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                  <div className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-secondary font-mono text-xs sm:text-sm font-bold text-muted-foreground flex-shrink-0">
                     #{index + 1}
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-foreground group-hover:text-primary transition-colors">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                      <span className="font-medium text-sm sm:text-base text-foreground group-hover:text-primary transition-colors truncate">
                         {politician.name}
                       </span>
                       <Badge
                         variant="outline"
-                        className={cn("text-xs px-1.5 py-0", getPartyBg(politician.party), getPartyColor(politician.party))}
+                        className={cn("text-xs px-1 sm:px-1.5 py-0 flex-shrink-0", getPartyBg(politician.party), getPartyColor(politician.party))}
                       >
                         {politician.party}
                       </Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground truncate">
                       {politician.chamber} • {politician.state || politician.jurisdiction_id}
                     </p>
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <p className="font-mono text-sm font-semibold text-foreground">
+                <div className="text-right flex-shrink-0">
+                  <p className="font-mono text-xs sm:text-sm font-semibold text-foreground">
                     {formatCurrency(politician.total_volume)}
                   </p>
                   <p className="text-xs text-muted-foreground">

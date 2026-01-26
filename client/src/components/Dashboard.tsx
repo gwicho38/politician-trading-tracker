@@ -29,24 +29,24 @@ const Dashboard = ({ initialTickerSearch, onTickerSearchClear }: DashboardProps)
   ) || { buys: 0, sells: 0 };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-2">
-        <h2 className="text-2xl font-bold text-foreground">
+      <div className="flex flex-col gap-1 sm:gap-2">
+        <h2 className="text-xl sm:text-2xl font-bold text-foreground">
           Politician Stock Trading Tracker
         </h2>
-        <p className="text-muted-foreground">
+        <p className="text-sm sm:text-base text-muted-foreground">
           A free public resource tracking congressional stock trades and disclosures
         </p>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         {isLoading ? (
           <>
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-6 flex items-center justify-center h-32">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <div key={i} className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-4 sm:p-6 flex items-center justify-center h-24 sm:h-32">
+                <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin text-muted-foreground" />
               </div>
             ))}
           </>
@@ -90,8 +90,8 @@ const Dashboard = ({ initialTickerSearch, onTickerSearchClear }: DashboardProps)
 
       {/* Transaction Type Summary */}
       {transactionTotals.buys > 0 || transactionTotals.sells > 0 ? (
-        <div className="flex items-center gap-4 flex-wrap">
-          <span className="text-sm text-muted-foreground">Transaction breakdown:</span>
+        <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+          <span className="text-xs sm:text-sm text-muted-foreground">Transaction breakdown:</span>
           <Badge variant="outline" className="gap-1.5 bg-success/10 text-success border-success/30">
             <ArrowUpRight className="h-3 w-3" />
             {transactionTotals.buys.toLocaleString()} Buys
@@ -116,7 +116,7 @@ const Dashboard = ({ initialTickerSearch, onTickerSearchClear }: DashboardProps)
       </ErrorBoundary>
 
       {/* Charts Row */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
         <ErrorBoundary name="Trade Chart" minimal>
           <TradeChart />
         </ErrorBoundary>
@@ -126,7 +126,7 @@ const Dashboard = ({ initialTickerSearch, onTickerSearchClear }: DashboardProps)
       </div>
 
       {/* Top Traders & Top Tickers */}
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
         <ErrorBoundary name="Top Traders" minimal>
           <TopTraders />
         </ErrorBoundary>

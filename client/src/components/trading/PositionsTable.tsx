@@ -98,13 +98,13 @@ export function PositionsTable({ tradingMode }: PositionsTableProps) {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <div>
-          <CardTitle>Positions ({positions.length})</CardTitle>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6">
+        <div className="min-w-0 flex-1">
+          <CardTitle className="text-base sm:text-lg">Positions ({positions.length})</CardTitle>
           <CardDescription>
             {metrics && (
-              <span className="flex items-center gap-4 mt-1">
-                <span>Total Value: {formatCurrency(metrics.totalValue)}</span>
+              <span className="flex flex-col xs:flex-row xs:items-center gap-1 xs:gap-4 mt-1 text-xs sm:text-sm">
+                <span>Total: {formatCurrency(metrics.totalValue)}</span>
                 <span className={cn(
                   metrics.totalPnL >= 0 ? "text-green-600" : "text-red-600"
                 )}>
@@ -119,23 +119,110 @@ export function PositionsTable({ tradingMode }: PositionsTableProps) {
           size="sm"
           onClick={() => refetch()}
           disabled={isRefetching}
+          className="flex-shrink-0"
         >
           <RefreshCw className={cn("h-4 w-4", isRefetching && "animate-spin")} />
         </Button>
       </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto">
+      <CardContent className="px-3 sm:px-6">
+        {/* Mobile Card View */}
+        <div className="sm:hidden space-y-3">
+          {positions.map((position) => (
+            <div
+              key={position.asset_id}
+              className={cn(
+                "rounded-lg border p-3",
+                position.unrealized_pl >= 0 ? "border-green-500/30 bg-green-500/5" : "border-red-500/30 bg-red-500/5"
+              )}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-lg">{position.symbol}</span>
+                  <Badge variant="outline" className="text-xs">
+                    {position.side}
+                  </Badge>
+                </div>
+                <div className={cn(
+                  "flex items-center gap-1 text-sm font-medium",
+                  position.unrealized_pl >= 0 ? "text-green-600" : "text-red-600"
+                )}>
+                  {position.unrealized_pl >= 0 ? (
+                    <TrendingUp className="h-3 w-3" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3" />
+                  )}
+                  {formatPercent(position.unrealized_plpc)}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                <div>
+                  <span className="text-muted-foreground text-xs">Qty</span>
+                  <p className="font-mono">{position.qty.toLocaleString()}</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-muted-foreground text-xs">Value</span>
+                  <p className="font-mono">{formatCurrency(position.market_value)}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Avg Entry</span>
+                  <p className="font-mono">{formatCurrency(position.avg_entry_price)}</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-muted-foreground text-xs">Current</span>
+                  <p className="font-mono">{formatCurrency(position.current_price)}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">P&L</span>
+                  <p className={cn("font-mono", position.unrealized_pl >= 0 ? "text-green-600" : "text-red-600")}>
+                    {formatCurrency(position.unrealized_pl)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-muted-foreground text-xs">Today</span>
+                  <p className={cn("font-mono", position.unrealized_intraday_pl >= 0 ? "text-green-600" : "text-red-600")}>
+                    {formatCurrency(position.unrealized_intraday_pl)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-8 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
+                  onClick={() => openTradeDialog(position as Position, 'buy')}
+                >
+                  <TrendingUp className="h-3 w-3 mr-1" />
+                  Buy More
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-8 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                  onClick={() => openTradeDialog(position as Position, 'sell')}
+                >
+                  <TrendingDown className="h-3 w-3 mr-1" />
+                  Sell
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b text-left text-sm text-muted-foreground">
                 <th className="pb-2 font-medium">Symbol</th>
                 <th className="pb-2 font-medium text-right">Qty</th>
-                <th className="pb-2 font-medium text-right">Avg Price</th>
-                <th className="pb-2 font-medium text-right">Current</th>
+                <th className="pb-2 font-medium text-right hidden md:table-cell">Avg Price</th>
+                <th className="pb-2 font-medium text-right hidden md:table-cell">Current</th>
                 <th className="pb-2 font-medium text-right">Market Value</th>
                 <th className="pb-2 font-medium text-right">P&L</th>
-                <th className="pb-2 font-medium text-right">P&L %</th>
-                <th className="pb-2 font-medium text-right">Today</th>
+                <th className="pb-2 font-medium text-right hidden lg:table-cell">P&L %</th>
+                <th className="pb-2 font-medium text-right hidden lg:table-cell">Today</th>
                 <th className="pb-2 font-medium text-right">Actions</th>
               </tr>
             </thead>
@@ -153,10 +240,10 @@ export function PositionsTable({ tradingMode }: PositionsTableProps) {
                   <td className="py-3 text-right font-mono">
                     {position.qty.toLocaleString()}
                   </td>
-                  <td className="py-3 text-right font-mono">
+                  <td className="py-3 text-right font-mono hidden md:table-cell">
                     {formatCurrency(position.avg_entry_price)}
                   </td>
-                  <td className="py-3 text-right font-mono">
+                  <td className="py-3 text-right font-mono hidden md:table-cell">
                     {formatCurrency(position.current_price)}
                   </td>
                   <td className="py-3 text-right font-mono">
@@ -176,13 +263,13 @@ export function PositionsTable({ tradingMode }: PositionsTableProps) {
                     </div>
                   </td>
                   <td className={cn(
-                    "py-3 text-right font-mono text-sm",
+                    "py-3 text-right font-mono text-sm hidden lg:table-cell",
                     position.unrealized_plpc >= 0 ? "text-green-600" : "text-red-600"
                   )}>
                     {formatPercent(position.unrealized_plpc)}
                   </td>
                   <td className={cn(
-                    "py-3 text-right font-mono text-sm",
+                    "py-3 text-right font-mono text-sm hidden lg:table-cell",
                     position.unrealized_intraday_pl >= 0 ? "text-green-600" : "text-red-600"
                   )}>
                     {formatCurrency(position.unrealized_intraday_pl)}
