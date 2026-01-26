@@ -45,7 +45,7 @@ function formatConfidenceSummary(corrections: CorrectionResult[]): string {
 
 function determineEndpoint(path: string): string {
   const parts = path.split('/');
-  return parts[parts.length - 1] || 'default';
+  return parts[parts.length - 1] || '';
 }
 
 function isAmountCorrection(correction: CorrectionResult): boolean {

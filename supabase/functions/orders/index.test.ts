@@ -31,7 +31,7 @@ function validateOrderParams(params: {
   side?: string;
   quantity?: number;
 }): { valid: boolean; error?: string } {
-  if (!params.ticker || !params.side || !params.quantity) {
+  if (!params.ticker || !params.side || params.quantity === undefined || params.quantity === null) {
     return { valid: false, error: 'Missing required fields: ticker, side, quantity' };
   }
 

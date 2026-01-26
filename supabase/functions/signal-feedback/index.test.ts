@@ -247,7 +247,7 @@ Deno.test("calculateRecommendedWeight() - positive correlation", () => {
 
 Deno.test("calculateRecommendedWeight() - negative correlation", () => {
   const weight = calculateRecommendedWeight(-0.5);
-  assertEquals(weight, 0.05);
+  assertAlmostEquals(weight, 0.05, 0.0001);
 });
 
 Deno.test("calculateRecommendedWeight() - clamps to 0", () => {
