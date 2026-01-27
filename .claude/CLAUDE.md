@@ -239,6 +239,26 @@ make deploy-functions
 
 ---
 
+## CI/CD Requirements
+
+### CRITICAL: CI Must Pass Before Work is Complete
+**NEVER declare work complete until CI passes on GitHub.** This is a hard requirement.
+
+### CI/CD Workflow
+1. **Before starting work**: Check current CI status with `gh run list --limit 3`
+2. **After pushing changes**: Monitor CI with `gh run watch` or `gh run list`
+3. **If CI fails**: Fix immediately, push fix, wait for green CI
+4. **Only after CI passes**: Declare the task complete
+
+### CI Commands
+```bash
+gh run list --limit 5              # Check recent CI runs
+gh run view <run-id> --log-failed  # View failure logs
+gh run watch <run-id>              # Watch run in real-time
+```
+
+---
+
 ## Code Conventions
 
 ### Git Workflow
