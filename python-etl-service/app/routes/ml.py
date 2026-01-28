@@ -2,6 +2,9 @@
 ML API Routes
 
 Endpoints for ML model prediction and training.
+
+Sensitive endpoints (train, activate) require admin API key
+for authorization as they can affect system behavior.
 """
 
 import asyncio
@@ -9,7 +12,7 @@ import logging
 from typing import Optional, List
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 
 from app.services.ml_signal_model import (
@@ -28,6 +31,7 @@ from app.services.feature_pipeline import (
     run_training_job_in_background,
     get_supabase,
 )
+from app.middleware.auth import require_admin_key
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -220,9 +224,15 @@ async def batch_predict_signals(request: BatchPredictRequest):
 # ============================================================================
 
 @router.post("/train")
-async def trigger_training(request: TrainRequest, background_tasks: BackgroundTasks):
+async def trigger_training(
+    request: TrainRequest,
+    background_tasks: BackgroundTasks,
+    _admin_key: str = Depends(require_admin_key),
+):
     """
     Trigger model training job.
+
+    **Requires admin API key.**
 
     This is a long-running operation that runs in the background.
     Returns a job ID to check progress.
@@ -358,9 +368,14 @@ async def get_feature_importance(model_id: str):
 
 
 @router.post("/models/{model_id}/activate")
-async def activate_model(model_id: str):
+async def activate_model(
+    model_id: str,
+    _admin_key: str = Depends(require_admin_key),
+):
     """
     Activate a specific model for predictions.
+
+    **Requires admin API key.**
 
     Archives the currently active model.
     """

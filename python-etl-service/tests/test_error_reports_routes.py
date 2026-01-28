@@ -6,8 +6,8 @@ Tests:
 - POST /error-reports/process-one - Process single error report
 - GET /error-reports/stats - Get error report statistics
 - GET /error-reports/needs-review - Get reports needing review
-- POST /error-reports/force-apply - Force apply correction
-- POST /error-reports/reanalyze - Reanalyze a report
+- POST /error-reports/force-apply - Force apply correction (admin-only)
+- POST /error-reports/reanalyze - Reanalyze a report (admin-only)
 - POST /error-reports/generate-suggestion - Generate suggestion
 - GET /error-reports/health - Check Ollama health
 """
@@ -15,6 +15,150 @@ Tests:
 import pytest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
+
+
+# =============================================================================
+# Admin Authentication Tests
+# =============================================================================
+
+class TestErrorReportsAdminProtection:
+    """Tests for admin-only endpoint protection."""
+
+    @pytest.fixture
+    def client_with_auth(self, enable_auth):
+        """Create a test client with auth enabled."""
+        from app.main import app
+        return TestClient(app), enable_auth
+
+    def test_force_apply_requires_admin_key(self, client_with_auth):
+        """POST /error-reports/force-apply requires admin API key."""
+        client, auth_keys = client_with_auth
+
+        # Request without API key should return 401
+        response = client.post("/error-reports/force-apply", json={
+            "report_id": "test-id",
+            "corrections": [{"field": "ticker", "new_value": "AAPL"}]
+        })
+        assert response.status_code == 401
+
+    def test_force_apply_accepts_admin_key(self, client_with_auth):
+        """POST /error-reports/force-apply accepts admin API key."""
+        client, auth_keys = client_with_auth
+
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.supabase = MagicMock()
+
+            # Mock report found
+            mock_response = MagicMock()
+            mock_response.data = {
+                "id": "test-id",
+                "disclosure_id": "disclosure-123"
+            }
+            mock_processor.supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_response
+            mock_processor._apply_corrections.return_value = True
+            mock_processor._update_report_status.return_value = None
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post(
+                "/error-reports/force-apply",
+                json={
+                    "report_id": "test-id",
+                    "corrections": [{"field": "ticker", "new_value": "AAPL"}]
+                },
+                headers={"X-API-Key": auth_keys["admin_key"]}
+            )
+
+        assert response.status_code == 200
+
+    def test_reanalyze_requires_admin_key(self, client_with_auth):
+        """POST /error-reports/reanalyze requires admin API key."""
+        client, auth_keys = client_with_auth
+
+        # Request without API key should return 401
+        response = client.post("/error-reports/reanalyze", json={
+            "report_id": "test-id"
+        })
+        assert response.status_code == 401
+
+    def test_reanalyze_accepts_admin_key(self, client_with_auth):
+        """POST /error-reports/reanalyze accepts admin API key."""
+        client, auth_keys = client_with_auth
+
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.test_connection.return_value = True
+            mock_processor.supabase = MagicMock()
+            mock_processor.CONFIDENCE_THRESHOLD = 0.7
+
+            # Mock report found
+            mock_response = MagicMock()
+            mock_response.data = {
+                "id": "test-id",
+                "status": "reviewed",
+                "disclosure_id": "disclosure-123"
+            }
+            mock_processor.supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_response
+            mock_processor.supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
+
+            # Mock process_report result
+            mock_result = MagicMock()
+            mock_result.report_id = "test-id"
+            mock_result.status = "fixed"
+            mock_result.corrections = []
+            mock_result.admin_notes = ""
+            mock_processor.process_report.return_value = mock_result
+
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post(
+                "/error-reports/reanalyze",
+                json={"report_id": "test-id"},
+                headers={"X-API-Key": auth_keys["admin_key"]}
+            )
+
+        assert response.status_code == 200
+
+    def test_regular_api_key_rejected_for_force_apply(self, enable_auth):
+        """POST /error-reports/force-apply rejects regular API key (requires admin)."""
+        from app.main import app
+        from app.middleware import auth
+
+        # Set up different keys
+        auth.ETL_API_KEY = "regular_key"
+        auth.ETL_ADMIN_API_KEY = "admin_key"
+
+        client = TestClient(app)
+
+        # Regular key should be rejected with 403
+        response = client.post(
+            "/error-reports/force-apply",
+            json={
+                "report_id": "test-id",
+                "corrections": [{"field": "ticker", "new_value": "AAPL"}]
+            },
+            headers={"X-API-Key": "regular_key"}
+        )
+        assert response.status_code == 403
+
+    def test_regular_api_key_rejected_for_reanalyze(self, enable_auth):
+        """POST /error-reports/reanalyze rejects regular API key (requires admin)."""
+        from app.main import app
+        from app.middleware import auth
+
+        # Set up different keys
+        auth.ETL_API_KEY = "regular_key"
+        auth.ETL_ADMIN_API_KEY = "admin_key"
+
+        client = TestClient(app)
+
+        # Regular key should be rejected with 403
+        response = client.post(
+            "/error-reports/reanalyze",
+            json={"report_id": "test-id"},
+            headers={"X-API-Key": "regular_key"}
+        )
+        assert response.status_code == 403
 
 
 # =============================================================================

@@ -8,8 +8,8 @@ Tests:
 - GET /ml/models/active - Get active model
 - GET /ml/models/{model_id} - Get model by ID
 - GET /ml/models/{model_id}/feature-importance - Feature importance
-- POST /ml/models/{model_id}/activate - Activate model
-- POST /ml/train - Trigger training
+- POST /ml/models/{model_id}/activate - Activate model (admin-only)
+- POST /ml/train - Trigger training (admin-only)
 - GET /ml/train/{job_id} - Training status
 - GET /ml/health - ML health check
 """
@@ -17,6 +17,99 @@ Tests:
 import pytest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
+
+
+# =============================================================================
+# Admin Authentication Tests
+# =============================================================================
+
+class TestMlAdminProtection:
+    """Tests for admin-only endpoint protection."""
+
+    @pytest.fixture
+    def client_with_auth(self, enable_auth):
+        """Create a test client with auth enabled."""
+        from app.main import app
+        return TestClient(app), enable_auth
+
+    def test_train_requires_admin_key(self, client_with_auth):
+        """POST /ml/train requires admin API key."""
+        client, auth_keys = client_with_auth
+
+        # Request without API key should return 401
+        response = client.post(
+            "/ml/train",
+            json={"lookback_days": 365, "model_type": "xgboost"}
+        )
+        assert response.status_code == 401
+
+    def test_train_accepts_admin_key(self, client_with_auth):
+        """POST /ml/train accepts admin API key."""
+        client, auth_keys = client_with_auth
+
+        with patch("app.routes.ml.create_training_job") as mock_create:
+            mock_job = MagicMock()
+            mock_job.job_id = "test-job-id"
+            mock_job.status = "pending"
+            mock_create.return_value = mock_job
+
+            with patch("app.routes.ml.run_training_job_in_background"):
+                response = client.post(
+                    "/ml/train",
+                    json={"lookback_days": 365, "model_type": "xgboost"},
+                    headers={"X-API-Key": auth_keys["admin_key"]}
+                )
+
+        assert response.status_code == 200
+
+    def test_activate_model_requires_admin_key(self, client_with_auth):
+        """POST /ml/models/{model_id}/activate requires admin API key."""
+        client, auth_keys = client_with_auth
+
+        # Request without API key should return 401
+        response = client.post("/ml/models/test-id/activate")
+        assert response.status_code == 401
+
+    def test_activate_model_accepts_admin_key(self, client_with_auth):
+        """POST /ml/models/{model_id}/activate accepts admin API key."""
+        client, auth_keys = client_with_auth
+
+        with patch("app.routes.ml.get_supabase") as mock_supabase:
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.data = [{"id": "test-id", "status": "ready"}]
+            mock_client.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value = mock_response
+            mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
+            mock_supabase.return_value = mock_client
+
+            with patch("app.routes.ml.load_active_model") as mock_load:
+                mock_load.return_value = MagicMock()
+
+                response = client.post(
+                    "/ml/models/test-id/activate",
+                    headers={"X-API-Key": auth_keys["admin_key"]}
+                )
+
+        assert response.status_code == 200
+
+    def test_regular_api_key_rejected_for_train(self, enable_auth):
+        """POST /ml/train rejects regular API key (requires admin)."""
+        from app.main import app
+        from app.middleware import auth
+
+        # Set up different keys
+        auth.ETL_API_KEY = "regular_key"
+        auth.ETL_ADMIN_API_KEY = "admin_key"
+
+        client = TestClient(app)
+
+        # Regular key should be rejected with 403
+        response = client.post(
+            "/ml/train",
+            json={"lookback_days": 365, "model_type": "xgboost"},
+            headers={"X-API-Key": "regular_key"}
+        )
+        assert response.status_code == 403
 
 
 # =============================================================================
