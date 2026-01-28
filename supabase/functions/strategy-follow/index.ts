@@ -2,6 +2,7 @@ import { createClient } from 'supabase'
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { corsHeaders } from '../_shared/cors.ts'
 import { validateServiceRoleKey } from '../_shared/auth.ts'
+import { decrypt } from '../_shared/crypto.ts'
 
 // TODO: Review log object - structured JSON logging utility with service identification
 const log = {
@@ -77,6 +78,7 @@ function canAccountTrade(account: any): { canTrade: boolean; reason?: string } {
 // TODO: Review getAlpacaCredentials - retrieves user's Alpaca API keys from database
 // - Supports paper and live trading modes with separate credentials
 // - Returns baseUrl and dataUrl configured for trading mode
+// - Decrypts stored credentials if encryption is enabled
 async function getAlpacaCredentials(
   supabase: any,
   userEmail: string,
@@ -93,12 +95,16 @@ async function getAlpacaCredentials(
       return null
     }
 
-    const apiKey = tradingMode === 'paper' ? data.paper_api_key : data.live_api_key
-    const secretKey = tradingMode === 'paper' ? data.paper_secret_key : data.live_secret_key
+    const encryptedApiKey = tradingMode === 'paper' ? data.paper_api_key : data.live_api_key
+    const encryptedSecretKey = tradingMode === 'paper' ? data.paper_secret_key : data.live_secret_key
 
-    if (!apiKey || !secretKey) {
+    if (!encryptedApiKey || !encryptedSecretKey) {
       return null
     }
+
+    // Decrypt credentials (handles both encrypted and legacy unencrypted values)
+    const apiKey = await decrypt(encryptedApiKey)
+    const secretKey = await decrypt(encryptedSecretKey)
 
     const baseUrl = tradingMode === 'paper'
       ? 'https://paper-api.alpaca.markets'

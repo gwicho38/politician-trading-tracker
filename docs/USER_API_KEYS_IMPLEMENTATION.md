@@ -158,14 +158,42 @@ To apply the database migration:
 
 ## Security Considerations
 
-### Encryption
-- API keys are encrypted using Fernet (symmetric encryption)
-- Encryption key should be stored in environment variable `API_ENCRYPTION_KEY`
-- For production, generate a secure random key:
-  ```python
-  from cryptography.fernet import Fernet
-  print(Fernet.generate_key().decode())
-  ```
+### Encryption (AES-256-GCM)
+
+API keys are encrypted at rest using **AES-256-GCM** (Authenticated Encryption):
+
+- **Algorithm**: AES-256-GCM provides both confidentiality and integrity
+- **Key Derivation**: PBKDF2 with 100,000 iterations from master secret
+- **Random IV**: Each encryption uses a unique 12-byte IV (prevents pattern analysis)
+- **Backwards Compatible**: Unencrypted legacy data is handled gracefully
+- **Prefix Marker**: Encrypted values start with `enc:` for easy identification
+
+The encryption is implemented in `supabase/functions/_shared/crypto.ts` and is used by all Edge Functions that handle credentials.
+
+#### Generating an Encryption Key
+
+Use the Deno runtime or any secure random generator:
+
+```typescript
+// In Deno:
+const key = crypto.getRandomValues(new Uint8Array(32));
+console.log(btoa(String.fromCharCode(...key)));
+```
+
+Or use OpenSSL:
+```bash
+openssl rand -base64 32
+```
+
+#### Setting the Encryption Key
+
+Set the `API_ENCRYPTION_KEY` secret in Supabase:
+
+1. Go to Supabase Dashboard → Settings → Edge Functions
+2. Add secret: `API_ENCRYPTION_KEY` = your generated key
+3. Deploy Edge Functions to apply changes
+
+**Important**: Without `API_ENCRYPTION_KEY`, credentials are stored unencrypted (backwards compatibility mode with warning logged).
 
 ### Row Level Security (RLS)
 - Supabase RLS ensures users can only access their own keys
@@ -180,17 +208,27 @@ To apply the database migration:
 
 ## Environment Variables Needed
 
-Add to `.streamlit/secrets.toml` or environment:
+### Supabase Edge Function Secrets
 
-```toml
-# For API key encryption (generate with Fernet.generate_key())
-API_ENCRYPTION_KEY = "your-encryption-key-here"
+Add to Supabase Dashboard → Settings → Edge Functions → Secrets:
 
-# Existing Supabase config
-[supabase]
-SUPABASE_URL = "https://uljsqvwkomdrlnofmlad.supabase.co"
-SUPABASE_ANON_KEY = "your-anon-key"
-SUPABASE_SERVICE_ROLE_KEY = "your-service-role-key"
+```
+# For API key encryption (generate with: openssl rand -base64 32)
+API_ENCRYPTION_KEY = "<your-32-byte-base64-encoded-key>"
+
+# Alpaca credentials (system fallback)
+ALPACA_API_KEY = "<your-alpaca-api-key>"
+ALPACA_SECRET_KEY = "<your-alpaca-secret-key>"
+ALPACA_PAPER = "true"
+```
+
+### Client Environment Variables
+
+Add to `.env` or environment:
+
+```bash
+VITE_SUPABASE_URL = "https://your-project.supabase.co"
+VITE_SUPABASE_PUBLISHABLE_KEY = "your-anon-key"
 ```
 
 ## Next Steps
