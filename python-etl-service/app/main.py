@@ -15,6 +15,7 @@ from app.routes import health, etl, enrichment, ml, quality, error_reports, dedu
 from app.lib.logging_config import configure_logging, get_logger
 from app.middleware.correlation import CorrelationMiddleware
 from app.middleware.auth import AuthMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware
 
 # Configure structured logging before anything else
 log_level = logging.DEBUG if os.getenv("DEBUG") else logging.INFO
@@ -46,6 +47,8 @@ app = FastAPI(
 app.add_middleware(CorrelationMiddleware)
 # 2. API key authentication middleware
 app.add_middleware(AuthMiddleware)
+# 3. Rate limiting middleware (innermost - runs after auth)
+app.add_middleware(RateLimitMiddleware)
 
 # Include routers
 app.include_router(health.router, tags=["health"])
