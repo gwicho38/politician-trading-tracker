@@ -15,17 +15,18 @@ Merge strategy:
 4. Delete duplicate records
 """
 
-import os
+import logging
 import re
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from collections import defaultdict
+from typing import List, Optional
+
+from supabase import Client
+
 from app.lib.database import get_supabase
 
-from supabase import create_client, Client
-
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://uljsqvwkomdrlnofmlad.supabase.co")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -174,7 +175,7 @@ class PoliticianDeduplicator:
             return duplicate_groups
 
         except Exception as e:
-            print(f"Error finding duplicates: {e}")
+            logger.error(f"Error finding duplicates: {e}")
             return []
 
     # TODO: Review this function
@@ -200,7 +201,7 @@ class PoliticianDeduplicator:
         return max(records, key=score)
 
     # TODO: Review this function
-    def _count_disclosures(self, politician_ids: list[str]) -> int:
+    def _count_disclosures(self, politician_ids: List[str]) -> int:
         """Count trading disclosures for given politician IDs."""
         if not self.supabase or not politician_ids:
             return 0
@@ -216,7 +217,8 @@ class PoliticianDeduplicator:
                 )
                 count += response.count or 0
             return count
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to count disclosures for {len(politician_ids)} politicians: {e}")
             return 0
 
     # TODO: Review this function

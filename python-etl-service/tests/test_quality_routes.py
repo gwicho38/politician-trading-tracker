@@ -337,3 +337,102 @@ class TestValidateRecordIntegrity:
         issues = validate_record_integrity(record)
 
         assert any("Transaction after disclosure" in i.get("issue", "") for i in issues)
+
+
+# =============================================================================
+# Input Validation Tests (422 errors for invalid inputs)
+# =============================================================================
+
+class TestValidateTickersInputValidation:
+    """Tests for input validation on POST /quality/validate-tickers."""
+
+    @pytest.fixture
+    def client(self):
+        """Create a test client for the FastAPI app."""
+        from app.main import app
+        return TestClient(app)
+
+    def test_days_back_below_minimum_returns_422(self, client):
+        """days_back < 1 should return 422 validation error."""
+        response = client.post("/quality/validate-tickers", json={"days_back": 0})
+        assert response.status_code == 422
+        assert "days_back" in response.text.lower()
+
+    def test_days_back_above_maximum_returns_422(self, client):
+        """days_back > 90 should return 422 validation error."""
+        response = client.post("/quality/validate-tickers", json={"days_back": 100})
+        assert response.status_code == 422
+        assert "days_back" in response.text.lower()
+
+    def test_confidence_threshold_below_minimum_returns_422(self, client):
+        """confidence_threshold < 0 should return 422 validation error."""
+        response = client.post("/quality/validate-tickers", json={"confidence_threshold": -0.1})
+        assert response.status_code == 422
+        assert "confidence_threshold" in response.text.lower()
+
+    def test_confidence_threshold_above_maximum_returns_422(self, client):
+        """confidence_threshold > 1.0 should return 422 validation error."""
+        response = client.post("/quality/validate-tickers", json={"confidence_threshold": 1.5})
+        assert response.status_code == 422
+        assert "confidence_threshold" in response.text.lower()
+
+    def test_limit_below_minimum_returns_422(self, client):
+        """limit < 1 should return 422 validation error."""
+        response = client.post("/quality/validate-tickers", json={"limit": 0})
+        assert response.status_code == 422
+        assert "limit" in response.text.lower()
+
+    def test_limit_above_maximum_returns_422(self, client):
+        """limit > 1000 should return 422 validation error."""
+        response = client.post("/quality/validate-tickers", json={"limit": 2000})
+        assert response.status_code == 422
+        assert "limit" in response.text.lower()
+
+    def test_invalid_type_for_days_back_returns_422(self, client):
+        """Non-integer days_back should return 422 validation error."""
+        response = client.post("/quality/validate-tickers", json={"days_back": "seven"})
+        assert response.status_code == 422
+
+    def test_invalid_type_for_limit_returns_422(self, client):
+        """Non-integer limit should return 422 validation error."""
+        response = client.post("/quality/validate-tickers", json={"limit": "hundred"})
+        assert response.status_code == 422
+
+
+class TestAuditSourcesInputValidation:
+    """Tests for input validation on POST /quality/audit-sources."""
+
+    @pytest.fixture
+    def client(self):
+        """Create a test client for the FastAPI app."""
+        from app.main import app
+        return TestClient(app)
+
+    def test_sample_size_below_minimum_returns_422(self, client):
+        """sample_size < 10 should return 422 validation error."""
+        response = client.post("/quality/audit-sources", json={"sample_size": 5})
+        assert response.status_code == 422
+        assert "sample_size" in response.text.lower()
+
+    def test_sample_size_above_maximum_returns_422(self, client):
+        """sample_size > 200 should return 422 validation error."""
+        response = client.post("/quality/audit-sources", json={"sample_size": 500})
+        assert response.status_code == 422
+        assert "sample_size" in response.text.lower()
+
+    def test_days_back_below_minimum_returns_422(self, client):
+        """days_back < 1 should return 422 validation error."""
+        response = client.post("/quality/audit-sources", json={"days_back": 0})
+        assert response.status_code == 422
+        assert "days_back" in response.text.lower()
+
+    def test_days_back_above_maximum_returns_422(self, client):
+        """days_back > 365 should return 422 validation error."""
+        response = client.post("/quality/audit-sources", json={"days_back": 500})
+        assert response.status_code == 422
+        assert "days_back" in response.text.lower()
+
+    def test_invalid_type_for_sample_size_returns_422(self, client):
+        """Non-integer sample_size should return 422 validation error."""
+        response = client.post("/quality/audit-sources", json={"sample_size": "fifty"})
+        assert response.status_code == 422

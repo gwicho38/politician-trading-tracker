@@ -10,11 +10,13 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
+from supabase import Client
+
 logger = logging.getLogger(__name__)
 
 
 def log_job_execution(
-    supabase_client,
+    supabase_client: Client,
     job_id: str,
     status: str,
     started_at: datetime,
@@ -67,7 +69,7 @@ def log_job_execution(
 
 
 def cleanup_old_executions(
-    supabase_client,
+    supabase_client: Client,
     days: int = 30,
     job_id_prefix: Optional[str] = None,
 ) -> int:
@@ -116,11 +118,11 @@ class JobExecutionContext:
 
     def __init__(
         self,
-        supabase_client,
+        supabase_client: Client,
         job_id: str,
         auto_cleanup: bool = True,
         cleanup_days: int = 30,
-    ):
+    ) -> None:
         self.supabase = supabase_client
         self.job_id = job_id
         self.auto_cleanup = auto_cleanup
@@ -129,11 +131,11 @@ class JobExecutionContext:
         self.metadata = {}
         self.error = None
 
-    def add_metadata(self, key: str, value: Any):
+    def add_metadata(self, key: str, value: Any) -> None:
         """Add metadata to be logged with the execution."""
         self.metadata[key] = value
 
-    def set_error(self, error: str):
+    def set_error(self, error: str) -> None:
         """Set error message for failed execution."""
         self.error = error
 
