@@ -85,7 +85,7 @@ class AutoCorrector:
         self.supabase = self._get_supabase()
         self.corrections_made = []
 
-    def _get_supabase(self) -> Optional[Client]:
+    def _get_supabase(self):
         """Get Supabase client."""
         return get_supabase()
 
