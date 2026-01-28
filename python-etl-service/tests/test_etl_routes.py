@@ -891,11 +891,8 @@ class TestGetSenatorsExtended:
         assert data["with_disclosures"] == 1
         assert data["total_disclosures"] == 5
 
-    def test_get_senators_supabase_exception_returns_500(self, client):
-        """GET /etl/senators returns 500 when Supabase fails (due to unbound variable bug)."""
-        # NOTE: This test documents current buggy behavior - the exception handler at
-        # line 513 catches the error but with_disclosures/total_disclosures are never
-        # initialized, causing UnboundLocalError at line 519.
+    def test_get_senators_supabase_exception_gracefully_handled(self, client):
+        """GET /etl/senators returns senators without counts when Supabase fails."""
         with patch("app.routes.etl.fetch_senators_from_xml") as mock_fetch:
             mock_fetch.return_value = [
                 {"name": "Test Senator", "bioguide_id": "T000001"}
@@ -906,5 +903,10 @@ class TestGetSenatorsExtended:
 
                 response = client.get("/etl/senators")
 
-        # Due to bug in code, this returns 500 instead of gracefully handling
-        assert response.status_code == 500
+        # Should return 200 with senators but zero counts when Supabase unavailable
+        assert response.status_code == 200
+        data = response.json()
+        assert "senators" in data
+        assert len(data["senators"]) == 1
+        assert data["with_disclosures"] == 0
+        assert data["total_disclosures"] == 0

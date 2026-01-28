@@ -479,13 +479,13 @@ async def get_senators(refresh: bool = False):
     """
     senators = await fetch_senators_from_xml()
 
+    # Initialize counters before try block to avoid UnboundLocalError
+    with_disclosures = 0
+    total_disclosures = 0
+
     # Get disclosure counts from Supabase
     try:
         supabase = get_senate_supabase_client()
-
-        # For each senator, count their disclosures
-        with_disclosures = 0
-        total_disclosures = 0
 
         for senator in senators:
             bioguide = senator.get("bioguide_id")
