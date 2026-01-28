@@ -300,17 +300,34 @@ async function handleGetState(supabaseClient: any, requestId: string) {
 
         if (accountResponse.ok) {
           const account = await accountResponse.json()
+          // FIX: Use only long_market_value for positions_value display
+          // This ensures the value is always positive for a long-only strategy
+          // short_market_value can cause the total to be negative when margin is used
+          const longMarketValue = parseFloat(account.long_market_value) || 0
+          const shortMarketValue = parseFloat(account.short_market_value) || 0
+
+          // For display purposes, use the larger of:
+          // 1. long_market_value (standard case)
+          // 2. equity - cash (if that's positive and makes more sense)
+          const calculatedPositionsValue = parseFloat(account.equity) - parseFloat(account.cash)
+          const displayPositionsValue = longMarketValue > 0
+            ? longMarketValue
+            : Math.max(0, calculatedPositionsValue)
+
           alpacaData = {
             equity: parseFloat(account.equity),
             cash: parseFloat(account.cash),
             buying_power: parseFloat(account.buying_power),
-            positions_value: parseFloat(account.long_market_value) + parseFloat(account.short_market_value || 0),
+            positions_value: displayPositionsValue,
             source: 'alpaca'
           }
           log.info('Fetched live Alpaca data for get-state', {
             requestId,
             equity: alpacaData.equity,
-            cash: alpacaData.cash
+            cash: alpacaData.cash,
+            longMarketValue,
+            shortMarketValue,
+            displayPositionsValue
           })
         } else {
           log.warn('Alpaca API failed, using database values', {
@@ -1315,12 +1332,15 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
           const accountData = await accountResponse.json()
           alpacaEquity = parseFloat(accountData.equity)
           alpacaCash = parseFloat(accountData.cash)
-          // FIX: Get positions_value directly from Alpaca account API (same as handleGetState)
-          alpacaPositionsValue = parseFloat(accountData.long_market_value) + parseFloat(accountData.short_market_value || 0)
+          // FIX: Use only long_market_value for positions_value
+          // short_market_value can make this negative when margin is used
+          const longMarketValue = parseFloat(accountData.long_market_value) || 0
+          alpacaPositionsValue = longMarketValue > 0 ? longMarketValue : Math.max(0, alpacaEquity - alpacaCash)
           log.info('Alpaca account fetched', {
             requestId,
             equity: alpacaEquity,
             cash: alpacaCash,
+            longMarketValue,
             positionsValue: alpacaPositionsValue
           })
         }
@@ -1561,8 +1581,9 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
           const accountData = await accountResponse.json()
           alpacaEquity = parseFloat(accountData.equity)
           alpacaCash = parseFloat(accountData.cash)
-          // FIX: Get positions_value directly from Alpaca account API
-          alpacaPositionsValue = parseFloat(accountData.long_market_value) + parseFloat(accountData.short_market_value || 0)
+          // FIX: Use only long_market_value for positions_value
+          const longMarketValue = parseFloat(accountData.long_market_value) || 0
+          alpacaPositionsValue = longMarketValue > 0 ? longMarketValue : Math.max(0, alpacaEquity - alpacaCash)
         }
 
         const alpacaPositionsUrl = `${credentials.baseUrl}/v2/positions`
@@ -1632,6 +1653,12 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
       // Use Alpaca equity as source of truth if available
       const portfolioValue = alpacaEquity !== null ? alpacaEquity : (state.cash + totalPositionsValue)
       const cashValue = alpacaCash !== null ? alpacaCash : state.cash
+
+      // FIX: Use Alpaca's positions_value from account API as source of truth
+      const finalPositionsValue = alpacaPositionsValue !== null
+        ? alpacaPositionsValue
+        : Math.max(0, totalPositionsValue) // Ensure non-negative if using DB sum
+
       const totalReturn = portfolioValue - initialCapital
       const totalReturnPct = (totalReturn / initialCapital) * 100
 
@@ -1657,7 +1684,7 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
       await supabaseClient
         .from('reference_portfolio_state')
         .update({
-          positions_value: totalPositionsValue,
+          positions_value: finalPositionsValue,
           portfolio_value: portfolioValue,
           cash: cashValue, // Also update cash from Alpaca
           total_return: totalReturn,
@@ -1676,7 +1703,7 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
       log.info('Positions synced for snapshot', {
         requestId,
         openPositionsCount,
-        totalPositionsValue,
+        positionsValue: finalPositionsValue,
         portfolioValue,
         totalReturn,
         totalReturnPct,
