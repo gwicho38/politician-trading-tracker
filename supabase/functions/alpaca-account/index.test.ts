@@ -10,6 +10,7 @@
  */
 
 import { assertEquals, assertAlmostEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { constantTimeCompare } from '../_shared/auth.ts';
 
 // Extracted types
 interface CircuitBreakerState {
@@ -183,11 +184,12 @@ Deno.test("getCircuitBreakerStatus() - returns formatted status", () => {
   assertEquals(typeof status.lastSuccess, 'string');
 });
 
-// Service role detection
+// Service role detection - now uses constant-time comparison from shared auth module
 function isServiceRoleRequest(authHeader: string | null, serviceRoleKey: string): boolean {
   if (!authHeader) return false;
   const token = authHeader.replace('Bearer ', '');
-  return token === serviceRoleKey;
+  // Use constant-time comparison to prevent timing attacks
+  return constantTimeCompare(token, serviceRoleKey);
 }
 
 Deno.test("isServiceRoleRequest() - true when token matches", () => {
@@ -204,6 +206,24 @@ Deno.test("isServiceRoleRequest() - false when token doesn't match", () => {
 Deno.test("isServiceRoleRequest() - false when no header", () => {
   const result = isServiceRoleRequest(null, 'super-secret-key');
   assertEquals(result, false);
+});
+
+// Tests for constant-time comparison
+Deno.test("constantTimeCompare() - returns true for equal strings", () => {
+  assertEquals(constantTimeCompare('test', 'test'), true);
+  assertEquals(constantTimeCompare('secret-key-123', 'secret-key-123'), true);
+  assertEquals(constantTimeCompare('', ''), true);
+});
+
+Deno.test("constantTimeCompare() - returns false for different strings", () => {
+  assertEquals(constantTimeCompare('test', 'test2'), false);
+  assertEquals(constantTimeCompare('secret', 'secre'), false);
+  assertEquals(constantTimeCompare('a', 'b'), false);
+});
+
+Deno.test("constantTimeCompare() - handles different length strings", () => {
+  assertEquals(constantTimeCompare('short', 'much-longer-string'), false);
+  assertEquals(constantTimeCompare('aaaaaa', 'aa'), false);
 });
 
 // Position formatting

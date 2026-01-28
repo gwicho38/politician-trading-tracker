@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-CORS Security Fix for Edge Functions - COMPLETED
+Constant-Time Comparison for Service Role Keys - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -25,7 +25,7 @@ CORS Security Fix for Edge Functions - COMPLETED
 ### Medium Priority
 - [x] ~~Add API rate limiting to prevent abuse (all services)~~ - Implemented for ETL service
 - [ ] Add protected routes component in React frontend
-- [ ] Use constant-time comparison for service role keys in Edge Functions
+- [x] ~~Use constant-time comparison for service role keys in Edge Functions~~ - Shared auth module with timing-attack resistant comparison
 
 ### Low Priority
 - [ ] Increase test coverage for edge cases
@@ -35,6 +35,29 @@ CORS Security Fix for Edge Functions - COMPLETED
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #10
+- [2026-01-28] 🔒 **Security: Constant-Time Comparison for Service Role Keys**
+  - Created `supabase/functions/_shared/auth.ts` with security utilities:
+    - `constantTimeCompare(a, b)` - XOR-based comparison immune to timing attacks
+    - `validateServiceRoleKey(token)` - validate tokens against service role key
+    - `isServiceRoleRequest(req)` - check if request uses service role auth
+    - `extractBearerToken(header)` - extract token from Authorization header
+  - Security improvement:
+    - Standard `===` comparison leaks information through timing differences
+    - Constant-time comparison takes same time regardless of where strings differ
+    - Uses byte-by-byte XOR to prevent early return optimization
+    - Handles different-length strings without leaking length information
+  - Updated 4 Edge Functions to use shared auth module:
+    - alpaca-account: replaced local `isServiceRoleRequest` function
+    - orders: replaced local `isServiceRoleRequest` function
+    - portfolio: replaced local `isServiceRoleRequest` function
+    - strategy-follow: replaced inline token comparison with `validateServiceRoleKey`
+  - Added tests in alpaca-account/index.test.ts:
+    - Tests for `constantTimeCompare()` equal strings
+    - Tests for `constantTimeCompare()` different strings
+    - Tests for `constantTimeCompare()` different length strings
+    - Updated `isServiceRoleRequest()` tests to use new implementation
 
 ## ✅ Completed Loop #9
 - [2026-01-28] 🔒 **Security: CORS Configuration Fix for Edge Functions**
