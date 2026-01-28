@@ -12,7 +12,7 @@ import os
 import re
 import zipfile
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import httpx
 from supabase import Client
@@ -41,37 +41,39 @@ logger = logging.getLogger(__name__)
 JOB_STATUS: Dict[str, Dict[str, Any]] = {}
 
 # Constants
-HOUSE_BASE_URL = "https://disclosures-clerk.house.gov"
-ZIP_URL_TEMPLATE = "{base_url}/public_disc/financial-pdfs/{year}FD.ZIP"
-PDF_URL_TEMPLATE = "{base_url}/public_disc/financial-pdfs/{year}/{doc_id}.pdf"
-PTR_PDF_URL_TEMPLATE = "{base_url}/public_disc/ptr-pdfs/{year}/{doc_id}.pdf"
-USER_AGENT = "Mozilla/5.0 (compatible; PoliticianTradingETL/1.0)"
+HOUSE_BASE_URL: str = "https://disclosures-clerk.house.gov"
+ZIP_URL_TEMPLATE: str = "{base_url}/public_disc/financial-pdfs/{year}FD.ZIP"
+PDF_URL_TEMPLATE: str = "{base_url}/public_disc/financial-pdfs/{year}/{doc_id}.pdf"
+PTR_PDF_URL_TEMPLATE: str = "{base_url}/public_disc/ptr-pdfs/{year}/{doc_id}.pdf"
+USER_AGENT: str = "Mozilla/5.0 (compatible; PoliticianTradingETL/1.0)"
 
 # Rate limiting configuration
-REQUEST_DELAY_BASE = 1.0  # Base delay between requests (seconds)
-REQUEST_DELAY_MAX = 60.0  # Maximum delay after backoffs (seconds)
-MAX_RETRIES = 5  # Maximum retries per request
-BACKOFF_MULTIPLIER = 2.0  # Exponential backoff multiplier
-RATE_LIMIT_CODES = {429, 503, 502, 504}  # HTTP codes that trigger backoff
+REQUEST_DELAY_BASE: float = 1.0  # Base delay between requests (seconds)
+REQUEST_DELAY_MAX: float = 60.0  # Maximum delay after backoffs (seconds)
+MAX_RETRIES: int = 5  # Maximum retries per request
+BACKOFF_MULTIPLIER: float = 2.0  # Exponential backoff multiplier
+RATE_LIMIT_CODES: Set[int] = {429, 503, 502, 504}  # HTTP codes that trigger backoff
 
 
 class RateLimiter:
     """Adaptive rate limiter with exponential backoff."""
 
-    # TODO: Review this function
-    def __init__(self):
+    current_delay: float
+    consecutive_errors: int
+    total_requests: int
+    total_errors: int
+
+    def __init__(self) -> None:
         self.current_delay = REQUEST_DELAY_BASE
         self.consecutive_errors = 0
         self.total_requests = 0
         self.total_errors = 0
 
-    # TODO: Review this function
-    async def wait(self):
+    async def wait(self) -> None:
         """Wait for the current delay period."""
         await asyncio.sleep(self.current_delay)
 
-    # TODO: Review this function
-    def record_success(self):
+    def record_success(self) -> None:
         """Record a successful request and gradually reduce delay."""
         self.total_requests += 1
         self.consecutive_errors = 0
@@ -83,8 +85,7 @@ class RateLimiter:
             )
             logger.debug(f"Rate limiter: delay reduced to {self.current_delay:.1f}s")
 
-    # TODO: Review this function
-    def record_error(self, is_rate_limit: bool = False):
+    def record_error(self, is_rate_limit: bool = False) -> None:
         """Record an error and increase delay."""
         self.total_requests += 1
         self.total_errors += 1
@@ -108,7 +109,6 @@ class RateLimiter:
             )
             logger.warning(f"Error recorded, delay increased to {self.current_delay:.1f}s")
 
-    # TODO: Review this function
     def get_stats(self) -> Dict[str, Any]:
         """Get rate limiter statistics."""
         return {
@@ -129,7 +129,6 @@ rate_limiter = RateLimiter()
 # PDF PARSING UTILITIES
 # ============================================================================
 
-# TODO: Review this function
 def _validate_and_correct_year(tx_date: datetime, notif_date: datetime) -> Tuple[datetime, datetime]:
     """
     Validate years are within reasonable range and attempt to correct typos.
@@ -178,7 +177,6 @@ def _validate_and_correct_year(tx_date: datetime, notif_date: datetime) -> Tuple
     return tx_date, notif_date
 
 
-# TODO: Review this function
 def extract_dates_from_row(row: List[str]) -> Tuple[Optional[str], Optional[str]]:
     """
     Extract transaction date and notification date from a PDF table row.
@@ -234,7 +232,6 @@ def extract_dates_from_row(row: List[str]) -> Tuple[Optional[str], Optional[str]
 # Note: is_header_row moved to app.lib.parser
 
 
-# TODO: Review this function
 def is_metadata_row(text: str) -> bool:
     """Check if text is metadata rather than an actual asset.
 
@@ -271,7 +268,6 @@ def is_metadata_row(text: str) -> bool:
     return False
 
 
-# TODO: Review this function
 def parse_transaction_from_row(
     row: List[str], disclosure: Dict[str, Any]
 ) -> Optional[Dict[str, Any]]:
@@ -404,13 +400,11 @@ def parse_transaction_from_row(
 class HouseDisclosureScraper:
     """Scraper for US House financial disclosure data."""
 
-    # TODO: Review this function
     @staticmethod
     def get_zip_url(year: int) -> str:
         """Get the ZIP file URL for a given year."""
         return ZIP_URL_TEMPLATE.format(base_url=HOUSE_BASE_URL, year=year)
 
-    # TODO: Review this function
     @staticmethod
     def get_pdf_url(year: int, doc_id: str, filing_type: str = "") -> str:
         """Get the PDF URL for a specific disclosure document."""
@@ -422,7 +416,6 @@ class HouseDisclosureScraper:
             base_url=HOUSE_BASE_URL, year=year, doc_id=doc_id
         )
 
-    # TODO: Review this function
     @staticmethod
     async def fetch_zip_content(client: httpx.AsyncClient, url: str) -> Optional[bytes]:
         """Download ZIP file content from URL."""
@@ -437,7 +430,6 @@ class HouseDisclosureScraper:
             logger.error(f"Error fetching ZIP: {e}")
             return None
 
-    # TODO: Review this function
     @staticmethod
     async def fetch_pdf(
         client: httpx.AsyncClient,
@@ -509,7 +501,6 @@ class HouseDisclosureScraper:
 
         return None
 
-    # TODO: Review this function
     @staticmethod
     def extract_index_file(zip_content: bytes, year: int) -> Optional[str]:
         """Extract the disclosure index text file from ZIP content."""
@@ -523,7 +514,6 @@ class HouseDisclosureScraper:
             with z.open(txt_filename) as f:
                 return f.read().decode("utf-8", errors="ignore")
 
-    # TODO: Review this function
     @staticmethod
     def parse_filing_date(date_str: str) -> Optional[str]:
         """Parse a filing date string to ISO format."""
@@ -534,7 +524,6 @@ class HouseDisclosureScraper:
         except ValueError:
             return None
 
-    # TODO: Review this function
     @staticmethod
     def parse_disclosure_record(
         line: str, year: int
@@ -575,7 +564,6 @@ class HouseDisclosureScraper:
             "source": "us_house",
         }
 
-    # TODO: Review this function
     @staticmethod
     def parse_disclosure_index(content: str, year: int) -> List[Dict[str, Any]]:
         """Parse all disclosure records from index file content."""
@@ -599,13 +587,12 @@ class HouseDisclosureScraper:
 # =============================================================================
 
 
-# TODO: Review this function
 async def run_house_etl(
     job_id: str,
     year: int = 2025,
     limit: Optional[int] = None,
     update_mode: bool = False,
-):
+) -> None:
     """
     Run the complete House disclosure ETL pipeline.
 

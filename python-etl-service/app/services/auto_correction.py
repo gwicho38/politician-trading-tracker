@@ -16,7 +16,7 @@ All corrections are logged to data_quality_corrections table for rollback.
 import os
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -41,8 +41,8 @@ class CorrectionResult:
     record_id: str
     table_name: str
     field_name: str
-    old_value: any
-    new_value: any
+    old_value: Any
+    new_value: Any
     confidence: float
     message: str = ""
     correction_id: Optional[str] = None
@@ -81,11 +81,14 @@ class AutoCorrector:
         "Over $50,000,000": (50000001, None),
     }
 
-    def __init__(self):
+    supabase: Optional[Any]
+    corrections_made: List[CorrectionResult]
+
+    def __init__(self) -> None:
         self.supabase = self._get_supabase()
         self.corrections_made = []
 
-    def _get_supabase(self):
+    def _get_supabase(self) -> Optional[Any]:
         """Get Supabase client."""
         return get_supabase()
 
@@ -303,7 +306,7 @@ class AutoCorrector:
 
     def run_ticker_corrections(
         self, limit: int = 100, dry_run: bool = False
-    ) -> list[CorrectionResult]:
+    ) -> List[CorrectionResult]:
         """
         Find and correct all outdated tickers.
 
@@ -344,7 +347,7 @@ class AutoCorrector:
 
     def run_value_range_corrections(
         self, limit: int = 100, dry_run: bool = False
-    ) -> list[CorrectionResult]:
+    ) -> List[CorrectionResult]:
         """
         Find and correct all inverted value ranges.
 
@@ -511,7 +514,7 @@ class AutoCorrector:
 
         return correction_id
 
-    def _mark_correction_applied(self, correction_id: str):
+    def _mark_correction_applied(self, correction_id: str) -> None:
         """Mark a correction as successfully applied."""
         try:
             self.supabase.table("data_quality_corrections").update(
