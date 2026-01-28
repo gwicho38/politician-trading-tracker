@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-House ETL Test Coverage - COMPLETED
+Party Enrichment Test Coverage - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -36,12 +36,34 @@ House ETL Test Coverage - COMPLETED
 - [x] ~~Add tests for name_enrichment.py~~ - Added 36 tests (24% → 87% coverage)
 - [x] ~~Add tests for error_report_processor.py~~ - Added 42 tests (24% → 92% coverage)
 - [x] ~~Add tests for house_etl.py~~ - Added 23 tests (57% → 78% coverage)
+- [x] ~~Add tests for party_enrichment.py~~ - Added 12 tests (75% → 100% coverage)
 - [ ] Document API endpoints with OpenAPI/Swagger
 - [x] ~~Add audit logging for sensitive operations~~ - Implemented comprehensive audit logging
 
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #20
+- [2026-01-28] 🧪 **Testing: Party Enrichment Test Coverage**
+  - Added 12 tests to `tests/test_party_enrichment.py` (25 → 37 tests)
+  - New test classes covering:
+    - `TestOllamaAuthorization` (1 test): API key authorization header
+    - `TestJobPagination` (2 tests): Multi-page fetching, limit handling
+    - `TestProcessingLoop` (5 tests): Update success, skip unknown, error counting, message updates, rate limiting
+    - `TestConstants` (4 tests): Module constants verification
+  - Coverage improvement: 75% → 100% for party_enrichment.py (+25 percentage points)
+  - Tested functionality:
+    - Authorization header inclusion when API key is set
+    - Pagination across multiple pages of politicians
+    - Limit handling during pagination
+    - Successful party updates
+    - Skipping politicians with unknown party
+    - Error counting on update failures
+    - Periodic message updates during processing
+    - Rate limiting between requests
+    - Module constants validation
+  - All 1332 tests passing
 
 ## ✅ Completed Loop #19
 - [2026-01-28] 🧪 **Testing: House ETL Test Coverage**
