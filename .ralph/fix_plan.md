@@ -16,8 +16,8 @@ Input validation tests for API endpoints - COMPLETED
 
 ### Medium Priority
 - [x] ~~Add structured logging with correlation IDs for request tracing~~ - Implemented
-- [ ] Improve error handling in external API calls (Alpaca, QuiverQuant)
-- [ ] Add retry logic with exponential backoff for flaky external services
+- [x] ~~Improve error handling in external API calls~~ - Created ResilientClient with retry logic
+- [x] ~~Add retry logic with exponential backoff for flaky external services~~ - Implemented in http_client.py
 
 ### Low Priority
 - [ ] Increase test coverage for edge cases
@@ -30,6 +30,22 @@ None - ready for next task
 
 ## ✅ Completed This Session
 <!-- Ralph: Record completed work with timestamps -->
+- [2026-01-28] 🏗️ **Robustness: Resilient HTTP Client with Retry Logic**
+  - Created `app/lib/http_client.py` with:
+    - `resilient_request()` function for single requests with retry
+    - `ResilientClient` context manager for multiple requests
+    - `calculate_backoff_delay()` for exponential backoff with jitter
+  - Features:
+    - Exponential backoff (2^attempt * base_delay, capped at max_delay)
+    - Jitter to prevent thundering herd
+    - Configurable retry status codes (default: 429, 500, 502, 503, 504)
+    - Respects Retry-After headers
+    - Handles transient exceptions (timeout, connection error, read/write errors)
+    - No retry for client errors (4xx except 429)
+  - Added 26 comprehensive tests in `test_http_client.py`
+  - Ready for use by enrichment services (name_enrichment, party_enrichment, bioguide_enrichment)
+  - All 875 tests passing
+
 - [2026-01-28] 🛡️ **Data Quality: Trade Amount Validation**
   - Added `validate_trade_amount()` and `validate_and_sanitize_amounts()` in `app/lib/parser.py`
   - Updated `upload_transaction_to_supabase()` and `prepare_transaction_for_batch()` in `app/lib/database.py`
