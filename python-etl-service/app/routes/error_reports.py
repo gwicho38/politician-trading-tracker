@@ -2,13 +2,17 @@
 Error Reports API Routes
 
 Endpoints for processing user-submitted error reports.
+
+Sensitive endpoints (force-apply, reanalyze) require admin API key
+for authorization as they can modify trading disclosure data.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
 from app.services.error_report_processor import ErrorReportProcessor
+from app.middleware.auth import require_api_key, require_admin_key
 
 router = APIRouter()
 
@@ -204,9 +208,14 @@ class ForceApplyRequest(BaseModel):
 
 
 @router.post("/force-apply")
-async def force_apply_correction(request: ForceApplyRequest):
+async def force_apply_correction(
+    request: ForceApplyRequest,
+    _admin_key: str = Depends(require_admin_key),
+):
     """
     Force-apply corrections to a report regardless of confidence.
+
+    **Requires admin API key.**
 
     Use this for manual review of low-confidence suggestions.
     Provide the corrections you want to apply.
@@ -287,9 +296,14 @@ class ReanalyzeRequest(BaseModel):
 
 
 @router.post("/reanalyze")
-async def reanalyze_report(request: ReanalyzeRequest):
+async def reanalyze_report(
+    request: ReanalyzeRequest,
+    _admin_key: str = Depends(require_admin_key),
+):
     """
     Reanalyze a report with a lower confidence threshold.
+
+    **Requires admin API key.**
 
     Useful for reports that were flagged for review - you can
     re-run the analysis with a lower threshold to auto-apply.

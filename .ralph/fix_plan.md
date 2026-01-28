@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-API Key Authentication for ETL Service - COMPLETED
+Admin-Only Protection for Sensitive Endpoints - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -14,7 +14,7 @@ API Key Authentication for ETL Service - COMPLETED
 - [x] ~~Add input validation tests for API endpoints (quality, enrichment, etl routes)~~ - Added 13 tests
 - [x] ~~Add trade amount validation in House ETL parser (reject amounts > $50M to prevent parsing errors)~~ - Implemented with 19 tests
 - [ ] Fix CORS configuration in Edge Functions (currently allows all origins)
-- [ ] Add admin-only protection to sensitive endpoints (force-apply, model activation)
+- [x] ~~Add admin-only protection to sensitive endpoints (force-apply, model activation)~~ - Applied to 4 endpoints
 - [ ] Encrypt Alpaca API credentials at rest in user_api_keys table
 
 ### Medium Priority
@@ -38,6 +38,22 @@ None - ready for next task
 
 ## ✅ Completed This Session
 <!-- Ralph: Record completed work with timestamps -->
+- [2026-01-28] 🔒 **Security: Admin-Only Protection for Sensitive Endpoints**
+  - Applied `require_admin_key` dependency to 4 sensitive endpoints:
+    - `POST /error-reports/force-apply` - Can modify trading disclosure data
+    - `POST /error-reports/reanalyze` - Can re-process reports with lower thresholds
+    - `POST /ml/train` - Can trigger expensive ML training jobs
+    - `POST /ml/models/{model_id}/activate` - Can change active prediction model
+  - Updated routes with explicit **Requires admin API key** documentation
+  - Added 11 tests for admin protection:
+    - `TestMlAdminProtection`: 5 tests for ML endpoint auth
+    - `TestErrorReportsAdminProtection`: 6 tests for error-reports endpoint auth
+  - Tests verify:
+    - Endpoints return 401 without API key
+    - Endpoints return 403 with regular API key (not admin)
+    - Endpoints succeed with admin API key
+  - All 934 tests passing
+
 - [2026-01-28] 🔒 **Security: API Key Authentication for ETL Service**
   - Created `app/middleware/auth.py` with comprehensive auth implementation:
     - `AuthMiddleware` ASGI middleware for global request authentication
