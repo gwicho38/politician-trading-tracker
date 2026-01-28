@@ -503,3 +503,526 @@ class TestCheckOllamaHealth:
 
         data = response.json()
         assert data["ollama_connected"] is False
+
+
+# =============================================================================
+# POST /error-reports/process-one Extended Tests
+# =============================================================================
+
+class TestProcessSingleReportSuccess:
+    """Extended tests for POST /error-reports/process-one endpoint success path."""
+
+    @pytest.fixture
+    def client(self):
+        """Create a test client for the FastAPI app."""
+        from app.main import app
+        return TestClient(app)
+
+    def test_process_one_returns_success_with_corrections(self, client):
+        """POST /error-reports/process-one returns success with corrections."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.test_connection.return_value = True
+            mock_processor.supabase = MagicMock()
+
+            # Mock report found
+            mock_response = MagicMock()
+            mock_response.data = {
+                "id": "test-id",
+                "status": "pending",
+                "description": "Wrong ticker",
+                "disclosure_id": "disclosure-123"
+            }
+            mock_processor.supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_response
+
+            # Mock process_report result with corrections
+            from app.services.error_report_processor import CorrectionProposal, ProcessingResult
+            mock_result = ProcessingResult(
+                report_id="test-id",
+                status="fixed",
+                corrections=[
+                    CorrectionProposal(
+                        field="asset_ticker",
+                        old_value="AAPL",
+                        new_value="GOOG",
+                        confidence=0.95,
+                        reasoning="User specified correct ticker"
+                    )
+                ],
+                admin_notes="Applied 1 correction"
+            )
+            mock_processor.process_report.return_value = mock_result
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post("/error-reports/process-one", json={
+                "report_id": "test-id",
+                "dry_run": False
+            })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["report_id"] == "test-id"
+        assert data["status"] == "fixed"
+        assert len(data["corrections"]) == 1
+        assert data["corrections"][0]["field"] == "asset_ticker"
+        assert data["corrections"][0]["new_value"] == "GOOG"
+
+    def test_process_one_handles_exception(self, client):
+        """POST /error-reports/process-one handles exceptions properly."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.test_connection.return_value = True
+            mock_processor.supabase = MagicMock()
+
+            # Make the query raise an exception
+            mock_processor.supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.side_effect = Exception("Database connection failed")
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post("/error-reports/process-one", json={
+                "report_id": "test-id"
+            })
+
+        assert response.status_code == 500
+        assert "Database connection failed" in response.json()["detail"]
+
+
+# =============================================================================
+# GET /error-reports/stats Exception Tests
+# =============================================================================
+
+class TestGetErrorReportStatsExceptions:
+    """Exception handling tests for GET /error-reports/stats endpoint."""
+
+    @pytest.fixture
+    def client(self):
+        """Create a test client for the FastAPI app."""
+        from app.main import app
+        return TestClient(app)
+
+    def test_stats_handles_db_exception(self, client):
+        """GET /error-reports/stats handles database exceptions properly."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.supabase = MagicMock()
+
+            # Make the query raise an exception
+            mock_processor.supabase.table.return_value.select.return_value.eq.return_value.execute.side_effect = Exception("DB error")
+            mock_processor_class.return_value = mock_processor
+
+            response = client.get("/error-reports/stats")
+
+        assert response.status_code == 500
+        assert "Error fetching stats" in response.json()["detail"]
+
+
+# =============================================================================
+# GET /error-reports/needs-review Exception Tests
+# =============================================================================
+
+class TestGetReportsNeedingReviewExceptions:
+    """Exception handling tests for GET /error-reports/needs-review endpoint."""
+
+    @pytest.fixture
+    def client(self):
+        """Create a test client for the FastAPI app."""
+        from app.main import app
+        return TestClient(app)
+
+    def test_needs_review_handles_db_exception(self, client):
+        """GET /error-reports/needs-review handles database exceptions properly."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.supabase = MagicMock()
+
+            # Make the query raise an exception
+            mock_processor.supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.side_effect = Exception("Connection timeout")
+            mock_processor_class.return_value = mock_processor
+
+            response = client.get("/error-reports/needs-review")
+
+        assert response.status_code == 500
+
+
+# =============================================================================
+# POST /error-reports/force-apply Extended Tests
+# =============================================================================
+
+class TestForceApplyCorrectionExtended:
+    """Extended tests for POST /error-reports/force-apply endpoint."""
+
+    @pytest.fixture
+    def client(self):
+        """Create a test client for the FastAPI app."""
+        from app.main import app
+        return TestClient(app)
+
+    def test_force_apply_returns_400_when_no_disclosure_id(self, client):
+        """POST /error-reports/force-apply returns 400 when report has no disclosure_id."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.supabase = MagicMock()
+
+            # Mock report found but without disclosure_id
+            mock_response = MagicMock()
+            mock_response.data = {
+                "id": "test-id",
+                "disclosure_id": None  # No disclosure_id
+            }
+            mock_processor.supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_response
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post("/error-reports/force-apply", json={
+                "report_id": "test-id",
+                "corrections": [{"field": "ticker", "new_value": "AAPL"}]
+            })
+
+        assert response.status_code == 400
+        assert "no disclosure_id" in response.json()["detail"]
+
+    def test_force_apply_returns_500_when_apply_fails(self, client):
+        """POST /error-reports/force-apply returns 500 when correction application fails."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.supabase = MagicMock()
+
+            # Mock report found
+            mock_response = MagicMock()
+            mock_response.data = {
+                "id": "test-id",
+                "disclosure_id": "disclosure-123"
+            }
+            mock_processor.supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_response
+            mock_processor._apply_corrections.return_value = False  # Application fails
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post("/error-reports/force-apply", json={
+                "report_id": "test-id",
+                "corrections": [{"field": "ticker", "new_value": "AAPL"}]
+            })
+
+        assert response.status_code == 500
+        assert "Failed to apply corrections" in response.json()["detail"]
+
+    def test_force_apply_handles_exception(self, client):
+        """POST /error-reports/force-apply handles exceptions properly."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.supabase = MagicMock()
+
+            # Mock report found
+            mock_response = MagicMock()
+            mock_response.data = {
+                "id": "test-id",
+                "disclosure_id": "disclosure-123"
+            }
+            mock_processor.supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_response
+            mock_processor._apply_corrections.side_effect = Exception("Unexpected error")
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post("/error-reports/force-apply", json={
+                "report_id": "test-id",
+                "corrections": [{"field": "ticker", "new_value": "AAPL"}]
+            })
+
+        assert response.status_code == 500
+
+
+# =============================================================================
+# POST /error-reports/reanalyze Extended Tests
+# =============================================================================
+
+class TestReanalyzeReportExtended:
+    """Extended tests for POST /error-reports/reanalyze endpoint."""
+
+    @pytest.fixture
+    def client(self):
+        """Create a test client for the FastAPI app."""
+        from app.main import app
+        return TestClient(app)
+
+    def test_reanalyze_returns_503_when_ollama_unavailable(self, client):
+        """POST /error-reports/reanalyze returns 503 when Ollama unavailable."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.test_connection.return_value = False
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post("/error-reports/reanalyze", json={
+                "report_id": "test-id"
+            })
+
+        assert response.status_code == 503
+        assert "Cannot connect to Ollama" in response.json()["detail"]
+
+    def test_reanalyze_returns_503_when_db_not_configured(self, client):
+        """POST /error-reports/reanalyze returns 503 when DB not configured."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.test_connection.return_value = True
+            mock_processor.supabase = None
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post("/error-reports/reanalyze", json={
+                "report_id": "test-id"
+            })
+
+        assert response.status_code == 503
+        assert "Database not configured" in response.json()["detail"]
+
+    def test_reanalyze_returns_404_when_not_found(self, client):
+        """POST /error-reports/reanalyze returns 404 when report not found."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.test_connection.return_value = True
+            mock_processor.supabase = MagicMock()
+            mock_processor.CONFIDENCE_THRESHOLD = 0.8
+
+            mock_response = MagicMock()
+            mock_response.data = None
+            mock_processor.supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_response
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post("/error-reports/reanalyze", json={
+                "report_id": "nonexistent"
+            })
+
+        assert response.status_code == 404
+
+
+# =============================================================================
+# POST /error-reports/generate-suggestion Tests
+# =============================================================================
+
+class TestGenerateSuggestion:
+    """Tests for POST /error-reports/generate-suggestion endpoint."""
+
+    @pytest.fixture
+    def client(self):
+        """Create a test client for the FastAPI app."""
+        from app.main import app
+        return TestClient(app)
+
+    def test_generate_suggestion_returns_503_when_ollama_unavailable(self, client):
+        """POST /error-reports/generate-suggestion returns 503 when Ollama unavailable."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.test_connection.return_value = False
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post("/error-reports/generate-suggestion", json={
+                "report_id": "test-id"
+            })
+
+        assert response.status_code == 503
+        assert "Cannot connect to Ollama" in response.json()["detail"]
+
+    def test_generate_suggestion_returns_503_when_db_not_configured(self, client):
+        """POST /error-reports/generate-suggestion returns 503 when DB not configured."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.test_connection.return_value = True
+            mock_processor.supabase = None
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post("/error-reports/generate-suggestion", json={
+                "report_id": "test-id"
+            })
+
+        assert response.status_code == 503
+        assert "Database not configured" in response.json()["detail"]
+
+    def test_generate_suggestion_returns_404_when_not_found(self, client):
+        """POST /error-reports/generate-suggestion returns 404 when report not found."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.test_connection.return_value = True
+            mock_processor.supabase = MagicMock()
+
+            mock_response = MagicMock()
+            mock_response.data = None
+            mock_processor.supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_response
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post("/error-reports/generate-suggestion", json={
+                "report_id": "nonexistent"
+            })
+
+        assert response.status_code == 404
+
+    def test_generate_suggestion_returns_no_corrections(self, client):
+        """POST /error-reports/generate-suggestion returns no_corrections when LLM can't determine."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.test_connection.return_value = True
+            mock_processor.supabase = MagicMock()
+            mock_processor.CONFIDENCE_THRESHOLD = 0.8
+
+            # Mock report found
+            mock_response = MagicMock()
+            mock_response.data = {
+                "id": "test-id",
+                "error_type": "other",
+                "description": "Something is wrong",
+                "disclosure_snapshot": {
+                    "politician_name": "John Doe",
+                    "asset_name": "Apple Inc"
+                }
+            }
+            mock_processor.supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_response
+
+            # Mock interpret_corrections returns empty
+            mock_processor.interpret_corrections.return_value = []
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post("/error-reports/generate-suggestion", json={
+                "report_id": "test-id"
+            })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "no_corrections"
+        assert data["corrections"] == []
+
+    def test_generate_suggestion_returns_suggestions(self, client):
+        """POST /error-reports/generate-suggestion returns suggestions successfully."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.test_connection.return_value = True
+            mock_processor.supabase = MagicMock()
+            mock_processor.CONFIDENCE_THRESHOLD = 0.8
+
+            # Mock report found
+            mock_response = MagicMock()
+            mock_response.data = {
+                "id": "test-id",
+                "error_type": "wrong_ticker",
+                "description": "The ticker should be GOOG not AAPL",
+                "status": "pending",
+                "disclosure_snapshot": {
+                    "politician_name": "John Doe",
+                    "asset_name": "Apple Inc"
+                }
+            }
+            mock_processor.supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_response
+
+            # Mock interpret_corrections returns corrections
+            from app.services.error_report_processor import CorrectionProposal
+            mock_processor.interpret_corrections.return_value = [
+                CorrectionProposal(
+                    field="asset_ticker",
+                    old_value="AAPL",
+                    new_value="GOOG",
+                    confidence=0.95,
+                    reasoning="User clearly stated the correct ticker"
+                ),
+                CorrectionProposal(
+                    field="asset_name",
+                    old_value="Apple Inc",
+                    new_value="Alphabet Inc",
+                    confidence=0.7,
+                    reasoning="Inferred from ticker change"
+                )
+            ]
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post("/error-reports/generate-suggestion", json={
+                "report_id": "test-id",
+                "model": "llama3.1:8b"
+            })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "suggestions_generated"
+        assert data["model"] == "llama3.1:8b"
+        assert len(data["corrections"]) == 2
+        # Check high confidence correction
+        assert data["corrections"][0]["field"] == "asset_ticker"
+        assert data["corrections"][0]["would_auto_apply"] is True
+        # Check low confidence correction
+        assert data["corrections"][1]["field"] == "asset_name"
+        assert data["corrections"][1]["would_auto_apply"] is False
+        # Check summary
+        assert data["summary"]["total_suggestions"] == 2
+        assert data["summary"]["high_confidence"] == 1
+        assert data["summary"]["low_confidence"] == 1
+
+    def test_generate_suggestion_handles_exception(self, client):
+        """POST /error-reports/generate-suggestion handles exceptions properly."""
+        with patch("app.routes.error_reports.ErrorReportProcessor") as mock_processor_class:
+            mock_processor = MagicMock()
+            mock_processor.test_connection.return_value = True
+            mock_processor.supabase = MagicMock()
+
+            # Mock report found
+            mock_response = MagicMock()
+            mock_response.data = {
+                "id": "test-id",
+                "error_type": "wrong_ticker",
+                "description": "Wrong ticker"
+            }
+            mock_processor.supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_response
+
+            # Mock interpret_corrections raises exception
+            mock_processor.interpret_corrections.side_effect = Exception("LLM request timeout")
+            mock_processor_class.return_value = mock_processor
+
+            response = client.post("/error-reports/generate-suggestion", json={
+                "report_id": "test-id"
+            })
+
+        assert response.status_code == 500
+        assert "LLM request timeout" in response.json()["detail"]
+
+
+# =============================================================================
+# Request Model Tests
+# =============================================================================
+
+class TestRequestModels:
+    """Tests for request model defaults and validation."""
+
+    def test_process_request_defaults(self):
+        """ProcessRequest has expected defaults."""
+        from app.routes.error_reports import ProcessRequest
+        request = ProcessRequest()
+        assert request.limit == 10
+        assert request.model == "llama3.1:8b"
+        assert request.dry_run is False
+
+    def test_process_one_request_defaults(self):
+        """ProcessOneRequest has expected defaults."""
+        from app.routes.error_reports import ProcessOneRequest
+        request = ProcessOneRequest(report_id="test-id")
+        assert request.report_id == "test-id"
+        assert request.model == "llama3.1:8b"
+        assert request.dry_run is False
+
+    def test_force_apply_request_structure(self):
+        """ForceApplyRequest accepts corrections list."""
+        from app.routes.error_reports import ForceApplyRequest
+        request = ForceApplyRequest(
+            report_id="test-id",
+            corrections=[
+                {"field": "ticker", "new_value": "AAPL"},
+                {"field": "amount", "old_value": 100, "new_value": 200}
+            ]
+        )
+        assert request.report_id == "test-id"
+        assert len(request.corrections) == 2
+
+    def test_reanalyze_request_defaults(self):
+        """ReanalyzeRequest has expected defaults."""
+        from app.routes.error_reports import ReanalyzeRequest
+        request = ReanalyzeRequest(report_id="test-id")
+        assert request.report_id == "test-id"
+        assert request.model == "llama3.1:8b"
+        assert request.confidence_threshold == 0.5
+        assert request.dry_run is False
+
+    def test_generate_suggestion_request_defaults(self):
+        """GenerateSuggestionRequest has expected defaults."""
+        from app.routes.error_reports import GenerateSuggestionRequest
+        request = GenerateSuggestionRequest(report_id="test-id")
+        assert request.report_id == "test-id"
+        assert request.model == "llama3.1:8b"
