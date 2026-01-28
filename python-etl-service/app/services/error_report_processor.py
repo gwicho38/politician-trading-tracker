@@ -10,18 +10,20 @@ Workflow:
 4. Flag low-confidence corrections for human review
 """
 
-import os
 import json
-import httpx
+import logging
+import os
 from dataclasses import dataclass
-from typing import Optional
 from datetime import datetime
+from typing import List, Optional
 
-from supabase import create_client, Client
+import httpx
+from supabase import Client
+
 from app.lib.database import get_supabase
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://uljsqvwkomdrlnofmlad.supabase.co")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+logger = logging.getLogger(__name__)
+
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "https://ollama.lefv.info")
 OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "")
 DEFAULT_MODEL = "llama3.1:8b"
@@ -77,7 +79,8 @@ class ErrorReportProcessor:
         try:
             response = self.ollama_client.get("/api/tags")
             return response.status_code == 200
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Ollama connection test failed: {e}")
             return False
 
     def get_pending_reports(self, limit: int = 10) -> list[dict]:
@@ -96,7 +99,7 @@ class ErrorReportProcessor:
             )
             return response.data or []
         except Exception as e:
-            print(f"Error fetching reports: {e}")
+            logger.error(f"Error fetching reports: {e}")
             return []
 
     def interpret_corrections(self, report: dict) -> list[CorrectionProposal]:
@@ -141,10 +144,10 @@ class ErrorReportProcessor:
             return corrections
 
         except json.JSONDecodeError as e:
-            print(f"Failed to parse LLM response: {e}")
+            logger.warning(f"Failed to parse LLM response: {e}")
             return []
         except Exception as e:
-            print(f"LLM request failed: {e}")
+            logger.error(f"LLM request failed: {e}")
             return []
 
     def _build_prompt(self, report: dict) -> str:
@@ -309,12 +312,12 @@ Respond with ONLY the JSON object, no other text."""
                         politician_updates
                     ).eq("id", politician_id).execute()
                 else:
-                    print(f"No politician_id found for disclosure {disclosure_id}")
+                    logger.warning(f"No politician_id found for disclosure {disclosure_id}")
                     return False
 
             return True
         except Exception as e:
-            print(f"Failed to apply corrections: {e}")
+            logger.error(f"Failed to apply corrections: {e}")
             return False
 
     def _normalize_party(self, party: str) -> str:
@@ -340,7 +343,7 @@ Respond with ONLY the JSON object, no other text."""
                 "updated_at": datetime.utcnow().isoformat()
             }).eq("id", report_id).execute()
         except Exception as e:
-            print(f"Failed to update report status: {e}")
+            logger.error(f"Failed to update report status: {e}")
 
     def process_all_pending(
         self, limit: int = 10, dry_run: bool = False

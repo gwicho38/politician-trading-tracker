@@ -189,20 +189,20 @@ def parse_ollama_name_response(response: str) -> Optional[Dict[str, str]]:
 class NameEnrichmentJob:
     """Background job for enriching politician names using Ollama."""
 
-    def __init__(self, job_id: str, limit: Optional[int] = None):
+    def __init__(self, job_id: str, limit: Optional[int] = None) -> None:
         self.job_id = job_id
         self.limit = limit
-        self.status = "pending"
-        self.progress = 0
-        self.total = 0
-        self.updated = 0
-        self.skipped = 0
-        self.errors = 0
-        self.message = ""
-        self.started_at = None
-        self.completed_at = None
+        self.status: str = "pending"
+        self.progress: int = 0
+        self.total: int = 0
+        self.updated: int = 0
+        self.skipped: int = 0
+        self.errors: int = 0
+        self.message: str = ""
+        self.started_at: Optional[datetime] = None
+        self.completed_at: Optional[datetime] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert job state to dictionary."""
         return {
             "job_id": self.job_id,
@@ -217,7 +217,7 @@ class NameEnrichmentJob:
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
 
-    async def run(self):
+    async def run(self) -> None:
         """Execute the name enrichment job."""
         self.status = "running"
         self.started_at = datetime.utcnow()
@@ -347,7 +347,7 @@ class NameEnrichmentJob:
 
 
 # Global job registry
-_name_jobs: dict[str, NameEnrichmentJob] = {}
+_name_jobs: Dict[str, NameEnrichmentJob] = {}
 
 
 def get_name_job(job_id: str) -> Optional[NameEnrichmentJob]:
@@ -364,6 +364,6 @@ def create_name_job(limit: Optional[int] = None) -> NameEnrichmentJob:
     return job
 
 
-async def run_name_job_in_background(job: NameEnrichmentJob):
+async def run_name_job_in_background(job: NameEnrichmentJob) -> None:
     """Run a job in the background."""
     await job.run()

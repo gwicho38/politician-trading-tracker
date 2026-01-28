@@ -8,7 +8,7 @@ import logging
 from typing import List, Dict, Any, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.services.sandbox import (
     SignalLambdaSandbox,
@@ -28,6 +28,8 @@ router = APIRouter()
 
 class SignalDict(BaseModel):
     """Signal object as a dictionary."""
+    model_config = ConfigDict(extra="allow")
+
     ticker: str
     asset_name: Optional[str] = None
     signal_type: str
@@ -38,9 +40,6 @@ class SignalDict(BaseModel):
     total_transaction_volume: Optional[float] = None
     ml_enhanced: Optional[bool] = None
     features: Optional[Dict[str, Any]] = None
-
-    class Config:
-        extra = "allow"  # Allow additional fields
 
 
 class ApplyLambdaRequest(BaseModel):

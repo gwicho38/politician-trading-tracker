@@ -10,7 +10,7 @@ import re
 import asyncio
 import logging
 import httpx
-from typing import Optional
+from typing import Any, Dict, Optional
 from datetime import datetime
 from app.lib.database import get_supabase
 
@@ -103,20 +103,20 @@ Your answer (just the letter or UNKNOWN):"""
 class PartyEnrichmentJob:
     """Background job for enriching politician party data."""
 
-    def __init__(self, job_id: str, limit: Optional[int] = None):
+    def __init__(self, job_id: str, limit: Optional[int] = None) -> None:
         self.job_id = job_id
         self.limit = limit
-        self.status = "pending"
-        self.progress = 0
-        self.total = 0
-        self.updated = 0
-        self.skipped = 0
-        self.errors = 0
-        self.message = ""
-        self.started_at = None
-        self.completed_at = None
+        self.status: str = "pending"
+        self.progress: int = 0
+        self.total: int = 0
+        self.updated: int = 0
+        self.skipped: int = 0
+        self.errors: int = 0
+        self.message: str = ""
+        self.started_at: Optional[datetime] = None
+        self.completed_at: Optional[datetime] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert job state to dictionary."""
         return {
             "job_id": self.job_id,
@@ -131,7 +131,7 @@ class PartyEnrichmentJob:
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
 
-    async def run(self):
+    async def run(self) -> None:
         """Execute the party enrichment job."""
         self.status = "running"
         self.started_at = datetime.utcnow()
@@ -224,7 +224,7 @@ class PartyEnrichmentJob:
 
 
 # Global job registry
-_jobs: dict[str, PartyEnrichmentJob] = {}
+_jobs: Dict[str, PartyEnrichmentJob] = {}
 
 
 def get_job(job_id: str) -> Optional[PartyEnrichmentJob]:
@@ -241,6 +241,6 @@ def create_job(limit: Optional[int] = None) -> PartyEnrichmentJob:
     return job
 
 
-async def run_job_in_background(job: PartyEnrichmentJob):
+async def run_job_in_background(job: PartyEnrichmentJob) -> None:
     """Run a job in the background."""
     await job.run()

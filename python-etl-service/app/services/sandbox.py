@@ -246,19 +246,25 @@ class SignalLambdaSandbox:
                 safer_getattr,
             )
 
+            # RestrictedPython 6.x+ returns code object directly
+            # Earlier versions returned a result object with .code and .errors
             result = compile_restricted(
                 code,
                 filename='<user_lambda>',
                 mode='exec'
             )
 
-            if result.errors:
+            # Handle both old API (result object) and new API (code object)
+            if hasattr(result, 'errors') and result.errors:
                 raise LambdaValidationError(
                     f"Compilation errors: {'; '.join(result.errors)}"
                 )
 
+            # Get the compiled code (new API returns code directly)
+            compiled_code = result.code if hasattr(result, 'code') else result
+
             return {
-                'code': result.code,
+                'code': compiled_code,
                 'use_restricted': True,
                 'guards': {
                     '_getattr_': safer_getattr,
@@ -268,43 +274,58 @@ class SignalLambdaSandbox:
             }
 
         except ImportError:
-            logger.warning("RestrictedPython not available, using basic validation only")
-            # Fall back to basic compilation with our own validation
-            compiled = compile(code, '<user_lambda>', 'exec')
-            return {
-                'code': compiled,
-                'use_restricted': False,
-                'guards': {}
-            }
+            # SECURITY: Do NOT fall back to unrestricted exec()
+            # RestrictedPython is required for safe user code execution
+            logger.error("RestrictedPython not available - refusing to execute user code unsafely")
+            raise LambdaValidationError(
+                "Lambda execution is disabled: RestrictedPython security library not installed. "
+                "Install it with: pip install RestrictedPython>=6.1"
+            )
 
-    def _create_safe_math_module(self) -> Dict[str, Any]:
-        """Create a safe subset of the math module."""
-        return {
-            'pi': math.pi,
-            'e': math.e,
-            'sqrt': math.sqrt,
-            'log': math.log,
-            'log10': math.log10,
-            'log2': math.log2,
-            'exp': math.exp,
-            'pow': math.pow,
-            'floor': math.floor,
-            'ceil': math.ceil,
-            'trunc': math.trunc,
-            'fabs': math.fabs,
-            'sin': math.sin,
-            'cos': math.cos,
-            'tan': math.tan,
-            'asin': math.asin,
-            'acos': math.acos,
-            'atan': math.atan,
-            'atan2': math.atan2,
-            'degrees': math.degrees,
-            'radians': math.radians,
-            'isnan': math.isnan,
-            'isinf': math.isinf,
-            'isfinite': math.isfinite,
-        }
+    def _create_safe_math_module(self) -> Any:
+        """Create a safe subset of the math module.
+
+        Returns a SimpleNamespace instead of dict so that RestrictedPython's
+        safer_getattr can properly access attributes (safer_getattr returns None for dict).
+        """
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            pi=math.pi,
+            e=math.e,
+            sqrt=math.sqrt,
+            log=math.log,
+            log10=math.log10,
+            log2=math.log2,
+            exp=math.exp,
+            pow=math.pow,
+            floor=math.floor,
+            ceil=math.ceil,
+            trunc=math.trunc,
+            fabs=math.fabs,
+            sin=math.sin,
+            cos=math.cos,
+            tan=math.tan,
+            asin=math.asin,
+            acos=math.acos,
+            atan=math.atan,
+            atan2=math.atan2,
+            degrees=math.degrees,
+            radians=math.radians,
+            isnan=math.isnan,
+            isinf=math.isinf,
+            isfinite=math.isfinite,
+        )
+
+    @staticmethod
+    def _write_guard(obj: Any) -> Any:
+        """Guard for RestrictedPython subscription assignment (e.g., dict['key'] = value).
+
+        RestrictedPython transforms `x[y] = z` to `_write_(x)[y] = z`.
+        This allows the write if the object is a dict (our signal objects).
+        """
+        if isinstance(obj, dict):
+            return obj
+        raise TypeError(f"Cannot write to object of type {type(obj).__name__}")
 
     def execute(
         self,
@@ -323,23 +344,64 @@ class SignalLambdaSandbox:
         if captured_print is None:
             captured_print = CapturedPrint()
 
+        # Create a PrintCollector-compatible class for RestrictedPython
+        # RestrictedPython transforms print(x) to _print_(_getattr_)._call_print(x)
+        class CustomPrintCollector:
+            """Print collector compatible with RestrictedPython.
+
+            RestrictedPython transforms:
+                print("hello")
+            to:
+                _print_(_getattr_)._call_print("hello")
+            """
+            def __init__(self, _getattr_: Any = None):
+                self._captured = captured_print
+                self._getattr = _getattr_
+                self.txt: list = []
+
+            def write(self, text: str) -> None:
+                """Write method for file-like interface."""
+                self.txt.append(text)
+
+            def _call_print(self, *objects: Any, **kwargs: Any) -> None:
+                """Actual print implementation."""
+                # Capture the full print output to our CapturedPrint
+                sep = kwargs.get('sep', ' ')
+                end = kwargs.get('end', '\n')
+                line = sep.join(str(obj) for obj in objects)
+                self._captured(line)
+                # Also store in txt for RestrictedPython's 'printed' variable
+                self.txt.append(line)
+                if end:
+                    self.txt.append(end)
+
+            def __call__(self) -> str:
+                """Return collected text."""
+                return ''.join(self.txt)
+
+        _print_ = CustomPrintCollector
+
         # Create restricted globals with print capture
         builtins_with_print = {
             **self.SAFE_BUILTINS,
-            'print': captured_print,  # Capture print output
+            'print': captured_print,  # Direct print for non-RestrictedPython fallback
         }
 
         restricted_globals = {
             '__builtins__': builtins_with_print,
             'math': self._create_safe_math_module(),
             'Decimal': Decimal,
-            **guards,  # Add RestrictedPython guards if available
+            # RestrictedPython guards
+            '_write_': self._write_guard,
+            '_print_': _print_,
+            **guards,  # Add additional RestrictedPython guards
         }
 
         # Create locals with signal
         restricted_locals = {
             'signal': signal_copy,
             'result': None,
+            'printed': '',  # RestrictedPython PrintCollector uses this
         }
 
         # Execute with timeout using threading

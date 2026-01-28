@@ -385,3 +385,243 @@ class TestUploadTransactionToSupabase:
         # Should fall back to disclosure's filing_date
         assert disclosure_data["transaction_date"] == "2024-01-25"
         assert disclosure_data["disclosure_date"] == "2024-01-25"
+
+
+# =============================================================================
+# prepare_transaction_for_batch() Tests
+# =============================================================================
+
+class TestPrepareTransactionForBatch:
+    """Tests for prepare_transaction_for_batch() function."""
+
+    @pytest.fixture
+    def sample_transaction(self):
+        """Sample transaction data."""
+        return {
+            "asset_name": "Apple Inc.",
+            "asset_ticker": "AAPL",
+            "asset_type": "stock",
+            "transaction_type": "purchase",
+            "transaction_date": "2024-01-15",
+            "notification_date": "2024-01-25",
+            "value_low": 1001,
+            "value_high": 15000,
+            "raw_row": ["01/15/2024", "Apple Inc.", "AAPL", "P", "$1,001 - $15,000"],
+        }
+
+    @pytest.fixture
+    def sample_disclosure(self):
+        """Sample disclosure metadata."""
+        return {
+            "doc_id": "20012345",
+            "year": 2024,
+            "filing_type": "P",
+            "pdf_url": "https://example.com/disclosure.pdf",
+            "filing_date": "2024-01-25",
+            "state_district": "CA-12",
+        }
+
+    def test_prepares_transaction_dict(self, sample_transaction, sample_disclosure):
+        """prepare_transaction_for_batch() returns correct dict structure."""
+        from app.lib.database import prepare_transaction_for_batch
+
+        result = prepare_transaction_for_batch(
+            "politician-uuid",
+            sample_transaction,
+            sample_disclosure,
+        )
+
+        assert result is not None
+        assert result["politician_id"] == "politician-uuid"
+        assert result["asset_name"] == "Apple Inc."
+        assert result["asset_ticker"] == "AAPL"
+        assert result["transaction_type"] == "purchase"
+        assert result["status"] == "active"
+
+    def test_returns_none_for_empty_asset_name(self, sample_disclosure):
+        """prepare_transaction_for_batch() returns None for empty asset_name."""
+        from app.lib.database import prepare_transaction_for_batch
+
+        transaction = {"asset_name": ""}
+        result = prepare_transaction_for_batch(
+            "politician-uuid",
+            transaction,
+            sample_disclosure,
+        )
+
+        assert result is None
+
+    def test_truncates_long_asset_name(self, sample_disclosure):
+        """prepare_transaction_for_batch() truncates asset_name > 200 chars."""
+        from app.lib.database import prepare_transaction_for_batch
+
+        transaction = {"asset_name": "A" * 300}
+        result = prepare_transaction_for_batch(
+            "politician-uuid",
+            transaction,
+            sample_disclosure,
+        )
+
+        assert result is not None
+        assert len(result["asset_name"]) == 200
+
+
+# =============================================================================
+# batch_upload_transactions() Tests
+# =============================================================================
+
+class TestBatchUploadTransactions:
+    """Tests for batch_upload_transactions() function."""
+
+    @pytest.fixture
+    def mock_supabase_client(self):
+        """Create a mock Supabase client for batch upload tests."""
+        client = MagicMock()
+        table_mock = MagicMock()
+        table_mock.insert.return_value.execute.return_value = MagicMock(
+            data=[{"id": "id-1"}, {"id": "id-2"}, {"id": "id-3"}]
+        )
+        table_mock.upsert.return_value.execute.return_value = MagicMock(
+            data=[{"id": "id-1"}, {"id": "id-2"}, {"id": "id-3"}]
+        )
+        client.table.return_value = table_mock
+        return client
+
+    @pytest.fixture
+    def sample_transactions(self):
+        """Sample prepared transaction data."""
+        return [
+            {
+                "politician_id": "pol-1",
+                "asset_name": "Apple Inc.",
+                "asset_ticker": "AAPL",
+                "transaction_type": "purchase",
+                "transaction_date": "2024-01-15",
+                "disclosure_date": "2024-01-25",
+                "status": "active",
+            },
+            {
+                "politician_id": "pol-1",
+                "asset_name": "Microsoft Corp.",
+                "asset_ticker": "MSFT",
+                "transaction_type": "sale",
+                "transaction_date": "2024-01-16",
+                "disclosure_date": "2024-01-25",
+                "status": "active",
+            },
+            {
+                "politician_id": "pol-1",
+                "asset_name": "Google LLC",
+                "asset_ticker": "GOOGL",
+                "transaction_type": "purchase",
+                "transaction_date": "2024-01-17",
+                "disclosure_date": "2024-01-25",
+                "status": "active",
+            },
+        ]
+
+    def test_batch_insert_succeeds(self, mock_supabase_client, sample_transactions):
+        """batch_upload_transactions() inserts batch successfully."""
+        from app.lib.database import batch_upload_transactions
+
+        successful, failed = batch_upload_transactions(
+            mock_supabase_client,
+            sample_transactions,
+            update_mode=False,
+        )
+
+        assert successful == 3
+        assert failed == 0
+        mock_supabase_client.table.assert_called_with("trading_disclosures")
+
+    def test_batch_upsert_in_update_mode(self, mock_supabase_client, sample_transactions):
+        """batch_upload_transactions() uses upsert when update_mode=True."""
+        from app.lib.database import batch_upload_transactions
+
+        successful, failed = batch_upload_transactions(
+            mock_supabase_client,
+            sample_transactions,
+            update_mode=True,
+        )
+
+        assert successful == 3
+        assert failed == 0
+        table_mock = mock_supabase_client.table.return_value
+        table_mock.upsert.assert_called_once()
+
+    def test_returns_zeros_for_empty_list(self, mock_supabase_client):
+        """batch_upload_transactions() returns (0, 0) for empty list."""
+        from app.lib.database import batch_upload_transactions
+
+        successful, failed = batch_upload_transactions(
+            mock_supabase_client,
+            [],
+        )
+
+        assert successful == 0
+        assert failed == 0
+
+    def test_handles_batch_with_custom_size(self, mock_supabase_client):
+        """batch_upload_transactions() respects custom batch_size."""
+        from app.lib.database import batch_upload_transactions
+
+        # Create 5 transactions to test batch splitting
+        transactions = [
+            {"politician_id": f"pol-{i}", "asset_name": f"Asset {i}", "status": "active"}
+            for i in range(5)
+        ]
+
+        # Set mock to return correct number of records
+        table_mock = mock_supabase_client.table.return_value
+        table_mock.insert.return_value.execute.return_value = MagicMock(
+            data=[{"id": f"id-{i}"} for i in range(2)]
+        )
+
+        batch_upload_transactions(
+            mock_supabase_client,
+            transactions,
+            batch_size=2,
+        )
+
+        # Should be called 3 times: 2 + 2 + 1
+        assert table_mock.insert.call_count == 3
+
+    def test_handles_duplicate_key_with_fallback(self, mock_supabase_client, sample_transactions):
+        """batch_upload_transactions() falls back to individual inserts on duplicate."""
+        from app.lib.database import batch_upload_transactions
+
+        table_mock = mock_supabase_client.table.return_value
+
+        # First call fails with duplicate key, then individual inserts succeed
+        call_count = [0]
+        def side_effect():
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise Exception("duplicate key value violates unique constraint")
+            return MagicMock(data=[{"id": "id-1"}])
+
+        table_mock.insert.return_value.execute.side_effect = side_effect
+
+        successful, failed = batch_upload_transactions(
+            mock_supabase_client,
+            sample_transactions,
+        )
+
+        # All 3 should succeed via fallback individual inserts
+        assert successful == 3
+        assert failed == 0
+
+    def test_counts_failures_correctly(self, mock_supabase_client, sample_transactions):
+        """batch_upload_transactions() counts failures correctly."""
+        from app.lib.database import batch_upload_transactions
+
+        table_mock = mock_supabase_client.table.return_value
+        table_mock.insert.return_value.execute.side_effect = Exception("Network error")
+
+        successful, failed = batch_upload_transactions(
+            mock_supabase_client,
+            sample_transactions,
+        )
+
+        assert successful == 0
+        assert failed == 3

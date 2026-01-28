@@ -5,20 +5,32 @@ FastAPI service that extracts real disclosure data from government PDFs
 and uploads to Supabase.
 """
 
-from fastapi import FastAPI
+import logging
+import os
 from contextlib import asynccontextmanager
 
+from fastapi import FastAPI
+
 from app.routes import health, etl, enrichment, ml, quality, error_reports, dedup, signals
+from app.lib.logging_config import configure_logging, get_logger
+from app.middleware.correlation import CorrelationMiddleware
+
+# Configure structured logging before anything else
+log_level = logging.DEBUG if os.getenv("DEBUG") else logging.INFO
+json_logs = os.getenv("JSON_LOGS", "true").lower() == "true"
+configure_logging(level=log_level, service_name="politician-etl", json_format=json_logs)
+
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
-    print("Starting Politician Trading ETL Service...")
+    logger.info("Starting Politician Trading ETL Service...", version="1.0.0")
     yield
     # Shutdown
-    print("Shutting down ETL Service...")
+    logger.info("Shutting down ETL Service...")
 
 
 app = FastAPI(
@@ -27,6 +39,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Add correlation ID middleware for request tracing
+app.add_middleware(CorrelationMiddleware)
 
 # Include routers
 app.include_router(health.router, tags=["health"])

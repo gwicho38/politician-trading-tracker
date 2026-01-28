@@ -107,8 +107,8 @@ class HouseETLService(BaseETLService):
                     match = re.search(r"(\d+)\s+transactions", message)
                     if match:
                         result.records_inserted = int(match.group(1))
-                except:
-                    pass
+                except (ValueError, AttributeError) as e:
+                    self.logger.warning(f"Failed to parse transaction count from message '{message}': {e}")
 
             result.records_processed = status.get("total", 0)
 
@@ -207,8 +207,8 @@ class SenateETLService(BaseETLService):
                     match = re.search(r"(\d+)\s+transactions", message)
                     if match:
                         result.records_inserted = int(match.group(1))
-                except:
-                    pass
+                except (ValueError, AttributeError) as e:
+                    self.logger.warning(f"Failed to parse transaction count from message '{message}': {e}")
 
             result.records_processed = status.get("total", 0)
 

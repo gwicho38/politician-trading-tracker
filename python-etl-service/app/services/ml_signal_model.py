@@ -18,14 +18,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-from supabase import create_client, Client
+from supabase import Client
+
 from app.lib.database import get_supabase
 
 logger = logging.getLogger(__name__)
 
 # Configuration
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 MODEL_STORAGE_PATH = os.environ.get("MODEL_STORAGE_PATH", "/tmp/models")
 MODEL_STORAGE_BUCKET = "ml-models"  # Supabase Storage bucket for persistent model storage
 
@@ -61,7 +60,8 @@ def ensure_storage_bucket_exists(supabase: Client) -> bool:
         # Try to list files in bucket (will fail if bucket doesn't exist)
         supabase.storage.from_(MODEL_STORAGE_BUCKET).list()
         return True
-    except Exception:
+    except Exception as list_error:
+        logger.debug(f"Bucket listing failed (may not exist yet): {list_error}")
         try:
             # Create the bucket if it doesn't exist
             supabase.storage.create_bucket(MODEL_STORAGE_BUCKET, options={

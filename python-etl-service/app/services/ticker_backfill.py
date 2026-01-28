@@ -2,13 +2,10 @@
 Ticker backfill service - fills in missing tickers for trading disclosures.
 """
 
-import os
-import re
 import logging
+import re
 from datetime import datetime
-from typing import Optional, Dict, Any
-
-from supabase import create_client, Client
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +104,7 @@ def extract_ticker_from_asset_name(asset_name: str) -> Optional[str]:
     return None
 
 
-async def run_ticker_backfill(job_id: str, limit: Optional[int] = None):
+async def run_ticker_backfill(job_id: str, limit: Optional[int] = None) -> None:
     """
     Run ticker backfill job.
 
@@ -217,7 +214,7 @@ async def run_ticker_backfill(job_id: str, limit: Optional[int] = None):
         raise
 
 
-def extract_transaction_type_from_raw(raw_data: dict) -> Optional[str]:
+def extract_transaction_type_from_raw(raw_data: Dict[str, Any]) -> Optional[str]:
     """
     Extract transaction type (purchase/sale) from raw_data.
 
@@ -254,7 +251,7 @@ def extract_transaction_type_from_raw(raw_data: dict) -> Optional[str]:
     return None
 
 
-async def run_transaction_type_backfill(job_id: str, limit: Optional[int] = None):
+async def run_transaction_type_backfill(job_id: str, limit: Optional[int] = None) -> None:
     """
     Backfill transaction_type for disclosures with 'unknown' type.
 
