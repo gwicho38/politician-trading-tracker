@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Feature Pipeline Test Coverage - COMPLETED
+ML Signal Model Test Coverage - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -32,12 +32,46 @@ Feature Pipeline Test Coverage - COMPLETED
 - [x] ~~Add tests for auto_correction.py~~ - Added 53 tests (0% → 81% coverage)
 - [x] ~~Add tests for etl_services.py~~ - Added 31 tests (29% → 95% coverage)
 - [x] ~~Add tests for feature_pipeline.py~~ - Added 44 tests (12% → 70% coverage)
+- [x] ~~Add tests for ml_signal_model.py~~ - Added 45 tests (19% → 85% coverage)
 - [ ] Document API endpoints with OpenAPI/Swagger
 - [x] ~~Add audit logging for sensitive operations~~ - Implemented comprehensive audit logging
 
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #16
+- [2026-01-28] 🧪 **Testing: ML Signal Model Test Coverage**
+  - Created `tests/test_ml_signal_model.py` with 45 comprehensive tests
+  - Test classes covering:
+    - `TestStorageBucketExists` (3 tests): Storage bucket management
+    - `TestUploadModelToStorage` (2 tests): Model upload to Supabase storage
+    - `TestDownloadModelFromStorage` (2 tests): Model download from storage
+    - `TestComputeFeatureHash` (4 tests): Feature hashing for caching
+    - `TestCongressSignalModelInit` (2 tests): Model initialization
+    - `TestCongressSignalModelPrepareFeatures` (6 tests): Feature extraction
+    - `TestCongressSignalModelPredict` (3 tests): Single prediction
+    - `TestCongressSignalModelPredictBatch` (4 tests): Batch prediction
+    - `TestCongressSignalModelSaveLoad` (2 tests): Model serialization
+    - `TestCongressSignalModelGetFeatureImportance` (2 tests): Feature importance
+    - `TestGetActiveModel` (2 tests): Global model accessor
+    - `TestLoadActiveModel` (3 tests): Model loading from database
+    - `TestCachePrediction` (3 tests): Prediction caching
+    - `TestGetCachedPrediction` (3 tests): Cache retrieval
+    - `TestSignalLabels` (2 tests): Label configuration
+    - `TestFeatureNames` (2 tests): Feature configuration
+  - Coverage improvement: 19% → 85% for ml_signal_model.py
+  - Tested functionality:
+    - Storage bucket creation and verification
+    - Model upload/download to Supabase storage
+    - Feature hash computation for caching
+    - CongressSignalModel initialization with/without model path
+    - Feature preparation with defaults
+    - Prediction for trained/untrained models
+    - Batch prediction with error handling
+    - Model save/load roundtrip
+    - Prediction caching and retrieval
+  - All 1219 tests passing
 
 ## ✅ Completed Loop #15
 - [2026-01-28] 🧪 **Testing: Feature Pipeline Test Coverage**
