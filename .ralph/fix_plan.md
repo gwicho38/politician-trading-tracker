@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Error Report Processor Test Coverage - COMPLETED
+House ETL Test Coverage - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -35,12 +35,35 @@ Error Report Processor Test Coverage - COMPLETED
 - [x] ~~Add tests for ml_signal_model.py~~ - Added 45 tests (19% → 85% coverage)
 - [x] ~~Add tests for name_enrichment.py~~ - Added 36 tests (24% → 87% coverage)
 - [x] ~~Add tests for error_report_processor.py~~ - Added 42 tests (24% → 92% coverage)
+- [x] ~~Add tests for house_etl.py~~ - Added 23 tests (57% → 78% coverage)
 - [ ] Document API endpoints with OpenAPI/Swagger
 - [x] ~~Add audit logging for sensitive operations~~ - Implemented comprehensive audit logging
 
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #19
+- [2026-01-28] 🧪 **Testing: House ETL Test Coverage**
+  - Added 23 tests to `tests/test_house_etl_service.py` (51 → 74 tests)
+  - New test classes covering:
+    - `TestFetchZipContent` (3 tests): ZIP download success, failure, exception
+    - `TestExtractIndexFile` (2 tests): ZIP extraction success and missing file
+    - `TestFetchPdfRateLimiting` (4 tests): Rate limit retry, timeout, max retries, Retry-After header
+    - `TestRunHouseETL` (4 tests): Supabase error, ZIP failure, index failure, exception handling
+    - `TestEdgeCases` (8 tests): Transaction parsing edge cases, date validation
+    - `TestConstants` (2 tests): Module constants verification
+  - Coverage improvement: 57% → 78% for house_etl.py (+21 percentage points)
+  - Tested functionality:
+    - Async ZIP content fetching with error handling
+    - ZIP index file extraction
+    - PDF fetch rate limiting with exponential backoff
+    - Retry-After header handling
+    - Main ETL function error paths
+    - Transaction parsing edge cases (partial sales, keywords, metadata patterns)
+    - Date validation with year corrections
+    - Module constants and URL templates
+  - All 1320 tests passing
 
 ## ✅ Completed Loop #18
 - [2026-01-28] 🧪 **Testing: Error Report Processor Test Coverage**
