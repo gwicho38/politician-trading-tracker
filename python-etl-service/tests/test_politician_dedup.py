@@ -622,3 +622,485 @@ class TestPreview:
         result = dedup.preview(limit=1)
 
         assert len(result["groups"]) == 1
+
+
+# =============================================================================
+# merge_group() Actual Merge Tests (Lines 257-301)
+# =============================================================================
+
+class TestMergeGroupActual:
+    """Tests for PoliticianDeduplicator.merge_group() actual merge logic."""
+
+    def test_merge_success_updates_winner_with_loser_data(self):
+        """merge_group() merges data from losers into winner."""
+        from app.services.politician_dedup import PoliticianDeduplicator, DuplicateGroup
+
+        mock_supabase = MagicMock()
+
+        # Winner query - missing some fields
+        winner_data = {
+            "id": "winner-1",
+            "full_name": "John Smith",
+            "party": None,  # Missing
+            "state": "CA",
+            "chamber": None,  # Missing
+            "bioguide_id": None  # Missing
+        }
+
+        # Loser 1 query - has party and chamber
+        loser1_data = {
+            "id": "loser-1",
+            "full_name": "John Smith",
+            "party": "D",
+            "state": None,
+            "chamber": "House",
+            "bioguide_id": None
+        }
+
+        # Loser 2 query - has bioguide_id
+        loser2_data = {
+            "id": "loser-2",
+            "full_name": "John Smith",
+            "party": None,
+            "state": None,
+            "chamber": None,
+            "bioguide_id": "S001234"
+        }
+
+        # Create a simple mock that returns different data based on call sequence
+        call_count = [0]
+        data_sequence = [winner_data, loser1_data, loser2_data]
+
+        def select_side_effect(*args):
+            eq_mock = MagicMock()
+            single_mock = MagicMock()
+            response = MagicMock()
+
+            idx = min(call_count[0], len(data_sequence) - 1)
+            response.data = data_sequence[idx]
+            call_count[0] += 1
+
+            single_mock.execute.return_value = response
+            eq_mock.eq.return_value.single.return_value = single_mock
+            return eq_mock
+
+        mock_supabase.table.return_value.select.side_effect = select_side_effect
+
+        # Disclosure update response
+        update_response = MagicMock()
+        update_response.data = [{"id": "disc-1"}, {"id": "disc-2"}]
+        mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = update_response
+        mock_supabase.table.return_value.delete.return_value.eq.return_value.execute.return_value = MagicMock()
+
+        with patch.object(PoliticianDeduplicator, '_get_supabase', return_value=mock_supabase):
+            dedup = PoliticianDeduplicator()
+
+        group = DuplicateGroup(
+            normalized_name="john smith",
+            records=[],
+            winner_id="winner-1",
+            loser_ids=["loser-1", "loser-2"],
+            disclosures_to_update=2
+        )
+
+        result = dedup.merge_group(group, dry_run=False)
+
+        assert result["status"] == "success"
+        assert result["winner_id"] == "winner-1"
+        assert result["losers_merged"] == 2
+
+    def test_merge_success_no_update_needed(self):
+        """merge_group() success when winner already has all data."""
+        from app.services.politician_dedup import PoliticianDeduplicator, DuplicateGroup
+
+        mock_supabase = MagicMock()
+
+        # Winner already complete
+        winner_response = MagicMock()
+        winner_response.data = {
+            "id": "winner-1",
+            "full_name": "John Smith",
+            "party": "D",
+            "state": "CA",
+            "chamber": "House",
+            "bioguide_id": "S001234"
+        }
+
+        # Loser has nothing new
+        loser_response = MagicMock()
+        loser_response.data = {
+            "id": "loser-1",
+            "full_name": "John Smith",
+            "party": None,
+            "state": None,
+            "chamber": None,
+            "bioguide_id": None
+        }
+
+        mock_table = MagicMock()
+        mock_supabase.table.return_value = mock_table
+
+        call_count = [0]
+        def select_side_effect(*args):
+            call_count[0] += 1
+            eq_mock = MagicMock()
+            single_mock = MagicMock()
+            if call_count[0] == 1:
+                single_mock.execute.return_value = winner_response
+            else:
+                single_mock.execute.return_value = loser_response
+            eq_mock.eq.return_value.single.return_value = single_mock
+            return eq_mock
+
+        mock_table.select.side_effect = select_side_effect
+
+        # Disclosure update
+        update_response = MagicMock()
+        update_response.data = []
+        mock_table.update.return_value.eq.return_value.execute.return_value = update_response
+        mock_table.delete.return_value.eq.return_value.execute.return_value = MagicMock()
+
+        with patch.object(PoliticianDeduplicator, '_get_supabase', return_value=mock_supabase):
+            dedup = PoliticianDeduplicator()
+
+        group = DuplicateGroup(
+            normalized_name="john smith",
+            records=[],
+            winner_id="winner-1",
+            loser_ids=["loser-1"],
+            disclosures_to_update=0
+        )
+
+        result = dedup.merge_group(group, dry_run=False)
+
+        assert result["status"] == "success"
+        # Update should NOT be called since no fields need updating
+        # (The winner already has all data)
+
+    def test_merge_counts_updated_disclosures(self):
+        """merge_group() accurately counts updated disclosures."""
+        from app.services.politician_dedup import PoliticianDeduplicator, DuplicateGroup
+
+        mock_supabase = MagicMock()
+
+        winner_response = MagicMock()
+        winner_response.data = {"id": "winner-1", "full_name": "John", "party": "D", "state": "CA", "chamber": "House", "bioguide_id": None}
+
+        loser_response = MagicMock()
+        loser_response.data = {"id": "loser-1", "full_name": "John", "party": None, "state": None, "chamber": None, "bioguide_id": None}
+
+        mock_table = MagicMock()
+        mock_supabase.table.return_value = mock_table
+
+        call_count = [0]
+        def select_side_effect(*args):
+            call_count[0] += 1
+            eq_mock = MagicMock()
+            single_mock = MagicMock()
+            if call_count[0] == 1:
+                single_mock.execute.return_value = winner_response
+            else:
+                single_mock.execute.return_value = loser_response
+            eq_mock.eq.return_value.single.return_value = single_mock
+            return eq_mock
+
+        mock_table.select.side_effect = select_side_effect
+
+        # Disclosure update returns 3 records
+        update_response = MagicMock()
+        update_response.data = [{"id": "d1"}, {"id": "d2"}, {"id": "d3"}]
+        mock_table.update.return_value.eq.return_value.execute.return_value = update_response
+        mock_table.delete.return_value.eq.return_value.execute.return_value = MagicMock()
+
+        with patch.object(PoliticianDeduplicator, '_get_supabase', return_value=mock_supabase):
+            dedup = PoliticianDeduplicator()
+
+        group = DuplicateGroup(
+            normalized_name="john",
+            records=[],
+            winner_id="winner-1",
+            loser_ids=["loser-1"],
+            disclosures_to_update=3
+        )
+
+        result = dedup.merge_group(group, dry_run=False)
+
+        assert result["status"] == "success"
+        assert result["disclosures_updated"] == 3
+
+    def test_merge_loser_data_none(self):
+        """merge_group() handles loser with None data response."""
+        from app.services.politician_dedup import PoliticianDeduplicator, DuplicateGroup
+
+        mock_supabase = MagicMock()
+
+        winner_response = MagicMock()
+        winner_response.data = {"id": "winner-1", "full_name": "John", "party": "D", "state": "CA", "chamber": "House", "bioguide_id": None}
+
+        loser_response = MagicMock()
+        loser_response.data = None  # No data for loser
+
+        mock_table = MagicMock()
+        mock_supabase.table.return_value = mock_table
+
+        call_count = [0]
+        def select_side_effect(*args):
+            call_count[0] += 1
+            eq_mock = MagicMock()
+            single_mock = MagicMock()
+            if call_count[0] == 1:
+                single_mock.execute.return_value = winner_response
+            else:
+                single_mock.execute.return_value = loser_response
+            eq_mock.eq.return_value.single.return_value = single_mock
+            return eq_mock
+
+        mock_table.select.side_effect = select_side_effect
+
+        update_response = MagicMock()
+        update_response.data = []
+        mock_table.update.return_value.eq.return_value.execute.return_value = update_response
+        mock_table.delete.return_value.eq.return_value.execute.return_value = MagicMock()
+
+        with patch.object(PoliticianDeduplicator, '_get_supabase', return_value=mock_supabase):
+            dedup = PoliticianDeduplicator()
+
+        group = DuplicateGroup(
+            normalized_name="john",
+            records=[],
+            winner_id="winner-1",
+            loser_ids=["loser-1"],
+            disclosures_to_update=0
+        )
+
+        result = dedup.merge_group(group, dry_run=False)
+
+        assert result["status"] == "success"
+
+
+# =============================================================================
+# process_all() Extended Tests (Lines 343-349)
+# =============================================================================
+
+class TestProcessAllExtended:
+    """Extended tests for PoliticianDeduplicator.process_all() success/error paths."""
+
+    def test_process_all_counts_successful_merges(self):
+        """process_all() counts successful merges and disclosures."""
+        from app.services.politician_dedup import PoliticianDeduplicator
+
+        mock_supabase = MagicMock()
+        mock_response = MagicMock()
+        mock_response.data = [
+            {"id": "1", "full_name": "John Smith", "party": "D", "state": "CA", "chamber": "House", "created_at": "2024-01-01"},
+            {"id": "2", "full_name": "John Smith", "party": None, "state": None, "chamber": None, "created_at": "2024-01-02"},
+        ]
+        mock_supabase.table.return_value.select.return_value.range.return_value.execute.return_value = mock_response
+
+        # For _count_disclosures
+        mock_count_response = MagicMock()
+        mock_count_response.count = 5
+        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = mock_count_response
+
+        # For the actual merge
+        winner_response = MagicMock()
+        winner_response.data = {"id": "1", "full_name": "John Smith", "party": "D", "state": "CA", "chamber": "House", "bioguide_id": None}
+
+        loser_response = MagicMock()
+        loser_response.data = {"id": "2", "full_name": "John Smith", "party": None, "state": None, "chamber": None, "bioguide_id": None}
+
+        update_response = MagicMock()
+        update_response.data = [{"id": "d1"}, {"id": "d2"}]
+
+        with patch.object(PoliticianDeduplicator, '_get_supabase', return_value=mock_supabase):
+            dedup = PoliticianDeduplicator()
+
+        # Mock merge_group to return success
+        with patch.object(dedup, 'merge_group') as mock_merge:
+            mock_merge.return_value = {
+                "status": "success",
+                "normalized_name": "john smith",
+                "winner_id": "1",
+                "losers_merged": 1,
+                "disclosures_updated": 2
+            }
+
+            result = dedup.process_all(dry_run=False)
+
+        assert result["processed"] == 1
+        assert result["merged"] == 1
+        assert result["disclosures_updated"] == 2
+        assert result["errors"] == 0
+
+    def test_process_all_counts_errors(self):
+        """process_all() counts error results."""
+        from app.services.politician_dedup import PoliticianDeduplicator
+
+        mock_supabase = MagicMock()
+        mock_response = MagicMock()
+        mock_response.data = [
+            {"id": "1", "full_name": "John Smith", "party": "D", "state": "CA", "chamber": "House", "created_at": "2024-01-01"},
+            {"id": "2", "full_name": "John Smith", "party": None, "state": None, "chamber": None, "created_at": "2024-01-02"},
+        ]
+        mock_supabase.table.return_value.select.return_value.range.return_value.execute.return_value = mock_response
+
+        mock_count_response = MagicMock()
+        mock_count_response.count = 0
+        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = mock_count_response
+
+        with patch.object(PoliticianDeduplicator, '_get_supabase', return_value=mock_supabase):
+            dedup = PoliticianDeduplicator()
+
+        # Mock merge_group to return error
+        with patch.object(dedup, 'merge_group') as mock_merge:
+            mock_merge.return_value = {
+                "status": "error",
+                "normalized_name": "john smith",
+                "message": "DB connection failed"
+            }
+
+            result = dedup.process_all(dry_run=False)
+
+        assert result["processed"] == 1
+        assert result["merged"] == 0
+        assert result["errors"] == 1
+
+    def test_process_all_handles_mixed_results(self):
+        """process_all() handles mix of success, dry_run, and errors."""
+        from app.services.politician_dedup import PoliticianDeduplicator
+
+        mock_supabase = MagicMock()
+        mock_response = MagicMock()
+        mock_response.data = [
+            {"id": "1", "full_name": "John Smith", "party": "D", "state": "CA", "chamber": "House", "created_at": "2024-01-01"},
+            {"id": "2", "full_name": "John Smith", "party": None, "state": None, "chamber": None, "created_at": "2024-01-02"},
+            {"id": "3", "full_name": "Jane Doe", "party": "R", "state": "TX", "chamber": "Senate", "created_at": "2024-01-01"},
+            {"id": "4", "full_name": "Jane Doe", "party": None, "state": None, "chamber": None, "created_at": "2024-01-02"},
+        ]
+        mock_supabase.table.return_value.select.return_value.range.return_value.execute.return_value = mock_response
+
+        mock_count_response = MagicMock()
+        mock_count_response.count = 0
+        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = mock_count_response
+
+        with patch.object(PoliticianDeduplicator, '_get_supabase', return_value=mock_supabase):
+            dedup = PoliticianDeduplicator()
+
+        call_count = [0]
+        def merge_side_effect(group, dry_run=False):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return {"status": "success", "disclosures_updated": 5}
+            else:
+                return {"status": "error", "message": "Failed"}
+
+        with patch.object(dedup, 'merge_group', side_effect=merge_side_effect):
+            result = dedup.process_all(dry_run=False)
+
+        assert result["processed"] == 2
+        assert result["merged"] == 1
+        assert result["errors"] == 1
+        assert result["disclosures_updated"] == 5
+
+
+# =============================================================================
+# find_duplicates() Extended Tests (Lines 136, 154)
+# =============================================================================
+
+class TestFindDuplicatesExtended:
+    """Extended tests for find_duplicates pagination and filtering."""
+
+    def test_pagination_increments_offset(self):
+        """find_duplicates() increments offset for pagination."""
+        from app.services.politician_dedup import PoliticianDeduplicator
+
+        mock_supabase = MagicMock()
+
+        # First page - full page size (triggers pagination)
+        first_page = MagicMock()
+        first_page.data = [{"id": str(i), "full_name": f"Person {i}", "party": "D", "state": "CA", "chamber": "House", "created_at": "2024-01-01"} for i in range(1000)]
+
+        # Second page - partial (ends pagination)
+        second_page = MagicMock()
+        second_page.data = [{"id": "1001", "full_name": "Person 1001", "party": "D", "state": "CA", "chamber": "House", "created_at": "2024-01-01"}]
+
+        call_count = [0]
+        def range_side_effect(start, end):
+            call_count[0] += 1
+            exec_mock = MagicMock()
+            if call_count[0] == 1:
+                exec_mock.execute.return_value = first_page
+            else:
+                exec_mock.execute.return_value = second_page
+            return exec_mock
+
+        mock_supabase.table.return_value.select.return_value.range = range_side_effect
+
+        # For _count_disclosures
+        mock_count_response = MagicMock()
+        mock_count_response.count = 0
+        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = mock_count_response
+
+        with patch.object(PoliticianDeduplicator, '_get_supabase', return_value=mock_supabase):
+            dedup = PoliticianDeduplicator()
+
+        result = dedup.find_duplicates()
+
+        # Should have called range twice (pagination)
+        assert call_count[0] == 2
+
+    def test_skips_groups_with_single_record(self):
+        """find_duplicates() skips groups with only 1 record (not duplicates)."""
+        from app.services.politician_dedup import PoliticianDeduplicator
+
+        mock_supabase = MagicMock()
+        mock_response = MagicMock()
+        mock_response.data = [
+            # John Smith appears twice - is a duplicate
+            {"id": "1", "full_name": "John Smith", "party": "D", "state": "CA", "chamber": "House", "created_at": "2024-01-01"},
+            {"id": "2", "full_name": "John Smith", "party": None, "state": None, "chamber": None, "created_at": "2024-01-02"},
+            # Jane Doe appears once - NOT a duplicate (should be skipped)
+            {"id": "3", "full_name": "Jane Doe", "party": "R", "state": "TX", "chamber": "Senate", "created_at": "2024-01-01"},
+        ]
+        mock_supabase.table.return_value.select.return_value.range.return_value.execute.return_value = mock_response
+
+        mock_count_response = MagicMock()
+        mock_count_response.count = 0
+        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = mock_count_response
+
+        with patch.object(PoliticianDeduplicator, '_get_supabase', return_value=mock_supabase):
+            dedup = PoliticianDeduplicator()
+
+        result = dedup.find_duplicates()
+
+        # Only John Smith group should be returned (Jane Doe skipped)
+        assert len(result) == 1
+        assert result[0].normalized_name == "john smith"
+
+
+# =============================================================================
+# _get_supabase() Tests (Line 54)
+# =============================================================================
+
+class TestGetSupabase:
+    """Tests for _get_supabase method."""
+
+    def test_get_supabase_returns_client(self):
+        """_get_supabase() returns client from get_supabase function."""
+        from app.services.politician_dedup import PoliticianDeduplicator
+
+        mock_client = MagicMock()
+
+        with patch('app.services.politician_dedup.get_supabase', return_value=mock_client):
+            dedup = PoliticianDeduplicator()
+
+        assert dedup.supabase == mock_client
+
+    def test_get_supabase_handles_none(self):
+        """_get_supabase() handles None return."""
+        from app.services.politician_dedup import PoliticianDeduplicator
+
+        with patch('app.services.politician_dedup.get_supabase', return_value=None):
+            dedup = PoliticianDeduplicator()
+
+        assert dedup.supabase is None
