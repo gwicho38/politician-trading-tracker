@@ -109,8 +109,10 @@ export function RiskMetrics() {
     ? Math.min(100, (state.open_positions / (state.config?.max_portfolio_positions || 20)) * 100)
     : 0;
 
-  const capitalUtilization = state?.positions_value && state?.portfolio_value
-    ? (state.positions_value / state.portfolio_value) * 100
+  // Capital utilization: use absolute value to handle negative positions_value bug
+  // and clamp to reasonable range (0-100%)
+  const capitalUtilization = state?.positions_value && state?.portfolio_value && state.portfolio_value > 0
+    ? Math.max(0, Math.min(100, (Math.abs(state.positions_value) / state.portfolio_value) * 100))
     : 0;
 
   return (
