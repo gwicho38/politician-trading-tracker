@@ -657,3 +657,460 @@ class TestFeatureNames:
 
         for feature in expected:
             assert feature in FEATURE_NAMES
+
+
+class TestCongressSignalModelTrain:
+    """Tests for CongressSignalModel.train() method.
+
+    These tests mock XGBoost and sklearn to test the train() method logic
+    without requiring actual ML library installation.
+    """
+
+    def test_train_success_with_mocked_xgboost(self):
+        """Test successful training with mocked XGBoost."""
+        model = CongressSignalModel()
+
+        # Create training data
+        np.random.seed(42)
+        n_samples = 100
+        X = pd.DataFrame(
+            np.random.rand(n_samples, len(FEATURE_NAMES)),
+            columns=FEATURE_NAMES
+        )
+        y = np.array([i % 5 - 2 for i in range(n_samples)])
+
+        # Mock XGBoost and sklearn
+        mock_xgb_module = MagicMock()
+        mock_classifier = MagicMock()
+        mock_classifier.feature_importances_ = np.array([0.1] * len(FEATURE_NAMES))
+        mock_classifier.predict.return_value = np.array([2] * 20)  # Shifted predictions
+        mock_xgb_module.XGBClassifier.return_value = mock_classifier
+
+        mock_sklearn_model_selection = MagicMock()
+        # Return train/test split with 80/20
+        X_train = X.iloc[:80]
+        X_val = X.iloc[80:]
+        y_train = y[:80]
+        y_val = y[80:]
+        mock_sklearn_model_selection.train_test_split.return_value = (X_train, X_val, y_train, y_val)
+
+        mock_sklearn_metrics = MagicMock()
+        mock_sklearn_metrics.accuracy_score.return_value = 0.85
+        mock_sklearn_metrics.f1_score.return_value = 0.82
+        mock_sklearn_metrics.classification_report.return_value = {'accuracy': 0.85}
+
+        with patch.dict('sys.modules', {
+            'xgboost': mock_xgb_module,
+            'sklearn.model_selection': mock_sklearn_model_selection,
+            'sklearn.metrics': mock_sklearn_metrics,
+        }):
+            result = model.train(X, y, validation_split=0.2)
+
+        assert 'metrics' in result
+        assert 'feature_importance' in result
+        assert 'hyperparameters' in result
+        assert model.is_trained is True
+        assert result['metrics']['accuracy'] == 0.85
+        assert result['metrics']['f1_weighted'] == 0.82
+        assert result['metrics']['training_samples'] == 80
+        assert result['metrics']['validation_samples'] == 20
+
+    def test_train_with_custom_hyperparams_mocked(self):
+        """Test training with custom hyperparameters using mocks."""
+        model = CongressSignalModel()
+
+        np.random.seed(42)
+        n_samples = 50
+        X = pd.DataFrame(
+            np.random.rand(n_samples, len(FEATURE_NAMES)),
+            columns=FEATURE_NAMES
+        )
+        y = np.array([i % 5 - 2 for i in range(n_samples)])
+
+        custom_params = {
+            'n_estimators': 50,
+            'max_depth': 3,
+            'learning_rate': 0.05,
+        }
+
+        mock_xgb_module = MagicMock()
+        mock_classifier = MagicMock()
+        mock_classifier.feature_importances_ = np.array([0.1] * len(FEATURE_NAMES))
+        mock_classifier.predict.return_value = np.array([2] * 15)
+        mock_xgb_module.XGBClassifier.return_value = mock_classifier
+
+        mock_sklearn_model_selection = MagicMock()
+        X_train = X.iloc[:35]
+        X_val = X.iloc[35:]
+        y_train = y[:35]
+        y_val = y[35:]
+        mock_sklearn_model_selection.train_test_split.return_value = (X_train, X_val, y_train, y_val)
+
+        mock_sklearn_metrics = MagicMock()
+        mock_sklearn_metrics.accuracy_score.return_value = 0.75
+        mock_sklearn_metrics.f1_score.return_value = 0.72
+        mock_sklearn_metrics.classification_report.return_value = {}
+
+        with patch.dict('sys.modules', {
+            'xgboost': mock_xgb_module,
+            'sklearn.model_selection': mock_sklearn_model_selection,
+            'sklearn.metrics': mock_sklearn_metrics,
+        }):
+            result = model.train(X, y, validation_split=0.3, hyperparams=custom_params)
+
+        # Check hyperparams were merged
+        assert result['hyperparameters']['n_estimators'] == 50
+        assert result['hyperparameters']['max_depth'] == 3
+        assert result['hyperparameters']['learning_rate'] == 0.05
+
+    def test_train_stores_training_metrics_mocked(self):
+        """Test that training stores metrics in model instance."""
+        model = CongressSignalModel()
+
+        np.random.seed(42)
+        n_samples = 50
+        X = pd.DataFrame(
+            np.random.rand(n_samples, len(FEATURE_NAMES)),
+            columns=FEATURE_NAMES
+        )
+        y = np.array([i % 5 - 2 for i in range(n_samples)])
+
+        mock_xgb_module = MagicMock()
+        mock_classifier = MagicMock()
+        mock_classifier.feature_importances_ = np.array([0.1] * len(FEATURE_NAMES))
+        mock_classifier.predict.return_value = np.array([2] * 10)
+        mock_xgb_module.XGBClassifier.return_value = mock_classifier
+
+        mock_sklearn_model_selection = MagicMock()
+        mock_sklearn_model_selection.train_test_split.return_value = (
+            X.iloc[:40], X.iloc[40:], y[:40], y[40:]
+        )
+
+        mock_sklearn_metrics = MagicMock()
+        mock_sklearn_metrics.accuracy_score.return_value = 0.90
+        mock_sklearn_metrics.f1_score.return_value = 0.88
+        mock_sklearn_metrics.classification_report.return_value = {'weighted avg': {'f1-score': 0.88}}
+
+        with patch.dict('sys.modules', {
+            'xgboost': mock_xgb_module,
+            'sklearn.model_selection': mock_sklearn_model_selection,
+            'sklearn.metrics': mock_sklearn_metrics,
+        }):
+            model.train(X, y)
+
+        assert model.training_metrics is not None
+        assert 'accuracy' in model.training_metrics
+        assert 'f1_weighted' in model.training_metrics
+        assert model.training_metrics['accuracy'] == 0.90
+
+    def test_train_feature_importance_returned_mocked(self):
+        """Test feature importance is returned after training."""
+        model = CongressSignalModel()
+
+        np.random.seed(42)
+        n_samples = 50
+        X = pd.DataFrame(
+            np.random.rand(n_samples, len(FEATURE_NAMES)),
+            columns=FEATURE_NAMES
+        )
+        y = np.array([i % 5 - 2 for i in range(n_samples)])
+
+        # Create realistic importance values
+        importance_values = np.array([0.15, 0.12, 0.10, 0.09, 0.08, 0.08,
+                                      0.07, 0.07, 0.06, 0.06, 0.06, 0.06])
+
+        mock_xgb_module = MagicMock()
+        mock_classifier = MagicMock()
+        mock_classifier.feature_importances_ = importance_values
+        mock_classifier.predict.return_value = np.array([2] * 10)
+        mock_xgb_module.XGBClassifier.return_value = mock_classifier
+
+        mock_sklearn_model_selection = MagicMock()
+        mock_sklearn_model_selection.train_test_split.return_value = (
+            X.iloc[:40], X.iloc[40:], y[:40], y[40:]
+        )
+
+        mock_sklearn_metrics = MagicMock()
+        mock_sklearn_metrics.accuracy_score.return_value = 0.85
+        mock_sklearn_metrics.f1_score.return_value = 0.82
+        mock_sklearn_metrics.classification_report.return_value = {}
+
+        with patch.dict('sys.modules', {
+            'xgboost': mock_xgb_module,
+            'sklearn.model_selection': mock_sklearn_model_selection,
+            'sklearn.metrics': mock_sklearn_metrics,
+        }):
+            result = model.train(X, y)
+
+        importance = result['feature_importance']
+        assert len(importance) == len(FEATURE_NAMES)
+        for feature in FEATURE_NAMES:
+            assert feature in importance
+            assert isinstance(importance[feature], float)
+
+    def test_train_without_xgboost_raises_import_error(self):
+        """Test ImportError raised when XGBoost not available."""
+        model = CongressSignalModel()
+
+        X = pd.DataFrame(np.random.rand(10, len(FEATURE_NAMES)), columns=FEATURE_NAMES)
+        y = np.array([0] * 10)
+
+        with patch.dict('sys.modules', {'xgboost': None}):
+            # Force re-import to fail
+            with patch('builtins.__import__', side_effect=ImportError("No module")):
+                with pytest.raises(ImportError, match="XGBoost not installed"):
+                    model.train(X, y)
+
+    def test_train_label_shifting_mocked(self):
+        """Test labels are shifted correctly for XGBoost ([-2,2] to [0,4])."""
+        model = CongressSignalModel()
+
+        np.random.seed(42)
+        n_samples = 50
+        X = pd.DataFrame(
+            np.random.rand(n_samples, len(FEATURE_NAMES)),
+            columns=FEATURE_NAMES
+        )
+        y = np.array([-2, -1, 0, 1, 2] * 10)
+
+        mock_xgb_module = MagicMock()
+        mock_classifier = MagicMock()
+        mock_classifier.feature_importances_ = np.array([0.1] * len(FEATURE_NAMES))
+        # Return shifted predictions (0-4 range)
+        mock_classifier.predict.return_value = np.array([0, 1, 2, 3, 4] * 2)
+        mock_xgb_module.XGBClassifier.return_value = mock_classifier
+
+        mock_sklearn_model_selection = MagicMock()
+        mock_sklearn_model_selection.train_test_split.return_value = (
+            X.iloc[:40], X.iloc[40:], y[:40], y[40:]
+        )
+
+        mock_sklearn_metrics = MagicMock()
+        mock_sklearn_metrics.accuracy_score.return_value = 0.80
+        mock_sklearn_metrics.f1_score.return_value = 0.78
+        mock_sklearn_metrics.classification_report.return_value = {}
+
+        with patch.dict('sys.modules', {
+            'xgboost': mock_xgb_module,
+            'sklearn.model_selection': mock_sklearn_model_selection,
+            'sklearn.metrics': mock_sklearn_metrics,
+        }):
+            result = model.train(X, y)
+
+        # Model should be trained
+        assert model.is_trained is True
+
+        # Verify XGBClassifier.fit was called with shifted labels (0-4)
+        fit_call = mock_classifier.fit.call_args
+        y_train_shifted = fit_call[0][1]
+        assert all(0 <= label <= 4 for label in y_train_shifted)
+
+    def test_train_scales_features(self):
+        """Test that features are scaled during training."""
+        model = CongressSignalModel()
+
+        np.random.seed(42)
+        n_samples = 50
+        X = pd.DataFrame(
+            np.random.rand(n_samples, len(FEATURE_NAMES)) * 100,  # Large values
+            columns=FEATURE_NAMES
+        )
+        y = np.array([i % 5 - 2 for i in range(n_samples)])
+
+        mock_xgb_module = MagicMock()
+        mock_classifier = MagicMock()
+        mock_classifier.feature_importances_ = np.array([0.1] * len(FEATURE_NAMES))
+        mock_classifier.predict.return_value = np.array([2] * 10)
+        mock_xgb_module.XGBClassifier.return_value = mock_classifier
+
+        mock_sklearn_model_selection = MagicMock()
+        mock_sklearn_model_selection.train_test_split.return_value = (
+            X.iloc[:40], X.iloc[40:], y[:40], y[40:]
+        )
+
+        mock_sklearn_metrics = MagicMock()
+        mock_sklearn_metrics.accuracy_score.return_value = 0.85
+        mock_sklearn_metrics.f1_score.return_value = 0.82
+        mock_sklearn_metrics.classification_report.return_value = {}
+
+        with patch.dict('sys.modules', {
+            'xgboost': mock_xgb_module,
+            'sklearn.model_selection': mock_sklearn_model_selection,
+            'sklearn.metrics': mock_sklearn_metrics,
+        }):
+            model.train(X, y)
+
+        # Scaler should have been fitted
+        assert model.scaler is not None
+        # The scaler should have been fit on training data
+        assert hasattr(model.scaler, 'mean_') or hasattr(model.scaler, 'scale_')
+
+
+class TestLoadActiveModelSuccessPaths:
+    """Tests for load_active_model success paths (local file exists, storage download)."""
+
+    def test_load_from_local_file(self):
+        """Test loading model from local file cache."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a real model file
+            model = CongressSignalModel()
+            model.is_trained = True
+            model.model_version = "1.0.0"
+            model_path = os.path.join(tmpdir, "model.pkl")
+            model.save(model_path)
+
+            with patch("app.services.ml_signal_model.get_supabase") as mock_get_supabase:
+                mock_supabase = MagicMock()
+                mock_get_supabase.return_value = mock_supabase
+
+                # Mock database query returning local path
+                mock_result = MagicMock()
+                mock_result.data = [{
+                    'id': 'model-123',
+                    'model_artifact_path': model_path,
+                    'model_name': 'test-model',
+                    'model_version': '1.0.0'
+                }]
+                mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = mock_result
+
+                result = load_active_model()
+
+                assert result is not None
+                assert isinstance(result, CongressSignalModel)
+                assert result.model_version == "1.0.0"
+
+    def test_load_downloads_from_storage_when_local_missing(self):
+        """Test model download from storage when local file doesn't exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create model file in tmpdir to be "downloaded"
+            model = CongressSignalModel()
+            model.is_trained = True
+            model.model_version = "2.0.0"
+
+            with patch("app.services.ml_signal_model.get_supabase") as mock_get_supabase:
+                with patch("app.services.ml_signal_model.download_model_from_storage") as mock_download:
+                    with patch("app.services.ml_signal_model.MODEL_STORAGE_PATH", tmpdir):
+                        mock_supabase = MagicMock()
+                        mock_get_supabase.return_value = mock_supabase
+
+                        # Mock database query with non-existent local path
+                        mock_result = MagicMock()
+                        mock_result.data = [{
+                            'id': 'model-456',
+                            'model_artifact_path': '/nonexistent/path.pkl',
+                            'model_name': 'storage-model',
+                            'model_version': '2.0.0'
+                        }]
+                        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = mock_result
+
+                        # Mock successful download - actually create the file
+                        def fake_download(model_id, local_path):
+                            model.save(local_path)
+                            return True
+                        mock_download.side_effect = fake_download
+
+                        result = load_active_model()
+
+                        assert result is not None
+                        assert isinstance(result, CongressSignalModel)
+                        mock_download.assert_called_once()
+
+    def test_load_with_specific_model_id_local_file(self):
+        """Test loading specific model by ID from local file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a model file
+            model = CongressSignalModel()
+            model.is_trained = True
+            model.model_version = "3.0.0"
+            model_path = os.path.join(tmpdir, "specific_model.pkl")
+            model.save(model_path)
+
+            with patch("app.services.ml_signal_model.get_supabase") as mock_get_supabase:
+                mock_supabase = MagicMock()
+                mock_get_supabase.return_value = mock_supabase
+
+                # Mock database query for specific model ID
+                mock_result = MagicMock()
+                mock_result.data = {
+                    'id': 'specific-model-id',
+                    'model_artifact_path': model_path,
+                    'model_name': 'specific-model',
+                    'model_version': '3.0.0'
+                }
+                mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_result
+
+                result = load_active_model(model_id="specific-model-id")
+
+                assert result is not None
+                assert result.model_version == "3.0.0"
+
+    def test_load_result_data_as_dict_not_list(self):
+        """Test handling when result.data is a dict instead of list."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model = CongressSignalModel()
+            model.is_trained = True
+            model_path = os.path.join(tmpdir, "model.pkl")
+            model.save(model_path)
+
+            with patch("app.services.ml_signal_model.get_supabase") as mock_get_supabase:
+                mock_supabase = MagicMock()
+                mock_get_supabase.return_value = mock_supabase
+
+                # Mock database query returning dict (not list)
+                mock_result = MagicMock()
+                mock_result.data = {
+                    'id': 'dict-model',
+                    'model_artifact_path': model_path,
+                    'model_name': 'dict-model',
+                    'model_version': '1.0'
+                }
+                mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = mock_result
+
+                result = load_active_model()
+
+                assert result is not None
+
+    def test_load_empty_data_list(self):
+        """Test returns None when data is empty list."""
+        with patch("app.services.ml_signal_model.get_supabase") as mock_get_supabase:
+            mock_supabase = MagicMock()
+            mock_get_supabase.return_value = mock_supabase
+
+            mock_result = MagicMock()
+            mock_result.data = []
+            mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = mock_result
+
+            result = load_active_model()
+
+            assert result is None
+
+    def test_load_model_path_none_downloads_from_storage(self):
+        """Test download triggered when model_artifact_path is None."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model = CongressSignalModel()
+            model.is_trained = True
+
+            with patch("app.services.ml_signal_model.get_supabase") as mock_get_supabase:
+                with patch("app.services.ml_signal_model.download_model_from_storage") as mock_download:
+                    with patch("app.services.ml_signal_model.MODEL_STORAGE_PATH", tmpdir):
+                        mock_supabase = MagicMock()
+                        mock_get_supabase.return_value = mock_supabase
+
+                        mock_result = MagicMock()
+                        mock_result.data = [{
+                            'id': 'no-path-model',
+                            'model_artifact_path': None,  # No local path
+                            'model_name': 'cloud-model',
+                            'model_version': '1.0'
+                        }]
+                        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = mock_result
+
+                        def fake_download(model_id, local_path):
+                            model.save(local_path)
+                            return True
+                        mock_download.side_effect = fake_download
+
+                        result = load_active_model()
+
+                        assert result is not None
+                        mock_download.assert_called_once()
