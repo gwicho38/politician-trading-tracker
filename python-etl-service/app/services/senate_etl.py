@@ -52,11 +52,11 @@ from app.services.house_etl import JOB_STATUS, RateLimiter
 from app.lib.parser import VALUE_PATTERNS, ASSET_TYPE_CODES
 
 # Constants
-SENATE_BASE_URL = "https://efdsearch.senate.gov"
-SENATE_SEARCH_URL = f"{SENATE_BASE_URL}/search/"
-SENATE_PTR_URL = f"{SENATE_BASE_URL}/search/view/ptr/"
-SENATORS_XML_URL = "https://www.senate.gov/general/contact_information/senators_cfm.xml"
-USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+SENATE_BASE_URL: str = "https://efdsearch.senate.gov"
+SENATE_SEARCH_URL: str = f"{SENATE_BASE_URL}/search/"
+SENATE_PTR_URL: str = f"{SENATE_BASE_URL}/search/view/ptr/"
+SENATORS_XML_URL: str = "https://www.senate.gov/general/contact_information/senators_cfm.xml"
+USER_AGENT: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 # Global rate limiter instance
 rate_limiter = RateLimiter()
@@ -67,7 +67,6 @@ rate_limiter = RateLimiter()
 # =============================================================================
 
 
-# TODO: Review this function
 async def fetch_senators_from_xml() -> List[Dict[str, Any]]:
     """
     Fetch current senators from the official Senate.gov XML feed.
@@ -117,7 +116,6 @@ async def fetch_senators_from_xml() -> List[Dict[str, Any]]:
     return senators
 
 
-# TODO: Review this function
 def upsert_senator_to_db(supabase: Client, senator: Dict[str, Any]) -> Optional[str]:
     """
     Upsert a senator to the politicians table.
@@ -163,7 +161,6 @@ def upsert_senator_to_db(supabase: Client, senator: Dict[str, Any]) -> Optional[
     return None
 
 
-# TODO: Review this function
 def _upsert_senator_by_name(supabase: Client, senator: Dict[str, Any]) -> Optional[str]:
     """Fallback: upsert senator by name matching only."""
     try:
@@ -239,7 +236,6 @@ def _upsert_senator_by_name(supabase: Client, senator: Dict[str, Any]) -> Option
 # Note: is_header_row moved to app.lib.parser
 
 
-# TODO: Review this function
 def parse_transaction_from_row(row: List[str], disclosure: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Parse a transaction from a Senate PDF table row."""
     if not row or len(row) < 2:
@@ -347,7 +343,6 @@ def parse_transaction_from_row(row: List[str], disclosure: Dict[str, Any]) -> Op
 # =============================================================================
 
 
-# TODO: Review this function
 async def search_all_ptr_disclosures_playwright(
     lookback_days: int = 30,
     limit: Optional[int] = None,
@@ -528,9 +523,8 @@ async def search_all_ptr_disclosures_playwright(
     return disclosures
 
 
-# TODO: Review this function
 async def parse_ptr_page_playwright(
-    page,  # Playwright page object
+    page: Any,  # Playwright page object
     url: str,
 ) -> List[Dict[str, Any]]:
     """
@@ -647,7 +641,6 @@ async def parse_ptr_page_playwright(
     return transactions
 
 
-# TODO: Review this function
 async def process_disclosures_playwright(
     disclosures: List[Dict[str, Any]],
     supabase: Client,
@@ -755,8 +748,7 @@ async def process_disclosures_playwright(
     return total_transactions, errors
 
 
-# TODO: Review this function
-def parse_datatables_record(record: List, senator: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def parse_datatables_record(record: List[Any], senator: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Parse a DataTables record from the EFD search results.
 
@@ -811,7 +803,6 @@ def parse_datatables_record(record: List, senator: Dict[str, Any]) -> Optional[D
         return None
 
 
-# TODO: Review this function
 async def fetch_senate_ptr_list_playwright(
     senators: List[Dict[str, Any]],
     lookback_days: int = 30,
@@ -866,7 +857,6 @@ async def fetch_senate_ptr_list_playwright(
     return matched_disclosures
 
 
-# TODO: Review this function
 async def parse_ptr_page(
     client: httpx.AsyncClient,
     url: str,
@@ -1017,7 +1007,6 @@ async def parse_ptr_page(
     return transactions
 
 
-# TODO: Review this function
 async def download_senate_pdf(
     client: httpx.AsyncClient,
     url: str,
@@ -1054,7 +1043,6 @@ async def download_senate_pdf(
     return None
 
 
-# TODO: Review this function
 async def process_senate_disclosure(
     client: httpx.AsyncClient,
     supabase: Client,
@@ -1111,7 +1099,6 @@ async def process_senate_disclosure(
 # =============================================================================
 
 
-# TODO: Review this function
 async def run_senate_etl(
     job_id: str,
     lookback_days: int = 30,
