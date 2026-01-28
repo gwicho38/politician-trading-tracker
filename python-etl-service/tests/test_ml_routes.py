@@ -235,6 +235,51 @@ class TestMlPredict:
         assert data["prediction"] == 1
         assert data["confidence"] == 0.85
 
+    def test_predict_writes_to_cache(self, client, valid_features):
+        """POST /ml/predict writes to cache when use_cache is True."""
+        with patch("app.routes.ml.get_active_model") as mock_get:
+            mock_model = MagicMock()
+            mock_model.prepare_features.return_value = [0.1] * 12
+            mock_model.predict.return_value = (1, 0.85)
+            mock_model.model_version = "1.0.0"
+            mock_get.return_value = mock_model
+
+            with patch("app.routes.ml.get_cached_prediction") as mock_cache_get:
+                mock_cache_get.return_value = None  # No cache hit
+
+                with patch("app.routes.ml.cache_prediction") as mock_cache_write:
+                    with patch("app.routes.ml.compute_feature_hash") as mock_hash:
+                        mock_hash.return_value = "abc123"
+
+                        response = client.post(
+                            "/ml/predict",
+                            json={"features": valid_features, "use_cache": True}
+                        )
+
+                        # Verify cache was written
+                        mock_cache_write.assert_called_once()
+                        call_kwargs = mock_cache_write.call_args[1]
+                        assert call_kwargs["ticker"] == "AAPL"
+                        assert call_kwargs["prediction"] == 1
+                        assert call_kwargs["confidence"] == 0.85
+
+        assert response.status_code == 200
+
+    def test_predict_exception_returns_500(self, client, valid_features):
+        """POST /ml/predict returns 500 on prediction error."""
+        with patch("app.routes.ml.get_active_model") as mock_get:
+            mock_model = MagicMock()
+            mock_model.prepare_features.side_effect = ValueError("Invalid features")
+            mock_get.return_value = mock_model
+
+            response = client.post(
+                "/ml/predict",
+                json={"features": valid_features, "use_cache": False}
+            )
+
+        assert response.status_code == 500
+        assert "Invalid features" in response.json()["detail"]
+
     def test_predict_uses_cache(self, client, valid_features):
         """POST /ml/predict uses cache when available."""
         with patch("app.routes.ml.get_cached_prediction") as mock_cache:
@@ -319,6 +364,37 @@ class TestMlBatchPredict:
         assert len(data) == 2
         assert data[0]["ticker"] == "AAPL"
 
+    def test_batch_predict_handles_per_ticker_error(self, client, valid_features):
+        """POST /ml/batch-predict handles per-ticker errors gracefully."""
+        with patch("app.routes.ml.get_active_model") as mock_get:
+            mock_model = MagicMock()
+            # First call succeeds, second call fails
+            mock_model.prepare_features.side_effect = [
+                [0.1] * 12,
+                ValueError("Bad features")
+            ]
+            mock_model.predict.return_value = (1, 0.85)
+            mock_get.return_value = mock_model
+
+            second_features = valid_features.copy()
+            second_features["ticker"] = "GOOGL"
+
+            response = client.post(
+                "/ml/batch-predict",
+                json={"tickers": [valid_features, second_features], "use_cache": False}
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        # First succeeded
+        assert data[0]["ticker"] == "AAPL"
+        assert data[0]["prediction"] == 1
+        # Second failed gracefully
+        assert data[1]["ticker"] == "GOOGL"
+        assert data[1]["signal_type"] == "error"
+        assert data[1]["prediction"] == 0
+
 
 # =============================================================================
 # GET /ml/models Tests
@@ -363,6 +439,18 @@ class TestMlListModels:
         assert "models" in data
         assert "count" in data
         assert data["count"] == 1
+
+    def test_list_models_returns_500_on_exception(self, client):
+        """GET /ml/models returns 500 on database exception."""
+        with patch("app.routes.ml.get_supabase") as mock_supabase:
+            mock_client = MagicMock()
+            mock_client.table.return_value.select.side_effect = Exception("DB connection failed")
+            mock_supabase.return_value = mock_client
+
+            response = client.get("/ml/models")
+
+        assert response.status_code == 500
+        assert "DB connection failed" in response.json()["detail"]
 
 
 # =============================================================================
@@ -410,6 +498,18 @@ class TestMlActiveModel:
         assert data["id"] == "1"
         assert data["status"] == "active"
 
+    def test_active_model_returns_500_on_exception(self, client):
+        """GET /ml/models/active returns 500 on database exception."""
+        with patch("app.routes.ml.get_supabase") as mock_supabase:
+            mock_client = MagicMock()
+            mock_client.table.return_value.select.side_effect = Exception("DB error")
+            mock_supabase.return_value = mock_client
+
+            response = client.get("/ml/models/active")
+
+        assert response.status_code == 500
+        assert "DB error" in response.json()["detail"]
+
 
 # =============================================================================
 # GET /ml/models/{model_id} Tests
@@ -453,6 +553,18 @@ class TestMlGetModel:
 
         assert response.status_code == 200
         assert data["id"] == "test-id"
+
+    def test_get_model_returns_500_on_exception(self, client):
+        """GET /ml/models/{model_id} returns 500 on database exception."""
+        with patch("app.routes.ml.get_supabase") as mock_supabase:
+            mock_client = MagicMock()
+            mock_client.table.return_value.select.side_effect = Exception("Query failed")
+            mock_supabase.return_value = mock_client
+
+            response = client.get("/ml/models/some-id")
+
+        assert response.status_code == 500
+        assert "Query failed" in response.json()["detail"]
 
 
 # =============================================================================
@@ -503,6 +615,18 @@ class TestMlFeatureImportance:
         assert "feature_importance" in data
         assert "feature_names" in data
 
+    def test_feature_importance_returns_500_on_exception(self, client):
+        """GET /ml/models/{model_id}/feature-importance returns 500 on database exception."""
+        with patch("app.routes.ml.get_supabase") as mock_supabase:
+            mock_client = MagicMock()
+            mock_client.table.return_value.select.side_effect = Exception("Database unavailable")
+            mock_supabase.return_value = mock_client
+
+            response = client.get("/ml/models/test-id/feature-importance")
+
+        assert response.status_code == 500
+        assert "Database unavailable" in response.json()["detail"]
+
 
 # =============================================================================
 # POST /ml/models/{model_id}/activate Tests
@@ -550,6 +674,22 @@ class TestMlActivateModel:
 
         assert response.status_code == 200
         assert data["status"] == "active"
+
+    def test_activate_model_returns_500_on_exception(self, client):
+        """POST /ml/models/{model_id}/activate returns 500 on exception."""
+        with patch("app.routes.ml.get_supabase") as mock_supabase:
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.data = [{"id": "test-id", "status": "ready"}]
+            mock_client.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value = mock_response
+            # Update fails
+            mock_client.table.return_value.update.side_effect = Exception("Update failed")
+            mock_supabase.return_value = mock_client
+
+            response = client.post("/ml/models/test-id/activate")
+
+        assert response.status_code == 500
+        assert "Update failed" in response.json()["detail"]
 
 
 # =============================================================================
