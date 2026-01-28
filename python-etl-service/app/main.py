@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
-    logger.info("Starting Politician Trading ETL Service...", version="1.0.0")
+    logger.info("Starting Politician Trading ETL Service...", extra={"version": "1.0.0"})
     yield
     # Shutdown
     logger.info("Shutting down ETL Service...")
