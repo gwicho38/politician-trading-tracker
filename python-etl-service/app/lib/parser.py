@@ -13,6 +13,11 @@ VALUE_PATTERNS = [
     (r"Over\s*\$5,000,000", 5000001, 50000000),
 ]
 
+# Maximum valid trade amount - the largest disclosure range is "Over $5,000,000"
+# We use $50M as a reasonable upper bound for the high end estimate
+# Any amount above this is clearly a parsing error (e.g., from malformed PDF text)
+MAX_VALID_TRADE_AMOUNT = 50_000_000  # $50 million
+
 # Asset type codes
 ASSET_TYPE_CODES = {
     "ST": "Stocks (including ADRs)",
@@ -246,6 +251,46 @@ def is_header_row(row_text: str) -> bool:
         return True
 
     return False
+
+
+def validate_trade_amount(amount: Optional[float]) -> bool:
+    """Validate that a trade amount is within reasonable bounds.
+
+    Congressional financial disclosures have defined ranges with a maximum
+    of "Over $5,000,000". We use $50M as a reasonable upper bound.
+    Any amount above this is clearly a PDF parsing error.
+
+    Args:
+        amount: The trade amount to validate (can be None)
+
+    Returns:
+        True if the amount is valid (None or <= MAX_VALID_TRADE_AMOUNT)
+        False if the amount is invalid (> MAX_VALID_TRADE_AMOUNT)
+    """
+    if amount is None:
+        return True
+    return amount <= MAX_VALID_TRADE_AMOUNT
+
+
+def validate_and_sanitize_amounts(
+    value_low: Optional[float], value_high: Optional[float]
+) -> Tuple[Optional[float], Optional[float]]:
+    """Validate and sanitize trade amount values.
+
+    If either value exceeds the maximum valid trade amount, both are
+    set to None to prevent corrupted data from entering the database.
+
+    Args:
+        value_low: Lower bound of amount range
+        value_high: Upper bound of amount range
+
+    Returns:
+        Tuple of (sanitized_low, sanitized_high) - both None if invalid
+    """
+    if not validate_trade_amount(value_low) or not validate_trade_amount(value_high):
+        # Log would be at warning level in the calling code
+        return None, None
+    return value_low, value_high
 
 
 def normalize_name(name: str) -> str:

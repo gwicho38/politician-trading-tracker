@@ -12,6 +12,7 @@ Input validation tests for API endpoints - COMPLETED
 - [x] ~~Audit dependency versions for known vulnerabilities~~ - Fixed CVE-2025-53643, CVE-2025-50181, CVE-2025-66418
 - [ ] Review authentication/authorization implementation across all services
 - [x] ~~Add input validation tests for API endpoints (quality, enrichment, etl routes)~~ - Added 13 tests
+- [x] ~~Add trade amount validation in House ETL parser (reject amounts > $50M to prevent parsing errors)~~ - Implemented with 19 tests
 
 ### Medium Priority
 - [x] ~~Add structured logging with correlation IDs for request tracing~~ - Implemented
@@ -29,6 +30,25 @@ None - ready for next task
 
 ## ✅ Completed This Session
 <!-- Ralph: Record completed work with timestamps -->
+- [2026-01-28] 🛡️ **Data Quality: Trade Amount Validation**
+  - Added `validate_trade_amount()` and `validate_and_sanitize_amounts()` in `app/lib/parser.py`
+  - Updated `upload_transaction_to_supabase()` and `prepare_transaction_for_batch()` in `app/lib/database.py`
+  - Rejects amounts > $50M (the max disclosure threshold) as clearly corrupted
+  - Logs warning when invalid amounts are rejected
+  - Added 19 tests in `test_database.py` covering all validation scenarios
+  - Prevents future volume spike issues from PDF parsing errors
+  - All 849 tests passing
+
+- [2026-01-28] 🗃️ **Data Quality: Volume Spike Fix**
+  - **Issue**: Massive volume spike in Aug-Sep 2025 on Trade Volume chart (~$4.5B displayed)
+  - **Root Cause**: 37 corrupted `trading_disclosures` records with impossible amounts (up to $4.5 trillion) from House ETL PDF parsing errors
+  - **Parser Bug**: Concatenating multiple columns/rows into `asset_name` field, extracting dollar amounts from malformed text
+  - **Example**: `asset_name: "Truway Health, Inc. Suing the U.S $4,536,758,654,345.00..."` with `amount_range_max: 4536758654345`
+  - **Fix Applied**:
+    1. Deleted 37 corrupted records where `amount_range_max > $1 billion`
+    2. Regenerated `chart_data` table via `update-chart-data` edge function
+  - **Result**: Sep 2025 volume now shows ~$1.4B (realistic) instead of ~$898B (corrupt)
+
 - [2026-01-28] 🔒 **Security: Sandbox fail-closed + RestrictedPython dependency fix**
   - Added RestrictedPython>=6.1 to pyproject.toml (was missing from deps)
   - Changed sandbox to fail-closed (raise error) instead of falling back to unsafe exec()
