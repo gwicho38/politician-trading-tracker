@@ -395,3 +395,293 @@ class TestRunJobInBackground:
             await run_job_in_background(job)
 
             assert job.status == "completed"
+
+
+# =============================================================================
+# API Key Authorization Tests
+# =============================================================================
+
+class TestOllamaAuthorization:
+    """Tests for Ollama API authorization."""
+
+    @pytest.mark.asyncio
+    async def test_includes_api_key_when_set(self):
+        """query_ollama_for_party() includes Authorization header when API key is set."""
+        from app.services.party_enrichment import query_ollama_for_party
+        import app.services.party_enrichment as pe
+
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": "D"}}]
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_client.post.return_value = mock_response
+
+        # Temporarily set API key
+        original_key = pe.OLLAMA_API_KEY
+        pe.OLLAMA_API_KEY = "test-api-key-123"
+        try:
+            await query_ollama_for_party(mock_client, "Test Name")
+
+            call_args = mock_client.post.call_args
+            headers = call_args.kwargs["headers"]
+            assert "Authorization" in headers
+            assert headers["Authorization"] == "Bearer test-api-key-123"
+        finally:
+            pe.OLLAMA_API_KEY = original_key
+
+
+# =============================================================================
+# Job Pagination Tests
+# =============================================================================
+
+class TestJobPagination:
+    """Tests for job pagination when fetching politicians."""
+
+    @pytest.mark.asyncio
+    async def test_fetches_multiple_pages(self):
+        """PartyEnrichmentJob.run() fetches multiple pages of politicians."""
+        from app.services.party_enrichment import PartyEnrichmentJob
+        import asyncio
+
+        with patch("app.services.party_enrichment.get_supabase") as mock_supabase, \
+             patch("app.services.party_enrichment.query_ollama_for_party", new_callable=AsyncMock) as mock_query, \
+             patch.object(asyncio, "sleep", new_callable=AsyncMock):
+
+            mock_client = MagicMock()
+            mock_supabase.return_value = mock_client
+
+            # First page returns 1000 results, second returns 500 (end of data)
+            page1_data = [{"id": str(i), "full_name": f"Name {i}", "state": "CA", "chamber": "House"} for i in range(1000)]
+            page2_data = [{"id": str(i), "full_name": f"Name {i}", "state": "CA", "chamber": "House"} for i in range(1000, 1500)]
+
+            mock_response1 = MagicMock()
+            mock_response1.data = page1_data
+            mock_response2 = MagicMock()
+            mock_response2.data = page2_data
+
+            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.side_effect = [
+                mock_response1, mock_response2
+            ]
+            mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
+
+            mock_query.return_value = "D"
+
+            job = PartyEnrichmentJob("test-job", limit=2000)
+            await job.run()
+
+            assert job.total == 1500
+            assert job.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_respects_limit_across_pages(self):
+        """PartyEnrichmentJob.run() respects limit even with pagination."""
+        from app.services.party_enrichment import PartyEnrichmentJob
+        import asyncio
+
+        with patch("app.services.party_enrichment.get_supabase") as mock_supabase, \
+             patch("app.services.party_enrichment.query_ollama_for_party", new_callable=AsyncMock) as mock_query, \
+             patch.object(asyncio, "sleep", new_callable=AsyncMock):
+
+            mock_client = MagicMock()
+            mock_supabase.return_value = mock_client
+
+            # First page returns 10 results
+            page_data = [{"id": str(i), "full_name": f"Name {i}", "state": "CA", "chamber": "House"} for i in range(10)]
+            mock_response = MagicMock()
+            mock_response.data = page_data
+
+            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.return_value = mock_response
+            mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
+
+            mock_query.return_value = "D"
+
+            job = PartyEnrichmentJob("test-job", limit=10)
+            await job.run()
+
+            assert job.total == 10
+            assert job.status == "completed"
+
+
+# =============================================================================
+# Processing Loop Tests
+# =============================================================================
+
+class TestProcessingLoop:
+    """Tests for the main processing loop in PartyEnrichmentJob."""
+
+    @pytest.mark.asyncio
+    async def test_updates_politician_with_party(self):
+        """PartyEnrichmentJob.run() updates politician with determined party."""
+        from app.services.party_enrichment import PartyEnrichmentJob
+        import asyncio
+
+        with patch("app.services.party_enrichment.get_supabase") as mock_supabase, \
+             patch("app.services.party_enrichment.query_ollama_for_party", new_callable=AsyncMock) as mock_query, \
+             patch.object(asyncio, "sleep", new_callable=AsyncMock):
+
+            mock_client = MagicMock()
+            mock_supabase.return_value = mock_client
+
+            politician = {"id": "pol-123", "full_name": "John Doe", "state": "CA", "chamber": "House"}
+            mock_response = MagicMock()
+            mock_response.data = [politician]
+
+            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.return_value = mock_response
+            mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
+
+            mock_query.return_value = "D"
+
+            job = PartyEnrichmentJob("test-job", limit=1)
+            await job.run()
+
+            assert job.updated == 1
+            assert job.skipped == 0
+            mock_client.table.return_value.update.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_skips_when_party_unknown(self):
+        """PartyEnrichmentJob.run() skips when party cannot be determined."""
+        from app.services.party_enrichment import PartyEnrichmentJob
+        import asyncio
+
+        with patch("app.services.party_enrichment.get_supabase") as mock_supabase, \
+             patch("app.services.party_enrichment.query_ollama_for_party", new_callable=AsyncMock) as mock_query, \
+             patch.object(asyncio, "sleep", new_callable=AsyncMock):
+
+            mock_client = MagicMock()
+            mock_supabase.return_value = mock_client
+
+            politician = {"id": "pol-123", "full_name": "Unknown Person", "state": None, "chamber": None}
+            mock_response = MagicMock()
+            mock_response.data = [politician]
+
+            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.return_value = mock_response
+
+            mock_query.return_value = None  # Cannot determine party
+
+            job = PartyEnrichmentJob("test-job", limit=1)
+            await job.run()
+
+            assert job.updated == 0
+            assert job.skipped == 1
+
+    @pytest.mark.asyncio
+    async def test_counts_errors_on_update_failure(self):
+        """PartyEnrichmentJob.run() counts errors when update fails."""
+        from app.services.party_enrichment import PartyEnrichmentJob
+        import asyncio
+
+        with patch("app.services.party_enrichment.get_supabase") as mock_supabase, \
+             patch("app.services.party_enrichment.query_ollama_for_party", new_callable=AsyncMock) as mock_query, \
+             patch.object(asyncio, "sleep", new_callable=AsyncMock):
+
+            mock_client = MagicMock()
+            mock_supabase.return_value = mock_client
+
+            politician = {"id": "pol-123", "full_name": "John Doe", "state": "CA", "chamber": "House"}
+            mock_response = MagicMock()
+            mock_response.data = [politician]
+
+            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.return_value = mock_response
+            mock_client.table.return_value.update.return_value.eq.return_value.execute.side_effect = Exception("Database error")
+
+            mock_query.return_value = "D"
+
+            job = PartyEnrichmentJob("test-job", limit=1)
+            await job.run()
+
+            assert job.errors == 1
+            assert job.updated == 0
+
+    @pytest.mark.asyncio
+    async def test_updates_message_periodically(self):
+        """PartyEnrichmentJob.run() updates message during processing."""
+        from app.services.party_enrichment import PartyEnrichmentJob
+        import asyncio
+
+        with patch("app.services.party_enrichment.get_supabase") as mock_supabase, \
+             patch("app.services.party_enrichment.query_ollama_for_party", new_callable=AsyncMock) as mock_query, \
+             patch.object(asyncio, "sleep", new_callable=AsyncMock):
+
+            mock_client = MagicMock()
+            mock_supabase.return_value = mock_client
+
+            # Create 10 politicians to trigger message update
+            politicians = [{"id": str(i), "full_name": f"Name {i}", "state": "CA", "chamber": "House"} for i in range(10)]
+            mock_response = MagicMock()
+            mock_response.data = politicians
+
+            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.return_value = mock_response
+            mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
+
+            mock_query.return_value = "D"
+
+            job = PartyEnrichmentJob("test-job", limit=10)
+            await job.run()
+
+            assert job.status == "completed"
+            assert "updated" in job.message.lower()
+
+    @pytest.mark.asyncio
+    async def test_applies_rate_limiting(self):
+        """PartyEnrichmentJob.run() applies rate limiting between requests."""
+        from app.services.party_enrichment import PartyEnrichmentJob, REQUEST_DELAY
+        import asyncio
+
+        with patch("app.services.party_enrichment.get_supabase") as mock_supabase, \
+             patch("app.services.party_enrichment.query_ollama_for_party", new_callable=AsyncMock) as mock_query, \
+             patch.object(asyncio, "sleep", new_callable=AsyncMock) as mock_sleep:
+
+            mock_client = MagicMock()
+            mock_supabase.return_value = mock_client
+
+            politicians = [{"id": str(i), "full_name": f"Name {i}", "state": "CA", "chamber": "House"} for i in range(3)]
+            mock_response = MagicMock()
+            mock_response.data = politicians
+
+            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.return_value = mock_response
+            mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
+
+            mock_query.return_value = "D"
+
+            job = PartyEnrichmentJob("test-job", limit=3)
+            await job.run()
+
+            # Should have called sleep 3 times (once per politician)
+            assert mock_sleep.call_count == 3
+            mock_sleep.assert_called_with(REQUEST_DELAY)
+
+
+# =============================================================================
+# Constants Tests
+# =============================================================================
+
+class TestConstants:
+    """Tests for module constants."""
+
+    def test_request_delay_defined(self):
+        """REQUEST_DELAY constant is defined."""
+        from app.services.party_enrichment import REQUEST_DELAY
+
+        assert REQUEST_DELAY == 0.5
+
+    def test_batch_size_defined(self):
+        """BATCH_SIZE constant is defined."""
+        from app.services.party_enrichment import BATCH_SIZE
+
+        assert BATCH_SIZE == 50
+
+    def test_ollama_url_has_default(self):
+        """OLLAMA_URL has default value."""
+        from app.services.party_enrichment import OLLAMA_URL
+
+        assert OLLAMA_URL is not None
+        assert "ollama" in OLLAMA_URL.lower()
+
+    def test_ollama_model_has_default(self):
+        """OLLAMA_MODEL has default value."""
+        from app.services.party_enrichment import OLLAMA_MODEL
+
+        assert OLLAMA_MODEL is not None
