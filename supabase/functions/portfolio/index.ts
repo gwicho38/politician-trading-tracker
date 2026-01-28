@@ -1,17 +1,7 @@
 import { createClient } from 'supabase'
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { corsHeaders } from '../_shared/cors.ts'
-
-// TODO: Review isServiceRoleRequest - checks if request uses service role key for scheduled jobs
-function isServiceRoleRequest(req: Request): boolean {
-  const authHeader = req.headers.get('authorization')
-  if (!authHeader) return false
-
-  const token = authHeader.replace('Bearer ', '')
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
-
-  return token === serviceRoleKey
-}
+import { isServiceRoleRequest } from '../_shared/auth.ts'
 
 // TODO: Review log object - structured JSON logging with levels (info, error, warn)
 const log = {

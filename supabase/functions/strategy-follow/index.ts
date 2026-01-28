@@ -1,6 +1,7 @@
 import { createClient } from 'supabase'
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { corsHeaders } from '../_shared/cors.ts'
+import { validateServiceRoleKey } from '../_shared/auth.ts'
 
 // TODO: Review log object - structured JSON logging utility with service identification
 const log = {
@@ -204,9 +205,10 @@ serve(async (req) => {
     }
 
     // Check for service role key for scheduled actions (sync-all-active)
+    // Uses constant-time comparison to prevent timing attacks
     const authHeader = req.headers.get('authorization')
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    const isServiceCall = authHeader?.replace('Bearer ', '') === serviceRoleKey
+    const token = authHeader?.replace('Bearer ', '') || ''
+    const isServiceCall = validateServiceRoleKey(token)
 
     // Handle service-level actions (called by scheduler)
     if (action === 'sync-all-active') {
