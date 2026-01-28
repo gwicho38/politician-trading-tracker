@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Constant-Time Comparison for Service Role Keys - COMPLETED
+Parser Module Test Coverage - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -28,13 +28,30 @@ Constant-Time Comparison for Service Role Keys - COMPLETED
 - [x] ~~Use constant-time comparison for service role keys in Edge Functions~~ - Shared auth module with timing-attack resistant comparison
 
 ### Low Priority
-- [ ] Increase test coverage for edge cases
+- [x] ~~Increase test coverage for edge cases~~ - Added 57 tests for parser.py (62% → 96% coverage)
 - [ ] Document API endpoints with OpenAPI/Swagger
 - [x] ~~Add audit logging for sensitive operations~~ - Implemented comprehensive audit logging
 
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #11
+- [2026-01-28] 🧪 **Testing: Parser Module Test Coverage**
+  - Created `tests/test_parser.py` with 57 comprehensive tests for `app/lib/parser.py`
+  - Test classes covering all parser functions:
+    - `TestExtractTickerFromText` (12 tests): ticker extraction from various formats
+    - `TestSanitizeString` (7 tests): string sanitization and null character removal
+    - `TestParseValueRange` (6 tests): value range parsing from disclosure text
+    - `TestParseAssetType` (3 tests): asset type code parsing
+    - `TestCleanAssetName` (9 tests): asset name cleaning and normalization
+    - `TestIsHeaderRow` (5 tests): header row detection
+    - `TestValidateTradeAmount` (3 tests): trade amount validation
+    - `TestValidateAndSanitizeAmounts` (4 tests): amount sanitization
+    - `TestNormalizeName` (8 tests): politician name normalization
+  - Coverage improvement: 62% → 96% for parser.py
+  - Discovered pattern order quirk in normalize_name (documented in tests)
+  - All 1046 tests passing (989 original + 57 new)
 
 ## ✅ Completed Loop #10
 - [2026-01-28] 🔒 **Security: Constant-Time Comparison for Service Role Keys**
