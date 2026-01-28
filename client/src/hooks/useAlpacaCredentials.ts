@@ -84,6 +84,7 @@ export function useAlpacaCredentials() {
   });
 
   // Save credentials mutation
+  // Uses Edge Function to encrypt credentials before storage
   const saveCredentialsMutation = useMutation({
     mutationFn: async ({
       tradingMode,
@@ -102,75 +103,34 @@ export function useAlpacaCredentials() {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-      const updateData: Record<string, string | null> = tradingMode === 'paper'
-        ? {
-            paper_api_key: apiKey,
-            paper_secret_key: secretKey,
-            paper_validated_at: new Date().toISOString(),
-          }
-        : {
-            live_api_key: apiKey,
-            live_secret_key: secretKey,
-            live_validated_at: new Date().toISOString(),
-          };
+      // Call Edge Function to encrypt and save credentials
+      const response = await fetch(`${supabaseUrl}/functions/v1/alpaca-account`, {
+        method: 'POST',
+        headers: {
+          'apikey': anonKey,
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'save-credentials',
+          tradingMode,
+          apiKey,
+          secretKey,
+        }),
+      });
 
-      // Try to update first, then insert if not exists
-      const checkResponse = await fetch(
-        `${supabaseUrl}/rest/v1/user_api_keys?user_email=eq.${encodeURIComponent(user.email)}&select=id`,
-        {
-          headers: {
-            'apikey': anonKey,
-            'Authorization': `Bearer ${accessToken}`,
-          },
-        }
-      );
-
-      const existingData = await checkResponse.json();
-      const existing = existingData.length > 0 ? existingData[0] : null;
-
-      if (existing) {
-        const response = await fetch(
-          `${supabaseUrl}/rest/v1/user_api_keys?user_email=eq.${encodeURIComponent(user.email)}`,
-          {
-            method: 'PATCH',
-            headers: {
-              'apikey': anonKey,
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(updateData),
-          }
-        );
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.message || 'Failed to update credentials');
-        }
-      } else {
-        const response = await fetch(
-          `${supabaseUrl}/rest/v1/user_api_keys`,
-          {
-            method: 'POST',
-            headers: {
-              'apikey': anonKey,
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              user_email: user.email,
-              user_name: user.user_metadata?.full_name || user.email,
-              ...updateData,
-            }),
-          }
-        );
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.message || 'Failed to save credentials');
-        }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to save credentials');
       }
 
-      return { success: true };
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to save credentials');
+      }
+
+      return { success: true, encrypted: data.encrypted };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alpaca-credentials'] });

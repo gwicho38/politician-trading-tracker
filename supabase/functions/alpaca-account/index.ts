@@ -2,6 +2,7 @@ import { createClient } from 'supabase'
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { corsHeaders } from '../_shared/cors.ts'
 import { isServiceRoleRequest } from '../_shared/auth.ts'
+import { decrypt, encrypt, isEncryptionEnabled } from '../_shared/crypto.ts'
 
 // =============================================================================
 // CIRCUIT BREAKER PATTERN
@@ -123,6 +124,7 @@ const log = {
 // TODO: Review getAlpacaCredentials - retrieves Alpaca API credentials
 // - Priority: provided params > user_api_keys table > environment variables
 // - Supports both paper and live trading modes
+// - Decrypts stored credentials if encryption is enabled
 async function getAlpacaCredentials(
   supabase: any,
   userEmail: string | null,
@@ -148,10 +150,14 @@ async function getAlpacaCredentials(
         .maybeSingle();
 
       if (!error && data) {
-        const apiKey = tradingMode === 'paper' ? data.paper_api_key : data.live_api_key;
-        const secretKey = tradingMode === 'paper' ? data.paper_secret_key : data.live_secret_key;
+        const encryptedApiKey = tradingMode === 'paper' ? data.paper_api_key : data.live_api_key;
+        const encryptedSecretKey = tradingMode === 'paper' ? data.paper_secret_key : data.live_secret_key;
 
-        if (apiKey && secretKey) {
+        if (encryptedApiKey && encryptedSecretKey) {
+          // Decrypt credentials (handles both encrypted and legacy unencrypted values)
+          const apiKey = await decrypt(encryptedApiKey);
+          const secretKey = await decrypt(encryptedSecretKey);
+
           const baseUrl = tradingMode === 'paper'
             ? 'https://paper-api.alpaca.markets'
             : 'https://api.alpaca.markets';
@@ -545,6 +551,107 @@ serve(async (req) => {
     }
 
     // Handle different actions
+
+    // Save credentials endpoint (encrypts before storing)
+    if (action === 'save-credentials') {
+      if (!userEmail) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'User authentication required to save credentials' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const { apiKey, secretKey } = bodyParams
+      if (!apiKey || !secretKey) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'API key and secret key are required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      try {
+        // Encrypt credentials before storage
+        const encryptedApiKey = await encrypt(apiKey)
+        const encryptedSecretKey = await encrypt(secretKey)
+
+        log.info('Encrypting credentials', {
+          requestId,
+          tradingMode,
+          encryptionEnabled: isEncryptionEnabled(),
+          apiKeyEncrypted: encryptedApiKey.startsWith('enc:'),
+          secretKeyEncrypted: encryptedSecretKey.startsWith('enc:')
+        })
+
+        // Prepare update data based on trading mode
+        const updateData = tradingMode === 'paper'
+          ? {
+              paper_api_key: encryptedApiKey,
+              paper_secret_key: encryptedSecretKey,
+              paper_validated_at: new Date().toISOString(),
+            }
+          : {
+              live_api_key: encryptedApiKey,
+              live_secret_key: encryptedSecretKey,
+              live_validated_at: new Date().toISOString(),
+            }
+
+        // Check if user record exists
+        const { data: existing } = await supabaseClient
+          .from('user_api_keys')
+          .select('id')
+          .eq('user_email', userEmail)
+          .maybeSingle()
+
+        if (existing) {
+          // Update existing record
+          const { error: updateError } = await supabaseClient
+            .from('user_api_keys')
+            .update(updateData)
+            .eq('user_email', userEmail)
+
+          if (updateError) {
+            log.error('Failed to update credentials', { requestId, error: updateError.message })
+            return new Response(
+              JSON.stringify({ success: false, error: 'Failed to save credentials' }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
+        } else {
+          // Insert new record
+          const { error: insertError } = await supabaseClient
+            .from('user_api_keys')
+            .insert({
+              user_email: userEmail,
+              ...updateData,
+            })
+
+          if (insertError) {
+            log.error('Failed to insert credentials', { requestId, error: insertError.message })
+            return new Response(
+              JSON.stringify({ success: false, error: 'Failed to save credentials' }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
+        }
+
+        log.info('Credentials saved successfully', { requestId, tradingMode, encrypted: isEncryptionEnabled() })
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: 'Credentials saved successfully',
+            encrypted: isEncryptionEnabled()
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      } catch (error) {
+        log.error('Error saving credentials', error, { requestId })
+        return new Response(
+          JSON.stringify({ success: false, error: 'Failed to encrypt or save credentials' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
 
     // Health check endpoint
     if (action === 'health-check') {

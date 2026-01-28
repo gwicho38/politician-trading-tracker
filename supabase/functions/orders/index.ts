@@ -2,10 +2,12 @@ import { createClient } from 'supabase'
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { corsHeaders } from '../_shared/cors.ts'
 import { isServiceRoleRequest } from '../_shared/auth.ts'
+import { decrypt } from '../_shared/crypto.ts'
 
 // TODO: Review getAlpacaCredentials - retrieves Alpaca API credentials
 // - Priority: user_api_keys table > environment variables
 // - Supports both paper and live trading modes
+// - Decrypts stored credentials if encryption is enabled
 async function getAlpacaCredentials(
   supabase: any,
   userEmail: string | null,
@@ -21,10 +23,14 @@ async function getAlpacaCredentials(
         .maybeSingle();
 
       if (!error && data) {
-        const apiKey = tradingMode === 'paper' ? data.paper_api_key : data.live_api_key;
-        const secretKey = tradingMode === 'paper' ? data.paper_secret_key : data.live_secret_key;
+        const encryptedApiKey = tradingMode === 'paper' ? data.paper_api_key : data.live_api_key;
+        const encryptedSecretKey = tradingMode === 'paper' ? data.paper_secret_key : data.live_secret_key;
 
-        if (apiKey && secretKey) {
+        if (encryptedApiKey && encryptedSecretKey) {
+          // Decrypt credentials (handles both encrypted and legacy unencrypted values)
+          const apiKey = await decrypt(encryptedApiKey);
+          const secretKey = await decrypt(encryptedSecretKey);
+
           const baseUrl = tradingMode === 'paper'
             ? 'https://paper-api.alpaca.markets'
             : 'https://api.alpaca.markets';
