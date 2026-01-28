@@ -13,6 +13,7 @@ from typing import Optional
 
 from app.services.error_report_processor import ErrorReportProcessor
 from app.middleware.auth import require_api_key, require_admin_key
+from app.lib.audit_log import log_audit_event, AuditAction, AuditContext
 
 router = APIRouter()
 
@@ -220,71 +221,83 @@ async def force_apply_correction(
     Use this for manual review of low-confidence suggestions.
     Provide the corrections you want to apply.
     """
-    processor = ErrorReportProcessor()
+    with AuditContext(
+        AuditAction.ERROR_REPORT_APPLY,
+        resource_type="error_report",
+        resource_id=request.report_id,
+    ) as audit:
+        audit.details["corrections_count"] = len(request.corrections)
+        audit.details["fields"] = [c["field"] for c in request.corrections]
 
-    if not processor.supabase:
-        raise HTTPException(status_code=503, detail="Database not configured")
+        processor = ErrorReportProcessor()
 
-    try:
-        # Fetch the report
-        report_response = (
-            processor.supabase.table("user_error_reports")
-            .select("*")
-            .eq("id", request.report_id)
-            .single()
-            .execute()
-        )
+        if not processor.supabase:
+            raise HTTPException(status_code=503, detail="Database not configured")
 
-        if not report_response.data:
-            raise HTTPException(status_code=404, detail="Report not found")
-
-        report = report_response.data
-        disclosure_id = report.get("disclosure_id")
-
-        if not disclosure_id:
-            raise HTTPException(status_code=400, detail="Report has no disclosure_id")
-
-        # Build correction proposals with 100% confidence (force apply)
-        from app.services.error_report_processor import CorrectionProposal
-        corrections = [
-            CorrectionProposal(
-                field=c["field"],
-                old_value=c.get("old_value"),
-                new_value=c["new_value"],
-                confidence=1.0,
-                reasoning="Manually applied by admin"
+        try:
+            # Fetch the report
+            report_response = (
+                processor.supabase.table("user_error_reports")
+                .select("*")
+                .eq("id", request.report_id)
+                .single()
+                .execute()
             )
-            for c in request.corrections
-        ]
 
-        # Apply the corrections
-        success = processor._apply_corrections(disclosure_id, corrections)
+            if not report_response.data:
+                raise HTTPException(status_code=404, detail="Report not found")
 
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to apply corrections")
+            report = report_response.data
+            disclosure_id = report.get("disclosure_id")
+            audit.details["disclosure_id"] = disclosure_id
 
-        # Update report status
-        correction_summary = "; ".join([
-            f"{c.field}: {c.old_value} → {c.new_value}"
-            for c in corrections
-        ])
-        processor._update_report_status(
-            request.report_id,
-            "fixed",
-            f"Manually applied: {correction_summary}"
-        )
+            if not disclosure_id:
+                raise HTTPException(status_code=400, detail="Report has no disclosure_id")
 
-        return {
-            "success": True,
-            "report_id": request.report_id,
-            "corrections_applied": len(corrections),
-            "admin_notes": f"Manually applied: {correction_summary}"
-        }
+            # Build correction proposals with 100% confidence (force apply)
+            from app.services.error_report_processor import CorrectionProposal
+            corrections = [
+                CorrectionProposal(
+                    field=c["field"],
+                    old_value=c.get("old_value"),
+                    new_value=c["new_value"],
+                    confidence=1.0,
+                    reasoning="Manually applied by admin"
+                )
+                for c in request.corrections
+            ]
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+            # Apply the corrections
+            success = processor._apply_corrections(disclosure_id, corrections)
+
+            if not success:
+                raise HTTPException(status_code=500, detail="Failed to apply corrections")
+
+            # Update report status
+            correction_summary = "; ".join([
+                f"{c.field}: {c.old_value} → {c.new_value}"
+                for c in corrections
+            ])
+            processor._update_report_status(
+                request.report_id,
+                "fixed",
+                f"Manually applied: {correction_summary}"
+            )
+
+            audit.details["corrections_applied"] = len(corrections)
+            audit.details["correction_summary"] = correction_summary
+
+            return {
+                "success": True,
+                "report_id": request.report_id,
+                "corrections_applied": len(corrections),
+                "admin_notes": f"Manually applied: {correction_summary}"
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
 
 class ReanalyzeRequest(BaseModel):
@@ -308,63 +321,75 @@ async def reanalyze_report(
     Useful for reports that were flagged for review - you can
     re-run the analysis with a lower threshold to auto-apply.
     """
-    processor = ErrorReportProcessor(model=request.model)
+    with AuditContext(
+        AuditAction.ERROR_REPORT_REANALYZE,
+        resource_type="error_report",
+        resource_id=request.report_id,
+    ) as audit:
+        audit.details["model"] = request.model
+        audit.details["confidence_threshold"] = request.confidence_threshold
+        audit.details["dry_run"] = request.dry_run
 
-    if not processor.test_connection():
-        raise HTTPException(status_code=503, detail="Cannot connect to Ollama")
+        processor = ErrorReportProcessor(model=request.model)
 
-    if not processor.supabase:
-        raise HTTPException(status_code=503, detail="Database not configured")
+        if not processor.test_connection():
+            raise HTTPException(status_code=503, detail="Cannot connect to Ollama")
 
-    # Temporarily lower the confidence threshold
-    original_threshold = processor.CONFIDENCE_THRESHOLD
-    processor.CONFIDENCE_THRESHOLD = request.confidence_threshold
+        if not processor.supabase:
+            raise HTTPException(status_code=503, detail="Database not configured")
 
-    try:
-        # Fetch the report
-        response = (
-            processor.supabase.table("user_error_reports")
-            .select("*")
-            .eq("id", request.report_id)
-            .single()
-            .execute()
-        )
+        # Temporarily lower the confidence threshold
+        original_threshold = processor.CONFIDENCE_THRESHOLD
+        processor.CONFIDENCE_THRESHOLD = request.confidence_threshold
 
-        if not response.data:
-            raise HTTPException(status_code=404, detail="Report not found")
+        try:
+            # Fetch the report
+            response = (
+                processor.supabase.table("user_error_reports")
+                .select("*")
+                .eq("id", request.report_id)
+                .single()
+                .execute()
+            )
 
-        # Reset status to pending so it can be reprocessed
-        if not request.dry_run:
-            processor.supabase.table("user_error_reports").update({
-                "status": "pending"
-            }).eq("id", request.report_id).execute()
+            if not response.data:
+                raise HTTPException(status_code=404, detail="Report not found")
 
-        report = response.data
-        report["status"] = "pending"  # Override for processing
+            # Reset status to pending so it can be reprocessed
+            if not request.dry_run:
+                processor.supabase.table("user_error_reports").update({
+                    "status": "pending"
+                }).eq("id", request.report_id).execute()
 
-        result = processor.process_report(report, dry_run=request.dry_run)
+            report = response.data
+            report["status"] = "pending"  # Override for processing
 
-        return {
-            "report_id": result.report_id,
-            "status": result.status,
-            "confidence_threshold": request.confidence_threshold,
-            "corrections": [
-                {
-                    "field": c.field,
-                    "old_value": c.old_value,
-                    "new_value": c.new_value,
-                    "confidence": c.confidence,
-                    "reasoning": c.reasoning
-                }
-                for c in result.corrections
-            ],
-            "admin_notes": result.admin_notes,
-            "dry_run": request.dry_run
-        }
+            result = processor.process_report(report, dry_run=request.dry_run)
 
-    finally:
-        # Restore original threshold
-        processor.CONFIDENCE_THRESHOLD = original_threshold
+            audit.details["result_status"] = result.status
+            audit.details["corrections_count"] = len(result.corrections)
+
+            return {
+                "report_id": result.report_id,
+                "status": result.status,
+                "confidence_threshold": request.confidence_threshold,
+                "corrections": [
+                    {
+                        "field": c.field,
+                        "old_value": c.old_value,
+                        "new_value": c.new_value,
+                        "confidence": c.confidence,
+                        "reasoning": c.reasoning
+                    }
+                    for c in result.corrections
+                ],
+                "admin_notes": result.admin_notes,
+                "dry_run": request.dry_run
+            }
+
+        finally:
+            # Restore original threshold
+            processor.CONFIDENCE_THRESHOLD = original_threshold
 
 
 class GenerateSuggestionRequest(BaseModel):
