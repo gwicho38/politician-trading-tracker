@@ -32,6 +32,7 @@ from app.services.feature_pipeline import (
     get_supabase,
 )
 from app.middleware.auth import require_admin_key
+from app.lib.audit_log import log_audit_event, AuditAction, AuditContext
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -251,6 +252,18 @@ async def trigger_training(
 
     logger.info(f"Training triggered by: {request.triggered_by}")
 
+    # Log the training trigger
+    log_audit_event(
+        action=AuditAction.MODEL_TRAIN,
+        resource_type="ml_training_job",
+        resource_id=job.job_id,
+        details={
+            "lookback_days": request.lookback_days,
+            "model_type": request.model_type,
+            "triggered_by": request.triggered_by,
+        },
+    )
+
     # Run in background
     background_tasks.add_task(run_training_job_in_background, job)
 
@@ -379,32 +392,44 @@ async def activate_model(
 
     Archives the currently active model.
     """
-    try:
-        supabase = get_supabase()
+    with AuditContext(
+        AuditAction.MODEL_ACTIVATE,
+        resource_type="ml_model",
+        resource_id=model_id,
+    ) as audit:
+        try:
+            supabase = get_supabase()
 
-        # Check model exists
-        result = supabase.table('ml_models').select('id, status').eq('id', model_id).limit(1).execute()
-        if not result.data or len(result.data) == 0:
-            raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+            # Check model exists
+            result = supabase.table('ml_models').select('id, status').eq('id', model_id).limit(1).execute()
+            if not result.data or len(result.data) == 0:
+                raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
 
-        # Archive current active models
-        supabase.table('ml_models').update({
-            'status': 'archived',
-        }).eq('status', 'active').execute()
+            previous_status = result.data[0].get('status')
+            audit.details["previous_status"] = previous_status
 
-        # Activate requested model
-        supabase.table('ml_models').update({
-            'status': 'active',
-        }).eq('id', model_id).execute()
+            # Archive current active models
+            supabase.table('ml_models').update({
+                'status': 'archived',
+            }).eq('status', 'active').execute()
 
-        # Reload active model in memory
-        load_active_model(model_id)
+            # Activate requested model
+            supabase.table('ml_models').update({
+                'status': 'active',
+            }).eq('id', model_id).execute()
 
-        return {"message": f"Model {model_id} activated", "status": "active"}
+            # Reload active model in memory
+            load_active_model(model_id)
 
-    except Exception as e:
-        logger.error(f"Failed to activate model {model_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+            audit.details["new_status"] = "active"
+
+            return {"message": f"Model {model_id} activated", "status": "active"}
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to activate model {model_id}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================

@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-API Rate Limiting Middleware - COMPLETED
+Audit Logging for Sensitive Operations - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -30,11 +30,40 @@ API Rate Limiting Middleware - COMPLETED
 ### Low Priority
 - [ ] Increase test coverage for edge cases
 - [ ] Document API endpoints with OpenAPI/Swagger
-- [ ] Add audit logging for sensitive operations
+- [x] ~~Add audit logging for sensitive operations~~ - Implemented comprehensive audit logging
 
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #8
+- [2026-01-28] 🔍 **Traceability: Audit Logging for Sensitive Operations**
+  - Created `app/lib/audit_log.py` with comprehensive audit logging infrastructure:
+    - `AuditAction` enum with categories: auth, data, model, etl, error_report
+    - `AuditEvent` dataclass with all audit fields (action, resource, actor, timing, etc.)
+    - `log_audit_event()` function for manual audit event logging
+    - `@audit_log()` decorator for automatic endpoint auditing
+    - `AuditContext` context manager for manual auditing with timing
+    - `get_client_ip()` helper for IP extraction from proxy headers
+  - Features:
+    - Correlation ID integration for request tracing
+    - Automatic timing measurement (duration_ms)
+    - Success/failure tracking with error messages
+    - Structured JSON logging format
+    - Warning-level logs for failures and auth issues
+  - Added audit logging to 4 sensitive endpoints:
+    - `POST /error-reports/force-apply` - logs corrections applied, disclosure_id, fields
+    - `POST /error-reports/reanalyze` - logs model, threshold, dry_run, result status
+    - `POST /ml/train` - logs job_id, lookback_days, model_type, triggered_by
+    - `POST /ml/models/{model_id}/activate` - logs previous_status, new_status
+  - Added 30 comprehensive tests in `tests/test_audit_log.py`:
+    - AuditEvent creation and serialization tests
+    - get_client_ip extraction tests
+    - log_audit_event function tests
+    - @audit_log decorator tests (sync/async, success/failure)
+    - AuditContext context manager tests
+    - AuditAction enum coverage tests
+  - All 989 tests passing
 
 ## ✅ Completed This Session
 <!-- Ralph: Record completed work with timestamps -->
