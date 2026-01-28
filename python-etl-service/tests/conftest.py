@@ -16,10 +16,10 @@ import io
 # Authentication Fixtures
 # =============================================================================
 
-# Disable auth globally for tests by default
+# Disable auth and rate limiting globally for tests by default
 # This runs before any test module is collected
 def pytest_configure(config):
-    """Configure auth to be disabled for all tests."""
+    """Configure auth and rate limiting to be disabled for all tests."""
     # Set the module variable directly
     try:
         from app.middleware import auth
@@ -29,33 +29,46 @@ def pytest_configure(config):
     except ImportError:
         pass  # App not yet importable
 
+    try:
+        from app.middleware import rate_limit
+        rate_limit.RATE_LIMIT_ENABLED = False
+    except ImportError:
+        pass  # App not yet importable
+
 
 @pytest.fixture(autouse=True)
-def disable_auth_for_tests():
+def disable_auth_and_rate_limit_for_tests():
     """
-    Automatically disable authentication for all tests.
+    Automatically disable authentication and rate limiting for all tests.
 
-    Tests that specifically test auth behavior should re-enable auth
+    Tests that specifically test auth or rate limit behavior should re-enable
     within the test.
     """
     from app.middleware import auth
+    from app.middleware import rate_limit
 
     # Store original values
-    original_disabled = auth.ETL_AUTH_DISABLED
+    original_auth_disabled = auth.ETL_AUTH_DISABLED
     original_api_key = auth.ETL_API_KEY
     original_admin_key = auth.ETL_ADMIN_API_KEY
+    original_rate_limit_enabled = rate_limit.RATE_LIMIT_ENABLED
 
-    # Disable auth for test
+    # Disable auth and rate limiting for test
     auth.ETL_AUTH_DISABLED = True
     auth.ETL_API_KEY = "test_api_key_for_tests"
     auth.ETL_ADMIN_API_KEY = "test_admin_key_for_tests"
+    rate_limit.RATE_LIMIT_ENABLED = False
+
+    # Also reset the rate limiter to clear any state
+    rate_limit.reset_rate_limiter()
 
     yield
 
     # Restore original values
-    auth.ETL_AUTH_DISABLED = original_disabled
+    auth.ETL_AUTH_DISABLED = original_auth_disabled
     auth.ETL_API_KEY = original_api_key
     auth.ETL_ADMIN_API_KEY = original_admin_key
+    rate_limit.RATE_LIMIT_ENABLED = original_rate_limit_enabled
 
 
 @pytest.fixture
