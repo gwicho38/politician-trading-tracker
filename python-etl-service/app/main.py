@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from app.routes import health, etl, enrichment, ml, quality, error_reports, dedup, signals
 from app.lib.logging_config import configure_logging, get_logger
 from app.middleware.correlation import CorrelationMiddleware
+from app.middleware.auth import AuthMiddleware
 
 # Configure structured logging before anything else
 log_level = logging.DEBUG if os.getenv("DEBUG") else logging.INFO
@@ -40,8 +41,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add correlation ID middleware for request tracing
+# Add middleware (order matters - first added = outermost)
+# 1. Correlation ID middleware for request tracing
 app.add_middleware(CorrelationMiddleware)
+# 2. API key authentication middleware
+app.add_middleware(AuthMiddleware)
 
 # Include routers
 app.include_router(health.router, tags=["health"])
