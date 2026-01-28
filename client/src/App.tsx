@@ -10,6 +10,7 @@ import { AlertProvider } from "@/contexts/AlertContext";
 import { FloatingCart } from "@/components/cart";
 import { RootErrorBoundary } from "@/components/RootErrorBoundary";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ProtectedRoute, AdminRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 
@@ -77,30 +78,38 @@ const App = () => (
               } />
               <Route path="/trading" element={
                 <ErrorBoundary name="Trading">
-                  <Suspense fallback={<PageLoader />}>
-                    <Trading />
-                  </Suspense>
+                  <ProtectedRoute>
+                    <Suspense fallback={<PageLoader />}>
+                      <Trading />
+                    </Suspense>
+                  </ProtectedRoute>
                 </ErrorBoundary>
               } />
               <Route path="/trading-signals" element={
                 <ErrorBoundary name="Trading Signals">
-                  <Suspense fallback={<PageLoader />}>
-                    <TradingSignals />
-                  </Suspense>
+                  <ProtectedRoute>
+                    <Suspense fallback={<PageLoader />}>
+                      <TradingSignals />
+                    </Suspense>
+                  </ProtectedRoute>
                 </ErrorBoundary>
               } />
               <Route path="/admin/data-quality" element={
                 <ErrorBoundary name="Data Quality">
-                  <Suspense fallback={<PageLoader />}>
-                    <DataQuality />
-                  </Suspense>
+                  <AdminRoute>
+                    <Suspense fallback={<PageLoader />}>
+                      <DataQuality />
+                    </Suspense>
+                  </AdminRoute>
                 </ErrorBoundary>
               } />
               <Route path="/reference-portfolio" element={
                 <ErrorBoundary name="Reference Portfolio">
-                  <Suspense fallback={<PageLoader />}>
-                    <ReferencePortfolio />
-                  </Suspense>
+                  <ProtectedRoute>
+                    <Suspense fallback={<PageLoader />}>
+                      <ReferencePortfolio />
+                    </Suspense>
+                  </ProtectedRoute>
                 </ErrorBoundary>
               } />
               {/* COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready */}
