@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Audit Logging for Sensitive Operations - COMPLETED
+CORS Security Fix for Edge Functions - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -13,7 +13,7 @@ Audit Logging for Sensitive Operations - COMPLETED
 - [x] ~~Review authentication/authorization implementation across all services~~ - Comprehensive audit completed, auth middleware added
 - [x] ~~Add input validation tests for API endpoints (quality, enrichment, etl routes)~~ - Added 13 tests
 - [x] ~~Add trade amount validation in House ETL parser (reject amounts > $50M to prevent parsing errors)~~ - Implemented with 19 tests
-- [ ] Fix CORS configuration in Edge Functions (currently allows all origins)
+- [x] ~~Fix CORS configuration in Edge Functions (currently allows all origins)~~ - Centralized CORS module with env-based allowlist
 - [x] ~~Add admin-only protection to sensitive endpoints (force-apply, model activation)~~ - Applied to 4 endpoints
 - [ ] Encrypt Alpaca API credentials at rest in user_api_keys table
 
@@ -35,6 +35,29 @@ Audit Logging for Sensitive Operations - COMPLETED
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #9
+- [2026-01-28] 🔒 **Security: CORS Configuration Fix for Edge Functions**
+  - Created `supabase/functions/_shared/cors.ts` with centralized CORS configuration:
+    - `getCorsHeaders(origin)` - dynamic CORS headers based on request origin
+    - `isOriginAllowed(origin)` - validates origins against allowlist
+    - `handleCorsPreflightRequest(request)` - handles OPTIONS preflight
+    - `corsJsonResponse()` / `corsErrorResponse()` - helper response builders
+    - `createCorsHeaders()` - wrapper for backwards compatibility
+    - `corsHeaders` - legacy constant that reads from environment at runtime
+  - Features:
+    - Environment-based configuration via `ALLOWED_ORIGINS` (comma-separated)
+    - Default production origins: `https://govmarket.trade`, `https://www.govmarket.trade`
+    - Dev mode support via `CORS_DEV_MODE=true` (allows all origins)
+    - Localhost support via `ALLOW_LOCALHOST=true`
+    - Proper `Vary: Origin` header for caching
+    - Additional headers: `x-correlation-id`, `Access-Control-Max-Age: 86400`
+  - Updated 12 Edge Functions to use shared CORS module:
+    - alpaca-account, orders, portfolio, signal-feedback
+    - trading-signals, sync-data, reference-portfolio, strategy-follow
+    - scheduled-sync, process-error-reports, politician-profile, politician-trading-collect
+  - Updated test file to import from shared module
+  - All 989 Python ETL tests passing
 
 ## ✅ Completed Loop #8
 - [2026-01-28] 🔍 **Traceability: Audit Logging for Sensitive Operations**

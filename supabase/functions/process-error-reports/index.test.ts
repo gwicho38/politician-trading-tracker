@@ -244,14 +244,13 @@ Deno.test("ProcessingResult - error status", () => {
   assertEquals(result.corrections.length, 0);
 });
 
-// Test CORS headers structure
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+// Test CORS headers structure - import from shared module
+import { corsHeaders } from '../_shared/cors.ts';
 
 Deno.test("CORS headers - has required headers", () => {
-  assertEquals(corsHeaders['Access-Control-Allow-Origin'], '*');
+  // In production, Access-Control-Allow-Origin will be set to the allowed origin
+  // In dev mode (CORS_DEV_MODE=true), it will be '*'
+  assertEquals(typeof corsHeaders['Access-Control-Allow-Origin'], 'string');
   assertEquals(corsHeaders['Access-Control-Allow-Headers'].includes('authorization'), true);
   assertEquals(corsHeaders['Access-Control-Allow-Headers'].includes('content-type'), true);
 });
