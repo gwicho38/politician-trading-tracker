@@ -677,3 +677,485 @@ class TestHouseETLIntegration:
 
         # JOB_STATUS should be a dictionary
         assert isinstance(JOB_STATUS, dict)
+
+
+# =============================================================================
+# Fetch ZIP Content Tests
+# =============================================================================
+
+class TestFetchZipContent:
+    """Tests for fetch_zip_content method."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_zip_content_success(self):
+        """fetch_zip_content returns bytes on success."""
+        from app.services.house_etl import HouseDisclosureScraper
+
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = b"PK\x03\x04zip content"  # ZIP magic bytes
+        mock_client.get.return_value = mock_response
+
+        result = await HouseDisclosureScraper.fetch_zip_content(
+            mock_client, "https://example.com/test.zip"
+        )
+
+        assert result == b"PK\x03\x04zip content"
+        mock_client.get.assert_called_once_with("https://example.com/test.zip")
+
+    @pytest.mark.asyncio
+    async def test_fetch_zip_content_failure_status(self):
+        """fetch_zip_content returns None on non-200 status."""
+        from app.services.house_etl import HouseDisclosureScraper
+
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_client.get.return_value = mock_response
+
+        result = await HouseDisclosureScraper.fetch_zip_content(
+            mock_client, "https://example.com/test.zip"
+        )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_zip_content_exception(self):
+        """fetch_zip_content returns None on exception."""
+        from app.services.house_etl import HouseDisclosureScraper
+
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = Exception("Network error")
+
+        result = await HouseDisclosureScraper.fetch_zip_content(
+            mock_client, "https://example.com/test.zip"
+        )
+
+        assert result is None
+
+
+# =============================================================================
+# Extract Index File Tests
+# =============================================================================
+
+class TestExtractIndexFile:
+    """Tests for extract_index_file method."""
+
+    def test_extract_index_file_success(self):
+        """extract_index_file extracts text content from ZIP."""
+        from app.services.house_etl import HouseDisclosureScraper
+        import zipfile
+        import io
+
+        # Create a valid ZIP file with expected index file
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w') as zf:
+            zf.writestr("2024FD.txt", "Header\nData line 1\nData line 2")
+        zip_content = zip_buffer.getvalue()
+
+        result = HouseDisclosureScraper.extract_index_file(zip_content, 2024)
+
+        assert result is not None
+        assert "Header" in result
+        assert "Data line 1" in result
+
+    def test_extract_index_file_missing_file(self):
+        """extract_index_file returns None when index file missing."""
+        from app.services.house_etl import HouseDisclosureScraper
+        import zipfile
+        import io
+
+        # Create a ZIP without the expected file
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w') as zf:
+            zf.writestr("other.txt", "Some content")
+        zip_content = zip_buffer.getvalue()
+
+        result = HouseDisclosureScraper.extract_index_file(zip_content, 2024)
+
+        assert result is None
+
+
+# =============================================================================
+# Fetch PDF Rate Limit and Retry Tests
+# =============================================================================
+
+class TestFetchPdfRateLimiting:
+    """Tests for PDF fetch rate limiting and retry behavior."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_pdf_rate_limit_retry(self):
+        """fetch_pdf retries on rate limit then succeeds."""
+        from app.services.house_etl import HouseDisclosureScraper, RateLimiter
+        import app.services.house_etl as house_etl
+
+        house_etl.rate_limiter = RateLimiter()
+        house_etl.rate_limiter.current_delay = 0
+
+        mock_client = AsyncMock()
+
+        # First call returns 429, second returns 200
+        mock_response_429 = MagicMock()
+        mock_response_429.status_code = 429
+        mock_response_429.headers = {}
+
+        mock_response_200 = MagicMock()
+        mock_response_200.status_code = 200
+        mock_response_200.content = b"%PDF-1.4 valid content"
+
+        mock_client.get.side_effect = [mock_response_429, mock_response_200]
+
+        result = await HouseDisclosureScraper.fetch_pdf(
+            mock_client, "https://example.com/test.pdf", max_retries=2
+        )
+
+        assert result == b"%PDF-1.4 valid content"
+        assert mock_client.get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_fetch_pdf_timeout_retry(self):
+        """fetch_pdf retries on timeout."""
+        from app.services.house_etl import HouseDisclosureScraper, RateLimiter
+        import app.services.house_etl as house_etl
+        import httpx
+
+        house_etl.rate_limiter = RateLimiter()
+        house_etl.rate_limiter.current_delay = 0
+
+        mock_client = AsyncMock()
+
+        # First call times out, second succeeds
+        mock_response_200 = MagicMock()
+        mock_response_200.status_code = 200
+        mock_response_200.content = b"%PDF-1.4 content"
+
+        mock_client.get.side_effect = [
+            httpx.TimeoutException("timeout"),
+            mock_response_200
+        ]
+
+        result = await HouseDisclosureScraper.fetch_pdf(
+            mock_client, "https://example.com/test.pdf", max_retries=2
+        )
+
+        assert result == b"%PDF-1.4 content"
+
+    @pytest.mark.asyncio
+    async def test_fetch_pdf_max_retries_exceeded(self):
+        """fetch_pdf returns None when max retries exceeded."""
+        from app.services.house_etl import HouseDisclosureScraper, RateLimiter
+        import app.services.house_etl as house_etl
+
+        house_etl.rate_limiter = RateLimiter()
+        house_etl.rate_limiter.current_delay = 0
+
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_client.get.return_value = mock_response
+
+        result = await HouseDisclosureScraper.fetch_pdf(
+            mock_client, "https://example.com/test.pdf", max_retries=2
+        )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_pdf_retry_after_header(self):
+        """fetch_pdf respects Retry-After header."""
+        from app.services.house_etl import HouseDisclosureScraper, RateLimiter
+        import app.services.house_etl as house_etl
+        import asyncio
+
+        house_etl.rate_limiter = RateLimiter()
+        house_etl.rate_limiter.current_delay = 0
+
+        mock_client = AsyncMock()
+
+        # First call returns 429 with Retry-After, second succeeds
+        mock_response_429 = MagicMock()
+        mock_response_429.status_code = 429
+        mock_response_429.headers = {"Retry-After": "1"}  # Very short for testing
+
+        mock_response_200 = MagicMock()
+        mock_response_200.status_code = 200
+        mock_response_200.content = b"%PDF-1.4 content"
+
+        mock_client.get.side_effect = [mock_response_429, mock_response_200]
+
+        # Patch asyncio.sleep to avoid actual delay
+        with patch.object(asyncio, 'sleep', new_callable=AsyncMock):
+            result = await HouseDisclosureScraper.fetch_pdf(
+                mock_client, "https://example.com/test.pdf", max_retries=2
+            )
+
+        assert result is not None
+
+
+# =============================================================================
+# Run House ETL Tests
+# =============================================================================
+
+class TestRunHouseETL:
+    """Tests for the main run_house_etl function."""
+
+    @pytest.fixture
+    def setup_job_status(self):
+        """Set up initial job status."""
+        from app.services.house_etl import JOB_STATUS
+        from datetime import datetime
+
+        job_id = "test-job-123"
+        JOB_STATUS[job_id] = {
+            "status": "pending",
+            "message": "",
+            "progress": 0,
+            "total": 0,
+            "started_at": datetime.utcnow().isoformat(),
+            "completed_at": None,
+        }
+        yield job_id
+        # Cleanup
+        if job_id in JOB_STATUS:
+            del JOB_STATUS[job_id]
+
+    @pytest.mark.asyncio
+    async def test_run_house_etl_supabase_error(self, setup_job_status):
+        """run_house_etl handles Supabase initialization error."""
+        from app.services.house_etl import run_house_etl, JOB_STATUS
+
+        job_id = setup_job_status
+
+        with patch('app.services.house_etl.get_supabase') as mock_get_supabase:
+            mock_get_supabase.side_effect = ValueError("Missing credentials")
+
+            await run_house_etl(job_id, year=2024, limit=1)
+
+            assert JOB_STATUS[job_id]["status"] == "failed"
+            assert "Missing credentials" in JOB_STATUS[job_id]["message"]
+
+    @pytest.mark.asyncio
+    async def test_run_house_etl_zip_download_failure(self, setup_job_status):
+        """run_house_etl handles ZIP download failure."""
+        from app.services.house_etl import run_house_etl, JOB_STATUS, HouseDisclosureScraper
+
+        job_id = setup_job_status
+
+        with patch('app.services.house_etl.get_supabase') as mock_get_supabase, \
+             patch.object(HouseDisclosureScraper, 'fetch_zip_content', new_callable=AsyncMock) as mock_fetch:
+
+            mock_get_supabase.return_value = MagicMock()
+            mock_fetch.return_value = None
+
+            await run_house_etl(job_id, year=2024, limit=1)
+
+            assert JOB_STATUS[job_id]["status"] == "failed"
+            assert "ZIP" in JOB_STATUS[job_id]["message"]
+
+    @pytest.mark.asyncio
+    async def test_run_house_etl_index_extraction_failure(self, setup_job_status):
+        """run_house_etl handles index file extraction failure."""
+        from app.services.house_etl import run_house_etl, JOB_STATUS, HouseDisclosureScraper
+
+        job_id = setup_job_status
+
+        with patch('app.services.house_etl.get_supabase') as mock_get_supabase, \
+             patch.object(HouseDisclosureScraper, 'fetch_zip_content', new_callable=AsyncMock) as mock_fetch, \
+             patch.object(HouseDisclosureScraper, 'extract_index_file') as mock_extract:
+
+            mock_get_supabase.return_value = MagicMock()
+            mock_fetch.return_value = b"fake zip content"
+            mock_extract.return_value = None
+
+            await run_house_etl(job_id, year=2024, limit=1)
+
+            assert JOB_STATUS[job_id]["status"] == "failed"
+            assert "index" in JOB_STATUS[job_id]["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_run_house_etl_exception_handling(self, setup_job_status):
+        """run_house_etl handles unexpected exceptions."""
+        from app.services.house_etl import run_house_etl, JOB_STATUS
+
+        job_id = setup_job_status
+
+        with patch('app.services.house_etl.get_supabase') as mock_get_supabase:
+            mock_get_supabase.return_value = MagicMock()
+
+            # Patch httpx.AsyncClient to raise an exception
+            with patch('httpx.AsyncClient') as mock_client_class:
+                mock_client_class.side_effect = Exception("Unexpected error")
+
+                await run_house_etl(job_id, year=2024, limit=1)
+
+                assert JOB_STATUS[job_id]["status"] == "failed"
+                assert JOB_STATUS[job_id]["completed_at"] is not None
+
+
+# =============================================================================
+# Additional Edge Case Tests
+# =============================================================================
+
+class TestEdgeCases:
+    """Tests for edge cases and error handling."""
+
+    def test_parse_transaction_no_value_no_type(self):
+        """parse_transaction_from_row returns None when no type and no value."""
+        from app.services.house_etl import parse_transaction_from_row
+
+        # Row with asset name but no transaction type or value
+        row = ["Apple Inc.", "", ""]
+        disclosure = {
+            "politician_name": "Test",
+            "doc_id": "123",
+            "filing_type": "P",
+            "filing_date": "2024-01-01",
+        }
+
+        result = parse_transaction_from_row(row, disclosure)
+        assert result is None
+
+    def test_parse_transaction_partial_sale(self):
+        """parse_transaction_from_row handles S (partial) notation."""
+        from app.services.house_etl import parse_transaction_from_row
+
+        # Row needs at least 3 elements and the S (partial) pattern with date
+        row = ["Apple Inc. (AAPL)", "ST", "S (partial) 01/15/2024 01/20/2024", "$1,001 - $15,000"]
+        disclosure = {
+            "politician_name": "Test",
+            "doc_id": "123",
+            "filing_type": "P",
+            "filing_date": "2024-01-01",
+        }
+
+        result = parse_transaction_from_row(row, disclosure)
+        assert result is not None
+        assert result["transaction_type"] == "sale"
+
+    def test_parse_transaction_purchase_keyword(self):
+        """parse_transaction_from_row detects purchase from keyword."""
+        from app.services.house_etl import parse_transaction_from_row
+
+        row = ["Apple Inc.", "Purchase", "$1,001 - $15,000"]
+        disclosure = {
+            "politician_name": "Test",
+            "doc_id": "123",
+            "filing_type": "P",
+            "filing_date": "2024-01-01",
+        }
+
+        result = parse_transaction_from_row(row, disclosure)
+        assert result is not None
+        assert result["transaction_type"] == "purchase"
+
+    def test_parse_transaction_exchange_keyword(self):
+        """parse_transaction_from_row detects exchange from keyword."""
+        from app.services.house_etl import parse_transaction_from_row
+
+        row = ["Stock Fund", "Exchange", "$15,001 - $50,000"]
+        disclosure = {
+            "politician_name": "Test",
+            "doc_id": "123",
+            "filing_type": "P",
+            "filing_date": "2024-01-01",
+        }
+
+        result = parse_transaction_from_row(row, disclosure)
+        assert result is not None
+        assert result["transaction_type"] == "sale"  # exchange maps to sale
+
+    def test_validate_year_notification_before_transaction(self):
+        """_validate_and_correct_year handles notification before transaction."""
+        from app.services.house_etl import _validate_and_correct_year
+
+        # Notification year invalid, transaction is valid
+        tx_date = datetime(2024, 1, 15)
+        notif_date = datetime(2220, 1, 5)  # Invalid year, before tx month/day
+
+        result_tx, result_notif = _validate_and_correct_year(tx_date, notif_date)
+
+        # Notification should be corrected to same year as tx or later
+        assert result_notif.year in [2024, 2025]
+
+    def test_is_metadata_row_various_patterns(self):
+        """is_metadata_row detects various metadata patterns."""
+        from app.services.house_etl import is_metadata_row
+
+        # Test various metadata patterns
+        assert is_metadata_row("Document ID: 12345") is True
+        assert is_metadata_row("Filer: John Smith") is True
+        assert is_metadata_row("Status: Filed") is True
+        assert is_metadata_row("Type: PTR") is True
+        assert is_metadata_row("L :") is True  # Location
+        assert is_metadata_row("D :") is True  # Description
+        assert is_metadata_row("C :") is True  # Comment
+        assert is_metadata_row("Div. Only") is True  # Dividends Only
+
+    def test_extract_dates_fallback_pattern(self):
+        """extract_dates_from_row uses fallback pattern for dates."""
+        from app.services.house_etl import extract_dates_from_row
+
+        # Row with dates but no P/S prefix
+        row = ["01/15/2024 01/25/2024 $1,001"]
+
+        tx_date, notif_date = extract_dates_from_row(row)
+
+        assert tx_date is not None
+        assert notif_date is not None
+        assert "2024-01-15" in tx_date
+        assert "2024-01-25" in notif_date
+
+    def test_parse_disclosure_record_with_full_name(self):
+        """parse_disclosure_record builds full name correctly."""
+        from app.services.house_etl import HouseDisclosureScraper
+
+        # With prefix and suffix
+        line = "Hon.\tSmith\tJane\tIII\tP\tCA-12\t2024\t01/25/2024\t20012345"
+
+        result = HouseDisclosureScraper.parse_disclosure_record(line, 2024)
+
+        assert result is not None
+        assert "Hon." in result["politician_name"]
+        assert "Jane" in result["politician_name"]
+        assert "Smith" in result["politician_name"]
+        assert "III" in result["politician_name"]
+
+
+# =============================================================================
+# Constants Tests
+# =============================================================================
+
+class TestConstants:
+    """Tests for module constants."""
+
+    def test_rate_limit_constants(self):
+        """Test rate limiting constants are defined."""
+        from app.services.house_etl import (
+            REQUEST_DELAY_BASE,
+            REQUEST_DELAY_MAX,
+            MAX_RETRIES,
+            BACKOFF_MULTIPLIER,
+            RATE_LIMIT_CODES,
+        )
+
+        assert REQUEST_DELAY_BASE == 1.0
+        assert REQUEST_DELAY_MAX == 60.0
+        assert MAX_RETRIES == 5
+        assert BACKOFF_MULTIPLIER == 2.0
+        assert 429 in RATE_LIMIT_CODES
+        assert 503 in RATE_LIMIT_CODES
+
+    def test_url_templates(self):
+        """Test URL templates are defined."""
+        from app.services.house_etl import (
+            HOUSE_BASE_URL,
+            ZIP_URL_TEMPLATE,
+            PDF_URL_TEMPLATE,
+            PTR_PDF_URL_TEMPLATE,
+        )
+
+        assert "house.gov" in HOUSE_BASE_URL
+        assert "{year}" in ZIP_URL_TEMPLATE
+        assert "{doc_id}" in PDF_URL_TEMPLATE
+        assert "ptr-pdfs" in PTR_PDF_URL_TEMPLATE
