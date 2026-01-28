@@ -11,7 +11,7 @@ Input validation tests for API endpoints - COMPLETED
 - [x] ~~Analyze ETL service for security vulnerabilities (input validation, SQL injection)~~ - Sandbox hardened, Supabase ORM safe
 - [x] ~~Audit dependency versions for known vulnerabilities~~ - Fixed CVE-2025-53643, CVE-2025-50181, CVE-2025-66418
 - [ ] Review authentication/authorization implementation across all services
-- [ ] Add input validation tests for API endpoints (quality, enrichment, etl routes)
+- [x] ~~Add input validation tests for API endpoints (quality, enrichment, etl routes)~~ - Added 13 tests
 
 ### Medium Priority
 - [x] ~~Add structured logging with correlation IDs for request tracing~~ - Implemented
@@ -63,6 +63,16 @@ None - ready for next task
   - Updated `app/main.py` to use structured logging
   - Created test suites: `test_logging_config.py` (13 tests), `test_correlation_middleware.py` (6 tests)
   - All 72 tests passing (53 + 19 new)
+
+- [2026-01-28] 🧪 **Testing: Input validation tests for quality endpoints**
+  - Added 13 input validation tests to `test_quality_routes.py`:
+    - `TestValidateTickersInputValidation`: 8 tests for days_back, confidence_threshold, limit bounds
+    - `TestAuditSourcesInputValidation`: 5 tests for sample_size, days_back bounds
+  - Tests verify 422 validation errors for:
+    - Values below minimum constraints (ge)
+    - Values above maximum constraints (le)
+    - Invalid types (string instead of int/float)
+  - All 101 tests passing (72 + 29 quality route tests)
 
 ## 📜 Historical Completions
 <!-- Ralph: Summarize past improvements for context -->
