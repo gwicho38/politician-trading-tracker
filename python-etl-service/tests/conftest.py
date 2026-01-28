@@ -4,11 +4,95 @@ Pytest fixtures for Python ETL service tests.
 Provides mock Supabase clients, sample data, and common test utilities.
 """
 
+import os
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from datetime import datetime, date
 from typing import Dict, Any, List
 import io
+
+
+# =============================================================================
+# Authentication Fixtures
+# =============================================================================
+
+# Disable auth globally for tests by default
+# This runs before any test module is collected
+def pytest_configure(config):
+    """Configure auth to be disabled for all tests."""
+    # Set the module variable directly
+    try:
+        from app.middleware import auth
+        auth.ETL_AUTH_DISABLED = True
+        auth.ETL_API_KEY = "test_api_key_for_tests"
+        auth.ETL_ADMIN_API_KEY = "test_admin_key_for_tests"
+    except ImportError:
+        pass  # App not yet importable
+
+
+@pytest.fixture(autouse=True)
+def disable_auth_for_tests():
+    """
+    Automatically disable authentication for all tests.
+
+    Tests that specifically test auth behavior should re-enable auth
+    within the test.
+    """
+    from app.middleware import auth
+
+    # Store original values
+    original_disabled = auth.ETL_AUTH_DISABLED
+    original_api_key = auth.ETL_API_KEY
+    original_admin_key = auth.ETL_ADMIN_API_KEY
+
+    # Disable auth for test
+    auth.ETL_AUTH_DISABLED = True
+    auth.ETL_API_KEY = "test_api_key_for_tests"
+    auth.ETL_ADMIN_API_KEY = "test_admin_key_for_tests"
+
+    yield
+
+    # Restore original values
+    auth.ETL_AUTH_DISABLED = original_disabled
+    auth.ETL_API_KEY = original_api_key
+    auth.ETL_ADMIN_API_KEY = original_admin_key
+
+
+@pytest.fixture
+def enable_auth():
+    """
+    Fixture to re-enable authentication for specific tests.
+
+    Usage:
+        def test_auth_required(enable_auth):
+            # Auth is now enabled for this test
+            ...
+    """
+    from app.middleware import auth
+
+    original = auth.ETL_AUTH_DISABLED
+    auth.ETL_AUTH_DISABLED = False
+
+    yield {
+        "api_key": auth.ETL_API_KEY,
+        "admin_key": auth.ETL_ADMIN_API_KEY,
+    }
+
+    auth.ETL_AUTH_DISABLED = original
+
+
+@pytest.fixture
+def api_key_header():
+    """Returns headers with a valid API key for authenticated requests."""
+    from app.middleware import auth
+    return {"X-API-Key": auth.ETL_API_KEY or "test_api_key_for_tests"}
+
+
+@pytest.fixture
+def admin_key_header():
+    """Returns headers with an admin API key for admin requests."""
+    from app.middleware import auth
+    return {"X-API-Key": auth.ETL_ADMIN_API_KEY or "test_admin_key_for_tests"}
 
 
 # =============================================================================

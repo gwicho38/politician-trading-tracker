@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Input validation tests for API endpoints - COMPLETED
+API Key Authentication for ETL Service - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -10,19 +10,27 @@ Input validation tests for API endpoints - COMPLETED
 ### High Priority
 - [x] ~~Analyze ETL service for security vulnerabilities (input validation, SQL injection)~~ - Sandbox hardened, Supabase ORM safe
 - [x] ~~Audit dependency versions for known vulnerabilities~~ - Fixed CVE-2025-53643, CVE-2025-50181, CVE-2025-66418
-- [ ] Review authentication/authorization implementation across all services
+- [x] ~~Review authentication/authorization implementation across all services~~ - Comprehensive audit completed, auth middleware added
 - [x] ~~Add input validation tests for API endpoints (quality, enrichment, etl routes)~~ - Added 13 tests
 - [x] ~~Add trade amount validation in House ETL parser (reject amounts > $50M to prevent parsing errors)~~ - Implemented with 19 tests
+- [ ] Fix CORS configuration in Edge Functions (currently allows all origins)
+- [ ] Add admin-only protection to sensitive endpoints (force-apply, model activation)
+- [ ] Encrypt Alpaca API credentials at rest in user_api_keys table
 
 ### Medium Priority
 - [x] ~~Add structured logging with correlation IDs for request tracing~~ - Implemented
 - [x] ~~Improve error handling in external API calls~~ - Created ResilientClient with retry logic
 - [x] ~~Add retry logic with exponential backoff for flaky external services~~ - Implemented in http_client.py
 
+### Medium Priority
+- [ ] Add API rate limiting to prevent abuse (all services)
+- [ ] Add protected routes component in React frontend
+- [ ] Use constant-time comparison for service role keys in Edge Functions
+
 ### Low Priority
 - [ ] Increase test coverage for edge cases
-- [ ] Add API rate limiting to prevent abuse
 - [ ] Document API endpoints with OpenAPI/Swagger
+- [ ] Add audit logging for sensitive operations
 
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
@@ -30,6 +38,39 @@ None - ready for next task
 
 ## ✅ Completed This Session
 <!-- Ralph: Record completed work with timestamps -->
+- [2026-01-28] 🔒 **Security: API Key Authentication for ETL Service**
+  - Created `app/middleware/auth.py` with comprehensive auth implementation:
+    - `AuthMiddleware` ASGI middleware for global request authentication
+    - `require_api_key` FastAPI dependency for route-level auth
+    - `require_admin_key` FastAPI dependency for sensitive admin operations
+    - `constant_time_compare()` to prevent timing attacks
+    - `generate_api_key()` for secure key generation
+  - Features:
+    - X-API-Key header (primary), Authorization Bearer (secondary), query param (fallback)
+    - Separate admin API key for sensitive operations (force-apply, model activation)
+    - Public endpoints whitelist (/, /health, /docs, /openapi.json)
+    - Backwards compatibility mode when no keys configured
+    - Dev mode with ETL_AUTH_DISABLED=true
+  - Added 48 tests in `test_auth_middleware.py` covering all auth scenarios
+  - Updated `conftest.py` with autouse fixture to disable auth in tests
+  - Environment variables: ETL_API_KEY, ETL_ADMIN_API_KEY, ETL_AUTH_DISABLED
+  - All 923 tests passing
+
+- [2026-01-28] 🔒 **Security Audit: Comprehensive Review**
+  - Audited all services: ETL (Python), Phoenix (Elixir), Client (React), Edge Functions
+  - **Critical findings**:
+    - ETL service had NO authentication (now fixed with AuthMiddleware)
+    - Phoenix server has no auth middleware (needs implementation)
+    - Edge Functions use wildcard CORS (*) - security risk
+    - Alpaca credentials stored unencrypted in database
+  - **High severity findings**:
+    - PDF URL injection attack vector (no whitelist validation)
+    - ML training/model activation endpoints unprotected
+    - Service role key comparison vulnerable to timing attacks
+    - No rate limiting on any service
+  - Documented 14 security issues with severity ratings
+  - Added new backlog items for remaining fixes
+
 - [2026-01-28] 🏗️ **Robustness: Resilient HTTP Client with Retry Logic**
   - Created `app/lib/http_client.py` with:
     - `resilient_request()` function for single requests with retry
@@ -130,11 +171,15 @@ None - ready for next task
 
 ### Areas Needing Attention
 <!-- Ralph: Update this based on your analysis -->
-1. ~~Security audit not yet performed~~ - Initial audit complete, sandbox hardened
+1. ~~Security audit not yet performed~~ - Comprehensive audit complete, auth middleware added to ETL
 2. ~~Observability/logging could be improved~~ - Structured logging with correlation IDs implemented
-3. API documentation may be incomplete
-4. Type annotations still missing in several ETL service modules
-5. External API calls (Alpaca, QuiverQuant) need better error handling and retries
+3. ~~ETL service had no authentication~~ - API key auth middleware now protects all endpoints
+4. Phoenix server still has no auth (needs implementation)
+5. Edge Functions use wildcard CORS (security risk)
+6. Alpaca API credentials stored unencrypted
+7. API documentation may be incomplete
+8. Type annotations still missing in several ETL service modules
+9. ~~External API calls need better error handling~~ - ResilientClient with retry logic added
 
 ## 📊 Improvement Categories Reference
 
