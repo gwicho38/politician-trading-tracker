@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from supabase import create_client, Client
 
-from app.lib.parser import sanitize_string
+from app.lib.parser import sanitize_string, validate_and_sanitize_amounts
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,20 @@ def upload_transaction_to_supabase(
         raw_row = transaction.get("raw_row", [])
         sanitized_raw_row = [sanitize_string(cell) for cell in raw_row]
 
+        # Validate and sanitize trade amounts to prevent corrupted data
+        amount_min, amount_max = validate_and_sanitize_amounts(
+            transaction.get("value_low"), transaction.get("value_high")
+        )
+        if amount_min is None and amount_max is None:
+            # Both were None originally, or validation failed
+            orig_low = transaction.get("value_low")
+            orig_high = transaction.get("value_high")
+            if orig_low is not None or orig_high is not None:
+                logger.warning(
+                    f"Rejected invalid trade amounts for '{asset_name[:50]}': "
+                    f"low=${orig_low}, high=${orig_high} (exceeds $50M threshold)"
+                )
+
         disclosure_data = {
             "politician_id": politician_id,
             "transaction_date": transaction_date,
@@ -72,8 +86,8 @@ def upload_transaction_to_supabase(
             "asset_type": sanitize_string(
                 transaction.get("asset_type") or transaction.get("asset_type_code")
             ),
-            "amount_range_min": transaction.get("value_low"),
-            "amount_range_max": transaction.get("value_high"),
+            "amount_range_min": amount_min,
+            "amount_range_max": amount_max,
             "source_url": disclosure.get("pdf_url"),
             "source_document_id": disclosure.get("doc_id"),
             "raw_data": {
@@ -159,6 +173,19 @@ def prepare_transaction_for_batch(
     raw_row = transaction.get("raw_row", [])
     sanitized_raw_row = [sanitize_string(cell) for cell in raw_row]
 
+    # Validate and sanitize trade amounts to prevent corrupted data
+    amount_min, amount_max = validate_and_sanitize_amounts(
+        transaction.get("value_low"), transaction.get("value_high")
+    )
+    if amount_min is None and amount_max is None:
+        orig_low = transaction.get("value_low")
+        orig_high = transaction.get("value_high")
+        if orig_low is not None or orig_high is not None:
+            logger.warning(
+                f"Rejected invalid trade amounts for '{asset_name[:50]}': "
+                f"low=${orig_low}, high=${orig_high} (exceeds $50M threshold)"
+            )
+
     return {
         "politician_id": politician_id,
         "transaction_date": transaction_date,
@@ -169,8 +196,8 @@ def prepare_transaction_for_batch(
         "asset_type": sanitize_string(
             transaction.get("asset_type") or transaction.get("asset_type_code")
         ),
-        "amount_range_min": transaction.get("value_low"),
-        "amount_range_max": transaction.get("value_high"),
+        "amount_range_min": amount_min,
+        "amount_range_max": amount_max,
         "source_url": disclosure.get("pdf_url"),
         "source_document_id": disclosure.get("doc_id"),
         "raw_data": {
