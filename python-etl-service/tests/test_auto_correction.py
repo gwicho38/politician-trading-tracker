@@ -660,3 +660,241 @@ class TestAutoCorrector:
         # Should not raise, returns empty list
         results = corrector.run_ticker_corrections(dry_run=True)
         assert results == []
+
+    # =========================================================================
+    # Extended coverage tests for uncovered lines
+    # =========================================================================
+
+    def test_correct_date_format_applies_correction(self, corrector):
+        """Test correct_date_format applies correction when not dry_run (line 226)."""
+        corrector._apply_correction = MagicMock(return_value=True)
+
+        result = corrector.correct_date_format("rec123", "transaction_date", "01/15/2025", dry_run=False)
+
+        assert result is not None
+        assert result.new_value == "2025-01-15"
+        corrector._apply_correction.assert_called_once_with(result)
+
+    def test_correct_amount_text_exact_applies_correction(self, corrector):
+        """Test correct_amount_text applies correction on exact match (line 270)."""
+        corrector._apply_amount_correction = MagicMock(return_value=True)
+
+        result = corrector.correct_amount_text("rec123", "$15,001 - $50,000", dry_run=False)
+
+        assert result is not None
+        assert result.new_value == {"min": 15001, "max": 50000}
+        corrector._apply_amount_correction.assert_called_once_with(result)
+
+    def test_correct_amount_text_fuzzy_applies_correction(self, corrector):
+        """Test correct_amount_text applies correction on fuzzy match (line 294)."""
+        corrector._apply_amount_correction = MagicMock(return_value=True)
+
+        # Fuzzy match - close to "$15,001 - $50,000" but slightly different
+        result = corrector.correct_amount_text("rec123", "$15001 - $50000", dry_run=False)
+
+        assert result is not None
+        corrector._apply_amount_correction.assert_called_once()
+
+    def test_run_value_range_corrections_full_path(self, corrector):
+        """Test run_value_range_corrections full execution (lines 361-393)."""
+        # Mock response with inverted records
+        mock_response = MagicMock()
+        mock_response.data = [
+            {"id": "rec1", "amount_range_min": 50000, "amount_range_max": 15000},  # inverted
+            {"id": "rec2", "amount_range_min": 15000, "amount_range_max": 50000},  # correct
+            {"id": "rec3", "amount_range_min": 100000, "amount_range_max": 25000},  # inverted
+        ]
+
+        # Chain: .table().select().not_.is_().not_.is_().limit().execute()
+        mock_table = MagicMock()
+        mock_select = MagicMock()
+        mock_not1 = MagicMock()
+        mock_is1 = MagicMock()
+        mock_not2 = MagicMock()
+        mock_is2 = MagicMock()
+        mock_limit = MagicMock()
+
+        corrector.supabase.table.return_value = mock_table
+        mock_table.select.return_value = mock_select
+        mock_select.not_ = mock_not1
+        mock_not1.is_.return_value = mock_is1
+        mock_is1.not_ = mock_not2
+        mock_not2.is_.return_value = mock_limit
+        mock_limit.limit.return_value.execute.return_value = mock_response
+
+        results = corrector.run_value_range_corrections(limit=10, dry_run=True)
+
+        # Should find 2 inverted records
+        assert len(results) == 2
+        assert results[0].record_id == "rec1"
+        assert results[1].record_id == "rec3"
+
+    def test_run_value_range_corrections_respects_limit(self, corrector):
+        """Test run_value_range_corrections respects limit parameter (line 387-388)."""
+        # Mock response with many inverted records
+        mock_response = MagicMock()
+        mock_response.data = [
+            {"id": f"rec{i}", "amount_range_min": 50000, "amount_range_max": 15000}
+            for i in range(10)
+        ]
+
+        # Chain: .table().select().not_.is_().not_.is_().limit().execute()
+        mock_table = MagicMock()
+        mock_select = MagicMock()
+        mock_not1 = MagicMock()
+        mock_is1 = MagicMock()
+        mock_not2 = MagicMock()
+        mock_is2 = MagicMock()
+        mock_limit = MagicMock()
+
+        corrector.supabase.table.return_value = mock_table
+        mock_table.select.return_value = mock_select
+        mock_select.not_ = mock_not1
+        mock_not1.is_.return_value = mock_is1
+        mock_is1.not_ = mock_not2
+        mock_not2.is_.return_value = mock_limit
+        mock_limit.limit.return_value.execute.return_value = mock_response
+
+        results = corrector.run_value_range_corrections(limit=3, dry_run=True)
+
+        # Should stop at limit
+        assert len(results) == 3
+
+    def test_run_value_range_corrections_handles_exception(self, corrector):
+        """Test run_value_range_corrections handles exceptions (lines 390-392)."""
+        # Chain: .table().select().not_.is_().not_.is_().limit().execute()
+        mock_table = MagicMock()
+        mock_select = MagicMock()
+        mock_not1 = MagicMock()
+        mock_is1 = MagicMock()
+        mock_not2 = MagicMock()
+        mock_limit = MagicMock()
+
+        corrector.supabase.table.return_value = mock_table
+        mock_table.select.return_value = mock_select
+        mock_select.not_ = mock_not1
+        mock_not1.is_.return_value = mock_is1
+        mock_is1.not_ = mock_not2
+        mock_not2.is_.return_value = mock_limit
+        mock_limit.limit.return_value.execute.side_effect = Exception("Query failed")
+
+        # Should not raise, returns empty list
+        results = corrector.run_value_range_corrections(dry_run=True)
+        assert results == []
+
+    def test_apply_range_correction_no_supabase(self, corrector_no_supabase):
+        """Test _apply_range_correction fails without Supabase (lines 430-431)."""
+        result = CorrectionResult(
+            success=True,
+            correction_type=CorrectionType.VALUE_RANGE,
+            record_id="rec123",
+            table_name="trading_disclosures",
+            field_name="amount_range",
+            old_value={"min": 50000, "max": 15000},
+            new_value={"min": 15000, "max": 50000},
+            confidence=0.95,
+        )
+
+        success = corrector_no_supabase._apply_range_correction(result)
+
+        assert success is False
+        assert result.success is False
+
+    def test_apply_range_correction_handles_exception(self, corrector):
+        """Test _apply_range_correction handles database errors (lines 449-452)."""
+        result = CorrectionResult(
+            success=True,
+            correction_type=CorrectionType.VALUE_RANGE,
+            record_id="rec123",
+            table_name="trading_disclosures",
+            field_name="amount_range",
+            old_value={"min": 50000, "max": 15000},
+            new_value={"min": 15000, "max": 50000},
+            confidence=0.95,
+        )
+
+        corrector._log_correction = MagicMock(side_effect=Exception("DB Error"))
+
+        success = corrector._apply_range_correction(result)
+
+        assert success is False
+        assert result.success is False
+        assert "Failed to apply range correction" in result.message
+
+    def test_apply_amount_correction_no_supabase(self, corrector_no_supabase):
+        """Test _apply_amount_correction fails without Supabase (lines 457-458)."""
+        result = CorrectionResult(
+            success=True,
+            correction_type=CorrectionType.AMOUNT_CLEANUP,
+            record_id="rec123",
+            table_name="trading_disclosures",
+            field_name="amount_range",
+            old_value="$15,001 - $50,000",
+            new_value={"min": 15001, "max": 50000},
+            confidence=1.0,
+        )
+
+        success = corrector_no_supabase._apply_amount_correction(result)
+
+        assert success is False
+        assert result.success is False
+
+    def test_apply_amount_correction_handles_exception(self, corrector):
+        """Test _apply_amount_correction handles database errors (lines 476-479)."""
+        result = CorrectionResult(
+            success=True,
+            correction_type=CorrectionType.AMOUNT_CLEANUP,
+            record_id="rec123",
+            table_name="trading_disclosures",
+            field_name="amount_range",
+            old_value="$15,001 - $50,000",
+            new_value={"min": 15001, "max": 50000},
+            confidence=1.0,
+        )
+
+        corrector._log_correction = MagicMock(side_effect=Exception("DB Error"))
+
+        success = corrector._apply_amount_correction(result)
+
+        assert success is False
+        assert result.success is False
+        assert "Failed to apply amount correction" in result.message
+
+    def test_log_correction_handles_exception(self, corrector):
+        """Test _log_correction handles database errors (lines 509-510)."""
+        result = CorrectionResult(
+            success=True,
+            correction_type=CorrectionType.TICKER_CLEANUP,
+            record_id="rec123",
+            table_name="trading_disclosures",
+            field_name="asset_ticker",
+            old_value="FB",
+            new_value="META",
+            confidence=1.0,
+        )
+
+        corrector.supabase.table.return_value.insert.side_effect = Exception("Insert failed")
+
+        # Should not raise, returns a correction_id anyway
+        correction_id = corrector._log_correction(result)
+        assert correction_id is not None  # UUID is still generated
+
+    def test_mark_correction_applied_handles_exception(self, corrector):
+        """Test _mark_correction_applied handles database errors (lines 520-521)."""
+        corrector.supabase.table.return_value.update.return_value.eq.return_value.execute.side_effect = Exception(
+            "Update failed"
+        )
+
+        # Should not raise
+        corrector._mark_correction_applied("corr-123")
+        # Just verify no exception was raised
+
+    def test_rollback_correction_handles_exception(self, corrector):
+        """Test rollback_correction handles database errors (lines 567-569)."""
+        corrector.supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.side_effect = Exception(
+            "Query failed"
+        )
+
+        success = corrector.rollback_correction("corr-123")
+
+        assert success is False
