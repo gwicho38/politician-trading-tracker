@@ -307,14 +307,14 @@ export function AlpacaConnectionCard({ tradingMode, onConnectionChange }: Alpaca
                       </div>
                       <div>
                         <p className="font-medium">Generate new keys</p>
-                        <p className="text-muted-foreground mt-0.5">
+                        <span className="text-muted-foreground mt-0.5 block">
                           Click <span className="font-medium text-foreground">"Generate New Key"</span>.
                           {tradingMode === 'paper' ? (
                             <> Make sure you're in <Badge variant="secondary" className="mx-1 text-xs">Paper Trading</Badge> mode.</>
                           ) : (
                             <> Make sure you're in <Badge variant="destructive" className="mx-1 text-xs">Live Trading</Badge> mode.</>
                           )}
-                        </p>
+                        </span>
                       </div>
                     </div>
 
