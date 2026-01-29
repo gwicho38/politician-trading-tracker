@@ -1,15 +1,15 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page, Route } from '@playwright/test';
 
 test.describe('Admin Dashboard', () => {
   // Helper to mock admin user
-  const mockAdminUser = async (page: any) => {
-    await page.route('**/auth/v1/user**', (route: any) =>
+  const mockAdminUser = async (page: Page) => {
+    await page.route('**/auth/v1/user**', (route: Route) =>
       route.fulfill({
         status: 200,
         json: { id: 'admin-user-123', email: 'admin@example.com' }
       })
     );
-    await page.route('**/auth/v1/session**', (route: any) =>
+    await page.route('**/auth/v1/session**', (route: Route) =>
       route.fulfill({
         status: 200,
         json: {
@@ -19,7 +19,7 @@ test.describe('Admin Dashboard', () => {
       })
     );
     // Mock admin role check
-    await page.route('**/rest/v1/user_roles**', (route: any) =>
+    await page.route('**/rest/v1/user_roles**', (route: Route) =>
       route.fulfill({
         status: 200,
         json: [{ user_id: 'admin-user-123', role: 'admin' }]
@@ -28,14 +28,14 @@ test.describe('Admin Dashboard', () => {
   };
 
   // Helper to mock non-admin user
-  const mockNonAdminUser = async (page: any) => {
-    await page.route('**/auth/v1/user**', (route: any) =>
+  const mockNonAdminUser = async (page: Page) => {
+    await page.route('**/auth/v1/user**', (route: Route) =>
       route.fulfill({
         status: 200,
         json: { id: 'regular-user-123', email: 'user@example.com' }
       })
     );
-    await page.route('**/auth/v1/session**', (route: any) =>
+    await page.route('**/auth/v1/session**', (route: Route) =>
       route.fulfill({
         status: 200,
         json: {
@@ -45,7 +45,7 @@ test.describe('Admin Dashboard', () => {
       })
     );
     // Mock non-admin role
-    await page.route('**/rest/v1/user_roles**', (route: any) =>
+    await page.route('**/rest/v1/user_roles**', (route: Route) =>
       route.fulfill({
         status: 200,
         json: []
@@ -141,14 +141,14 @@ test.describe('Admin Data Collection', () => {
     jurisdictions: 3
   };
 
-  const mockAdminUser = async (page: any) => {
-    await page.route('**/auth/v1/user**', (route: any) =>
+  const mockAdminUser = async (page: Page) => {
+    await page.route('**/auth/v1/user**', (route: Route) =>
       route.fulfill({
         status: 200,
         json: { id: 'admin-user-123', email: 'admin@example.com' }
       })
     );
-    await page.route('**/auth/v1/session**', (route: any) =>
+    await page.route('**/auth/v1/session**', (route: Route) =>
       route.fulfill({
         status: 200,
         json: {
@@ -157,7 +157,7 @@ test.describe('Admin Data Collection', () => {
         }
       })
     );
-    await page.route('**/rest/v1/user_roles**', (route: any) =>
+    await page.route('**/rest/v1/user_roles**', (route: Route) =>
       route.fulfill({
         status: 200,
         json: [{ user_id: 'admin-user-123', role: 'admin' }]
@@ -165,10 +165,9 @@ test.describe('Admin Data Collection', () => {
     );
   };
 
-  const mockDataAPIs = async (page: any) => {
+  const mockDataAPIs = async (page: Page) => {
     // Mock politician count
-    await page.route('**/rest/v1/politicians?select=*&limit=0', (route: any) => {
-      const headers = new Headers(route.request().headers());
+    await page.route('**/rest/v1/politicians?select=*&limit=0', (route: Route) => {
       return route.fulfill({
         status: 200,
         headers: { 'Content-Range': `0-0/${mockDataStats.politicians}` },
@@ -177,7 +176,7 @@ test.describe('Admin Data Collection', () => {
     });
 
     // Mock trades count
-    await page.route('**/rest/v1/trades?select=*&limit=0', (route: any) =>
+    await page.route('**/rest/v1/trades?select=*&limit=0', (route: Route) =>
       route.fulfill({
         status: 200,
         headers: { 'Content-Range': `0-0/${mockDataStats.trades}` },
@@ -186,7 +185,7 @@ test.describe('Admin Data Collection', () => {
     );
 
     // Mock jurisdictions count
-    await page.route('**/rest/v1/jurisdictions?select=*&limit=0', (route: any) =>
+    await page.route('**/rest/v1/jurisdictions?select=*&limit=0', (route: Route) =>
       route.fulfill({
         status: 200,
         headers: { 'Content-Range': `0-0/${mockDataStats.jurisdictions}` },
@@ -195,7 +194,7 @@ test.describe('Admin Data Collection', () => {
     );
 
     // Mock last trade
-    await page.route('**/rest/v1/trades?select=created_at**', (route: any) =>
+    await page.route('**/rest/v1/trades?select=created_at**', (route: Route) =>
       route.fulfill({
         status: 200,
         json: [{ created_at: new Date().toISOString() }]
@@ -203,7 +202,7 @@ test.describe('Admin Data Collection', () => {
     );
 
     // Mock dashboard stats
-    await page.route('**/rest/v1/dashboard_stats**', (route: any) =>
+    await page.route('**/rest/v1/dashboard_stats**', (route: Route) =>
       route.fulfill({
         status: 200,
         json: [{ updated_at: new Date().toISOString() }]
@@ -213,7 +212,7 @@ test.describe('Admin Data Collection', () => {
 
   test.describe('Access Control', () => {
     test('should redirect unauthenticated users to auth page', async ({ page }) => {
-      await page.route('**/auth/v1/session**', (route: any) =>
+      await page.route('**/auth/v1/session**', (route: Route) =>
         route.fulfill({ status: 200, json: null })
       );
 
@@ -222,7 +221,7 @@ test.describe('Admin Data Collection', () => {
     });
 
     test('should redirect non-admin users to home', async ({ page }) => {
-      await page.route('**/auth/v1/session**', (route: any) =>
+      await page.route('**/auth/v1/session**', (route: Route) =>
         route.fulfill({
           status: 200,
           json: {
@@ -231,7 +230,7 @@ test.describe('Admin Data Collection', () => {
           }
         })
       );
-      await page.route('**/rest/v1/user_roles**', (route: any) =>
+      await page.route('**/rest/v1/user_roles**', (route: Route) =>
         route.fulfill({ status: 200, json: [] })
       );
 
@@ -384,7 +383,7 @@ test.describe('Admin Data Collection', () => {
       await mockDataAPIs(page);
 
       // Mock sync functions
-      await page.route('**/functions/v1/sync-data/**', (route: any) =>
+      await page.route('**/functions/v1/sync-data/**', (route: Route) =>
         route.fulfill({
           status: 200,
           json: { results: { politicians: { count: 10 }, trades: { count: 50 } } }
