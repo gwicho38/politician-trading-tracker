@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #44 - Testing: Add Tests for TradesView.tsx Component - COMPLETED
+Loop #45 - Testing: Add Tests for TradingSignals.tsx Component - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -69,7 +69,7 @@ Loop #44 - Testing: Add Tests for TradesView.tsx Component - COMPLETED
 #### Medium Priority - Testing
 - [x] ~~Add tests for Dashboard.tsx~~ - Loop #43 (27 tests)
 - [x] ~~Add tests for TradesView.tsx~~ - Loop #44 (32 tests)
-- [ ] Add tests for TradingSignals.tsx
+- [x] ~~Add tests for TradingSignals.tsx~~ - Loop #45 (32 tests)
 - [ ] Add tests for PoliticianList.tsx
 - [ ] Add tests for PoliticianDetails.tsx
 - [ ] Add tests for ReferencePortfolio.tsx
@@ -84,6 +84,25 @@ Loop #44 - Testing: Add Tests for TradesView.tsx Component - COMPLETED
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #45
+- [2026-01-29] 🧪 **Testing: TradingSignals.tsx Component Tests**
+  - Created `client/src/components/TradingSignals.test.tsx` with 32 comprehensive tests
+  - Test coverage:
+    - **Loading state tests (2)**: Loading spinner display/hide
+    - **Header tests (2)**: Title and description rendering
+    - **Signal generation parameters tests (5)**: Input rendering, login alert visibility, button enable/disable
+    - **Stats cards tests (4)**: Total, buy, sell, hold signal counts
+    - **Signal filters tests (3)**: Filter card title, toggle behavior, filtered count message
+    - **Signals table tests (5)**: Table headers, signal rows, target price display, Export CSV button
+    - **Top 10 signals tests (4)**: Section title, signal cards, Add to Cart buttons, limit to 10
+    - **Error handling tests (2)**: Error toast on fetch failure, null data graceful handling
+    - **Signal generation tests (2)**: Generating state, success toast
+    - **Edge cases tests (3)**: Empty signals, date formatting, buy_sell_ratio formatting
+  - Mocked Supabase client, useAuth hook, toast, and Slider component (to avoid ResizeObserver issues)
+  - Added proper ResizeObserver mock for Radix UI components
+  - All 271 client tests passing (239 existing + 32 new)
+  - Build successful
 
 ## ✅ Completed Loop #44
 - [2026-01-29] 🧪 **Testing: TradesView.tsx Component Tests**
