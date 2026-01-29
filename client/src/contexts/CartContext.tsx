@@ -122,8 +122,27 @@ function cartItemToRow(item: CartItem, userId: string) {
   };
 }
 
+// Cart database row type
+interface CartDatabaseRow {
+  signal_id: string;
+  ticker: string;
+  asset_name: string;
+  signal_type: string;
+  confidence_score: string | number;
+  politician_activity_count: number;
+  buy_sell_ratio?: string | number | null;
+  target_price?: string | number | null;
+  source: string;
+  total_transaction_volume?: string | number | null;
+  bipartisan?: boolean | null;
+  signal_strength?: string | null;
+  generated_at: string;
+  quantity: number;
+  added_at: string;
+}
+
 // Helper: Convert Supabase row to CartItem
-function rowToCartItem(row: any): CartItem {
+function rowToCartItem(row: CartDatabaseRow): CartItem {
   return {
     signal: {
       id: row.signal_id,

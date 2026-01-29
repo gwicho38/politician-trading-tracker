@@ -54,7 +54,7 @@ interface SignalData {
   generated_at: string;
   model_id: string | null;
   model_version: string;
-  generation_context: any;
+  generation_context: Record<string, unknown>;
   reproducibility_hash: string | null;
 }
 
@@ -65,15 +65,15 @@ interface ModelData {
   model_type: string;
   status: string;
   training_completed_at: string;
-  metrics: any;
-  feature_importance: any;
+  metrics: Record<string, unknown>;
+  feature_importance: Record<string, unknown>;
 }
 
 interface AuditEntry {
   id: string;
   event_type: string;
   event_timestamp: string;
-  signal_snapshot: any;
+  signal_snapshot: Record<string, unknown>;
   model_version: string;
   source_system: string;
   triggered_by: string;

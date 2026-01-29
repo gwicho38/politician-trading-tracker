@@ -151,7 +151,7 @@ export const useTrades = (limit = 10, jurisdictionId?: string) => {
     queryKey: ['trades', limit, jurisdictionId],
     queryFn: async () => {
       // Query the actual trading_disclosures table with politician join
-      let query = supabase
+      const query = supabase
         .from('trading_disclosures')
         .select(`
           *,

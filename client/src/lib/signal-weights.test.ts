@@ -26,6 +26,7 @@ import {
   getWeightDiff,
   hasChangesFromDefault,
   countModifiedFields,
+  type SignalPreset,
 } from './signal-weights';
 
 describe('DEFAULT_WEIGHTS', () => {
@@ -142,7 +143,7 @@ describe('presetToWeights()', () => {
       updated_at: '2024-01-01',
     };
 
-    const weights = presetToWeights(preset as any);
+    const weights = presetToWeights(preset as SignalPreset);
 
     expect(weights.baseConfidence).toBe(0.6);
     expect(weights.politicianCount5Plus).toBe(0.2);
@@ -168,7 +169,7 @@ describe('presetToWeights()', () => {
       sell_threshold: '0.55',
     };
 
-    const weights = presetToWeights(preset as any);
+    const weights = presetToWeights(preset as SignalPreset);
 
     expect(weights.baseConfidence).toBe(0.55);
   });
