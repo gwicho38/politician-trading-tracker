@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #49 - Testing: Add Tests for useAlpacaCredentials.ts Hook - COMPLETED
+Loop #50 - Testing: Add Tests for useAuth.tsx Hook - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -74,7 +74,7 @@ Loop #49 - Testing: Add Tests for useAlpacaCredentials.ts Hook - COMPLETED
 - [x] ~~Add tests for PoliticianDetailModal.tsx~~ - Loop #47 (27 tests)
 - [x] ~~Add tests for ReferencePortfolio.tsx~~ - Loop #48 (40 tests)
 - [x] ~~Add tests for useAlpacaCredentials.ts hook~~ - Loop #49 (16 tests)
-- [ ] Add tests for useAuth.ts hook
+- [x] ~~Add tests for useAuth.tsx hook~~ - Loop #50 (25 tests)
 
 #### Low Priority - Code Quality
 - [ ] Consolidate duplicate date formatting logic
@@ -84,6 +84,22 @@ Loop #49 - Testing: Add Tests for useAlpacaCredentials.ts Hook - COMPLETED
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #50
+- [2026-01-29] 🧪 **Testing: useAuth.tsx Hook Tests**
+  - Created `client/src/hooks/useAuth.test.tsx` with 25 comprehensive tests
+  - Test coverage:
+    - **AuthProvider tests (10)**: Renders children, default auth state, localStorage init, expired session, invalid JSON, auth listener setup, unsubscribe, user updates, sign out, timeout fallback
+    - **useAuth hook tests (2)**: Returns auth state from context, returns defaults outside provider
+    - **useAuthReady hook tests (3)**: Returns authReady from context, false initially, true after auth state change
+    - **isAuthenticated tests (2)**: True when user exists, false when null
+    - **Loading state tests (3)**: Starts true without stored user, false with stored user, becomes false after auth change
+    - **localStorage key detection tests (3)**: Standard Supabase key format, ignores non-supabase keys, requires auth-token suffix
+    - **Session validation tests (2)**: Validates session has user property, handles missing expires_at
+  - Mocked Supabase client (auth.onAuthStateChange), localStorage with Object.keys spy
+  - Used vi.useFakeTimers() for timeout testing
+  - All 408 client tests passing (383 existing + 25 new)
+  - Build successful
 
 ## ✅ Completed Loop #49
 - [2026-01-29] 🧪 **Testing: useAlpacaCredentials.ts Hook Tests**
