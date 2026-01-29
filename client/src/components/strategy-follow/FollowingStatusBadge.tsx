@@ -58,9 +58,9 @@ export function FollowingStatusBadge({
       toast.success('Sync completed', {
         description: `${result.summary.executed} trades executed`,
       });
-    } catch (error: any) {
+    } catch (error) {
       toast.error('Sync failed', {
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   };
@@ -72,9 +72,9 @@ export function FollowingStatusBadge({
         description: 'Your account will no longer track this strategy.',
       });
       setIsOpen(false);
-    } catch (error: any) {
+    } catch (error) {
       toast.error('Failed to unfollow', {
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   };

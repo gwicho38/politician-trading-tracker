@@ -15,6 +15,13 @@ import { Loader2, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrencyFull } from '@/lib/formatters';
 
+/** Order result from the orders edge function */
+interface OrderResult {
+  success: boolean;
+  ticker: string;
+  error?: string;
+}
+
 /**
  * Get access token from localStorage
  */
@@ -106,7 +113,8 @@ export function OrderConfirmationModal({
         onOpenChange(false);
       } else {
         // Partial success or failure
-        const failedOrders = data.results?.filter((r: any) => !r.success) || [];
+        const results = (data.results || []) as OrderResult[];
+        const failedOrders = results.filter((r) => !r.success);
         if (failedOrders.length > 0) {
           toast.error(`${failedOrders.length} orders failed`);
         }
@@ -116,9 +124,9 @@ export function OrderConfirmationModal({
         }
         onOpenChange(false);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error placing orders:', error);
-      toast.error(error.message || 'Failed to place orders');
+      toast.error(error instanceof Error ? error.message : 'Failed to place orders');
     } finally {
       setIsSubmitting(false);
     }

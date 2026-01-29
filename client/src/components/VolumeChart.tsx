@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, TooltipProps } from 'recharts';
 import { Loader2 } from 'lucide-react';
 import { useChartData, useChartYears, ChartTimeRange } from '@/hooks/useSupabaseData';
 import { formatCurrency } from '@/lib/mockData';
@@ -21,9 +21,12 @@ interface ChartDataPoint {
   volume: number;
 }
 
-// Custom tooltip component for better dark mode readability
-const CustomVolumeTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
+/**
+ * Custom tooltip component for the volume chart.
+ * Uses Recharts' TooltipProps for proper typing.
+ */
+const CustomVolumeTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
+  if (active && payload && payload.length && payload[0].payload) {
     const data = payload[0].payload as ChartDataPoint;
     return (
       <div className="bg-popover/95 backdrop-blur-sm border border-border rounded-lg p-3 shadow-lg">

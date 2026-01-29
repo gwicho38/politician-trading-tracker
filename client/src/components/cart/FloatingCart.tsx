@@ -7,6 +7,13 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useCart } from '@/contexts/CartContext';
+
+/** Order result from the orders edge function */
+interface OrderResult {
+  success: boolean;
+  ticker: string;
+  error?: string;
+}
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -107,23 +114,23 @@ export function FloatingCart() {
         closeCart();
       } else {
         // Show results summary
-        const failedOrders = data.results?.filter((r: any) => !r.success) || [];
+        const results = (data.results || []) as OrderResult[];
+        const failedOrders = results.filter((r) => !r.success);
         if (failedOrders.length > 0) {
           toast.error(
-            `${failedOrders.length} orders failed: ${failedOrders.map((o: any) => o.ticker).join(', ')}`
+            `${failedOrders.length} orders failed: ${failedOrders.map((o) => o.ticker).join(', ')}`
           );
         }
         if (data.summary?.success > 0) {
           toast.success(`${data.summary.success} orders placed successfully`);
           // Remove successful orders from cart
-          const successTickers =
-            data.results?.filter((r: any) => r.success).map((r: any) => r.ticker) || [];
-          successTickers.forEach((ticker: string) => removeFromCart(ticker));
+          const successTickers = results.filter((r) => r.success).map((r) => r.ticker);
+          successTickers.forEach((ticker) => removeFromCart(ticker));
         }
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error placing orders:', error);
-      toast.error(error.message || 'Failed to place orders');
+      toast.error(error instanceof Error ? error.message : 'Failed to place orders');
     } finally {
       setPlacingOrders(false);
     }

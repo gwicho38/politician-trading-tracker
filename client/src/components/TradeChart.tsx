@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, TooltipProps } from 'recharts';
 import { Loader2 } from 'lucide-react';
 import { useChartData, useChartYears, ChartTimeRange } from '@/hooks/useSupabaseData';
 import {
@@ -20,9 +20,12 @@ interface ChartDataPoint {
   volume: number;
 }
 
-// Custom tooltip component for better dark mode readability
-const CustomChartTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
+/**
+ * Custom tooltip component for the trade chart.
+ * Uses Recharts' TooltipProps for proper typing.
+ */
+const CustomChartTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
+  if (active && payload && payload.length && payload[0].payload) {
     const data = payload[0].payload as ChartDataPoint;
     return (
       <div className="bg-popover/95 backdrop-blur-sm border border-border rounded-lg p-3 shadow-lg">

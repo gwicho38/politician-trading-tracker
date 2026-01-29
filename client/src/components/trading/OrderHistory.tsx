@@ -49,8 +49,8 @@ export function OrderHistory({ tradingMode }: OrderHistoryProps) {
     try {
       const result = await syncMutation.mutateAsync();
       toast.success(result.message);
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to sync orders');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to sync orders');
     }
   };
 
@@ -60,8 +60,8 @@ export function OrderHistory({ tradingMode }: OrderHistoryProps) {
     try {
       const result = await cancelMutation.mutateAsync(cancelOrderId);
       toast.success(result.message);
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to cancel order');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to cancel order');
     } finally {
       setCancelOrderId(null);
     }
