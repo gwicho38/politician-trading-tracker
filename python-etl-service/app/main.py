@@ -10,6 +10,7 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
 
 from app.routes import health, etl, enrichment, ml, quality, error_reports, dedup, signals
 from app.lib.logging_config import configure_logging, get_logger
@@ -25,6 +26,176 @@ configure_logging(level=log_level, service_name="politician-etl", json_format=js
 logger = get_logger(__name__)
 
 
+# OpenAPI tag descriptions for better documentation
+OPENAPI_TAGS = [
+    {
+        "name": "health",
+        "description": "Service health checks for monitoring and load balancers.",
+    },
+    {
+        "name": "etl",
+        "description": """
+ETL (Extract, Transform, Load) operations for congressional trading disclosures.
+
+**Data Sources:**
+- **House**: Financial disclosure PDFs from disclosures-clerk.house.gov
+- **Senate**: Electronic filings from efdsearch.senate.gov
+
+**Workflow:**
+1. Trigger ETL job with `POST /etl/trigger`
+2. Monitor progress with `GET /etl/status/{job_id}`
+3. Enrich data with `/enrichment` endpoints
+4. Generate signals with `/signals` endpoints
+""",
+    },
+    {
+        "name": "enrichment",
+        "description": """
+Data enrichment services using AI (Ollama LLM) and external data sources.
+
+**Available Enrichments:**
+- **Party Enrichment**: Infer politician party affiliation (D/R/I)
+- **Name Enrichment**: Extract structured names from raw disclosure text
+- **Bioguide Enrichment**: Link to official Congress.gov bioguide IDs
+""",
+    },
+    {
+        "name": "ml",
+        "description": """
+Machine learning model management for trading signal prediction.
+
+**Signal Types:**
+- `-2`: Strong Sell
+- `-1`: Sell
+- `0`: Hold
+- `1`: Buy
+- `2`: Strong Buy
+
+**Model Features:**
+- politician_count, buy_sell_ratio, recent_activity_30d
+- bipartisan, net_volume, volume_magnitude
+- party_alignment, committee_relevance, disclosure_delay
+- sentiment_score, market_momentum, sector_performance
+
+⚠️ **Admin endpoints** (`/ml/train`, `/ml/models/{id}/activate`) require `X-Admin-Key` header.
+""",
+    },
+    {
+        "name": "quality",
+        "description": """
+Data quality monitoring and validation tools.
+
+**Validation Checks:**
+- Ticker symbol validation against known patterns and Polygon.io
+- Source data auditing by re-fetching and comparing
+- Data freshness monitoring per source
+""",
+    },
+    {
+        "name": "error-reports",
+        "description": """
+User-submitted error report processing using AI (Ollama LLM).
+
+**Workflow:**
+1. Users submit error reports via the web app
+2. `POST /error-reports/process` analyzes reports with LLM
+3. High-confidence corrections are auto-applied
+4. Low-confidence corrections require manual review via `GET /error-reports/needs-review`
+5. Admins can force-apply corrections with `POST /error-reports/force-apply`
+
+⚠️ **Admin endpoints** (`/error-reports/force-apply`, `/error-reports/reanalyze`) require `X-Admin-Key` header.
+""",
+    },
+    {
+        "name": "deduplication",
+        "description": """
+Politician deduplication services using fuzzy name matching.
+
+Identifies and merges duplicate politician records that may have been
+created due to name variations (e.g., "Nancy Pelosi" vs "PELOSI, NANCY").
+""",
+    },
+    {
+        "name": "signals",
+        "description": """
+Custom signal transformation using sandboxed Python lambdas.
+
+Allows users to write custom transformation logic that runs in a
+restricted sandbox (no file I/O, no network, limited builtins).
+
+**Example Lambda:**
+```python
+for s in signals:
+    if s['confidence'] > 0.8:
+        s['signal_type'] = 'strong_' + s['signal_type']
+```
+""",
+    },
+]
+
+
+API_DESCRIPTION = """
+# Politician Trading ETL Service
+
+Extracts, transforms, and loads congressional trading disclosures from official government sources.
+
+## Authentication
+
+Most endpoints require API key authentication:
+
+| Header | Description |
+|--------|-------------|
+| `X-API-Key` | Standard API key for read/write operations |
+| `X-Admin-Key` | Admin API key for sensitive operations (train, activate, force-apply) |
+
+**Public Endpoints** (no auth required):
+- `GET /` - Service info
+- `GET /health` - Health check
+- `GET /docs` - This documentation
+- `GET /openapi.json` - OpenAPI schema
+
+## Rate Limiting
+
+Requests are rate-limited based on IP address:
+
+| Endpoint Pattern | Limit |
+|-----------------|-------|
+| `/ml/train` | 5 requests/hour |
+| `/etl/trigger` | 10 requests/minute |
+| All other endpoints | 100 requests/minute |
+
+Rate limit headers:
+- `X-RateLimit-Remaining`: Requests remaining in window
+- `Retry-After`: Seconds to wait (on 429 response)
+
+## Request Tracing
+
+All requests include correlation IDs for tracing:
+- Send `X-Correlation-ID` header to set your own
+- Response includes `X-Correlation-ID` header
+- Logs include `correlation_id` field for debugging
+
+## Error Responses
+
+All errors follow this format:
+```json
+{
+  "detail": "Human-readable error message"
+}
+```
+
+Common HTTP status codes:
+- `400` - Invalid request parameters
+- `401` - Missing API key
+- `403` - Invalid API key or insufficient permissions
+- `404` - Resource not found
+- `422` - Validation error (check detail for field errors)
+- `429` - Rate limit exceeded
+- `500` - Internal server error
+- `503` - Service unavailable (database or external service down)
+"""
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
@@ -37,9 +208,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Politician Trading ETL Service",
-    description="Extracts trading disclosures from government PDFs",
+    description=API_DESCRIPTION,
     version="1.0.0",
     lifespan=lifespan,
+    openapi_tags=OPENAPI_TAGS,
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT",
+    },
+    contact={
+        "name": "GovMarket.trade Support",
+        "url": "https://govmarket.trade",
+    },
 )
 
 # Add middleware (order matters - first added = outermost)
