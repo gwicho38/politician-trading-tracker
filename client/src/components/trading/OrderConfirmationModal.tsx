@@ -174,20 +174,20 @@ export function OrderConfirmationModal({
           </div>
 
           {/* Order List */}
-          <div className="max-h-60 overflow-y-auto border rounded-lg">
-            <table className="w-full text-sm">
+          <div className="max-h-60 overflow-y-auto overflow-x-auto border rounded-lg">
+            <table className="w-full text-sm min-w-[300px]">
               <thead className="bg-muted sticky top-0">
                 <tr>
-                  <th className="text-left p-2">Ticker</th>
-                  <th className="text-left p-2">Side</th>
-                  <th className="text-right p-2">Qty</th>
-                  <th className="text-left p-2">Type</th>
+                  <th className="text-left p-2 whitespace-nowrap">Ticker</th>
+                  <th className="text-left p-2 whitespace-nowrap">Side</th>
+                  <th className="text-right p-2 whitespace-nowrap">Qty</th>
+                  <th className="text-left p-2 whitespace-nowrap">Type</th>
                 </tr>
               </thead>
               <tbody>
                 {orders.map((order, idx) => (
                   <tr key={idx} className="border-t">
-                    <td className="p-2 font-medium">{order.ticker}</td>
+                    <td className="p-2 font-medium whitespace-nowrap">{order.ticker}</td>
                     <td className="p-2">
                       <Badge
                         variant="outline"
@@ -200,8 +200,8 @@ export function OrderConfirmationModal({
                         {order.side.toUpperCase()}
                       </Badge>
                     </td>
-                    <td className="p-2 text-right font-mono">{order.quantity}</td>
-                    <td className="p-2">{order.order_type}</td>
+                    <td className="p-2 text-right font-mono whitespace-nowrap">{order.quantity}</td>
+                    <td className="p-2 whitespace-nowrap">{order.order_type}</td>
                   </tr>
                 ))}
               </tbody>

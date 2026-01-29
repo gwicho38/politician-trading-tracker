@@ -128,7 +128,7 @@ export function QuickTradeDialog({
 
         <div className="grid gap-4 py-4">
           {/* Position Summary */}
-          <div className="grid grid-cols-2 gap-4 p-3 bg-muted rounded-lg">
+          <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 sm:gap-4 p-3 bg-muted rounded-lg">
             <div>
               <p className="text-xs text-muted-foreground">Current Price</p>
               <p className="font-mono font-medium">{formatCurrency(position.current_price)}</p>
@@ -140,9 +140,9 @@ export function QuickTradeDialog({
                 position.unrealized_pl >= 0 ? "text-green-600" : "text-red-600"
               )}>
                 {position.unrealized_pl >= 0 ? (
-                  <TrendingUp className="h-3 w-3" />
+                  <TrendingUp className="h-3 w-3" aria-hidden="true" />
                 ) : (
-                  <TrendingDown className="h-3 w-3" />
+                  <TrendingDown className="h-3 w-3" aria-hidden="true" />
                 )}
                 {formatCurrency(position.unrealized_pl)}
               </p>
