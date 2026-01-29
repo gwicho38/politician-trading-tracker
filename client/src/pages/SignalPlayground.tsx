@@ -43,6 +43,7 @@ import {
 } from '@/components/signal-playground';
 import { SidebarLayout } from '@/components/layouts/SidebarLayout';
 import { ApplyStrategyButton } from '@/components/strategy-follow';
+import { logDebug, logError } from '@/lib/logger';
 
 const LOOKBACK_OPTIONS = [
   { value: '30', label: 'Last 30 days' },
@@ -164,7 +165,7 @@ export default function SignalPlayground() {
       return;
     }
 
-    console.log('Saving preset:', { name: presetName, weights, user: user.id });
+    logDebug('Saving preset', 'presets', { name: presetName, userId: user.id });
 
     try {
       const result = await createPresetAsync({
@@ -175,7 +176,7 @@ export default function SignalPlayground() {
         user_lambda: includeLambda && userLambda?.trim() ? userLambda.trim() : undefined,
       });
 
-      console.log('Preset saved:', result);
+      logDebug('Preset saved', 'presets', { id: result.id });
 
       toast({
         title: 'Preset saved',
@@ -189,7 +190,7 @@ export default function SignalPlayground() {
       setIncludeLambda(false);
       setSaveDialogOpen(false);
     } catch (err) {
-      console.error('Failed to save preset:', err);
+      logError('Failed to save preset', 'presets', err instanceof Error ? err : undefined);
       toast({
         title: 'Failed to save',
         description: err instanceof Error ? err.message : 'Unknown error',

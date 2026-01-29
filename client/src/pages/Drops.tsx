@@ -19,6 +19,7 @@ import { useSignalPresets } from '@/hooks/useSignalPresets';
 import { DropComposer, DropFeed } from '@/components/drops';
 import { StrategyCard } from '@/components/showcase';
 import { SidebarLayout } from '@/components/layouts/SidebarLayout';
+import { logDebug, logError } from '@/lib/logger';
 
 export default function Drops() {
   const navigate = useNavigate();
@@ -85,25 +86,23 @@ export default function Drops() {
   };
 
   const handleCreateDrop = async (content: string) => {
-    console.log('[Drops page] handleCreateDrop called with content:', content.substring(0, 50));
-    console.log('[Drops page] isAuthenticated:', isAuthenticated);
+    logDebug('Creating drop', 'drops', { contentLength: content.length, isAuthenticated });
 
     if (!isAuthenticated) {
-      console.log('[Drops page] Not authenticated, showing auth required');
+      logDebug('Auth required for drop creation', 'drops');
       handleAuthRequired();
       return;
     }
 
     try {
-      console.log('[Drops page] Calling createDropAsync...');
       await createDropAsync({ content });
-      console.log('[Drops page] createDropAsync completed successfully');
+      logDebug('Drop created successfully', 'drops');
       toast({
         title: 'Drop posted!',
         description: 'Your drop is now live.',
       });
     } catch (error) {
-      console.error('[Drops page] createDropAsync failed:', error);
+      logError('Failed to create drop', 'drops', error instanceof Error ? error : undefined);
       toast({
         title: 'Failed to post',
         description: error instanceof Error ? error.message : 'Something went wrong',
