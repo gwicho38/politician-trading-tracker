@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #52 - Code Quality: Extend Formatter Consolidation to Trading Components - COMPLETED
+Loop #58 - Testing: Add Tests for QuickTradeDialog Component - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -80,15 +80,130 @@ Loop #52 - Code Quality: Extend Formatter Consolidation to Trading Components - 
 - [x] ~~Consolidate duplicate date formatting logic~~ - Loop #51 (formatters.ts)
 - [x] ~~Consolidate duplicate currency formatting logic~~ - Loop #51 (formatters.ts)
 - [x] ~~Extend formatter consolidation to trading components~~ - Loop #52 (9 components)
+- [x] ~~Replace `any` types in Recharts tooltip components~~ - Loop #53 (3 components)
+- [x] ~~Replace `any` types in error handling catch blocks~~ - Loop #53 (7 components)
 - [ ] Add missing TypeScript strict mode compliance
-- [ ] Replace `any` types in Recharts tooltip components (VolumeChart, TradeChart, PerformanceChart)
-- [ ] Replace `any` types in error handling catch blocks (7+ components)
-- [ ] Add tests for trading module (7 untested components)
+- [ ] Add tests for trading module (2 remaining untested components: AccountDashboard, OrderConfirmationModal)
 - [ ] Remove/migrate console.log debug statements to logger utility
 
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #58
+- [2026-01-29] 🧪 **Testing: QuickTradeDialog Component Tests**
+  - Created `client/src/components/trading/QuickTradeDialog.test.tsx` with 49 comprehensive tests
+  - Test coverage:
+    - **Null position tests (2)**: Returns null when position null, hook still called
+    - **Dialog behavior tests (5)**: Dialog visibility, title with symbol, paper/live badges, position description
+    - **Position summary tests (6)**: Current price, P&L display, labels, green/red styling for positive/negative P&L
+    - **Side selection tests (6)**: Label, buy/sell buttons, default side, switching sides
+    - **Quantity input tests (6)**: Label, input field, custom quantity, Sell All button visibility/click
+    - **Order type tests (4)**: Label, default market, combobox, limit price hidden for market
+    - **Estimated value tests (2)**: Hidden without quantity, shown with quantity
+    - **Submit button tests (4)**: Disabled without quantity, enabled with quantity, buy/sell text, loading state
+    - **Order submission tests (6)**: Market order, success toast, dialog close, error toast, default error message, buy order
+    - **Cancel button tests (2)**: Button exists, closes dialog on click
+    - **Trading mode tests (2)**: Paper and live mode hook calls
+    - **Short position tests (2)**: Description display, no Sell All for short
+    - **Submit button styling tests (2)**: Green for buy, red for sell
+  - Mocked usePlaceOrder hook, toast, formatters
+  - Added ResizeObserver and pointer capture mocks for Radix UI compatibility
+  - All 654 client tests passing (605 existing + 49 new)
+  - Build successful
+
+## ✅ Completed Loop #57
+- [2026-01-29] 🧪 **Testing: OrderHistory Component Tests**
+  - Created `client/src/components/trading/OrderHistory.test.tsx` with 42 comprehensive tests
+  - Test coverage:
+    - **Loading state tests (1)**: Loading spinner display
+    - **Error state tests (3)**: Error message, retry button, refetch on retry
+    - **Empty state tests (2)**: Empty message, suggestion text
+    - **Header display tests (4)**: Title, paper/live badges, total orders count
+    - **Orders table tests (10)**: Headers, tickers, buy/sell styling, quantities, filled quantities, prices, status badges
+    - **Status filter tests (2)**: Filter select, hook call with filter
+    - **Sync functionality tests (4)**: Sync button, mutation call, success/error toasts
+    - **Cancel order tests (8)**: Cancel button visibility, confirmation dialog, Keep Order, cancel mutation, success/error toasts
+    - **Refetch functionality tests (2)**: Refetch button, refetch call
+    - **Refetching state tests (2)**: Disabled button, spinning animation
+    - **Can cancel order logic tests (4)**: new/accepted/partially_filled statuses allow cancel, cancelled does not
+  - Mocked useOrders, useSyncOrders, useCancelOrder hooks, toast, formatters
+  - All 605 client tests passing (563 existing + 42 new)
+  - Build successful
+
+## ✅ Completed Loop #56
+- [2026-01-29] 🧪 **Testing: PositionsTable Component Tests**
+  - Created `client/src/components/trading/PositionsTable.test.tsx` with 37 comprehensive tests
+  - Test coverage:
+    - **Loading state tests (1)**: Loading spinner display
+    - **Error state tests (3)**: Error message, retry button, refetch on retry
+    - **Empty state tests (3)**: Empty message, card title, null positions handling
+    - **Positions display tests (7)**: Count in header, total value, total P&L, symbols, side badges, refresh button, refetch on refresh
+    - **P&L styling tests (4)**: Green for positive, red for negative, trending up/down icons
+    - **Trade dialog tests (7)**: Open on Buy/Sell click, correct position/mode/side passed, dialog close
+    - **Refetching state tests (2)**: Disabled refresh button, spinning animation
+    - **Desktop table view tests (3)**: Headers, quantities, market values
+    - **Currency formatting tests (3)**: Avg entry price, current price, intraday P&L
+    - **Percent formatting tests (2)**: + sign for positive, - sign for negative
+    - **Total metrics tests (2)**: Green/red styling for positive/negative P&L
+  - Mocked useAlpacaPositions hook and QuickTradeDialog component
+  - All 563 client tests passing (526 existing + 37 new)
+  - Build successful
+
+## ✅ Completed Loop #55
+- [2026-01-29] 🧪 **Testing: AlpacaConnectionCard Component Tests**
+  - Created `client/src/components/trading/AlpacaConnectionCard.test.tsx` with 46 comprehensive tests
+  - Test coverage:
+    - **Header display tests (5)**: Card title, paper/live trading badges, descriptions
+    - **Disconnected state tests (8)**: Input fields, placeholders, buttons, disabled/enabled states
+    - **Password visibility tests (2)**: Hidden by default, toggle visibility
+    - **Test connection tests (5)**: Validation, API call params, success/error messages, account info display
+    - **Save credentials tests (6)**: Test before save, save after success, no save on failure, callback, clear inputs
+    - **Connected state tests (5)**: Connected badge, message, last validated time, disconnect button, no input fields
+    - **Disconnect functionality tests (2)**: Clear credentials, callback invocation
+    - **Setup guide tests (8)**: Toggle visibility, content sections, signup link, trading mode badges, tips
+    - **Live trading warning tests (3)**: Shown for live mode, not for paper, not when connected
+    - **Error handling tests (2)**: Validation, default error messages
+  - Mocked useAlpacaCredentials hook, date-fns
+  - All 526 client tests passing (480 existing + 46 new)
+  - Build successful
+
+## ✅ Completed Loop #54
+- [2026-01-29] 🧪 **Testing: AlpacaConnectionStatus Component Tests**
+  - Created `client/src/components/trading/AlpacaConnectionStatus.test.tsx` with 28 comprehensive tests
+  - Test coverage:
+    - **Loading state tests (1)**: Loading spinner display
+    - **Error state tests (2)**: Fetch failure, unauthenticated state
+    - **Connected state tests (12)**: Title, trading mode badges, connection status, circuit breaker state, health rate, latency, healthy/total checks, recent health checks section, logs with latency, refresh button, health check button
+    - **Degraded/Disconnected state tests (2)**: Status display with correct styling
+    - **Circuit breaker state tests (2)**: Open state with warning, half-open state with info
+    - **Health check functionality tests (2)**: Success and unhealthy results
+    - **Refresh functionality tests (1)**: Refetch on button click
+    - **Statistics edge cases tests (1)**: N/A for null avgLatencyMs
+    - **Empty recent logs tests (1)**: Hidden section when no logs
+    - **API request construction tests (3)**: Paper/live trading modes, authorization header
+    - **HTTP error handling tests (1)**: HTTP error response handling
+  - Mocked fetch, localStorage with session token, date-fns, env vars
+  - All 480 client tests passing (452 existing + 28 new)
+  - Build successful
+
+## ✅ Completed Loop #53
+- [2026-01-29] 📝 **Code Quality: Replace `any` Types with Proper TypeScript Types**
+  - **Recharts tooltip components (3 files)**: Replaced `any` with `TooltipProps<number, string>` from Recharts
+    - `VolumeChart.tsx` - CustomVolumeTooltip now properly typed
+    - `TradeChart.tsx` - CustomChartTooltip now properly typed
+    - `PerformanceChart.tsx` - CustomTooltip now properly typed
+  - **Error handling catch blocks (7 files)**: Replaced `catch (error: any)` with `catch (error)` + `error instanceof Error` type guard
+    - `strategy-follow/FollowingStatusBadge.tsx` - 2 catch blocks fixed
+    - `strategy-follow/FollowingSettingsCard.tsx` - 2 catch blocks fixed
+    - `strategy-follow/ApplyStrategyModal.tsx` - 1 catch block fixed
+    - `cart/FloatingCart.tsx` - 1 catch block fixed + OrderResult interface added
+    - `trading/OrderHistory.tsx` - 2 catch blocks fixed
+    - `trading/OrderConfirmationModal.tsx` - 1 catch block fixed + OrderResult interface added
+    - `trading/QuickTradeDialog.tsx` - 1 catch block fixed
+  - All 452 client tests passing
+  - Build successful
+  - Type safety improved across 10 components
 
 ## ✅ Completed Loop #52
 - [2026-01-29] 🧹 **Code Quality: Extend Formatter Consolidation to Trading Components**
