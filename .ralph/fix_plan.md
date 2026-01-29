@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #39 - Phoenix Server Authentication Middleware - COMPLETED
+Loop #40 - React Client Type Safety: Type Guard Utility - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -55,9 +55,60 @@ Loop #39 - Phoenix Server Authentication Middleware - COMPLETED
 - [x] ~~Fix UnboundLocalError in get_senators() - moved variable initialization before try block~~
 - [x] ~~Add type annotations for remaining ETL service modules~~ - house_etl.py, senate_etl.py, auto_correction.py
 
+### React Client Issues (Discovered Loop #40)
+#### High Priority - Type Safety
+- [x] ~~Create type guard utility (`lib/typeGuards.ts`) - validates party, transaction types at runtime~~ - Loop #40
+- [x] ~~Fix unsafe party type casting in RecentTrades, TradesView (2 components)~~ - Loop #40
+- [x] ~~Fix unsafe transaction type casting in RecentTrades, TradesView~~ - Loop #40
+- [ ] Add null checks for optional properties in Dashboard components
+
+#### High Priority - Security
+- [ ] Replace hardcoded email in RootErrorBoundary with env var
+- [ ] Fix unsafe localStorage access in Header (no error handling)
+
+#### Medium Priority - Testing
+- [ ] Add tests for Dashboard.tsx
+- [ ] Add tests for TradesView.tsx
+- [ ] Add tests for TradingSignals.tsx
+- [ ] Add tests for PoliticianList.tsx
+- [ ] Add tests for PoliticianDetails.tsx
+- [ ] Add tests for ReferencePortfolio.tsx
+- [ ] Add tests for useAlpacaCredentials.ts hook
+- [ ] Add tests for useAuth.ts hook
+
+#### Low Priority - Code Quality
+- [ ] Consolidate duplicate date formatting logic
+- [ ] Consolidate duplicate currency formatting logic
+- [ ] Add missing TypeScript strict mode compliance
+
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #40
+- [2026-01-29] 📝 **Code Quality: Type Guard Utility for React Client**
+  - Created `client/src/lib/typeGuards.ts` with comprehensive type guards:
+    - `Party` type and guards: `isParty()`, `toParty()`, `getPartyFullName()`
+    - `TransactionType` and `DisplayTransactionType` with conversions: `toDisplayTransactionType()`, `toDatabaseTransactionType()`
+    - `SignalType` guards: `isSignalType()`, `toSignalType()`
+    - `Chamber` guards: `isChamber()`, `toChamber()`
+    - Generic utilities: `isObject()`, `isNonEmptyString()`, `isPositiveNumber()`, `isValidDateString()`, `toNumber()`, `toString()`
+  - Created `client/src/lib/typeGuards.test.ts` with 59 comprehensive tests:
+    - Party validation and conversion tests
+    - Transaction type conversion tests (purchase↔buy, sale↔sell)
+    - Signal type validation tests
+    - Chamber type validation tests
+    - Generic utility tests
+  - Updated `client/src/lib/mockData.ts`:
+    - Imported and re-exported `Party` type from typeGuards
+    - Updated `Politician` and `Trade` interfaces to use typed exports
+  - Updated `client/src/components/RecentTrades.tsx`:
+    - Replaced unsafe `(trade.politician?.party as 'D' | 'R' | 'I' | 'Other')` with `toParty()`
+    - Replaced unsafe transaction type casting with `toDisplayTransactionType()`
+  - Updated `client/src/components/TradesView.tsx`:
+    - Same type guard improvements as RecentTrades
+  - All 165 client tests passing (59 new + 106 existing)
+  - Build successful
 
 ## ✅ Completed Loop #39
 - [2026-01-29] 🔒 **Security: Phoenix Server Authentication Middleware**
