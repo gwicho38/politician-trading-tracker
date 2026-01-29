@@ -229,11 +229,11 @@ describe('TradesView', () => {
       expect(screen.getByText('All')).toBeInTheDocument();
     });
 
-    it('renders jurisdiction filter badges', () => {
+    it('renders jurisdiction filter buttons', () => {
       render(<TradesView />, { wrapper: createWrapper() });
 
-      expect(screen.getByText('🇺🇸 US House')).toBeInTheDocument();
-      expect(screen.getByText('🇺🇸 US Senate')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Filter by US House/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Filter by US Senate/i })).toBeInTheDocument();
     });
 
     it('"All" badge is highlighted by default', () => {
@@ -243,14 +243,14 @@ describe('TradesView', () => {
       expect(allBadge).toHaveClass('bg-primary/20');
     });
 
-    it('clicking jurisdiction badge updates filter', async () => {
+    it('clicking jurisdiction button updates filter', async () => {
       render(<TradesView />, { wrapper: createWrapper() });
 
-      const houseBadge = screen.getByText('🇺🇸 US House');
-      fireEvent.click(houseBadge);
+      const houseButton = screen.getByRole('button', { name: /Filter by US House/i });
+      fireEvent.click(houseButton);
 
       await waitFor(() => {
-        expect(houseBadge).toHaveClass('bg-primary/20');
+        expect(houseButton).toHaveClass('bg-primary/20');
       });
     });
 
@@ -491,8 +491,8 @@ describe('TradesView', () => {
 
       render(<TradesView jurisdictionId="us_house" />, { wrapper: createWrapper() });
 
-      const houseBadge = screen.getByText('🇺🇸 US House');
-      expect(houseBadge).toHaveClass('bg-primary/20');
+      const houseButton = screen.getByRole('button', { name: /Filter by US House/i });
+      expect(houseButton).toHaveClass('bg-primary/20');
     });
 
     it('resets page when jurisdiction filter changes', () => {
@@ -512,8 +512,8 @@ describe('TradesView', () => {
       render(<TradesView />, { wrapper: createWrapper() });
 
       // Click jurisdiction filter
-      const houseBadge = screen.getByText('🇺🇸 US House');
-      fireEvent.click(houseBadge);
+      const houseButton = screen.getByRole('button', { name: /Filter by US House/i });
+      fireEvent.click(houseButton);
 
       expect(setPageMock).toHaveBeenCalledWith(1);
     });

@@ -22,10 +22,12 @@ const TopTraders = () => {
             <p className="text-xs sm:text-sm text-muted-foreground">By total trading volume</p>
           </div>
           <button
+            type="button"
             onClick={() => window.dispatchEvent(new CustomEvent('navigate-section', { detail: 'politicians' }))}
             className="text-xs sm:text-sm text-primary hover:underline flex items-center gap-1"
+            aria-label="View all politicians"
           >
-            View all <ArrowUpRight className="h-3 w-3" />
+            View all <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
           </button>
         </div>
 
@@ -46,13 +48,15 @@ const TopTraders = () => {
             sortedPoliticians.map((politician, index) => {
               const party = toParty(politician.party);
               return (
-                <div
+                <button
                   key={politician.id}
+                  type="button"
                   onClick={() => setSelectedPolitician(politician)}
-                  className="group flex items-center justify-between rounded-lg p-2 sm:p-3 transition-all duration-200 hover:bg-secondary/50 cursor-pointer gap-2"
+                  className="group w-full flex items-center justify-between rounded-lg p-2 sm:p-3 transition-all duration-200 hover:bg-secondary/50 cursor-pointer gap-2 text-left"
+                  aria-label={`View details for ${politician.name}, ${party} party, ${politician.chamber || 'Unknown'}, ${formatCurrency(politician.total_volume ?? 0)} total volume, ${politician.total_trades ?? 0} trades`}
                 >
                   <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                    <div className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-secondary font-mono text-xs sm:text-sm font-bold text-muted-foreground flex-shrink-0">
+                    <div className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-secondary font-mono text-xs sm:text-sm font-bold text-muted-foreground flex-shrink-0" aria-hidden="true">
                       #{index + 1}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -81,7 +85,7 @@ const TopTraders = () => {
                       {politician.total_trades ?? 0} trades
                     </p>
                   </div>
-                </div>
+                </button>
               );
             })
           )}

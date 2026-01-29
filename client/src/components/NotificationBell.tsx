@@ -87,12 +87,18 @@ const NotificationBell = () => {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-5 w-5" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'}
+        >
+          <Bell className="h-5 w-5" aria-hidden="true" />
           {unreadCount > 0 && (
             <Badge
               variant="destructive"
               className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+              aria-hidden="true"
             >
               {unreadCount}
             </Badge>
@@ -115,24 +121,29 @@ const NotificationBell = () => {
         </div>
         <ScrollArea className="h-[300px]">
           {notifications.length === 0 ? (
-            <div className="p-4 text-center text-muted-foreground">
+            <div className="p-4 text-center text-muted-foreground" role="status">
               No notifications
             </div>
           ) : (
-            <div className="divide-y divide-border">
+            <div className="divide-y divide-border" role="list" aria-label="Notifications list">
               {notifications.map(notification => (
-                <div
+                <button
                   key={notification.id}
-                  className={`p-4 cursor-pointer hover:bg-muted/50 transition-colors ${
+                  type="button"
+                  className={`w-full text-left p-4 cursor-pointer hover:bg-muted/50 transition-colors ${
                     !notification.read ? 'bg-muted/30' : ''
                   }`}
                   onClick={() => !notification.read && markAsRead(notification.id)}
+                  aria-label={`${notification.read ? '' : 'Unread: '}${notification.title} - ${notification.message}`}
+                  aria-pressed={notification.read}
+                  role="listitem"
                 >
                   <div className="flex items-start gap-3">
                     <div
                       className={`w-2 h-2 rounded-full mt-2 ${
                         !notification.read ? 'bg-primary' : 'bg-transparent'
                       }`}
+                      aria-hidden="true"
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -143,6 +154,7 @@ const NotificationBell = () => {
                           className={`text-xs px-2 py-0.5 rounded ${getTypeColor(
                             notification.type
                           )}`}
+                          aria-label={`Type: ${notification.type}`}
                         >
                           {notification.type}
                         </span>
@@ -157,7 +169,7 @@ const NotificationBell = () => {
                       </p>
                     </div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}
