@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #43 - Testing: Add Tests for Dashboard.tsx Component - COMPLETED
+Loop #44 - Testing: Add Tests for TradesView.tsx Component - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -68,7 +68,7 @@ Loop #43 - Testing: Add Tests for Dashboard.tsx Component - COMPLETED
 
 #### Medium Priority - Testing
 - [x] ~~Add tests for Dashboard.tsx~~ - Loop #43 (27 tests)
-- [ ] Add tests for TradesView.tsx
+- [x] ~~Add tests for TradesView.tsx~~ - Loop #44 (32 tests)
 - [ ] Add tests for TradingSignals.tsx
 - [ ] Add tests for PoliticianList.tsx
 - [ ] Add tests for PoliticianDetails.tsx
@@ -84,6 +84,23 @@ Loop #43 - Testing: Add Tests for Dashboard.tsx Component - COMPLETED
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #44
+- [2026-01-29] 🧪 **Testing: TradesView.tsx Component Tests**
+  - Created `client/src/components/TradesView.test.tsx` with 32 comprehensive tests
+  - Test coverage:
+    - **Header tests (3)**: Title, description, Filter button rendering
+    - **Loading state tests (3)**: Spinner for trades loading, jurisdictions loading, no spinner when loaded
+    - **Jurisdiction filters tests (5)**: "All" badge, jurisdiction badges, highlighting, click behavior
+    - **Trade list tests (4)**: Trade cards render, empty state, search-specific empty state, data transformation
+    - **Search query filtering tests (5)**: Filter by ticker, company, politician name, case-insensitive, empty query
+    - **Pagination tests (4)**: Controls visibility, hidden when no trades, itemLabel, setTotalItems callback
+    - **Props handling tests (4)**: jurisdictionId passed to hook, undefined jurisdiction, initial filter state, page reset
+    - **Edge cases tests (4)**: Null politician, missing ticker fields, undefined trades, empty jurisdictions
+  - Mocked child components (TradeCard, PaginationControls)
+  - Mocked hooks (useTrades, useJurisdictions, usePagination)
+  - All 239 client tests passing (207 existing + 32 new)
+  - Build successful
 
 ## ✅ Completed Loop #43
 - [2026-01-29] 🧪 **Testing: Dashboard.tsx Component Tests**
