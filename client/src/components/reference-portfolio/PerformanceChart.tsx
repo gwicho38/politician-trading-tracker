@@ -8,6 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  TooltipProps,
 } from 'recharts';
 import { Loader2 } from 'lucide-react';
 import {
@@ -49,8 +50,12 @@ const formatPercent = (value: number | null) => {
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
 };
 
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
+/**
+ * Custom tooltip component for the performance chart.
+ * Uses Recharts' TooltipProps for proper typing.
+ */
+const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
+  if (active && payload && payload.length && payload[0].payload) {
     const data = payload[0].payload as ChartDataPoint;
     return (
       <div className="bg-popover/95 backdrop-blur-sm border border-border rounded-lg p-3 shadow-lg">

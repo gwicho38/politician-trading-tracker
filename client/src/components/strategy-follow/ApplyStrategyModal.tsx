@@ -78,9 +78,9 @@ export function ApplyStrategyModal({
         description: `Your ${tradingMode} account will mirror this strategy.`,
       });
       onOpenChange(false);
-    } catch (error: any) {
+    } catch (error) {
       toast.error('Failed to apply strategy', {
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   };

@@ -83,9 +83,9 @@ export function FollowingSettingsCard({ tradingMode }: FollowingSettingsCardProp
       toast.success('Sync completed', {
         description: result.message,
       });
-    } catch (error: any) {
+    } catch (error) {
       toast.error('Sync failed', {
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   };
@@ -96,9 +96,9 @@ export function FollowingSettingsCard({ tradingMode }: FollowingSettingsCardProp
       toast.success('Unfollowed strategy', {
         description: 'Your account will no longer track this strategy.',
       });
-    } catch (error: any) {
+    } catch (error) {
       toast.error('Failed to unfollow', {
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   };

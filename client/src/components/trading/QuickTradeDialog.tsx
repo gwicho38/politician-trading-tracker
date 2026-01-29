@@ -100,8 +100,8 @@ export function QuickTradeDialog({
 
       toast.success(`${side.toUpperCase()} order placed for ${qty} shares of ${position.symbol}`);
       onOpenChange(false);
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to place order');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to place order');
     }
   };
 
