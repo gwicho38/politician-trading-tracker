@@ -3,6 +3,9 @@ import { type Party, type DisplayTransactionType } from './typeGuards';
 // Re-export Party type for backwards compatibility
 export type { Party } from './typeGuards';
 
+// Re-export formatCurrency from centralized formatters for backwards compatibility
+export { formatCurrency } from './formatters';
+
 export interface Politician {
   id: string;
   name: string;
@@ -236,18 +239,8 @@ export const stats = {
   recentFilings: 89,
 };
 
-export const formatCurrency = (value: number): string => {
-  if (value >= 1000000000) {
-    return `$${(value / 1000000000).toFixed(1)}B`;
-  }
-  if (value >= 1000000) {
-    return `$${(value / 1000000).toFixed(1)}M`;
-  }
-  if (value >= 1000) {
-    return `$${(value / 1000).toFixed(0)}K`;
-  }
-  return `$${value.toFixed(0)}`;
-};
+// formatCurrency is now re-exported from './formatters' at the top of the file
+// The original implementation has been consolidated into lib/formatters.ts
 
 export const getPartyColor = (party: string): string => {
   switch (party) {

@@ -12,6 +12,7 @@ import { Users2, TrendingUp, Trash2, RefreshCw, Plus, Pencil } from 'lucide-reac
 import type { Tables } from '@/integrations/supabase/types';
 import PoliticianForm from './PoliticianForm';
 import TradeForm from './TradeForm';
+import { formatCurrencyCompact, formatDate as formatDateUtil } from '@/lib/formatters';
 
 type Politician = Tables<'politicians'>;
 type Trade = Tables<'trades'>;
@@ -112,22 +113,9 @@ const AdminContentManagement = () => {
     }
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      notation: 'compact',
-      maximumFractionDigits: 1,
-    }).format(value);
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
+  // formatCurrencyCompact and formatDateUtil are imported from '@/lib/formatters'
+  const formatCurrency = formatCurrencyCompact;
+  const formatDate = (dateString: string) => formatDateUtil(dateString);
 
   const getPartyBadgeVariant = (party: string) => {
     if (party.toLowerCase().includes('democrat')) return 'default';

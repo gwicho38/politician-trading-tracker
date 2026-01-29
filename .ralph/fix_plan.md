@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #50 - Testing: Add Tests for useAuth.tsx Hook - COMPLETED
+Loop #51 - Code Quality: Consolidate Date/Currency Formatting - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -77,13 +77,31 @@ Loop #50 - Testing: Add Tests for useAuth.tsx Hook - COMPLETED
 - [x] ~~Add tests for useAuth.tsx hook~~ - Loop #50 (25 tests)
 
 #### Low Priority - Code Quality
-- [ ] Consolidate duplicate date formatting logic
-- [ ] Consolidate duplicate currency formatting logic
+- [x] ~~Consolidate duplicate date formatting logic~~ - Loop #51 (formatters.ts)
+- [x] ~~Consolidate duplicate currency formatting logic~~ - Loop #51 (formatters.ts)
 - [ ] Add missing TypeScript strict mode compliance
 
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #51
+- [2026-01-29] 🧹 **Code Quality: Centralized Formatting Utilities**
+  - Created `client/src/lib/formatters.ts` with consolidated formatting functions:
+    - **Currency formatting (4 functions)**: `formatCurrencyCompact` (K/M/B suffix), `formatCurrencyFull` (full precision), `formatCurrencyWhole` (no decimals), `formatAmountRange` (min/max ranges)
+    - **Date formatting (5 functions)**: `formatDate` (configurable format), `formatTime`, `formatDateTime`, `formatDateForChart`, `toISODateString`
+    - **Number formatting (2 functions)**: `formatNumber` (with separators), `formatPercent`
+    - **DATE_FORMATS constant**: Predefined format options (short, long, withWeekday, monthYear, time, datetime, iso)
+    - `formatCurrency` alias for backwards compatibility
+  - Created `client/src/lib/formatters.test.ts` with 44 comprehensive tests
+  - Updated `client/src/lib/mockData.ts` to re-export from formatters
+  - Refactored 4 components to use centralized formatters:
+    - `LandingTradesTable.tsx` - uses `formatDate`, `formatAmountRange`
+    - `ReportErrorModal.tsx` - uses `formatDate`, `formatAmountRange`
+    - `TradeHistoryTable.tsx` - uses `formatCurrencyFull`, `formatDateTime`
+    - `AdminContentManagement.tsx` - uses `formatCurrencyCompact`, `formatDate`
+  - All 452 client tests passing (408 existing + 44 new)
+  - Reduces code duplication across ~30+ components
 
 ## ✅ Completed Loop #50
 - [2026-01-29] 🧪 **Testing: useAuth.tsx Hook Tests**

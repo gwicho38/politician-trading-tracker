@@ -23,6 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import type { TradingDisclosure } from '@/hooks/useSupabaseData';
+import { formatDate, formatAmountRange } from '@/lib/formatters';
 
 const ERROR_TYPES = [
   { value: 'wrong_amount', label: 'Wrong Amount' },
@@ -143,20 +144,10 @@ export function ReportErrorModal({ disclosure, open, onOpenChange }: ReportError
     }
   };
 
+  // formatDate and formatAmountRange are imported from '@/lib/formatters'
   const formatAmount = (min: number | null, max: number | null) => {
     if (min === null && max === null) return 'Not disclosed';
-    if (min === null) return `Up to $${max?.toLocaleString()}`;
-    if (max === null) return `$${min.toLocaleString()}+`;
-    if (min === max) return `$${min.toLocaleString()}`;
-    return `$${min.toLocaleString()} - $${max.toLocaleString()}`;
-  };
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
+    return formatAmountRange(min, max);
   };
 
   if (!disclosure) return null;

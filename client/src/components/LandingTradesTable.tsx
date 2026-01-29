@@ -18,6 +18,7 @@ import {
   Calendar,
   Flag,
 } from 'lucide-react';
+import { formatDate, formatAmountRange } from '@/lib/formatters';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -243,20 +244,11 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
     );
   };
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
-
+  // formatDate and formatAmountRange are now imported from '@/lib/formatters'
+  // Alias formatAmountRange to formatAmount for backwards compatibility in this file
   const formatAmount = (min: number | null, max: number | null) => {
     if (min === null && max === null) return 'Not disclosed';
-    if (min === null) return `Up to $${max?.toLocaleString()}`;
-    if (max === null) return `$${min.toLocaleString()}+`;
-    if (min === max) return `$${min.toLocaleString()}`;
-    return `$${min.toLocaleString()} - $${max.toLocaleString()}`;
+    return formatAmountRange(min, max);
   };
 
   const getTransactionBadge = (type: string) => {
