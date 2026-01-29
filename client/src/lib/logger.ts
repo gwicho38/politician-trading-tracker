@@ -3,7 +3,7 @@
  * Provides structured logging with backend integration for traceability
  */
 
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/integrations/supabase/client'
 
 export interface LogEntry {
   level: 'debug' | 'info' | 'warn' | 'error'
@@ -27,10 +27,16 @@ class FrontendLogger {
     this.sessionId = this.generateSessionId()
     this.flushInterval = setInterval(() => this.flush(), 30000) // Flush every 30 seconds
 
-    // Get user ID when available
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      this.userId = user?.id || null
-    })
+    // Get user ID when available (gracefully handle test environments)
+    try {
+      supabase.auth.getUser?.().then(({ data: { user } }) => {
+        this.userId = user?.id || null
+      }).catch(() => {
+        // Ignore auth errors in test/dev environments
+      })
+    } catch {
+      // Supabase client not fully initialized (test environment)
+    }
 
     // Cleanup on page unload
     window.addEventListener('beforeunload', () => {

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { logError } from '@/lib/logger';
 
 /**
  * Get access token from localStorage
@@ -71,7 +72,7 @@ export function useAlpacaCredentials() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('Error fetching credentials:', errorData);
+        logError('Failed to fetch credentials', 'alpaca', undefined, { errorData });
         throw new Error(errorData.message || 'Failed to fetch credentials');
       }
 
@@ -137,7 +138,7 @@ export function useAlpacaCredentials() {
       toast.success('Credentials saved successfully');
     },
     onError: (error: Error) => {
-      console.error('Error saving credentials:', error);
+      logError('Failed to save credentials', 'alpaca', error);
       toast.error('Failed to save credentials');
     },
   });
@@ -239,7 +240,7 @@ export function useAlpacaCredentials() {
       toast.success('Credentials cleared');
     },
     onError: (error: Error) => {
-      console.error('Error clearing credentials:', error);
+      logError('Failed to clear credentials', 'alpaca', error);
       toast.error('Failed to clear credentials');
     },
   });
