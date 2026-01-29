@@ -20,6 +20,7 @@ import { useAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/hooks/useAuth';
 import { HeaderSyncStatus } from '@/components/SyncStatus';
 import { GlobalSearch } from '@/components/GlobalSearch';
+import { safeClearByPrefix } from '@/lib/safeStorage';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -36,10 +37,8 @@ const Header = ({ onMenuClick }: HeaderProps) => {
     // Instead, just clear localStorage and reload
     supabase.auth.signOut().catch(console.error);
 
-    // Clear all Supabase auth tokens from localStorage
-    Object.keys(localStorage)
-      .filter(k => k.startsWith('sb-'))
-      .forEach(key => localStorage.removeItem(key));
+    // Clear all Supabase auth tokens from localStorage (with error handling)
+    safeClearByPrefix('sb-');
 
     // Navigate home and reload to clear all cached state
     navigate('/');

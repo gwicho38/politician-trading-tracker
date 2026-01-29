@@ -1,6 +1,9 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Mail } from 'lucide-react';
 
+// Support email from environment variable with fallback
+const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@govmarket.trade';
+
 interface RootErrorBoundaryProps {
   children: ReactNode;
 }
@@ -192,7 +195,7 @@ export class RootErrorBoundary extends Component<RootErrorBoundaryProps, RootErr
             >
               If this problem persists, please contact{' '}
               <a
-                href="mailto:luis@lefv.io"
+                href={`mailto:${SUPPORT_EMAIL}`}
                 style={{ color: '#3b82f6', textDecoration: 'underline' }}
               >
                 <Mail
@@ -204,7 +207,7 @@ export class RootErrorBoundary extends Component<RootErrorBoundaryProps, RootErr
                     marginRight: '4px',
                   }}
                 />
-                luis@lefv.io
+                {SUPPORT_EMAIL}
               </a>
             </p>
           </div>

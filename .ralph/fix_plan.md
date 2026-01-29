@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #40 - React Client Type Safety: Type Guard Utility - COMPLETED
+Loop #41 - React Client Security: Safe Storage & Configurable Email - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -63,8 +63,8 @@ Loop #40 - React Client Type Safety: Type Guard Utility - COMPLETED
 - [ ] Add null checks for optional properties in Dashboard components
 
 #### High Priority - Security
-- [ ] Replace hardcoded email in RootErrorBoundary with env var
-- [ ] Fix unsafe localStorage access in Header (no error handling)
+- [x] ~~Replace hardcoded email in RootErrorBoundary with env var~~ - Loop #41
+- [x] ~~Fix unsafe localStorage access in Header (no error handling)~~ - Loop #41
 
 #### Medium Priority - Testing
 - [ ] Add tests for Dashboard.tsx
@@ -84,6 +84,26 @@ Loop #40 - React Client Type Safety: Type Guard Utility - COMPLETED
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #41
+- [2026-01-29] 🔒 **Security: Safe Storage Utilities & Configurable Support Email**
+  - Created `client/src/lib/safeStorage.ts` with error-handling localStorage utilities:
+    - `isLocalStorageAvailable()` - checks if localStorage works
+    - `safeGetItem()`, `safeSetItem()`, `safeRemoveItem()` - safe read/write/delete
+    - `safeGetKeys()` - proper iteration over localStorage keys
+    - `safeClearByPrefix()` - clear keys by prefix (used for Supabase auth cleanup)
+    - `safeGetJSON()`, `safeSetJSON()` - JSON serialization with error handling
+  - Created `client/src/lib/safeStorage.test.ts` with 15 tests
+  - Updated `client/src/components/Header.tsx`:
+    - Replaced unsafe `Object.keys(localStorage)` with `safeClearByPrefix('sb-')`
+    - Sign-out now handles localStorage errors gracefully
+  - Updated `client/src/components/RootErrorBoundary.tsx`:
+    - Added `VITE_SUPPORT_EMAIL` environment variable support
+    - Removed hardcoded personal email (luis@lefv.io)
+    - Fallback to support@govmarket.trade if env var not set
+  - Updated `.env` and `.env.production.example` with VITE_SUPPORT_EMAIL
+  - Updated `client/src/test/setup.ts` with localStorage mock for jsdom
+  - All 180 client tests passing (15 new + 165 existing)
 
 ## ✅ Completed Loop #40
 - [2026-01-29] 📝 **Code Quality: Type Guard Utility for React Client**
