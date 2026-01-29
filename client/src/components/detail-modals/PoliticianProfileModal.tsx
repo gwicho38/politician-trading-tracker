@@ -166,7 +166,7 @@ export function PoliticianProfileModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader className="pb-4 border-b">
           <div className="flex items-start gap-4">
             {/* Avatar */}
@@ -239,29 +239,29 @@ export function PoliticianProfileModal({
             </div>
 
             {/* Trading Stats */}
-            <div className="grid grid-cols-4 gap-3">
-              <div className="rounded-lg bg-secondary/50 p-3 text-center">
-                <p className="text-xl font-bold">{detail.total_trades}</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+              <div className="rounded-lg bg-secondary/50 p-2 sm:p-3 text-center">
+                <p className="text-lg sm:text-xl font-bold">{detail.total_trades}</p>
                 <p className="text-xs text-muted-foreground">Total</p>
               </div>
-              <div className="rounded-lg bg-success/10 p-3 text-center">
+              <div className="rounded-lg bg-success/10 p-2 sm:p-3 text-center">
                 <div className="flex items-center justify-center gap-1">
-                  <TrendingUp className="h-3 w-3 text-success" />
-                  <p className="text-xl font-bold text-success">{detail.buyCount}</p>
+                  <TrendingUp className="h-3 w-3 text-success" aria-hidden="true" />
+                  <p className="text-lg sm:text-xl font-bold text-success">{detail.buyCount}</p>
                 </div>
                 <p className="text-xs text-muted-foreground">Buys</p>
               </div>
-              <div className="rounded-lg bg-destructive/10 p-3 text-center">
+              <div className="rounded-lg bg-destructive/10 p-2 sm:p-3 text-center">
                 <div className="flex items-center justify-center gap-1">
-                  <TrendingDown className="h-3 w-3 text-destructive" />
-                  <p className="text-xl font-bold text-destructive">{detail.sellCount}</p>
+                  <TrendingDown className="h-3 w-3 text-destructive" aria-hidden="true" />
+                  <p className="text-lg sm:text-xl font-bold text-destructive">{detail.sellCount}</p>
                 </div>
                 <p className="text-xs text-muted-foreground">Sells</p>
               </div>
-              <div className="rounded-lg bg-primary/10 p-3 text-center">
+              <div className="rounded-lg bg-primary/10 p-2 sm:p-3 text-center">
                 <div className="flex items-center justify-center gap-1">
-                  <Wallet className="h-3 w-3 text-primary" />
-                  <p className="text-xl font-bold text-primary">{detail.holdingCount}</p>
+                  <Wallet className="h-3 w-3 text-primary" aria-hidden="true" />
+                  <p className="text-lg sm:text-xl font-bold text-primary">{detail.holdingCount}</p>
                 </div>
                 <p className="text-xs text-muted-foreground">Holdings</p>
               </div>

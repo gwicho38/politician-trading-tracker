@@ -271,24 +271,26 @@ export function PositionsTable({ tradingMode }: PositionsTableProps) {
                     {formatCurrency(position.unrealized_intraday_pl)}
                   </td>
                   <td className="py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
+                    <div className="flex items-center justify-end gap-1 sm:gap-1">
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 px-2 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
+                        className="h-9 sm:h-7 px-2 sm:px-2 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 min-w-[44px]"
                         onClick={() => openTradeDialog(position as Position, 'buy')}
+                        aria-label={`Buy more ${position.symbol}`}
                       >
-                        <TrendingUp className="h-3 w-3 mr-1" />
-                        Buy
+                        <TrendingUp className="h-3.5 w-3.5 sm:h-3 sm:w-3 mr-1" aria-hidden="true" />
+                        <span className="hidden xs:inline">Buy</span>
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                        className="h-9 sm:h-7 px-2 sm:px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 min-w-[44px]"
                         onClick={() => openTradeDialog(position as Position, 'sell')}
+                        aria-label={`Sell ${position.symbol}`}
                       >
-                        <TrendingDown className="h-3 w-3 mr-1" />
-                        Sell
+                        <TrendingDown className="h-3.5 w-3.5 sm:h-3 sm:w-3 mr-1" aria-hidden="true" />
+                        <span className="hidden xs:inline">Sell</span>
                       </Button>
                     </div>
                   </td>
