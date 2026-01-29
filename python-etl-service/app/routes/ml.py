@@ -92,16 +92,66 @@ class TrainRequest(BaseModel):
 
 
 class ModelInfo(BaseModel):
-    """Model information."""
+    """Model information stored in ml_models table."""
+    model_config = {"extra": "allow"}  # Allow extra fields from database
+
     id: str
-    model_name: str
-    model_version: str
-    model_type: str
+    model_name: Optional[str] = None
+    model_version: Optional[str] = None
+    model_type: Optional[str] = None
     status: str
-    metrics: dict
+    metrics: Optional[dict] = None
+    feature_importance: Optional[dict] = None
+    training_completed_at: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class TrainJobResponse(BaseModel):
+    """Response for training job trigger."""
+    job_id: str
+    status: str
+    triggered_by: str
+    message: str
+
+
+class TrainJobStatusResponse(BaseModel):
+    """Response for training job status."""
+    job_id: str
+    status: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    error: Optional[str] = None
+    model_id: Optional[str] = None
+    metrics: Optional[dict] = None
+
+
+class ModelsListResponse(BaseModel):
+    """Response for listing all models."""
+    models: List[dict]
+    count: int
+
+
+class ModelActivateResponse(BaseModel):
+    """Response for model activation."""
+    message: str
+    status: str
+
+
+class FeatureImportanceResponse(BaseModel):
+    """Response for feature importance query."""
+    model_id: str
+    model_name: Optional[str]
+    model_version: Optional[str]
     feature_importance: dict
-    training_completed_at: Optional[str]
-    created_at: str
+    feature_names: List[str]
+
+
+class MLHealthResponse(BaseModel):
+    """Response for ML service health check."""
+    status: str
+    model_loaded: bool
+    model_version: Optional[str]
+    feature_count: int
 
 
 # ============================================================================
@@ -224,7 +274,7 @@ async def batch_predict_signals(request: BatchPredictRequest):
 # Training Endpoints
 # ============================================================================
 
-@router.post("/train")
+@router.post("/train", response_model=TrainJobResponse)
 async def trigger_training(
     request: TrainRequest,
     background_tasks: BackgroundTasks,
@@ -233,16 +283,23 @@ async def trigger_training(
     """
     Trigger model training job.
 
-    **Requires admin API key.**
+    **Requires admin API key** (`X-Admin-Key` header).
 
     This is a long-running operation that runs in the background.
-    Returns a job ID to check progress.
+    Returns a job ID to check progress via `GET /ml/train/{job_id}`.
 
-    The triggered_by field tracks the source:
-    - "api" (default): Direct API call
-    - "scheduler": Weekly scheduled training (MlTrainingJob)
-    - "batch_retraining": Threshold-based batch retraining (BatchRetrainingJob)
-    - "manual": Manual trigger via admin/CLI
+    **Training Sources** (`triggered_by` field):
+    - `api` (default): Direct API call
+    - `scheduler`: Weekly scheduled training (MlTrainingJob)
+    - `batch_retraining`: Threshold-based batch retraining (BatchRetrainingJob)
+    - `manual`: Manual trigger via admin/CLI
+
+    **Training Process:**
+    1. Fetches disclosures from the last `lookback_days`
+    2. Extracts features using FeaturePipeline
+    3. Trains XGBoost/LightGBM model
+    4. Uploads model artifact to Supabase storage
+    5. Records model metadata in `ml_models` table
     """
     job = create_training_job(
         lookback_days=request.lookback_days,
@@ -275,9 +332,19 @@ async def trigger_training(
     }
 
 
-@router.get("/train/{job_id}")
+@router.get("/train/{job_id}", response_model=TrainJobStatusResponse)
 async def get_training_status(job_id: str):
-    """Get training job status."""
+    """
+    Get training job status.
+
+    **Job Statuses:**
+    - `pending`: Job created, waiting to start
+    - `running`: Training in progress
+    - `completed`: Training finished successfully
+    - `failed`: Training failed (check `error` field)
+
+    Poll this endpoint to monitor long-running training jobs.
+    """
     job = get_training_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Training job {job_id} not found")
@@ -289,9 +356,19 @@ async def get_training_status(job_id: str):
 # Model Management Endpoints
 # ============================================================================
 
-@router.get("/models")
+@router.get("/models", response_model=ModelsListResponse)
 async def list_models():
-    """List all trained models with their metrics."""
+    """
+    List all trained models with their metrics.
+
+    Returns the 20 most recent models ordered by creation date.
+
+    **Model Statuses:**
+    - `active`: Currently used for predictions
+    - `archived`: Previously active, now replaced
+    - `training`: Training in progress
+    - `failed`: Training failed
+    """
     try:
         supabase = get_supabase()
         result = supabase.table('ml_models').select('*').order(
@@ -308,9 +385,15 @@ async def list_models():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/models/active")
+@router.get("/models/active", response_model=ModelInfo)
 async def get_active_model_info():
-    """Get information about the currently active model."""
+    """
+    Get information about the currently active model.
+
+    The active model is used for all `/ml/predict` and `/ml/batch-predict` requests.
+
+    Returns 404 if no model has been trained yet.
+    """
     try:
         supabase = get_supabase()
         result = supabase.table('ml_models').select('*').eq('status', 'active').order(
@@ -348,12 +431,17 @@ async def get_model_info(model_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/models/{model_id}/feature-importance")
+@router.get("/models/{model_id}/feature-importance", response_model=FeatureImportanceResponse)
 async def get_feature_importance(model_id: str):
     """
     Get feature importance for a specific model.
 
     Useful for explainability and understanding model behavior.
+
+    **Feature Importance Interpretation:**
+    - Higher values indicate greater influence on predictions
+    - Values are normalized (0-1 scale, sum to 1)
+    - Based on XGBoost/LightGBM gain-based importance
     """
     try:
         supabase = get_supabase()
@@ -380,7 +468,7 @@ async def get_feature_importance(model_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/models/{model_id}/activate")
+@router.post("/models/{model_id}/activate", response_model=ModelActivateResponse)
 async def activate_model(
     model_id: str,
     _admin_key: str = Depends(require_admin_key),
@@ -388,9 +476,14 @@ async def activate_model(
     """
     Activate a specific model for predictions.
 
-    **Requires admin API key.**
+    **Requires admin API key** (`X-Admin-Key` header).
 
-    Archives the currently active model.
+    **Side Effects:**
+    - Archives the currently active model (status: `active` → `archived`)
+    - Sets the specified model's status to `active`
+    - Reloads the model into memory for predictions
+
+    Use this to roll back to a previous model or activate a newly trained model.
     """
     with AuditContext(
         AuditAction.MODEL_ACTIVATE,
@@ -436,9 +529,18 @@ async def activate_model(
 # Health/Status Endpoints
 # ============================================================================
 
-@router.get("/health")
+@router.get("/health", response_model=MLHealthResponse)
 async def ml_health():
-    """ML service health check."""
+    """
+    ML service health check.
+
+    **Health Indicators:**
+    - `model_loaded`: Whether a trained model is loaded in memory
+    - `model_version`: Version string of the loaded model
+    - `feature_count`: Number of features the model expects
+
+    If `model_loaded` is `false`, predictions will fail until a model is trained.
+    """
     model = get_active_model()
 
     return {

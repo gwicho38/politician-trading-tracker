@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Quality Routes Test Coverage - COMPLETED
+Loop #38 - OpenAPI Documentation Enhancement - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -15,7 +15,7 @@ Quality Routes Test Coverage - COMPLETED
 - [x] ~~Add trade amount validation in House ETL parser (reject amounts > $50M to prevent parsing errors)~~ - Implemented with 19 tests
 - [x] ~~Fix CORS configuration in Edge Functions (currently allows all origins)~~ - Centralized CORS module with env-based allowlist
 - [x] ~~Add admin-only protection to sensitive endpoints (force-apply, model activation)~~ - Applied to 4 endpoints
-- [ ] Encrypt Alpaca API credentials at rest in user_api_keys table
+- [x] ~~Encrypt Alpaca API credentials at rest in user_api_keys table~~ - Implemented AES-256-GCM encryption
 
 ### Medium Priority
 - [x] ~~Add structured logging with correlation IDs for request tracing~~ - Implemented
@@ -29,21 +29,384 @@ Quality Routes Test Coverage - COMPLETED
 
 ### Low Priority
 - [x] ~~Increase test coverage for edge cases~~ - Added 57 tests for parser.py (62% → 96% coverage)
-- [x] ~~Add tests for auto_correction.py~~ - Added 53 tests (0% → 81% coverage)
+- [x] ~~Add tests for auto_correction.py~~ - Added 66 tests (0% → 100% coverage)
 - [x] ~~Add tests for etl_services.py~~ - Added 31 tests (29% → 95% coverage)
-- [x] ~~Add tests for feature_pipeline.py~~ - Added 44 tests (12% → 70% coverage)
+- [x] ~~Add tests for feature_pipeline.py~~ - Added 68 tests (12% → 99% coverage)
 - [x] ~~Add tests for ml_signal_model.py~~ - Added 45 tests (19% → 85% coverage)
 - [x] ~~Add tests for name_enrichment.py~~ - Added 36 tests (24% → 87% coverage)
 - [x] ~~Add tests for error_report_processor.py~~ - Added 42 tests (24% → 92% coverage)
 - [x] ~~Add tests for house_etl.py~~ - Added 23 tests (57% → 78% coverage)
 - [x] ~~Add tests for party_enrichment.py~~ - Added 12 tests (75% → 100% coverage)
 - [x] ~~Add tests for quality.py routes~~ - Added 23 tests (71% → 91% coverage)
-- [ ] Document API endpoints with OpenAPI/Swagger
+- [x] ~~Add tests for error_reports.py routes~~ - Added 21 tests (78% → 100% coverage)
+- [x] ~~Add tests for senate_etl.py~~ - Added 35 tests (24% → 58% coverage)
+- [x] ~~Document API endpoints with OpenAPI/Swagger~~ - Comprehensive documentation enhancement
 - [x] ~~Add audit logging for sensitive operations~~ - Implemented comprehensive audit logging
+
+### Discovered This Session (Pending)
+- [x] ~~Add Edge Function tests for crypto.ts encryption module~~ - Added 24 Deno tests
+- [x] ~~Add Edge Function tests for auth.ts security module~~ - Added 29 Deno tests
+- [x] ~~Add Edge Function tests for cors.ts CORS module~~ - Added 37 Deno tests
+- [x] ~~Implement credential rotation reminder (90-day key expiry tracking)~~ - Migration, Edge Function, 25 tests
+- [ ] Add Phoenix server authentication middleware (noted in Areas Needing Attention)
+- [x] ~~Improve ml_signal_model.py coverage (85% → 100%, all lines covered)~~
+- [x] ~~Improve politician_dedup.py coverage (81% → 100%, all lines covered)~~
+- [x] ~~Improve etl.py routes coverage (87% → 100%, all lines covered)~~
+- [x] ~~Fix UnboundLocalError in get_senators() - moved variable initialization before try block~~
+- [x] ~~Add type annotations for remaining ETL service modules~~ - house_etl.py, senate_etl.py, auto_correction.py
 
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #38
+- [2026-01-29] 📖 **Documentation: OpenAPI/Swagger Enhancement for ETL Service**
+  - Enhanced `app/main.py` with comprehensive OpenAPI configuration:
+    - Added detailed API description with authentication, rate limiting, and error response docs
+    - Added 8 tag descriptions (health, etl, enrichment, ml, quality, error-reports, deduplication, signals)
+    - Added license info and contact details
+  - Updated `app/routes/ml.py` with proper response models:
+    - Added `TrainJobResponse`, `TrainJobStatusResponse`, `ModelsListResponse`
+    - Added `ModelActivateResponse`, `FeatureImportanceResponse`, `MLHealthResponse`
+    - Made `ModelInfo` fields optional with `model_config` for extra fields
+    - Enhanced docstrings with job statuses, model statuses, feature importance details
+  - Updated `app/routes/error_reports.py` with full documentation:
+    - Added `ErrorType` and `ReportStatus` enums for OpenAPI
+    - Added response models: `ProcessResponse`, `ProcessOneResponse`, `StatsResponse`
+    - Added `NeedsReviewResponse`, `ForceApplyResponse`, `ReanalyzeResponse`
+    - Added `SuggestionResponse`, `OllamaHealthResponse`, `CorrectionDetail`
+    - Added `ForceApplyCorrection` typed model
+    - Enhanced docstrings with workflows and next steps
+  - Updated `app/routes/dedup.py` with proper models:
+    - Added `PoliticianRecord`, `DuplicateGroup`, `PreviewResponse`
+    - Added `ProcessResponse`, `DedupHealthResponse`
+    - Enhanced docstrings with merge logic and safety notes
+  - Updated `app/routes/health.py`:
+    - Added `HealthResponse` model
+    - Enhanced docstring with related health endpoints
+  - All 1499 tests passing
+
+## ✅ Completed Loop #37
+- [2026-01-28] 🔒 **Security: Credential Rotation Tracking (90-day key expiry)**
+  - Created `supabase/migrations/20260129_credential_rotation_tracking.sql`:
+    - Added `*_key_created_at` columns for paper, live, supabase, quiverquant keys
+    - Added `rotation_reminder_sent_at` for cooldown tracking
+    - Created `get_credential_health(user_email)` function: returns health status per credential
+    - Created `get_users_needing_rotation_reminder()` function: finds users needing reminders
+    - Added triggers to auto-set `key_created_at` on INSERT and UPDATE
+  - Created `supabase/functions/credential-health/index.ts` Edge Function:
+    - GET endpoint returns credential health for authenticated user
+    - `?action=rotation-needed` admin-only endpoint for listing users needing reminders
+    - Returns overall health (healthy/warning/critical), per-credential status, nearest expiry
+    - Uses shared CORS and auth modules
+  - Created `supabase/functions/credential-health/index.test.ts` with 25 tests:
+    - Health status calculation (healthy/warning/expired/not_configured)
+    - Overall health aggregation (critical if any expired, warning if any warning)
+    - Summary counting, nearest expiry calculation
+    - Response format validation, credential types, boundary conditions
+
+## ✅ Completed Loop #36
+- [2026-01-28] 📝 **Code Quality: Type Annotations for ETL Service Modules**
+  - Updated `app/services/house_etl.py`:
+    - Added class attribute types to `RateLimiter` (current_delay, consecutive_errors, etc.)
+    - Added type hints for module constants (HOUSE_BASE_URL: str, RATE_LIMIT_CODES: Set[int], etc.)
+    - Added return type annotations for all functions (`-> None`, `-> str`, etc.)
+    - Removed 15 TODO comments (functions already reviewed and working)
+  - Updated `app/services/senate_etl.py`:
+    - Added type hints for module constants
+    - Added proper type annotations for async functions
+    - Fixed Playwright page parameter type (`page: Any`)
+    - Removed 15 TODO comments
+  - Updated `app/services/auto_correction.py`:
+    - Fixed `any` → `Any` (proper Python typing)
+    - Added class attribute types to `AutoCorrector`
+    - Changed `list[CorrectionResult]` → `List[CorrectionResult]` (Python 3.8+ compatible)
+    - Added `-> None` return type for void methods
+  - All 202 tests passing for modified modules (74 house + 62 senate + 66 auto_correction)
+  - Commit: c4e629d
+
+## ✅ Completed Loop #35
+- [2026-01-28] 🧪 **Testing: Edge Function Tests for cors.ts CORS Module**
+  - Created `supabase/functions/_shared/cors.test.ts` with 37 Deno tests
+  - Test coverage:
+    - `isOriginAllowed`: Null origin, default production origins, non-allowed, custom ALLOWED_ORIGINS, whitespace trimming, dev mode, localhost patterns
+    - `getCorsHeaders`: Required headers, origin reflection, disallowed fallback, dev mode wildcard, null origin, custom fallback
+    - `handleCorsPreflightRequest`: 204 status, CORS headers, null body
+    - `corsJsonResponse`: JSON format, default/custom status, CORS headers, null origin
+    - `corsErrorResponse`: Error JSON, default/custom status, 500 errors, CORS headers
+    - `createCorsHeaders`: Origin handling, null/undefined, backwards compatibility
+    - `corsHeaders`: Legacy export object, required properties
+    - Edge cases: Empty ALLOWED_ORIGINS, single origin, strict boolean env checks
+  - All 37 tests passing
+  - Complete test coverage for shared CORS configuration module
+
+## ✅ Completed Loop #34
+- [2026-01-28] 🧪 **Testing: Edge Function Tests for auth.ts Security Module**
+  - Created `supabase/functions/_shared/auth.test.ts` with 29 Deno tests
+  - Test coverage:
+    - `constantTimeCompare`: Equal/different strings, empty strings, unicode, special chars, long strings, API keys
+    - `validateServiceRoleKey`: Key not configured, empty key, matching/non-matching token, partial match
+    - `extractBearerToken`: Valid Bearer header, null header, non-Bearer, malformed, empty token, JWT format
+    - `isServiceRoleRequest`: No auth header, valid/invalid service role, key not configured, no Bearer prefix
+    - Security: Timing consistency sanity check for constant-time comparison
+  - All 29 tests passing
+  - Complete test coverage for shared auth module
+
+## ✅ Completed Loop #33
+- [2026-01-28] 🧪 **Testing: Edge Function Tests for crypto.ts Encryption Module**
+  - Created `supabase/functions/_shared/crypto.test.ts` with 24 Deno tests
+  - Test coverage:
+    - `isEncryptionEnabled`: Returns correct state based on API_ENCRYPTION_KEY env var
+    - `encrypt`: Plaintext fallback when disabled, enc: prefix, random IV each call
+    - `decrypt`: Unencrypted passthrough, missing key error, invalid ciphertext, wrong key error
+    - Roundtrip: Preserves plaintext, special characters, unicode, empty strings, long strings
+    - `encryptFields`: Encrypts specified fields, skips null/undefined/non-string values
+    - `decryptFields`: Decrypts specified fields, handles unencrypted gracefully
+    - `generateEncryptionKey`: Returns base64 string, produces unique keys, usable for encryption
+    - Integration: Full credential lifecycle (encrypt, store, retrieve, decrypt)
+  - All 24 tests passing
+  - First test file for shared Edge Function modules
+
+## ✅ Completed Loop #32
+- [2026-01-28] 🧪 **Testing: Auto-Correction Service Test Coverage (81% → 100%)**
+  - Added 13 tests to `tests/test_auto_correction.py` (53 → 66 tests)
+  - New tests covering:
+    - `test_correct_date_format_applies_correction`: Non-dry-run path (line 226)
+    - `test_correct_amount_text_exact_applies_correction`: Exact match non-dry-run (line 270)
+    - `test_correct_amount_text_fuzzy_applies_correction`: Fuzzy match non-dry-run (line 294)
+    - `test_run_value_range_corrections_full_path`: Full execution with inverted records (lines 361-393)
+    - `test_run_value_range_corrections_respects_limit`: Limit enforcement (lines 387-388)
+    - `test_run_value_range_corrections_handles_exception`: Exception path (lines 390-392)
+    - `test_apply_range_correction_no_supabase`: No Supabase path (lines 430-431)
+    - `test_apply_range_correction_handles_exception`: Exception handling (lines 449-452)
+    - `test_apply_amount_correction_no_supabase`: No Supabase path (lines 457-458)
+    - `test_apply_amount_correction_handles_exception`: Exception handling (lines 476-479)
+    - `test_log_correction_handles_exception`: Insert failure (lines 509-510)
+    - `test_mark_correction_applied_handles_exception`: Update failure (lines 520-521)
+    - `test_rollback_correction_handles_exception`: Query failure (lines 567-569)
+  - Coverage improvement: 81% → 100% for app/services/auto_correction.py (+19 percentage points)
+  - All 1499 tests passing
+
+## ✅ Completed Loop #31
+- [2026-01-28] 🏗️ **Robustness: Fix UnboundLocalError in get_senators()**
+  - **Bug**: `get_senators()` endpoint failed with `UnboundLocalError` when Supabase was unavailable
+  - **Root Cause**: `with_disclosures` and `total_disclosures` variables were initialized inside the try block (line 487-488), so when `get_senate_supabase_client()` threw an exception, they were never defined
+  - **Fix**: Moved variable initialization before the try block, ensuring they're always defined
+  - **Result**: Endpoint now gracefully returns senators with zero counts when Supabase fails (as originally intended)
+  - Updated test to verify graceful handling (200 with zero counts) instead of documenting buggy behavior (500)
+  - Files modified: `app/routes/etl.py`, `tests/test_etl_routes.py`
+  - All 1486 tests passing
+
+## ✅ Completed Loop #30
+- [2026-01-28] 🧪 **Testing: ETL Routes Test Coverage (87% → 100%)**
+  - Added 10 tests to `tests/test_etl_routes.py` (31 → 41 tests)
+  - New test classes covering:
+    - `TestCleanupExecutions` extension (1 test):
+      - `test_cleanup_executions_supabase_error_returns_500`: Supabase connection error handling
+    - `TestIngestUrlExtended` (7 tests):
+      - `test_ingest_url_http_error_returns_502`: HTTP download failure handling
+      - `test_ingest_url_invalid_pdf_content_returns_400`: Invalid PDF validation
+      - `test_ingest_url_parses_transactions_from_tables`: Transaction extraction from PDF tables
+      - `test_ingest_url_uploads_to_supabase`: Full upload flow with politician lookup
+      - `test_ingest_url_supabase_error_returns_500`: Supabase connection error
+      - `test_ingest_url_no_politician_id_skips_upload`: Missing politician handling
+      - `test_ingest_url_upload_failure_not_counted`: Failed upload tracking
+    - `TestGetSenatorsExtended` (2 tests):
+      - `test_get_senators_with_disclosures`: Disclosure counting with trade data
+      - `test_get_senators_supabase_exception_returns_500`: Documents existing bug
+  - Coverage improvement: 87% → 100% for app/routes/etl.py (+13 percentage points)
+  - Previously uncovered lines now tested:
+    - Lines 389-390: HTTP error handling in PDF download
+    - Line 397: Invalid PDF content validation
+    - Lines 407-410: Transaction parsing from PDF tables
+    - Lines 427-447: Supabase upload flow (politician lookup, transaction upload)
+    - Lines 510-511: Senator disclosure counting (count > 0 path)
+    - Lines 554-555: Supabase error handling in cleanup endpoint
+  - **Bug Discovered**: `get_senators()` has UnboundLocalError when Supabase fails - `with_disclosures` and `total_disclosures` not initialized before exception handler
+  - All 1486 tests passing
+
+## ✅ Completed Loop #29
+- [2026-01-28] 🧪 **Testing: ML Routes Test Coverage (87% → 100%)**
+  - Added 8 tests to `tests/test_ml_routes.py` (28 → 36 tests)
+  - New tests covering:
+    - `test_predict_writes_to_cache`: Cache write verification (lines 153-154)
+    - `test_predict_exception_returns_500`: Prediction exception handling (lines 170-172)
+    - `test_batch_predict_handles_per_ticker_error`: Per-ticker error handling (lines 210-212)
+    - `test_list_models_returns_500_on_exception`: list_models exception (lines 306-308)
+    - `test_active_model_returns_500_on_exception`: get_active_model exception (lines 327-329)
+    - `test_get_model_returns_500_on_exception`: get_model exception (lines 346-348)
+    - `test_feature_importance_returns_500_on_exception`: feature_importance exception (lines 378-380)
+    - `test_activate_model_returns_500_on_exception`: activate_model exception (lines 430-432)
+  - Coverage improvement: 87% → 100% for ml.py routes (+13 percentage points)
+  - All 1476 tests passing
+
+## ✅ Completed Loop #28
+- [2026-01-28] 🧪 **Testing: Signals Routes Test Coverage (85% → 100%)**
+  - Added 9 tests to `tests/test_signals_routes.py` (13 → 22 tests)
+  - New tests covering:
+    - `test_apply_lambda_success_with_transformation`: Signal transformation verification
+    - `test_apply_lambda_success_returns_trace`: Execution trace response validation
+    - `test_apply_lambda_execution_error_tracked_in_trace`: Per-signal error tracking
+    - `test_apply_lambda_raises_execution_error`: LambdaExecutionError 400 response
+    - `test_apply_lambda_internal_error_returns_500`: General Exception 500 response
+    - `test_validate_valid_code_returns_true`: Valid code compilation
+    - `test_validate_code_with_modification`: Code that modifies signals
+    - `test_validate_syntax_error_returns_invalid`: Syntax error detection
+    - `test_validate_unexpected_error_returns_invalid`: Exception handling
+  - Coverage improvement: 85% → 100% for signals.py routes (+15 percentage points)
+  - Previously uncovered lines now tested:
+    - Lines 153-164: apply-lambda success path (trace response)
+    - Lines 178-183: LambdaExecutionError handling
+    - Lines 185-187: General Exception handling
+    - Lines 208-209: validate-lambda compile success
+    - Lines 214-215: validate-lambda unexpected error
+  - All 1468 tests passing
+
+## ✅ Completed Loop #27
+- [2026-01-28] 🧪 **Testing: Politician Dedup Test Coverage (81% → 100%)**
+  - Added 11 tests to `tests/test_politician_dedup.py` (36 → 47 tests)
+  - New test classes covering:
+    - `TestMergeGroupActual` (4 tests): Full merge logic
+      - Winner data update with loser fields
+      - No update when winner complete
+      - Disclosure count tracking
+      - Loser with None data response
+    - `TestProcessAllExtended` (3 tests): process_all() paths
+      - Success merge counting with disclosures
+      - Error result counting
+      - Mixed success/error handling
+    - `TestFindDuplicatesExtended` (2 tests): Pagination and filtering
+      - Pagination offset increment
+      - Single-record group skipping (line 154)
+    - `TestGetSupabase` (2 tests): _get_supabase method
+      - Client return verification (line 54)
+      - None handling
+  - Coverage improvement: 81% → 100% for politician_dedup.py (+19 percentage points)
+  - Previously uncovered lines now tested:
+    - Line 54: _get_supabase() return
+    - Line 136: Pagination offset increment
+    - Line 154: Skip groups with < 2 records
+    - Lines 257-301: _merge_group_actual() body
+    - Lines 344-345, 349: process_all() success/error paths
+  - All 1459 tests passing
+
+## ✅ Completed Loop #26
+- [2026-01-28] 🧪 **Testing: ML Signal Model Test Coverage (85% → 100%)**
+  - Added 13 tests to `tests/test_ml_signal_model.py` (45 → 58 tests)
+  - New test classes covering:
+    - `TestCongressSignalModelTrain` (7 tests): XGBoost training flow
+      - Mocked XGBoost/sklearn to avoid libomp dependency
+      - Success path with metrics and feature importance
+      - Custom hyperparameters merging
+      - Training metrics storage
+      - Label shifting ([-2,2] to [0,4] for XGBoost)
+      - Feature scaling verification
+      - ImportError handling when XGBoost unavailable
+    - `TestLoadActiveModelSuccessPaths` (6 tests): Model loading paths
+      - Local file cache loading
+      - Storage download when local missing
+      - Specific model_id loading
+      - Dict vs list result.data handling
+      - Empty data list handling
+      - model_artifact_path=None triggering download
+  - Coverage improvement: 85% → 100% for ml_signal_model.py (+15 percentage points)
+  - Previously uncovered lines now tested:
+    - Lines 232-299: train() method body (XGBoost training, data split, scaling, evaluation)
+    - Lines 457, 464-465, 470-473: load_active_model success paths
+  - All 1448 tests passing
+
+## ✅ Completed Loop #25
+- [2026-01-28] 🔒 **Security: Encrypt Alpaca API Credentials at Rest**
+  - Created `supabase/functions/_shared/crypto.ts` with encryption utilities:
+    - AES-256-GCM authenticated encryption (confidentiality + integrity)
+    - PBKDF2 key derivation with 100,000 iterations
+    - Random 12-byte IV per encryption (prevents pattern analysis)
+    - 'enc:' prefix for encrypted value identification
+    - Backwards compatible with unencrypted legacy data
+  - Updated Edge Functions to decrypt on retrieval:
+    - `alpaca-account/index.ts`: decrypt credentials, added save-credentials action
+    - `orders/index.ts`: decrypt credentials
+    - `strategy-follow/index.ts`: decrypt credentials
+  - Updated `client/src/hooks/useAlpacaCredentials.ts`:
+    - `saveCredentials` now calls Edge Function for encrypted storage
+    - No longer writes directly to REST API (was plain text)
+  - Updated `docs/USER_API_KEYS_IMPLEMENTATION.md`:
+    - Documented AES-256-GCM implementation
+    - Added setup instructions for `API_ENCRYPTION_KEY`
+  - Security features:
+    - Keys encrypted before storage
+    - Decryption on retrieval (transparent to application)
+    - Backwards compatible (handles unencrypted legacy data)
+    - Warning logged if encryption key not configured
+  - All 1435 tests passing
+
+## ✅ Completed Loop #24
+- [2026-01-28] 🧪 **Testing: Feature Pipeline Test Coverage Enhancement**
+  - Added 24 tests to `tests/test_feature_pipeline.py` (44 → 68 tests)
+  - New test classes covering:
+    - `TestPrepareTrainingDataSkipsNoReturn` (2 tests): forward_return_7d=None filtering
+    - `TestAggregateByWeekEmptyList` (2 tests): Empty/None ticker handling
+    - `TestAddStockReturnsWithYfinance` (12 tests): yfinance mocking, batch processing, missing data, exception handling
+    - `TestExtractSentimentWithApiKey` (2 tests): Ollama Authorization header
+    - `TestTrainingJobRunSuccess` (2 tests): Full success flow, storage upload failure
+    - `TestTrainingJobRunModelUpdateFailure` (2 tests): Exception handling paths
+    - `TestModuleConstants` (2 tests): Module configuration validation
+  - Coverage improvement: 70% → 99% for feature_pipeline.py (+29 percentage points)
+  - Tested functionality:
+    - Aggregation filtering when forward returns unavailable
+    - Stock returns calculation with yfinance batching
+    - Missing ticker data and date range edge cases
+    - Market momentum calculation (20-day lookback)
+    - Exception handling in return calculation
+    - Ollama API key authorization header
+    - Training job success and failure paths
+  - Remaining uncovered: Lines 195 (unreachable edge case), 267-269 (yfinance import error)
+  - All 1435 tests passing
+
+## ✅ Completed Loop #23
+- [2026-01-28] 🧪 **Testing: Senate ETL Test Coverage**
+  - Added 35 tests to `tests/test_senate_etl_service.py` (27 → 62 tests)
+  - New test classes covering:
+    - `TestUpsertSenatorExceptionHandling` (2 tests): Bioguide search exception, fallback failures
+    - `TestUpsertSenatorByNameExceptionHandling` (1 test): Exception handling
+    - `TestParseDatatablesRecord` (7 tests): Valid record, short record, non-PTR, full URL, date handling, fallback
+    - `TestParsePtrPage` (8 tests): HTML parsing, HTTP errors, sale/exchange types, ticker handling
+    - `TestDownloadSenatePdf` (6 tests): PDF download, rate limiting, server errors, exceptions
+    - `TestProcessSenateDisclosure` (5 tests): Transaction upload, politician finding, no URL handling
+    - `TestRunSenateEtl` (4 tests): Main function, exception handling, paper filtering
+    - `TestSenateETLConstants` (2 tests): Module constants and imports verification
+  - Coverage improvement: 24% → 58% for senate_etl.py (+34 percentage points)
+  - Tested functionality:
+    - Senator upsert exception handling and fallback paths
+    - DataTables record parsing with UUID extraction
+    - PTR page parsing from HTML (BeautifulSoup)
+    - PDF download with rate limiting and error handling
+    - Senate disclosure processing with politician lookup
+    - Main ETL function with senator fetch, upsert, and disclosure processing
+    - Paper disclosure filtering
+  - Remaining uncovered: Playwright browser automation functions (require real browser)
+  - All 1411 tests passing
+
+## ✅ Completed Loop #22
+- [2026-01-28] 🧪 **Testing: Error Reports Routes Test Coverage**
+  - Added 21 tests to `tests/test_error_reports_routes.py` (24 → 45 tests)
+  - New test classes covering:
+    - `TestProcessSingleReportSuccess` (2 tests): Success path with corrections, exception handling
+    - `TestGetErrorReportStatsExceptions` (1 test): Database exception handling
+    - `TestGetReportsNeedingReviewExceptions` (1 test): Database exception handling
+    - `TestForceApplyCorrectionExtended` (3 tests): Missing disclosure_id, apply failure, exception
+    - `TestReanalyzeReportExtended` (3 tests): Ollama unavailable, DB not configured, not found
+    - `TestGenerateSuggestion` (6 tests): Complete endpoint coverage
+    - `TestRequestModels` (5 tests): Request model defaults and validation
+  - Coverage improvement: 78% → 100% for error_reports.py (+22 percentage points)
+  - Tested functionality:
+    - process-one success path with corrections returned
+    - Exception handling in process-one, stats, needs-review, force-apply
+    - Missing disclosure_id returns 400
+    - Failed correction application returns 500
+    - generate-suggestion endpoint (all paths: 503, 404, no_corrections, suggestions, exception)
+    - Request model defaults (ProcessRequest, ProcessOneRequest, ForceApplyRequest, ReanalyzeRequest, GenerateSuggestionRequest)
+  - All 1376 tests passing
 
 ## ✅ Completed Loop #21
 - [2026-01-28] 🧪 **Testing: Quality Routes Test Coverage**
