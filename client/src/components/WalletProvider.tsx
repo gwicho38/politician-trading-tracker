@@ -3,6 +3,7 @@ import { WagmiProvider, useAccount, useReconnect } from 'wagmi';
 import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { config, isWalletDemoMode, WALLET_SESSION_KEY } from '@/config/wallet';
+import { logDebug, logError } from '@/lib/logger';
 import '@rainbow-me/rainbowkit/styles.css';
 
 /**
@@ -76,11 +77,11 @@ function WalletSessionManager({ children }: { children: ReactNode }) {
       try {
         const session = JSON.parse(savedSession);
         if (session.address) {
-          console.log('[WalletSession] Attempting to reconnect previous session');
+          logDebug('[WalletSession] Attempting to reconnect previous session', 'wallet');
           reconnect();
         }
       } catch (e) {
-        console.error('[WalletSession] Failed to parse saved session:', e);
+        logError('[WalletSession] Failed to parse saved session', 'wallet', e instanceof Error ? e : undefined);
         localStorage.removeItem(WALLET_SESSION_KEY);
       }
     }
@@ -96,7 +97,7 @@ function WalletSessionManager({ children }: { children: ReactNode }) {
       };
       localStorage.setItem(WALLET_SESSION_KEY, JSON.stringify(session));
       lastKnownAddressRef.current = address;
-      console.log('[WalletSession] Session saved for', address);
+      logDebug('[WalletSession] Session saved', 'wallet', { address });
     }
   }, [isConnected, address]);
 
@@ -124,7 +125,7 @@ function WalletSessionManager({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isDisconnected && lastKnownAddressRef.current && !isReconnecting) {
       // Unexpected disconnect - attempt to reconnect
-      console.log('[WalletSession] Unexpected disconnect, attempting reconnect');
+      logDebug('[WalletSession] Unexpected disconnect, attempting reconnect', 'wallet');
       const timer = setTimeout(() => {
         reconnect();
       }, 2000); // Wait 2 seconds before attempting reconnect
@@ -139,7 +140,7 @@ function WalletSessionManager({ children }: { children: ReactNode }) {
       // After reconnect was attempted and still disconnected, clear session
       const timer = setTimeout(() => {
         if (!isConnected) {
-          console.log('[WalletSession] Clearing stale session');
+          logDebug('[WalletSession] Clearing stale session', 'wallet');
           localStorage.removeItem(WALLET_SESSION_KEY);
           lastKnownAddressRef.current = null;
         }

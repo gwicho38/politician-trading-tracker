@@ -45,6 +45,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { logError } from '@/lib/logger';
 import { useTradingDisclosures, SortField, SortDirection, TradingDisclosure } from '@/hooks/useSupabaseData';
 import { ReportErrorModal } from '@/components/ReportErrorModal';
 import { PoliticianProfileModal } from '@/components/detail-modals/PoliticianProfileModal';
@@ -185,7 +186,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
       setCopiedTicker(ticker);
       setTimeout(() => setCopiedTicker(null), 2000);
     } catch (err) {
-      console.error('Failed to copy:', err);
+      logError('Failed to copy', 'ui', err instanceof Error ? err : undefined);
     }
   };
 

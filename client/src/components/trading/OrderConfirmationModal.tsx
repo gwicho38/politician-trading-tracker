@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrencyFull } from '@/lib/formatters';
+import { logError } from '@/lib/logger';
 
 /** Order result from the orders edge function */
 interface OrderResult {
@@ -125,7 +126,7 @@ export function OrderConfirmationModal({
         onOpenChange(false);
       }
     } catch (error) {
-      console.error('Error placing orders:', error);
+      logError('Error placing orders', 'trading', error instanceof Error ? error : undefined);
       toast.error(error instanceof Error ? error.message : 'Failed to place orders');
     } finally {
       setIsSubmitting(false);

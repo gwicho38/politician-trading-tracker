@@ -24,6 +24,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import type { TradingDisclosure } from '@/hooks/useSupabaseData';
 import { formatDate, formatAmountRange } from '@/lib/formatters';
+import { logError } from '@/lib/logger';
 
 const ERROR_TYPES = [
   { value: 'wrong_amount', label: 'Wrong Amount' },
@@ -133,7 +134,7 @@ export function ReportErrorModal({ disclosure, open, onOpenChange }: ReportError
 
       handleClose();
     } catch (error) {
-      console.error('Error submitting report:', error);
+      logError('Error submitting report', 'report', error instanceof Error ? error : undefined);
       toast({
         title: 'Failed to submit report',
         description: error instanceof Error ? error.message : 'Please try again later.',

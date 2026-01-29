@@ -22,6 +22,7 @@ import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
 // Use public client to avoid auth blocking issues
 import { supabasePublic as supabase } from '@/integrations/supabase/client';
+import { logError } from '@/lib/logger';
 
 // Timeout for profile generation (15 seconds)
 const PROFILE_FETCH_TIMEOUT = 15000;
@@ -99,7 +100,7 @@ export function PoliticianProfileModal({
       if (controller.signal.aborted || !isMountedRef.current) return;
 
       if (error) {
-        console.error('Profile fetch error:', error);
+        logError('Profile fetch error', 'politician-profile', undefined, { error: error.message });
         setProfileBio({
           bio: generateClientFallbackBio(pol, det),
           source: 'fallback',
@@ -119,7 +120,7 @@ export function PoliticianProfileModal({
       if (controller.signal.aborted || !isMountedRef.current) return;
 
       const errorMessage = err instanceof Error ? err.message : 'Network error';
-      console.error('Profile fetch error:', errorMessage);
+      logError('Profile fetch error', 'politician-profile', err instanceof Error ? err : undefined);
       setProfileBio({
         bio: generateClientFallbackBio(pol, det),
         source: 'fallback',

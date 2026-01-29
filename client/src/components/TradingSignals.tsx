@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Target, TrendingUp, TrendingDown, Minus, Download } from 'lucide-react';
 import { toast } from 'sonner';
+import { logError } from '@/lib/logger';
 
 interface TradingSignal {
   id: string;
@@ -59,7 +60,7 @@ const TradingSignals = () => {
       if (error) throw error;
       setSignals(data || []);
     } catch (error) {
-      console.error('Error fetching signals:', error);
+      logError('Error fetching signals', 'signals', error instanceof Error ? error : undefined);
       toast.error('Failed to load trading signals');
     } finally {
       setLoading(false);
@@ -88,7 +89,7 @@ const TradingSignals = () => {
         setGenerating(false);
       }, 2000);
     } catch (error) {
-      console.error('Error generating signals:', error);
+      logError('Error generating signals', 'signals', error instanceof Error ? error : undefined);
       toast.error('Failed to generate signals');
       setGenerating(false);
     }

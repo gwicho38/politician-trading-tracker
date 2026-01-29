@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Settings, Key, Shield, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { logError } from '@/lib/logger';
 
 interface APIKeys {
   alpaca_api_key?: string;
@@ -59,7 +60,7 @@ const SettingsPage = () => {
         alpaca_paper: true
       });
     } catch (error) {
-      console.error('Error loading API keys:', error);
+      logError('Error loading API keys', 'settings', error instanceof Error ? error : undefined);
     }
   };
 

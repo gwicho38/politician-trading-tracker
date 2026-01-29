@@ -33,6 +33,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
+import { logDebug } from '@/lib/logger';
 
 interface ModelInfo {
   id: string;
@@ -102,7 +103,7 @@ export function MLInsights({ mlEnhancedCount, totalSignals }: MLInsightsProps) {
       const response = await fetchWithRetry(`${PHOENIX_API_URL}/api/ml/models/active`, {
         maxRetries: 3,
         onRetry: (attempt, err, delay) => {
-          console.log(`[MLInsights] Retry ${attempt} after ${delay}ms: ${err.message}`);
+          logDebug(`[MLInsights] Retry ${attempt} after ${delay}ms: ${err.message}`, 'ml');
         },
       });
 

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SidebarLayout } from '@/components/layouts/SidebarLayout';
+import { logError } from '@/lib/logger';
 
 interface QualityCheck {
   id: string;
@@ -123,7 +124,7 @@ const DataQuality = () => {
         lastCheckTime: data?.[0]?.completed_at,
       }));
     } catch (error) {
-      console.error('Error loading checks:', error);
+      logError('Error loading checks', 'data-quality', error instanceof Error ? error : undefined);
     }
   };
 
@@ -149,7 +150,7 @@ const DataQuality = () => {
         warningIssues: warnings,
       }));
     } catch (error) {
-      console.error('Error loading issues:', error);
+      logError('Error loading issues', 'data-quality', error instanceof Error ? error : undefined);
     }
   };
 
@@ -171,7 +172,7 @@ const DataQuality = () => {
         autoCorrections: applied,
       }));
     } catch (error) {
-      console.error('Error loading corrections:', error);
+      logError('Error loading corrections', 'data-quality', error instanceof Error ? error : undefined);
     }
   };
 
@@ -187,7 +188,7 @@ const DataQuality = () => {
       toast.success('Issue marked as resolved');
       loadIssues();
     } catch (error) {
-      console.error('Error resolving issue:', error);
+      logError('Error resolving issue', 'data-quality', error instanceof Error ? error : undefined);
       toast.error('Failed to resolve issue');
     }
   };
@@ -204,7 +205,7 @@ const DataQuality = () => {
       toast.success('Issue ignored');
       loadIssues();
     } catch (error) {
-      console.error('Error ignoring issue:', error);
+      logError('Error ignoring issue', 'data-quality', error instanceof Error ? error : undefined);
       toast.error('Failed to ignore issue');
     }
   };
@@ -228,7 +229,7 @@ const DataQuality = () => {
       toast.success('Correction rolled back');
       loadCorrections();
     } catch (error) {
-      console.error('Error rolling back correction:', error);
+      logError('Error rolling back correction', 'data-quality', error instanceof Error ? error : undefined);
       toast.error('Failed to rollback correction');
     }
   };

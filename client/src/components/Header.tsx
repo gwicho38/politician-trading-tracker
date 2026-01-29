@@ -21,6 +21,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { HeaderSyncStatus } from '@/components/SyncStatus';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { safeClearByPrefix } from '@/lib/safeStorage';
+import { logError } from '@/lib/logger';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -35,7 +36,7 @@ const Header = ({ onMenuClick }: HeaderProps) => {
   const handleSignOut = () => {
     // Don't await signOut - it can block due to Supabase client issues
     // Instead, just clear localStorage and reload
-    supabase.auth.signOut().catch(console.error);
+    supabase.auth.signOut().catch((err) => logError('Sign out error', 'auth', err instanceof Error ? err : undefined));
 
     // Clear all Supabase auth tokens from localStorage (with error handling)
     safeClearByPrefix('sb-');
