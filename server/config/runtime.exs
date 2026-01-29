@@ -126,6 +126,18 @@ if config_env() == :prod do
 end
 
 # =============================================================================
+# API Key Authentication (All Environments)
+# =============================================================================
+#
+# ETL_API_KEY - Required API key for authenticating to /api/* endpoints
+# ETL_AUTH_DISABLED - Set to "true" to disable auth (development only)
+#
+# Same API key should be used for both Phoenix server and Python ETL service.
+
+config :server, :api_key, System.get_env("ETL_API_KEY")
+config :server, :auth_disabled, System.get_env("ETL_AUTH_DISABLED") == "true"
+
+# =============================================================================
 # Development & Test Configuration
 # =============================================================================
 #
@@ -134,4 +146,9 @@ end
 if config_env() in [:dev, :test] do
   # Allow optional service key in dev/test (jobs will fail gracefully if missing)
   config :server, :supabase_service_key, System.get_env("SUPABASE_SERVICE_KEY")
+
+  # Disable auth by default in test environment for easier testing
+  if config_env() == :test do
+    config :server, :auth_disabled, true
+  end
 end
