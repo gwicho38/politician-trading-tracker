@@ -2,11 +2,29 @@ defmodule ServerWeb.Router do
   @moduledoc """
   Phoenix Router for the Politician Trading Tracker API.
 
+  ## Authentication
+
+  All `/api/*` routes require API key authentication via:
+  - `X-API-Key` header (preferred)
+  - `Authorization: Bearer <key>` header
+  - `?api_key=<key>` query parameter (fallback)
+
+  Set `ETL_API_KEY` environment variable to enable authentication.
+  Set `ETL_AUTH_DISABLED=true` to disable auth in development.
+
   ## Routes
 
-  - `GET /health` - Liveness check (server running)
+  ### Public (no auth required)
+  - `GET /` - Health check (server running)
+  - `GET /health` - Liveness check
   - `GET /health/ready` - Readiness check (database connected)
-  - `GET /api/*` - API endpoints (to be added)
+  - `GET /ready` - Readiness check (alias)
+
+  ### Protected (API key required)
+  - `GET /api/jobs` - List scheduled jobs
+  - `POST /api/jobs/:job_id/run` - Trigger a specific job
+  - `POST /api/jobs/run-all` - Trigger all jobs
+  - `POST /api/ml/*` - ML prediction and training endpoints
   """
 
   use ServerWeb, :router
@@ -17,6 +35,7 @@ defmodule ServerWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug ServerWeb.Plugs.ApiKeyAuth
   end
 
   # ===========================================================================

@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #38 - OpenAPI Documentation Enhancement - COMPLETED
+Loop #39 - Phoenix Server Authentication Middleware - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -48,7 +48,7 @@ Loop #38 - OpenAPI Documentation Enhancement - COMPLETED
 - [x] ~~Add Edge Function tests for auth.ts security module~~ - Added 29 Deno tests
 - [x] ~~Add Edge Function tests for cors.ts CORS module~~ - Added 37 Deno tests
 - [x] ~~Implement credential rotation reminder (90-day key expiry tracking)~~ - Migration, Edge Function, 25 tests
-- [ ] Add Phoenix server authentication middleware (noted in Areas Needing Attention)
+- [x] ~~Add Phoenix server authentication middleware~~ - ApiKeyAuth plug with 39 tests
 - [x] ~~Improve ml_signal_model.py coverage (85% → 100%, all lines covered)~~
 - [x] ~~Improve politician_dedup.py coverage (81% → 100%, all lines covered)~~
 - [x] ~~Improve etl.py routes coverage (87% → 100%, all lines covered)~~
@@ -58,6 +58,32 @@ Loop #38 - OpenAPI Documentation Enhancement - COMPLETED
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #39
+- [2026-01-29] 🔒 **Security: Phoenix Server Authentication Middleware**
+  - Created `server/lib/server_web/plugs/api_key_auth.ex`:
+    - API key validation via X-API-Key header, Bearer token, or query param
+    - Constant-time comparison using SHA256 hashing to prevent timing attacks
+    - Public endpoint whitelist (/, /health, /health/ready, /ready)
+    - Backwards compatibility when no key configured
+    - Auth can be disabled via ETL_AUTH_DISABLED=true for development
+    - Comprehensive logging of auth failures
+  - Updated `server/lib/server_web/router.ex`:
+    - Added ApiKeyAuth plug to :api pipeline
+    - Updated moduledoc with authentication documentation
+    - All /api/* routes now require authentication
+  - Updated `server/config/runtime.exs`:
+    - Added ETL_API_KEY and ETL_AUTH_DISABLED environment variables
+    - Auth disabled by default in test environment
+    - Same API key works for both Phoenix and ETL services
+  - Created `server/test/server_web/plugs/api_key_auth_test.exs` with 39 tests:
+    - Public endpoint detection
+    - Auth disabled flag handling
+    - API key extraction from headers/query params
+    - Key validation and error handling
+    - Constant-time comparison
+    - Integration with router pipeline
+  - All 67 Phoenix tests passing (39 auth + 28 existing)
 
 ## ✅ Completed Loop #38
 - [2026-01-29] 📖 **Documentation: OpenAPI/Swagger Enhancement for ETL Service**
@@ -923,11 +949,11 @@ None - ready for next task
 1. ~~Security audit not yet performed~~ - Comprehensive audit complete, auth middleware added to ETL
 2. ~~Observability/logging could be improved~~ - Structured logging with correlation IDs implemented
 3. ~~ETL service had no authentication~~ - API key auth middleware now protects all endpoints
-4. Phoenix server still has no auth (needs implementation)
-5. Edge Functions use wildcard CORS (security risk)
-6. Alpaca API credentials stored unencrypted
-7. API documentation may be incomplete
-8. Type annotations still missing in several ETL service modules
+4. ~~Phoenix server still has no auth~~ - ApiKeyAuth plug now protects all /api/* routes
+5. ~~Edge Functions use wildcard CORS~~ - Centralized CORS module with env-based allowlist
+6. ~~Alpaca API credentials stored unencrypted~~ - Implemented AES-256-GCM encryption
+7. ~~API documentation may be incomplete~~ - Comprehensive OpenAPI documentation added
+8. ~~Type annotations still missing in several ETL service modules~~ - Added to house_etl, senate_etl, auto_correction
 9. ~~External API calls need better error handling~~ - ResilientClient with retry logic added
 
 ## 📊 Improvement Categories Reference
