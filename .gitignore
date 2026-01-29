@@ -113,3 +113,11 @@ analytics.json
 
 # Sample PDFs for testing
 sample_pdfs/
+
+# Playwright test results
+client/test-results/
+client/playwright-report/
+client/playwright/.cache/
+
+# Agent state files
+.ralph/
