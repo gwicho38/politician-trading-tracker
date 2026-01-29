@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #47 - Testing: Add Tests for PoliticianDetailModal.tsx Component - COMPLETED
+Loop #48 - Testing: Add Tests for ReferencePortfolio.tsx Page - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -72,7 +72,7 @@ Loop #47 - Testing: Add Tests for PoliticianDetailModal.tsx Component - COMPLETE
 - [x] ~~Add tests for TradingSignals.tsx~~ - Loop #45 (32 tests)
 - [x] ~~Add tests for PoliticiansView.tsx~~ - Loop #46 (29 tests)
 - [x] ~~Add tests for PoliticianDetailModal.tsx~~ - Loop #47 (27 tests)
-- [ ] Add tests for ReferencePortfolio.tsx
+- [x] ~~Add tests for ReferencePortfolio.tsx~~ - Loop #48 (40 tests)
 - [ ] Add tests for useAlpacaCredentials.ts hook
 - [ ] Add tests for useAuth.ts hook
 
@@ -84,6 +84,25 @@ Loop #47 - Testing: Add Tests for PoliticianDetailModal.tsx Component - COMPLETE
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #48
+- [2026-01-29] 🧪 **Testing: ReferencePortfolio.tsx Page Tests**
+  - Created `client/src/pages/ReferencePortfolio.test.tsx` with 40 comprehensive tests
+  - Test coverage:
+    - **Page header tests (3)**: Title, description, SidebarLayout wrapper
+    - **Market status tests (3)**: Open indicator, closed indicator, null handling
+    - **Trading status tests (3)**: Active badge, paused badge, null state
+    - **Last sync time tests (2)**: Display when available, hidden when null
+    - **Info alert tests (4)**: Confidence threshold, last trade time, null handling, defaults
+    - **Child component tests (7)**: MetricsCards, PerformanceChart, HoldingsTable, RiskMetrics, TradeHistoryTable (limit 20), FollowingStatusBadge, ApplyStrategyButton
+    - **Strategy configuration tests (9)**: All 8 config values display correctly, default values when undefined
+    - **Footer tests (2)**: Paper trading disclaimer, past performance disclaimer
+    - **Edge cases tests (4)**: Null state, undefined config, loading market status, missing timestamps
+    - **Hook integration tests (2)**: Calls useReferencePortfolioState, useMarketStatus
+  - Mocked SidebarLayout, reference-portfolio components, strategy-follow components, UI components
+  - Mocked useReferencePortfolioState and useMarketStatus hooks
+  - All 367 client tests passing (327 existing + 40 new)
+  - Build successful
 
 ## ✅ Completed Loop #47
 - [2026-01-29] 🧪 **Testing: PoliticianDetailModal.tsx Component Tests**
