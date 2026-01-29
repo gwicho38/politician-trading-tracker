@@ -22,6 +22,7 @@ import {
   Timeframe,
   ReferencePortfolioSnapshot,
 } from '@/hooks/useReferencePortfolio';
+import { formatCurrencyWhole } from '@/lib/formatters';
 
 interface ChartDataPoint {
   date: string;
@@ -40,14 +41,8 @@ const TIMEFRAME_OPTIONS: { value: Timeframe; label: string }[] = [
   { value: '1y', label: '1 Year' },
 ];
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-};
+// Use centralized formatter from '@/lib/formatters'
+const formatCurrency = formatCurrencyWhole;
 
 const formatPercent = (value: number | null) => {
   if (value === null) return 'N/A';

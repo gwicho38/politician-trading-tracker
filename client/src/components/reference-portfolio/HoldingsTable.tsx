@@ -14,15 +14,12 @@ import {
   useReferencePortfolioPositions,
   ReferencePortfolioPosition,
 } from '@/hooks/useReferencePortfolio';
+import { formatCurrencyFull } from '@/lib/formatters';
 
+// Use centralized formatter with null safety wrapper
 const formatCurrency = (value: number | null) => {
   if (value === null || value === undefined) return '-';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
+  return formatCurrencyFull(value);
 };
 
 const formatPercent = (value: number | null) => {

@@ -2,6 +2,7 @@ import { TrendingUp, TrendingDown, DollarSign, Target, Activity, Award } from 'l
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useReferencePortfolioState } from '@/hooks/useReferencePortfolio';
+import { formatCurrencyWhole } from '@/lib/formatters';
 
 interface MetricCardProps {
   label: string;
@@ -50,14 +51,8 @@ function MetricCard({ label, value, subValue, icon, trend, isLoading }: MetricCa
   );
 }
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-};
+// Use centralized formatter from '@/lib/formatters'
+const formatCurrency = formatCurrencyWhole;
 
 const formatPercent = (value: number | null, showSign = true) => {
   if (value === null || value === undefined) return 'N/A';

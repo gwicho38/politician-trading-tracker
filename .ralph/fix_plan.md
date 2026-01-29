@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #51 - Code Quality: Consolidate Date/Currency Formatting - COMPLETED
+Loop #52 - Code Quality: Extend Formatter Consolidation to Trading Components - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -79,11 +79,26 @@ Loop #51 - Code Quality: Consolidate Date/Currency Formatting - COMPLETED
 #### Low Priority - Code Quality
 - [x] ~~Consolidate duplicate date formatting logic~~ - Loop #51 (formatters.ts)
 - [x] ~~Consolidate duplicate currency formatting logic~~ - Loop #51 (formatters.ts)
+- [x] ~~Extend formatter consolidation to trading components~~ - Loop #52 (9 components)
 - [ ] Add missing TypeScript strict mode compliance
+- [ ] Replace `any` types in Recharts tooltip components (VolumeChart, TradeChart, PerformanceChart)
+- [ ] Replace `any` types in error handling catch blocks (7+ components)
+- [ ] Add tests for trading module (7 untested components)
+- [ ] Remove/migrate console.log debug statements to logger utility
 
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #52
+- [2026-01-29] 🧹 **Code Quality: Extend Formatter Consolidation to Trading Components**
+  - Updated 9 additional components to use centralized formatters from `lib/formatters.ts`:
+    - **Trading module (5)**: OrderConfirmationModal, QuickTradeDialog, OrderHistory, PositionsTable, AccountDashboard
+    - **Reference portfolio (4)**: MetricsCards, HoldingsTable, PerformanceChart, TradeHistoryTable (already partially updated)
+  - Replaced duplicate `formatCurrency` and `formatDate` function definitions
+  - Preserved custom behavior where needed (e.g., signed percent formatting with + prefix)
+  - All 452 client tests passing
+  - Added 4 new discovered issues to backlog for future loops
 
 ## ✅ Completed Loop #51
 - [2026-01-29] 🧹 **Code Quality: Centralized Formatting Utilities**
