@@ -57,31 +57,35 @@ const TradesView = ({ jurisdictionId, searchQuery }: TradesViewProps) => {
       <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl p-6">
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2">
-              <Filter className="h-4 w-4" />
+            <Button variant="outline" size="sm" className="gap-2" aria-label="Open trade filters">
+              <Filter className="h-4 w-4" aria-hidden="true" />
               Filter
             </Button>
           </div>
         </div>
 
         {/* Jurisdiction filters */}
-        <div className="mb-4 flex flex-wrap gap-2">
-          <Badge 
-            variant="jurisdiction" 
-            className={`cursor-pointer transition-colors ${!filterJurisdiction ? 'bg-primary/20 text-primary border-primary/30' : ''}`}
+        <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Filter by jurisdiction">
+          <button
+            type="button"
+            className={`inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors cursor-pointer border-border/50 bg-card/50 text-foreground ${!filterJurisdiction ? 'bg-primary/20 text-primary border-primary/30' : ''}`}
             onClick={() => setFilterJurisdiction(undefined)}
+            aria-pressed={!filterJurisdiction}
+            aria-label="Show all jurisdictions"
           >
             All
-          </Badge>
+          </button>
           {jurisdictions?.map((j) => (
-            <Badge 
-              key={j.id} 
-              variant="jurisdiction"
-              className={`cursor-pointer transition-colors ${filterJurisdiction === j.id ? 'bg-primary/20 text-primary border-primary/30' : ''}`}
+            <button
+              key={j.id}
+              type="button"
+              className={`inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors cursor-pointer border-border/50 bg-card/50 text-foreground ${filterJurisdiction === j.id ? 'bg-primary/20 text-primary border-primary/30' : ''}`}
               onClick={() => setFilterJurisdiction(j.id)}
+              aria-pressed={filterJurisdiction === j.id}
+              aria-label={`Filter by ${j.name}`}
             >
-              {j.flag} {j.name}
-            </Badge>
+              <span aria-hidden="true">{j.flag}</span> {j.name}
+            </button>
           ))}
         </div>
 

@@ -16,7 +16,7 @@ const TopTickers = () => {
             <h3 className="text-base sm:text-lg font-semibold text-foreground">Most Traded Tickers</h3>
             <p className="text-xs sm:text-sm text-muted-foreground">By number of transactions</p>
           </div>
-          <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
+          <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" aria-hidden="true" />
         </div>
 
         <div className="space-y-2 sm:space-y-3">
@@ -37,13 +37,15 @@ const TopTickers = () => {
             </p>
           ) : (
             tickers.map((ticker, index) => (
-              <div
+              <button
                 key={ticker.ticker}
+                type="button"
                 onClick={() => setSelectedTicker(ticker.ticker)}
-                className="group flex items-center justify-between rounded-lg p-2 sm:p-3 transition-all duration-200 hover:bg-secondary/50 cursor-pointer gap-2"
+                className="group w-full flex items-center justify-between rounded-lg p-2 sm:p-3 transition-all duration-200 hover:bg-secondary/50 cursor-pointer gap-2 text-left"
+                aria-label={`View details for ${ticker.ticker} - ${ticker.name}, ${ticker.count} trades, ${formatCurrency(ticker.totalVolume)} total volume`}
               >
                 <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                  <div className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-secondary font-mono text-xs sm:text-sm font-bold text-muted-foreground flex-shrink-0">
+                  <div className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-secondary font-mono text-xs sm:text-sm font-bold text-muted-foreground flex-shrink-0" aria-hidden="true">
                     #{index + 1}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -64,7 +66,7 @@ const TopTickers = () => {
                     {formatCurrency(ticker.totalVolume)}
                   </p>
                 </div>
-              </div>
+              </button>
             ))
           )}
         </div>

@@ -144,10 +144,12 @@ export function FloatingCart() {
         onClick={toggleCart}
         className="fixed bottom-6 left-6 z-40 h-14 w-14 rounded-full shadow-lg"
         size="icon"
+        aria-label={totalItems > 0 ? `Shopping cart (${totalItems} ${totalItems === 1 ? 'item' : 'items'})` : 'Shopping cart (empty)'}
+        aria-expanded={isOpen}
       >
-        <ShoppingCart className="h-6 w-6" />
+        <ShoppingCart className="h-6 w-6" aria-hidden="true" />
         {totalItems > 0 && (
-          <Badge className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0 flex items-center justify-center text-xs">
+          <Badge className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0 flex items-center justify-center text-xs" aria-hidden="true">
             {totalItems}
           </Badge>
         )}
@@ -159,18 +161,18 @@ export function FloatingCart() {
           <Card className="w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
             <CardHeader className="flex flex-row items-center justify-between shrink-0">
               <CardTitle className="flex items-center gap-2">
-                <ShoppingCart className="h-5 w-5" />
+                <ShoppingCart className="h-5 w-5" aria-hidden="true" />
                 Cart ({totalItems} {totalItems === 1 ? 'signal' : 'signals'})
               </CardTitle>
-              <Button variant="ghost" size="sm" onClick={closeCart}>
-                <X className="h-4 w-4" />
+              <Button variant="ghost" size="sm" onClick={closeCart} aria-label="Close cart">
+                <X className="h-4 w-4" aria-hidden="true" />
               </Button>
             </CardHeader>
 
             <CardContent className="overflow-y-auto flex-1">
               {items.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <div className="text-center py-8 text-muted-foreground" role="status">
+                  <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-50" aria-hidden="true" />
                   <p>Your cart is empty</p>
                   <p className="text-sm">Add some trading signals to get started</p>
                 </div>
@@ -228,8 +230,9 @@ export function FloatingCart() {
                           variant="ghost"
                           size="sm"
                           onClick={() => removeFromCart(item.signal.ticker)}
+                          aria-label={`Remove ${item.signal.ticker} from cart`}
                         >
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                          <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
                         </Button>
                       </div>
                     </div>
@@ -262,7 +265,7 @@ export function FloatingCart() {
                   >
                     {placingOrders ? (
                       <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
                         Placing Orders...
                       </>
                     ) : (
