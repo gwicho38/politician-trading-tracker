@@ -362,7 +362,7 @@ function SignalDistributionChart({
     );
   }
 
-  const handlePieClick = (data: any) => {
+  const handlePieClick = (data: { type?: SignalType } | null) => {
     if (data && data.type) {
       // Toggle selection
       onSelectType(selectedType === data.type ? null : data.type);
@@ -405,7 +405,7 @@ function SignalDistributionChart({
                 const type = labelToSignalType[e.value];
                 if (type) onSelectType(selectedType === type ? null : type);
               }}
-              formatter={(value, entry: any) => {
+              formatter={(value, entry: { color?: string }) => {
                 const item = data.find((d) => d.name === value);
                 const isSelected = selectedType === item?.type;
                 return (
@@ -748,16 +748,18 @@ function SignalsTable({ signals }: { signals: PreviewSignal[] }) {
 
   const sortedSignals = useMemo(() => {
     return [...signals].sort((a, b) => {
-      const aVal: any = a[sortField];
-      const bVal: any = b[sortField];
+      const aVal = a[sortField];
+      const bVal = b[sortField];
 
-      if (typeof aVal === 'string') {
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
         return sortDirection === 'asc'
           ? aVal.localeCompare(bVal)
           : bVal.localeCompare(aVal);
       }
 
-      return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+      const aNum = typeof aVal === 'number' ? aVal : 0;
+      const bNum = typeof bVal === 'number' ? bVal : 0;
+      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
     });
   }, [signals, sortField, sortDirection]);
 

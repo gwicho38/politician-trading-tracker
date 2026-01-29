@@ -19,6 +19,7 @@ defmodule ServerWeb.Router do
   - `GET /health` - Liveness check
   - `GET /health/ready` - Readiness check (database connected)
   - `GET /ready` - Readiness check (alias)
+  - `GET /api/jobs/sync-status` - Last sync time (public)
 
   ### Protected (API key required)
   - `GET /api/jobs` - List scheduled jobs
@@ -36,6 +37,10 @@ defmodule ServerWeb.Router do
   pipeline :api do
     plug :accepts, ["json"]
     plug ServerWeb.Plugs.ApiKeyAuth
+  end
+
+  pipeline :public_api do
+    plug :accepts, ["json"]
   end
 
   # ===========================================================================
@@ -57,7 +62,18 @@ defmodule ServerWeb.Router do
   end
 
   # ===========================================================================
-  # API Routes
+  # Public API Routes (no auth required)
+  # ===========================================================================
+
+  scope "/api", ServerWeb do
+    pipe_through :public_api
+
+    # Sync status is public - shows last sync time (non-sensitive)
+    get "/jobs/sync-status", JobController, :sync_status
+  end
+
+  # ===========================================================================
+  # Protected API Routes (API key required)
   # ===========================================================================
 
   scope "/api", ServerWeb do
@@ -65,7 +81,6 @@ defmodule ServerWeb.Router do
 
     # Job management
     get "/jobs", JobController, :index
-    get "/jobs/sync-status", JobController, :sync_status
     get "/jobs/:job_id", JobController, :show
     post "/jobs/:job_id/run", JobController, :run
     post "/jobs/run-all", JobController, :run_all
