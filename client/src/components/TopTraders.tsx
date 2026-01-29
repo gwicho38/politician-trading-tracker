@@ -5,6 +5,7 @@ import { usePoliticians, type Politician } from '@/hooks/useSupabaseData';
 import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
 import { PoliticianDetailModal } from '@/components/detail-modals';
+import { toParty } from '@/lib/typeGuards';
 
 const TopTraders = () => {
   const { data: politicians, isLoading, error } = usePoliticians();
@@ -42,44 +43,47 @@ const TopTraders = () => {
               No politicians tracked yet
             </p>
           ) : (
-            sortedPoliticians.map((politician, index) => (
-              <div
-                key={politician.id}
-                onClick={() => setSelectedPolitician(politician)}
-                className="group flex items-center justify-between rounded-lg p-2 sm:p-3 transition-all duration-200 hover:bg-secondary/50 cursor-pointer gap-2"
-              >
-                <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                  <div className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-secondary font-mono text-xs sm:text-sm font-bold text-muted-foreground flex-shrink-0">
-                    #{index + 1}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                      <span className="font-medium text-sm sm:text-base text-foreground group-hover:text-primary transition-colors truncate">
-                        {politician.name}
-                      </span>
-                      <Badge
-                        variant="outline"
-                        className={cn("text-xs px-1 sm:px-1.5 py-0 flex-shrink-0", getPartyBg(politician.party), getPartyColor(politician.party))}
-                      >
-                        {politician.party}
-                      </Badge>
+            sortedPoliticians.map((politician, index) => {
+              const party = toParty(politician.party);
+              return (
+                <div
+                  key={politician.id}
+                  onClick={() => setSelectedPolitician(politician)}
+                  className="group flex items-center justify-between rounded-lg p-2 sm:p-3 transition-all duration-200 hover:bg-secondary/50 cursor-pointer gap-2"
+                >
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                    <div className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-secondary font-mono text-xs sm:text-sm font-bold text-muted-foreground flex-shrink-0">
+                      #{index + 1}
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {politician.chamber} • {politician.state || politician.jurisdiction_id}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                        <span className="font-medium text-sm sm:text-base text-foreground group-hover:text-primary transition-colors truncate">
+                          {politician.name}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={cn("text-xs px-1 sm:px-1.5 py-0 flex-shrink-0", getPartyBg(party), getPartyColor(party))}
+                        >
+                          {party}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {politician.chamber || 'Unknown'} • {politician.state || politician.jurisdiction_id || 'Unknown'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-mono text-xs sm:text-sm font-semibold text-foreground">
+                      {formatCurrency(politician.total_volume ?? 0)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {politician.total_trades ?? 0} trades
                     </p>
                   </div>
                 </div>
-
-                <div className="text-right flex-shrink-0">
-                  <p className="font-mono text-xs sm:text-sm font-semibold text-foreground">
-                    {formatCurrency(politician.total_volume)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {politician.total_trades} trades
-                  </p>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

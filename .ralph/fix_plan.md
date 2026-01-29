@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #41 - React Client Security: Safe Storage & Configurable Email - COMPLETED
+Loop #42 - React Client Type Safety: Null Checks & Type Guards in Dashboard Components - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -60,7 +60,7 @@ Loop #41 - React Client Security: Safe Storage & Configurable Email - COMPLETED
 - [x] ~~Create type guard utility (`lib/typeGuards.ts`) - validates party, transaction types at runtime~~ - Loop #40
 - [x] ~~Fix unsafe party type casting in RecentTrades, TradesView (2 components)~~ - Loop #40
 - [x] ~~Fix unsafe transaction type casting in RecentTrades, TradesView~~ - Loop #40
-- [ ] Add null checks for optional properties in Dashboard components
+- [x] ~~Add null checks for optional properties in Dashboard components~~ - Loop #42
 
 #### High Priority - Security
 - [x] ~~Replace hardcoded email in RootErrorBoundary with env var~~ - Loop #41
@@ -84,6 +84,20 @@ Loop #41 - React Client Security: Safe Storage & Configurable Email - COMPLETED
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #42
+- [2026-01-29] 📝 **Code Quality: Null Checks & Type Guards in Dashboard Components**
+  - Updated `client/src/components/TopTraders.tsx`:
+    - Imported and used `toParty()` type guard for safe party type validation
+    - Added null checks for `politician.total_volume` and `politician.total_trades` using `?? 0`
+    - Added fallbacks for `politician.chamber` and `politician.state` using `|| 'Unknown'`
+  - Updated `client/src/components/LandingTradesTable.tsx`:
+    - Imported and used `toParty()` type guard
+    - Replaced 2 instances of unsafe `as 'D' | 'R' | 'I' | 'Other'` type assertion with `toParty()`
+    - Mobile card view (line 537) and desktop table view (line 711) now use type-safe party conversion
+  - All 180 client tests passing
+  - Build successful
+  - Components now handle undefined/null values gracefully at runtime
 
 ## ✅ Completed Loop #41
 - [2026-01-29] 🔒 **Security: Safe Storage Utilities & Configurable Support Email**
