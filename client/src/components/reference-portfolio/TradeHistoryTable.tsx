@@ -14,26 +14,16 @@ import {
   useReferencePortfolioTrades,
   ReferencePortfolioTransaction,
 } from '@/hooks/useReferencePortfolio';
+import { formatCurrencyFull, formatDateTime } from '@/lib/formatters';
 
+// Wrapper functions for backwards compatibility with component logic
 const formatCurrency = (value: number | null) => {
   if (value === null || value === undefined) return '-';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
+  return formatCurrencyFull(value);
 };
 
 const formatDate = (dateString: string) => {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  return formatDateTime(dateString) || '-';
 };
 
 interface TradeHistoryTableProps {
