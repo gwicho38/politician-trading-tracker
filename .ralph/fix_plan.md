@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #58 - Testing: Add Tests for QuickTradeDialog Component - COMPLETED
+Loop #59 - Testing: Add Tests for AccountDashboard Component - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -83,12 +83,31 @@ Loop #58 - Testing: Add Tests for QuickTradeDialog Component - COMPLETED
 - [x] ~~Replace `any` types in Recharts tooltip components~~ - Loop #53 (3 components)
 - [x] ~~Replace `any` types in error handling catch blocks~~ - Loop #53 (7 components)
 - [ ] Add missing TypeScript strict mode compliance
-- [ ] Add tests for trading module (2 remaining untested components: AccountDashboard, OrderConfirmationModal)
+- [ ] Add tests for trading module (1 remaining untested component: OrderConfirmationModal)
 - [ ] Remove/migrate console.log debug statements to logger utility
 
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #59
+- [2026-01-29] 🧪 **Testing: AccountDashboard Component Tests**
+  - Created `client/src/components/trading/AccountDashboard.test.tsx` with 49 comprehensive tests
+  - Test coverage:
+    - **Loading state tests (2)**: Loading spinner display, no content when loading
+    - **Error state tests (3)**: Error message, retry button, refetch on retry
+    - **Empty state tests (2)**: Connect message when no account, wallet icon
+    - **Header display tests (8)**: Title, paper/live badges, active status, non-active status, refresh button, refetch, disabled during refetch, animating icon
+    - **Warning badges tests (5)**: Trading blocked, account blocked, pattern day trader, multiple badges, no badges
+    - **Main metrics tests (9)**: Portfolio value label/value, P&L label/value/percentage, cash label/value, buying power label/value
+    - **P&L styling tests (5)**: Green for positive, red for negative, trending icons
+    - **Secondary metrics tests (7)**: Equity, long market value, short market value, last close equity
+    - **Trading mode tests (2)**: Paper and live mode hook calls
+    - **calculateDailyPnL tests (2)**: Integration with account, zero P&L handling
+    - **Edge cases tests (2)**: Undefined values, NaN values
+  - Mocked useAlpacaAccount hook, calculateDailyPnL, formatters
+  - All 703 client tests passing (654 existing + 49 new)
+  - Build successful
 
 ## ✅ Completed Loop #58
 - [2026-01-29] 🧪 **Testing: QuickTradeDialog Component Tests**
