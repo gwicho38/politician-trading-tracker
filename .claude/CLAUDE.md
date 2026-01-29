@@ -307,4 +307,9 @@ This repo is configured for autonomous development with ClawdBot:
 
 ---
 
+
+## Learning
+
+- If you end up using a script or creation some shell logic -- e.g., to connect to an external data source like supabase etc ... then after doing so, reason about whether it would make sense to add this to a local mcli workflow or create a new mcli workflow. Then, prior to running scripts on your own review mcli to make sure that there isn't an mcli workflow that supports the capability that you need.
+
 *Last updated: January 2026*
