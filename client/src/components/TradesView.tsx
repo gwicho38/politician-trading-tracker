@@ -6,6 +6,7 @@ import TradeCard from '@/components/TradeCard';
 import { useTrades, useJurisdictions } from '@/hooks/useSupabaseData';
 import { usePagination } from '@/hooks/usePagination';
 import { PaginationControls } from '@/components/PaginationControls';
+import { toParty, toDisplayTransactionType } from '@/lib/typeGuards';
 
 interface TradesViewProps {
   jurisdictionId?: string;
@@ -98,11 +99,11 @@ const TradesView = ({ jurisdictionId, searchQuery }: TradesViewProps) => {
                   id: trade.id,
                   politicianId: trade.politician_id,
                   politicianName: trade.politician?.name || 'Unknown',
-                  party: (trade.politician?.party as 'D' | 'R' | 'I' | 'Other') || 'Other',
+                  party: toParty(trade.politician?.party),
                   jurisdiction: trade.politician?.jurisdiction_id || '',
                   ticker: trade.ticker || trade.asset_ticker || '',
                   company: trade.company || trade.asset_name || '',
-                  type: (trade.trade_type === 'buy' || trade.trade_type === 'sell' ? trade.trade_type : 'buy') as 'buy' | 'sell',
+                  type: toDisplayTransactionType(trade.trade_type) === 'buy' || toDisplayTransactionType(trade.trade_type) === 'sell' ? toDisplayTransactionType(trade.trade_type) : 'buy',
                   amount: trade.amount_range,
                   estimatedValue: trade.estimated_value,
                   filingDate: trade.filing_date || trade.disclosure_date,

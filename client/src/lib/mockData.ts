@@ -1,7 +1,12 @@
+import { type Party, type DisplayTransactionType } from './typeGuards';
+
+// Re-export Party type for backwards compatibility
+export type { Party } from './typeGuards';
+
 export interface Politician {
   id: string;
   name: string;
-  party: 'D' | 'R' | 'I' | 'Other';
+  party: Party;
   chamber: string;
   jurisdiction: string;
   state?: string;
@@ -14,11 +19,11 @@ export interface Trade {
   id: string;
   politicianId: string;
   politicianName: string;
-  party: 'D' | 'R' | 'I' | 'Other';
+  party: Party;
   jurisdiction: string;
   ticker: string;
   company: string;
-  type: 'buy' | 'sell';
+  type: Extract<DisplayTransactionType, 'buy' | 'sell'>;
   amount: string;
   estimatedValue: number;
   filingDate: string;
