@@ -10,6 +10,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { SkipLink } from '@/components/ui/skip-link';
 import { Loader2, Target, TrendingUp, TrendingDown, Minus, Download, ShoppingCart, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { logError } from '@/lib/logger';
@@ -184,6 +185,10 @@ const TradingSignals = () => {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
+      {/* Skip to main content link for keyboard users - WCAG 2.4.1 */}
+      <SkipLink />
+
+      <main id="main-content" tabIndex={-1}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Target className="h-8 w-8 text-primary" />
@@ -536,6 +541,7 @@ const TradingSignals = () => {
           ))}
         </CardContent>
       </Card>
+      </main>
     </div>
   );
 };

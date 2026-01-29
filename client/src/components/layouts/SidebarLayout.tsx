@@ -15,6 +15,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { SidebarSyncStatus } from '@/components/SyncStatus';
+import { SkipLink } from '@/components/ui/skip-link';
 import Header from '@/components/Header';
 
 // Main navigation items (link to Index page with view param)
@@ -56,6 +57,9 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
 
   return (
     <div className="flex min-h-screen bg-background">
+      {/* Skip to main content link for keyboard users - WCAG 2.4.1 */}
+      <SkipLink />
+
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -140,7 +144,7 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
         <Header onMenuClick={() => setSidebarOpen(true)} />
 
         {/* Page content */}
-        <main className="flex-1">
+        <main id="main-content" className="flex-1" tabIndex={-1}>
           {children}
         </main>
       </div>

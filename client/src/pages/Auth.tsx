@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import { SkipLink } from '@/components/ui/skip-link';
 import { Wallet, Mail, Loader2, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -155,13 +156,16 @@ const Auth = () => {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      {/* Skip to main content link for keyboard users - WCAG 2.4.1 */}
+      <SkipLink href="#auth-form" />
+
       {/* Background gradient */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-primary/3 rounded-full blur-3xl" />
       </div>
 
-      <Card className="relative w-full max-w-md border-border/50 bg-card/60 backdrop-blur-xl">
+      <Card id="auth-form" className="relative w-full max-w-md border-border/50 bg-card/60 backdrop-blur-xl" tabIndex={-1}>
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold text-gradient">GovMarket</CardTitle>
           <CardDescription>
