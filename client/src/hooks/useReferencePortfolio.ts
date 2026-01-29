@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabasePublic as supabase } from '@/integrations/supabase/client';
+import { logError } from '@/lib/logger';
 
 // Types for reference portfolio data
 export interface ReferencePortfolioConfig {
@@ -193,7 +194,7 @@ export function useReferencePortfolioState() {
         .single();
 
       if (error) {
-        console.error('Error fetching reference portfolio state:', error);
+        logError('Failed to fetch reference portfolio state', 'portfolio', undefined, { error: error.message });
         throw error;
       }
 
@@ -223,7 +224,7 @@ export function useReferencePortfolioPositions(includeClosed = false) {
       const { data, error } = await query;
 
       if (error) {
-        console.error('Error fetching reference portfolio positions:', error);
+        logError('Failed to fetch reference portfolio positions', 'portfolio', undefined, { error: error.message });
         throw error;
       }
 
@@ -249,7 +250,7 @@ export function useReferencePortfolioTrades(limit = 50, offset = 0) {
         .range(offset, offset + limit - 1);
 
       if (error) {
-        console.error('Error fetching reference portfolio trades:', error);
+        logError('Failed to fetch reference portfolio trades', 'portfolio', undefined, { error: error.message });
         throw error;
       }
 
@@ -275,7 +276,7 @@ export function useReferencePortfolioPerformance(timeframe: Timeframe = '1m') {
       });
 
       if (error) {
-        console.error('Error fetching reference portfolio performance:', error);
+        logError('Failed to fetch reference portfolio performance', 'portfolio', undefined, { error: error.message });
         throw error;
       }
 
@@ -303,7 +304,7 @@ export function useReferencePortfolioConfig() {
         .single();
 
       if (error) {
-        console.error('Error fetching reference portfolio config:', error);
+        logError('Failed to fetch reference portfolio config', 'portfolio', undefined, { error: error.message });
         throw error;
       }
 

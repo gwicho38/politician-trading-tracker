@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #61 - Code Quality: Migrate console.log to Logger Utility - COMPLETED
+Loop #62 - Code Quality: Continue Logger Migration (Alpaca hooks) - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -90,6 +90,19 @@ Loop #61 - Code Quality: Migrate console.log to Logger Utility - COMPLETED
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #62
+- [2026-01-29] 🧹 **Code Quality: Continue Logger Migration (Alpaca hooks)**
+  - Migrated 6 console.log/console.error statements to structured logger
+  - Files updated:
+    - `hooks/useAuth.tsx` - 1 statement (auth state change → logDebug)
+    - `hooks/useAlpacaCredentials.ts` - 3 statements (fetch/save/clear errors → logError)
+    - `hooks/useAlpacaAccount.ts` - 1 statement (fetch error → logError)
+    - `hooks/useAlpacaPositions.ts` - 1 statement (fetch error → logError)
+  - Bug fixes:
+    - Fixed logger.ts import path (@/lib/supabase → @/integrations/supabase/client)
+    - Added graceful error handling in logger for test environments
+  - All 760 tests pass
 
 ## ✅ Completed Loop #61
 - [2026-01-29] 🧹 **Code Quality: Migrate console.log to Logger Utility**
