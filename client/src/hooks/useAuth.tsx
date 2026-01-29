@@ -1,6 +1,7 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { logDebug } from '@/lib/logger';
 
 // Get user from localStorage synchronously (for instant hydration)
 function getStoredUser(): User | null {
@@ -49,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        console.log('[useAuth] Auth state changed:', event);
+        logDebug('Auth state changed', 'auth', { event, userId: session?.user?.id });
         setUser(session?.user ?? null);
         setLoading(false);
         setAuthReady(true);

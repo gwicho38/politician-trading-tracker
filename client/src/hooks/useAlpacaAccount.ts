@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
+import { logError } from '@/lib/logger';
 
 /**
  * Get access token from localStorage
@@ -67,7 +68,7 @@ export function useAlpacaAccount(tradingMode: 'paper' | 'live') {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('Error fetching account:', errorData);
+        logError('Failed to fetch account', 'alpaca', undefined, { errorData });
         throw new Error(errorData.message || 'Failed to fetch account');
       }
 
