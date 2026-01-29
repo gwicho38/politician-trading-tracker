@@ -18,6 +18,11 @@ import { logError } from '@/lib/logger';
 type Politician = Tables<'politicians'>;
 type Trade = Tables<'trades'>;
 
+// Type for trades with joined politician data from Supabase
+interface TradeWithPolitician extends Trade {
+  politicians?: { name: string } | null;
+}
+
 const AdminContentManagement = () => {
   const [politicians, setPoliticians] = useState<Politician[]>([]);
   const [trades, setTrades] = useState<(Trade & { politician_name?: string })[]>([]);
@@ -60,9 +65,9 @@ const AdminContentManagement = () => {
       if (tradesRes.error) throw tradesRes.error;
 
       setPoliticians(politiciansRes.data || []);
-      setTrades((tradesRes.data || []).map(t => ({
+      setTrades((tradesRes.data as TradeWithPolitician[] || []).map(t => ({
         ...t,
-        politician_name: (t.politicians as any)?.name,
+        politician_name: t.politicians?.name,
       })));
     } catch (error) {
       logError('Error fetching data', 'admin', error instanceof Error ? error : undefined);
