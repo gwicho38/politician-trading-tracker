@@ -1,5 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 
 interface ScrapingConfig {
@@ -9,17 +9,54 @@ interface ScrapingConfig {
   requestDelay: number
 }
 
+interface DisclosureRecord {
+  source_url: string
+  politician_id: string
+  transaction_date: string
+  disclosure_date: string
+  asset_name: string
+  transaction_type: string
+  amount_range_min: number
+  amount_range_max: number
+  status: string
+  raw_data: Record<string, unknown>
+}
+
+interface CollectionResult {
+  source: string
+  disclosures_found: number
+  disclosures: DisclosureRecord[]
+}
+
+interface CollectionJobResult {
+  started_at: string
+  completed_at?: string
+  status?: string
+  error?: string
+  jobs: Record<string, {
+    status: string
+    new_disclosures: number
+    updated_disclosures: number
+    errors: string[]
+  }>
+  summary: {
+    total_new_disclosures: number
+    total_updated_disclosures: number
+    errors: string[]
+  }
+}
+
 // TODO: Review PoliticianTradingCollector class - web scraper for politician trading disclosures
 // - Collects data from US House, Senate, QuiverQuant, EU Parliament, California NetFile
 // - Uses retry logic with exponential backoff
 // - Caches politician lookups to reduce database queries
 class PoliticianTradingCollector {
-  private supabase: any
+  private supabase: SupabaseClient
   private config: ScrapingConfig
   private politicianCache: Map<string, string> = new Map() // name -> id cache
 
   // TODO: Review constructor - initializes scraping configuration
-  constructor(supabaseClient: any) {
+  constructor(supabaseClient: SupabaseClient) {
     this.supabase = supabaseClient
     this.config = {
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
@@ -393,8 +430,9 @@ class PoliticianTradingCollector {
         } else {
           console.warn(`Skipping ${portal.jurisdiction} - request failed/timed out`)
         }
-      } catch (error: any) {
-        console.warn(`Error collecting from ${portal.jurisdiction}: ${error.message}`)
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        console.warn(`Error collecting from ${portal.jurisdiction}: ${errorMessage}`)
         // Continue with next portal instead of failing
       }
     }
@@ -409,15 +447,15 @@ class PoliticianTradingCollector {
   // TODO: Review runFullCollection - runs collection from all sources
   // - Creates data_pull_jobs record for tracking
   // - Stores disclosures to trading_disclosures table
-  async runFullCollection() {
+  async runFullCollection(): Promise<CollectionJobResult> {
     const startTime = new Date()
-    const results = {
+    const results: CollectionJobResult = {
       started_at: startTime.toISOString(),
-      jobs: {} as any,
+      jobs: {},
       summary: {
         total_new_disclosures: 0,
         total_updated_disclosures: 0,
-        errors: [] as string[]
+        errors: []
       }
     }
 
@@ -469,9 +507,10 @@ class PoliticianTradingCollector {
             }
           }
 
-        } catch (error: any) {
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error)
           console.error(`Collection failed for collector:`, error)
-          results.summary.errors.push(error.message)
+          results.summary.errors.push(errorMessage)
         }
       }
 
@@ -493,11 +532,12 @@ class PoliticianTradingCollector {
       results.completed_at = new Date().toISOString()
       results.status = 'completed'
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
       console.error('Full collection failed:', error)
-      results.error = error.message
+      results.error = errorMessage
       results.status = 'failed'
-      results.summary.errors.push(error.message)
+      results.summary.errors.push(errorMessage)
 
       // Update job status
       if (jobId) {
@@ -506,7 +546,7 @@ class PoliticianTradingCollector {
           .update({
             status: 'failed',
             completed_at: new Date().toISOString(),
-            error_message: error.message
+            error_message: errorMessage
           })
           .eq('id', jobId)
       }
@@ -517,8 +557,8 @@ class PoliticianTradingCollector {
 
   // TODO: Review collectSingleSource - collects from single specified source
   // - Maps source names (house, senate, quiver, eu, california) to collector methods
-  async collectSingleSource(source: string): Promise<{ source: string; disclosures_found: number; disclosures: any[] }> {
-    const sourceMap: Record<string, () => Promise<any>> = {
+  async collectSingleSource(source: string): Promise<CollectionResult> {
+    const sourceMap: Record<string, () => Promise<CollectionResult>> = {
       'house': () => this.collectUSHouseData(),
       'senate': () => this.collectUSSenateData(),
       'quiver': () => this.collectQuiverQuantData(),
@@ -622,13 +662,14 @@ Deno.serve(async (req) => {
       }
     )
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
     console.error('Edge function error:', error)
 
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message,
+        error: errorMessage,
         message: 'Failed to run politician trading collection'
       }),
       {

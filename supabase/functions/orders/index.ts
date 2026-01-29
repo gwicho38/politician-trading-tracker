@@ -1,18 +1,68 @@
-import { createClient } from 'supabase'
+import { createClient, SupabaseClient } from 'supabase'
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { corsHeaders } from '../_shared/cors.ts'
 import { isServiceRoleRequest } from '../_shared/auth.ts'
 import { decrypt } from '../_shared/crypto.ts'
+
+// Type definitions for orders edge function
+interface AlpacaCredentials {
+  apiKey: string
+  secretKey: string
+  baseUrl: string
+}
+
+interface OrderRecord {
+  id?: string
+  user_id: string
+  alpaca_order_id: string
+  alpaca_client_order_id: string | null
+  ticker: string
+  side: string
+  quantity: number
+  order_type: string
+  limit_price: number | null
+  status: string
+  trading_mode: string
+  signal_id: string | null
+  submitted_at: string
+  filled_quantity: number
+  filled_avg_price: number | null
+  broker: string
+  idempotency_key?: string
+}
+
+interface OrderRequest {
+  symbol: string
+  qty: number
+  side: string
+  type: string
+  time_in_force: string
+  limit_price?: number
+}
+
+interface StateTransitionDetails {
+  filledQty?: number
+  avgPrice?: number | null
+  errorCode?: string
+  errorMessage?: string
+  alpacaEventId?: string
+  alpacaEventTimestamp?: string
+  rawEvent?: Record<string, unknown>
+}
+
+interface LogMetadata {
+  [key: string]: unknown
+}
 
 // TODO: Review getAlpacaCredentials - retrieves Alpaca API credentials
 // - Priority: user_api_keys table > environment variables
 // - Supports both paper and live trading modes
 // - Decrypts stored credentials if encryption is enabled
 async function getAlpacaCredentials(
-  supabase: any,
+  supabase: SupabaseClient,
   userEmail: string | null,
   tradingMode: 'paper' | 'live'
-): Promise<{ apiKey: string; secretKey: string; baseUrl: string } | null> {
+): Promise<AlpacaCredentials | null> {
   // 1. Try user-specific credentials from user_api_keys table
   if (userEmail) {
     try {
@@ -76,9 +126,9 @@ function generateIdempotencyKey(
 
 // TODO: Review checkIdempotency - checks if order already exists by idempotency key
 async function checkIdempotency(
-  supabaseClient: any,
+  supabaseClient: SupabaseClient,
   idempotencyKey: string
-): Promise<{ exists: boolean; existingOrder?: any }> {
+): Promise<{ exists: boolean; existingOrder?: OrderRecord }> {
   try {
     const { data, error } = await supabaseClient
       .from('trading_orders')
@@ -100,20 +150,12 @@ async function checkIdempotency(
 // TODO: Review recordOrderStateTransition - records order status changes to audit log
 // - Tracks previous/new status, source, fill details, and raw event
 async function recordOrderStateTransition(
-  supabaseClient: any,
+  supabaseClient: SupabaseClient,
   orderId: string,
   previousStatus: string | null,
   newStatus: string,
   source: 'user_action' | 'alpaca_webhook' | 'alpaca_poll' | 'system_timeout' | 'scheduler' | 'unknown',
-  details?: {
-    filledQty?: number
-    avgPrice?: number
-    errorCode?: string
-    errorMessage?: string
-    alpacaEventId?: string
-    alpacaEventTimestamp?: string
-    rawEvent?: any
-  }
+  details?: StateTransitionDetails
 ): Promise<void> {
   try {
     const { error } = await supabaseClient
@@ -143,7 +185,7 @@ async function recordOrderStateTransition(
 // TODO: Review recordSignalLifecycleOnOrder - updates signal lifecycle when order placed
 // - Records transition from generated -> ordered -> filled states
 async function recordSignalLifecycleOnOrder(
-  supabaseClient: any,
+  supabaseClient: SupabaseClient,
   signalId: string,
   orderId: string,
   previousState: string,
@@ -173,7 +215,7 @@ async function recordSignalLifecycleOnOrder(
 
 // TODO: Review getCurrentSignalState - gets most recent signal lifecycle state
 async function getCurrentSignalState(
-  supabaseClient: any,
+  supabaseClient: SupabaseClient,
   signalId: string
 ): Promise<string | null> {
   try {
@@ -197,7 +239,7 @@ async function getCurrentSignalState(
 
 // TODO: Review log object - structured JSON logging with levels (info, error, warn)
 const log = {
-  info: (message: string, metadata?: any) => {
+  info: (message: string, metadata?: LogMetadata) => {
     console.log(JSON.stringify({
       level: 'INFO',
       timestamp: new Date().toISOString(),
@@ -206,18 +248,19 @@ const log = {
       ...metadata
     }))
   },
-  error: (message: string, error?: any, metadata?: any) => {
+  error: (message: string, error?: Error | unknown, metadata?: LogMetadata) => {
+    const errorObj = error instanceof Error ? error : null
     console.error(JSON.stringify({
       level: 'ERROR',
       timestamp: new Date().toISOString(),
       service: 'orders',
       message,
-      error: error?.message || error,
-      stack: error?.stack,
+      error: errorObj?.message || String(error),
+      stack: errorObj?.stack,
       ...metadata
     }))
   },
-  warn: (message: string, metadata?: any) => {
+  warn: (message: string, metadata?: LogMetadata) => {
     console.warn(JSON.stringify({
       level: 'WARN',
       timestamp: new Date().toISOString(),
@@ -229,7 +272,7 @@ const log = {
 }
 
 // TODO: Review sanitizeRequestForLogging - redacts sensitive headers for logging
-function sanitizeRequestForLogging(req: Request): any {
+function sanitizeRequestForLogging(req: Request): Record<string, unknown> {
   const headers = Object.fromEntries(req.headers.entries())
 
   // Remove sensitive headers
@@ -252,7 +295,7 @@ function sanitizeRequestForLogging(req: Request): any {
 }
 
 // TODO: Review sanitizeResponseForLogging - truncates response body for logging
-function sanitizeResponseForLogging(response: Response, body?: any): any {
+function sanitizeResponseForLogging(response: Response, body?: unknown): Record<string, unknown> {
   return {
     status: response.status,
     statusText: response.statusText,
@@ -303,12 +346,12 @@ serve(async (req) => {
 
     // Also check for action in request body (for supabase.functions.invoke)
     let action = path
-    let bodyParams: any = {}
+    let bodyParams: Record<string, unknown> = {}
     if (req.method === 'POST') {
       try {
-        bodyParams = await req.clone().json()
+        bodyParams = await req.clone().json() as Record<string, unknown>
         if (bodyParams.action) {
-          action = bodyParams.action
+          action = bodyParams.action as string
         }
       } catch {
         // Body parsing failed, use path
@@ -404,16 +447,16 @@ serve(async (req) => {
 // TODO: Review handleGetOrders - fetches user's orders with filtering/pagination
 // - Supports status filter (all, open, closed, specific status)
 // - Returns transformed orders with filled_quantity field
-async function handleGetOrders(supabaseClient: any, req: Request, requestId: string, bodyParams: any = {}) {
+async function handleGetOrders(supabaseClient: SupabaseClient, req: Request, requestId: string, bodyParams: Record<string, unknown> = {}) {
   const handlerStartTime = Date.now()
 
   try {
     const url = new URL(req.url)
     // Support both URL params and body params
-    const limit = parseInt(url.searchParams.get('limit') || bodyParams.limit || '100')
-    const offset = parseInt(url.searchParams.get('offset') || bodyParams.offset || '0')
-    const statusFilter = url.searchParams.get('status') || bodyParams.status
-    const tradingMode = url.searchParams.get('trading_mode') || bodyParams.trading_mode || 'paper'
+    const limit = parseInt(url.searchParams.get('limit') || String(bodyParams.limit) || '100')
+    const offset = parseInt(url.searchParams.get('offset') || String(bodyParams.offset) || '0')
+    const statusFilter = url.searchParams.get('status') || (bodyParams.status as string | undefined)
+    const tradingMode = url.searchParams.get('trading_mode') || (bodyParams.trading_mode as string) || 'paper'
 
     log.info('Fetching orders - handler started', {
       requestId,
@@ -450,7 +493,7 @@ async function handleGetOrders(supabaseClient: any, req: Request, requestId: str
     }
 
     // Get orders from database (handle case where table doesn't exist yet)
-    let orders: any[] = []
+    let orders: OrderRecord[] = []
     let count = 0
 
     try {
@@ -505,7 +548,7 @@ async function handleGetOrders(supabaseClient: any, req: Request, requestId: str
     }
 
     // Transform orders to match frontend expectations (filled_qty -> filled_quantity)
-    const transformedOrders = (orders || []).map((order: any) => ({
+    const transformedOrders = (orders || []).map((order: OrderRecord & { filled_qty?: number }) => ({
       ...order,
       filled_quantity: order.filled_qty || 0,
       // Ensure alpaca_order_id exists for display
@@ -557,7 +600,7 @@ async function handleGetOrders(supabaseClient: any, req: Request, requestId: str
 
 // TODO: Review handleGetOrderStats - calculates order statistics for user
 // - Returns status distribution, side distribution, avg fill price, success rate
-async function handleGetOrderStats(supabaseClient: any, req: Request) {
+async function handleGetOrderStats(supabaseClient: SupabaseClient, req: Request) {
   try {
     const url = new URL(req.url)
     const tradingMode = url.searchParams.get('trading_mode') || 'paper'
@@ -672,7 +715,7 @@ async function handleGetOrderStats(supabaseClient: any, req: Request) {
 // - Validates order parameters and idempotency
 // - Saves order to database with state transition audit
 // - Updates signal lifecycle if order is from a signal
-async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: string, bodyParams: any = {}) {
+async function handlePlaceOrder(supabaseClient: SupabaseClient, req: Request, requestId: string, bodyParams: Record<string, unknown> = {}) {
   const handlerStartTime = Date.now()
 
   try {
@@ -769,11 +812,11 @@ async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: st
     }
 
     // Build Alpaca order request
-    const orderRequest: any = {
-      symbol: ticker.toUpperCase(),
-      qty: quantity,
-      side: side,
-      type: order_type,
+    const orderRequest: OrderRequest = {
+      symbol: (ticker as string).toUpperCase(),
+      qty: quantity as number,
+      side: side as string,
+      type: order_type as string,
       time_in_force: 'day'
     }
 
@@ -914,7 +957,7 @@ async function handlePlaceOrder(supabaseClient: any, req: Request, requestId: st
 // TODO: Review handlePlaceOrders - places multiple orders for cart checkout
 // - Processes array of orders with idempotency checks
 // - Returns individual success/failure results for each order
-async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: string, bodyParams: any = {}) {
+async function handlePlaceOrders(supabaseClient: SupabaseClient, req: Request, requestId: string, bodyParams: Record<string, unknown> = {}) {
   const handlerStartTime = Date.now()
 
   try {
@@ -940,7 +983,8 @@ async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: s
     }
 
     const userEmail = user.email || null;
-    const { orders, tradingMode = 'paper' } = bodyParams
+    const orders = bodyParams.orders as Array<Record<string, unknown>> | undefined
+    const tradingMode = (bodyParams.tradingMode as string) || 'paper'
 
     if (!orders || !Array.isArray(orders) || orders.length === 0) {
       return new Response(
@@ -961,7 +1005,15 @@ async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: s
       )
     }
 
-    const results: any[] = []
+    interface OrderResult {
+      ticker: string
+      success: boolean
+      order_id?: string
+      status?: string
+      error?: string
+      duplicate?: boolean
+    }
+    const results: OrderResult[] = []
     const alpacaUrl = `${credentials.baseUrl}/v2/orders`
 
     // Process each order
@@ -1005,11 +1057,11 @@ async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: s
         }
 
         // Build Alpaca order request
-        const orderRequest: any = {
-          symbol: ticker.toUpperCase(),
-          qty: quantity,
-          side: side,
-          type: order_type,
+        const orderRequest: OrderRequest = {
+          symbol: (ticker as string).toUpperCase(),
+          qty: quantity as number,
+          side: side as string,
+          type: order_type as string,
           time_in_force: 'day'
         }
 
@@ -1159,7 +1211,7 @@ async function handlePlaceOrders(supabaseClient: any, req: Request, requestId: s
 // - Fetches orders from Alpaca API and updates local database
 // - Records state transitions for status changes
 // - Updates signal lifecycle when orders fill
-async function handleSyncOrders(supabaseClient: any, req: Request, requestId: string, bodyParams: any = {}) {
+async function handleSyncOrders(supabaseClient: SupabaseClient, req: Request, requestId: string, bodyParams: Record<string, unknown> = {}) {
   const handlerStartTime = Date.now()
 
   try {
@@ -1403,9 +1455,9 @@ async function handleSyncOrders(supabaseClient: any, req: Request, requestId: st
 // - Uses environment credentials to sync existing orders only
 // - Does not create new orders (only updates existing)
 async function handleServiceRoleSyncOrders(
-  supabaseClient: any,
+  supabaseClient: SupabaseClient,
   requestId: string,
-  bodyParams: any,
+  bodyParams: Record<string, unknown>,
   handlerStartTime: number
 ): Promise<Response> {
   const tradingMode: 'paper' | 'live' = bodyParams.tradingMode || 'paper'
