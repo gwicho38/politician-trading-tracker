@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #46 - Testing: Add Tests for PoliticiansView.tsx Component - COMPLETED
+Loop #47 - Testing: Add Tests for PoliticianDetailModal.tsx Component - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -71,7 +71,7 @@ Loop #46 - Testing: Add Tests for PoliticiansView.tsx Component - COMPLETED
 - [x] ~~Add tests for TradesView.tsx~~ - Loop #44 (32 tests)
 - [x] ~~Add tests for TradingSignals.tsx~~ - Loop #45 (32 tests)
 - [x] ~~Add tests for PoliticiansView.tsx~~ - Loop #46 (29 tests)
-- [ ] Add tests for PoliticianDetails.tsx
+- [x] ~~Add tests for PoliticianDetailModal.tsx~~ - Loop #47 (27 tests)
 - [ ] Add tests for ReferencePortfolio.tsx
 - [ ] Add tests for useAlpacaCredentials.ts hook
 - [ ] Add tests for useAuth.ts hook
@@ -84,6 +84,25 @@ Loop #46 - Testing: Add Tests for PoliticiansView.tsx Component - COMPLETED
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #47
+- [2026-01-29] 🧪 **Testing: PoliticianDetailModal.tsx Component Tests**
+  - Created `client/src/components/detail-modals/PoliticianDetailModal.test.tsx` with 27 comprehensive tests
+  - Test coverage:
+    - **Null politician tests (2)**: Returns null when no politician, doesn't call hook
+    - **Dialog behavior tests (2)**: Opens when open=true, closed when open=false
+    - **Header tests (2)**: Displays name and party badge with color
+    - **Loading state tests (2)**: Shows skeleton during load, shows content when loaded
+    - **Trading stats tests (4)**: Total trades, buys, sells, holding counts
+    - **Total volume tests (2)**: Formatted currency display, zero handling
+    - **Top tickers tests (2)**: Badge display, hidden when empty
+    - **Recent trades tests (5)**: Section display, BUY/SELL/HOLD badges, source links
+    - **Empty state tests (2)**: No trades message, no tickers message
+    - **Hook integration tests (2)**: Calls hook with politician id, null id handling
+  - Fixed test conflict: Changed AAPL to NVDA in top tickers test to avoid collision with recentTrades mock data
+  - Mocked Dialog components, usePoliticianDetail hook, mockData utilities
+  - All 327 client tests passing (300 existing + 27 new)
+  - Build successful
 
 ## ✅ Completed Loop #46
 - [2026-01-29] 🧪 **Testing: PoliticiansView.tsx Component Tests**
