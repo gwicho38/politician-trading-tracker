@@ -48,6 +48,7 @@ import { useTradingDisclosures, SortField, SortDirection, TradingDisclosure } fr
 import { ReportErrorModal } from '@/components/ReportErrorModal';
 import { PoliticianProfileModal } from '@/components/detail-modals/PoliticianProfileModal';
 import { getPartyColor, getPartyBg } from '@/lib/mockData';
+import { toParty } from '@/lib/typeGuards';
 import type { Politician } from '@/hooks/useSupabaseData';
 
 const ROWS_PER_PAGE = 15;
@@ -533,7 +534,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
           <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 p-3 sm:p-4">
             {disclosures.map((disclosure) => {
               const politician = disclosure.politician;
-              const partyValue = (politician?.party || 'Unknown') as 'D' | 'R' | 'I' | 'Other';
+              const partyValue = toParty(politician?.party);
               const isBuy = disclosure.transaction_type === 'purchase';
               const isSell = disclosure.transaction_type === 'sale';
 
@@ -707,7 +708,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
             ) : (
               disclosures.map((disclosure) => {
                 const politician = disclosure.politician;
-                const partyValue = (politician?.party || 'Unknown') as 'D' | 'R' | 'I' | 'Other';
+                const partyValue = toParty(politician?.party);
 
                 return (
                   <TableRow key={disclosure.id} className="group">
