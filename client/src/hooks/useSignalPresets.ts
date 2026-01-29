@@ -7,6 +7,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabasePublic } from '@/integrations/supabase/client';
 import { weightsToPresetFields } from '@/lib/signal-weights';
+import { logDebug, logError } from '@/lib/logger';
 import type { SignalPreset, SignalWeights } from '@/types/signal-playground';
 
 const PRESETS_QUERY_KEY = ['signalPresets'];
@@ -82,7 +83,7 @@ async function createPreset(input: {
   weights: SignalWeights;
   user_lambda?: string;
 }): Promise<SignalPreset> {
-  console.log('[createPreset] Starting...');
+  logDebug('Creating preset', 'presets', { name: input.name, isPublic: input.is_public });
 
   const userId = getUserId();
   const accessToken = getAccessToken();
@@ -104,7 +105,7 @@ async function createPreset(input: {
     ...presetFields,
   };
 
-  console.log('[createPreset] Making fetch request...');
+  logDebug('Making fetch request', 'presets');
 
   const response = await fetch(`${supabaseUrl}/rest/v1/signal_weight_presets`, {
     method: 'POST',
@@ -117,16 +118,16 @@ async function createPreset(input: {
     body: JSON.stringify(body),
   });
 
-  console.log('[createPreset] Response status:', response.status);
+  logDebug('Response received', 'presets', { status: response.status });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    console.error('[createPreset] Error:', errorData);
+    logError('Create preset failed', 'presets', undefined, { errorData, status: response.status });
     throw new Error(errorData.message || `Failed to create preset (${response.status})`);
   }
 
   const data = await response.json();
-  console.log('[createPreset] Success:', data);
+  logDebug('Create preset success', 'presets', { id: Array.isArray(data) ? data[0]?.id : data?.id });
 
   // Response is an array, get the first item
   return Array.isArray(data) ? data[0] : data;

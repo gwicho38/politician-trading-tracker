@@ -7,6 +7,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabasePublic } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { logDebug, logError } from '@/lib/logger';
 import type { Drop, FeedType, CreateDropRequest } from '@/types/drops';
 
 export const DROPS_QUERY_KEY = ['drops'];
@@ -58,10 +59,10 @@ async function createDrop(
   userId: string,
   isPublic: boolean = true
 ): Promise<Drop> {
-  console.log('[createDrop] Starting insert for user:', userId);
+  logDebug('Starting insert', 'drops', { userId });
 
   const accessToken = getAccessToken();
-  console.log('[createDrop] Access token exists:', !!accessToken);
+  logDebug('Access token check', 'drops', { hasToken: !!accessToken });
 
   if (!accessToken) {
     throw new Error('No access token found. Please sign in again.');
@@ -70,7 +71,7 @@ async function createDrop(
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-  console.log('[createDrop] Making fetch request...');
+  logDebug('Making fetch request', 'drops');
 
   const response = await fetch(`${supabaseUrl}/rest/v1/drops`, {
     method: 'POST',
@@ -87,11 +88,11 @@ async function createDrop(
     }),
   });
 
-  console.log('[createDrop] Response status:', response.status);
+  logDebug('Response received', 'drops', { status: response.status });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    console.error('[createDrop] Error response:', errorData);
+    logError('Create drop failed', 'drops', undefined, { errorData, status: response.status });
 
     if (response.status === 401 || errorData.code === '42501') {
       throw new Error('Session expired. Please sign in again.');
@@ -100,7 +101,7 @@ async function createDrop(
   }
 
   const data = await response.json();
-  console.log('[createDrop] Success:', data);
+  logDebug('Create drop success', 'drops', { id: Array.isArray(data) ? data[0]?.id : data?.id });
 
   // Response is an array, get the first item
   return Array.isArray(data) ? data[0] : data;
@@ -110,7 +111,7 @@ async function createDrop(
  * Delete a drop using direct fetch
  */
 async function deleteDrop(dropId: string, userId: string): Promise<void> {
-  console.log('[deleteDrop] Deleting drop:', dropId, 'for user:', userId);
+  logDebug('Deleting drop', 'drops', { dropId, userId });
 
   const accessToken = getAccessToken();
   if (!accessToken) {
@@ -131,22 +132,22 @@ async function deleteDrop(dropId: string, userId: string): Promise<void> {
     }
   );
 
-  console.log('[deleteDrop] Response status:', response.status);
+  logDebug('Delete response', 'drops', { status: response.status });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    console.error('[deleteDrop] Error:', errorData);
+    logError('Delete drop failed', 'drops', undefined, { errorData });
     throw new Error(errorData.message || 'Failed to delete drop');
   }
 
-  console.log('[deleteDrop] Success');
+  logDebug('Delete drop success', 'drops', { dropId });
 }
 
 /**
  * Like a drop using direct fetch
  */
 async function likeDrop(dropId: string, userId: string): Promise<void> {
-  console.log('[likeDrop] Liking drop:', dropId);
+  logDebug('Liking drop', 'drops', { dropId });
 
   const accessToken = getAccessToken();
   if (!accessToken) {
@@ -171,24 +172,24 @@ async function likeDrop(dropId: string, userId: string): Promise<void> {
 
   // Ignore 409 Conflict (already liked - duplicate)
   if (response.status === 409) {
-    console.log('[likeDrop] Already liked');
+    logDebug('Already liked', 'drops', { dropId });
     return;
   }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    console.error('[likeDrop] Error:', errorData);
+    logError('Like drop failed', 'drops', undefined, { errorData });
     throw new Error(errorData.message || 'Failed to like drop');
   }
 
-  console.log('[likeDrop] Success');
+  logDebug('Like drop success', 'drops', { dropId });
 }
 
 /**
  * Unlike a drop using direct fetch
  */
 async function unlikeDrop(dropId: string, userId: string): Promise<void> {
-  console.log('[unlikeDrop] Unliking drop:', dropId);
+  logDebug('Unliking drop', 'drops', { dropId });
 
   const accessToken = getAccessToken();
   if (!accessToken) {
@@ -211,11 +212,11 @@ async function unlikeDrop(dropId: string, userId: string): Promise<void> {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    console.error('[unlikeDrop] Error:', errorData);
+    logError('Unlike drop failed', 'drops', undefined, { errorData });
     throw new Error(errorData.message || 'Failed to unlike drop');
   }
 
-  console.log('[unlikeDrop] Success');
+  logDebug('Unlike drop success', 'drops', { dropId });
 }
 
 export function useDrops(feedType: FeedType = 'live') {
@@ -239,36 +240,35 @@ export function useDrops(feedType: FeedType = 'live') {
   // Create drop mutation
   const createMutation = useMutation({
     mutationFn: (request: CreateDropRequest) => {
-      console.log('[useDrops mutation] mutationFn called with:', request);
-      console.log('[useDrops mutation] userId:', userId);
+      logDebug('Create mutation called', 'drops', { content: request.content.substring(0, 50), userId });
       if (!userId) throw new Error('Must be logged in to post');
       return createDrop(request.content, userId, request.is_public ?? true);
     },
     onMutate: (variables) => {
-      console.log('[useDrops mutation] onMutate:', variables);
+      logDebug('Create mutation starting', 'drops', { isPublic: variables.is_public });
     },
     onSuccess: (data) => {
-      console.log('[useDrops mutation] onSuccess:', data);
+      logDebug('Create mutation success', 'drops', { id: data.id });
       // Invalidate both feeds
       queryClient.invalidateQueries({ queryKey: DROPS_QUERY_KEY });
     },
     onError: (error) => {
-      console.error('[useDrops mutation] onError:', error);
+      logError('Create mutation failed', 'drops', error instanceof Error ? error : undefined);
     },
     onSettled: () => {
-      console.log('[useDrops mutation] onSettled');
+      logDebug('Create mutation settled', 'drops');
     },
   });
 
   // Delete drop mutation with optimistic update
   const deleteMutation = useMutation({
     mutationFn: (dropId: string) => {
-      console.log('[deleteMutation] mutationFn called for dropId:', dropId);
+      logDebug('Delete mutation called', 'drops', { dropId });
       if (!userId) throw new Error('Must be logged in to delete');
       return deleteDrop(dropId, userId);
     },
     onMutate: async (dropId) => {
-      console.log('[deleteMutation] onMutate - optimistically removing from all feeds');
+      logDebug('Delete mutation - optimistic update', 'drops', { dropId });
       await queryClient.cancelQueries({ queryKey: DROPS_QUERY_KEY });
 
       // Get previous data for rollback
@@ -287,7 +287,7 @@ export function useDrops(feedType: FeedType = 'live') {
       return { previousDrops };
     },
     onError: (err, _dropId, context) => {
-      console.error('[deleteMutation] onError:', err);
+      logError('Delete mutation failed', 'drops', err instanceof Error ? err : undefined);
       if (context?.previousDrops) {
         queryClient.setQueryData(
           [...DROPS_QUERY_KEY, feedType, userId],
@@ -296,10 +296,10 @@ export function useDrops(feedType: FeedType = 'live') {
       }
     },
     onSuccess: () => {
-      console.log('[deleteMutation] onSuccess - delete completed');
+      logDebug('Delete mutation success', 'drops');
     },
     onSettled: () => {
-      console.log('[deleteMutation] onSettled - invalidating all drops queries');
+      logDebug('Delete mutation settled', 'drops');
       queryClient.invalidateQueries({ queryKey: DROPS_QUERY_KEY });
     },
   });
