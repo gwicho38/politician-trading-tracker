@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatCurrencyFull } from '@/lib/formatters';
 
 /**
  * Get access token from localStorage
@@ -47,14 +48,8 @@ interface OrderConfirmationModalProps {
   onSuccess?: () => void;
 }
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
+// formatCurrency uses the centralized formatter from '@/lib/formatters'
+const formatCurrency = formatCurrencyFull;
 
 export function OrderConfirmationModal({
   open,

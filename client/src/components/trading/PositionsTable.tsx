@@ -6,23 +6,19 @@ import { Loader2, RefreshCw, TrendingUp, TrendingDown, Package } from 'lucide-re
 import { useAlpacaPositions, calculatePositionMetrics } from '@/hooks/useAlpacaPositions';
 import { cn } from '@/lib/utils';
 import { QuickTradeDialog } from './QuickTradeDialog';
+import { formatCurrencyFull, formatPercent as formatPercentUtil } from '@/lib/formatters';
 
 interface PositionsTableProps {
   tradingMode: 'paper' | 'live';
 }
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
+// Use centralized formatters from '@/lib/formatters'
+const formatCurrency = formatCurrencyFull;
 
+// Custom formatPercent that shows + sign for positive values
 function formatPercent(value: number): string {
   const sign = value >= 0 ? '+' : '';
-  return `${sign}${(value * 100).toFixed(2)}%`;
+  return `${sign}${formatPercentUtil(value, 2).replace('%', '')}%`;
 }
 
 interface Position {

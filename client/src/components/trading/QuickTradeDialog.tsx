@@ -22,6 +22,7 @@ import { Loader2, TrendingUp, TrendingDown } from 'lucide-react';
 import { usePlaceOrder } from '@/hooks/useOrders';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { formatCurrencyFull } from '@/lib/formatters';
 
 interface Position {
   asset_id: string;
@@ -42,14 +43,8 @@ interface QuickTradeDialogProps {
   defaultSide?: 'buy' | 'sell';
 }
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
+// formatCurrency uses the centralized formatter from '@/lib/formatters'
+const formatCurrency = formatCurrencyFull;
 
 export function QuickTradeDialog({
   open,

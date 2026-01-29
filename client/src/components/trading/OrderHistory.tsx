@@ -23,28 +23,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { formatCurrencyFull, formatDateTime } from '@/lib/formatters';
 
 interface OrderHistoryProps {
   tradingMode: 'paper' | 'live';
 }
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
-
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
+// Use centralized formatters from '@/lib/formatters'
+const formatCurrency = formatCurrencyFull;
+const formatDate = (dateString: string) => formatDateTime(dateString) || '-';
 
 export function OrderHistory({ tradingMode }: OrderHistoryProps) {
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');

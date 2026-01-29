@@ -4,24 +4,20 @@ import { Button } from '@/components/ui/button';
 import { Loader2, RefreshCw, TrendingUp, TrendingDown, Wallet, DollarSign, PiggyBank, AlertTriangle } from 'lucide-react';
 import { useAlpacaAccount, calculateDailyPnL } from '@/hooks/useAlpacaAccount';
 import { cn } from '@/lib/utils';
+import { formatCurrencyFull } from '@/lib/formatters';
 
 interface AccountDashboardProps {
   tradingMode: 'paper' | 'live';
 }
 
+// Use centralized formatter with null/NaN safety wrapper
 function formatCurrency(value: number | undefined | null): string {
-  // Handle NaN, undefined, null gracefully
   const safeValue = typeof value === 'number' && !isNaN(value) ? value : 0;
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(safeValue);
+  return formatCurrencyFull(safeValue);
 }
 
 function formatPercent(value: number | undefined | null): string {
-  // Handle NaN, undefined, null gracefully
+  // Handle NaN, undefined, null gracefully with + sign for positive values
   const safeValue = typeof value === 'number' && !isNaN(value) ? value : 0;
   const sign = safeValue >= 0 ? '+' : '';
   return `${sign}${safeValue.toFixed(2)}%`;
