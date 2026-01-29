@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #59 - Testing: Add Tests for AccountDashboard Component - COMPLETED
+Loop #60 - Testing: Add Tests for OrderConfirmationModal Component - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -82,13 +82,34 @@ Loop #59 - Testing: Add Tests for AccountDashboard Component - COMPLETED
 - [x] ~~Extend formatter consolidation to trading components~~ - Loop #52 (9 components)
 - [x] ~~Replace `any` types in Recharts tooltip components~~ - Loop #53 (3 components)
 - [x] ~~Replace `any` types in error handling catch blocks~~ - Loop #53 (7 components)
+- [x] ~~Add tests for trading module (OrderConfirmationModal)~~ - Loop #60 (57 tests)
 - [ ] Add missing TypeScript strict mode compliance
-- [ ] Add tests for trading module (1 remaining untested component: OrderConfirmationModal)
 - [ ] Remove/migrate console.log debug statements to logger utility
 
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #60
+- [2026-01-29] 🧪 **Testing: OrderConfirmationModal Component Tests**
+  - Created `client/src/components/trading/OrderConfirmationModal.test.tsx` with 57 comprehensive tests
+  - Test coverage:
+    - **Dialog visibility tests (3)**: Render when open, hidden when closed, description display
+    - **Trading mode badge tests (2)**: Paper trading badge, live trading badge
+    - **Order summary tests (6)**: Total orders count, total shares count, buy count badge, sell count badge, no buy badge when none, no sell badge when none
+    - **Order list table tests (8)**: Table headers, ticker, side badge, quantity, order type, multiple orders, buy badge styling, sell badge styling
+    - **Paper trading alert tests (2)**: Info message, no live warning
+    - **Live trading warning tests (5)**: Warning message, confirmation checkbox, no paper info, checkbox unchecked default, checkbox toggle
+    - **Submit button tests (6)**: Single order text, multiple orders text, enabled for paper, disabled for live without confirm, enabled for live with confirm, destructive variant
+    - **Cancel button tests (2)**: Render, onOpenChange callback
+    - **Order submission tests (5)**: Fetch call, loading state, success toast, onSuccess callback, close dialog on success
+    - **Live trading submission tests (2)**: Button disabled without confirm, submit with confirm
+    - **Error handling tests (4)**: API error toast, generic error, network error, re-enable button
+    - **Partial success tests (4)**: Error toast for failed, success toast for successful, onSuccess callback, close dialog
+    - **Access token handling tests (2)**: Authorization header, apikey header
+    - **Button disabled states tests (2)**: Cancel disabled while submitting, submit disabled while submitting
+    - **Edge cases tests (4)**: Empty orders array, orders with signal_id, limit orders with price, onSuccess undefined
+  - All 760 client tests pass (703 → 760)
 
 ## ✅ Completed Loop #59
 - [2026-01-29] 🧪 **Testing: AccountDashboard Component Tests**
