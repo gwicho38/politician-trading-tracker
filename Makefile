@@ -323,7 +323,6 @@ deploy-functions:
 	cd client && npx supabase functions deploy trading-signals --project-ref uljsqvwkomdrlnofmlad --no-verify-jwt
 	cd client && npx supabase functions deploy portfolio --project-ref uljsqvwkomdrlnofmlad --no-verify-jwt
 	cd client && npx supabase functions deploy politician-trading-collect --project-ref uljsqvwkomdrlnofmlad --no-verify-jwt
-	cd client && npx supabase functions deploy collect-us-house --project-ref uljsqvwkomdrlnofmlad --no-verify-jwt
 	@echo "✅ Edge Functions deployed to uljsqvwkomdrlnofmlad"
 
 # Database
