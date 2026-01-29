@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { logError } from '@/lib/logger';
 
 export const useAdmin = () => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -11,7 +12,7 @@ export const useAdmin = () => {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
         if (sessionError) {
-          console.error('[useAdmin] Session fetch error:', sessionError.message);
+          logError('Session fetch error', 'admin', undefined, { error: sessionError.message });
           setIsAdmin(false);
           return;
         }
@@ -27,13 +28,13 @@ export const useAdmin = () => {
         });
 
         if (error) {
-          console.error('[useAdmin] Error checking admin status:', error);
+          logError('Error checking admin status', 'admin', undefined, { error: error.message });
           setIsAdmin(false);
         } else {
           setIsAdmin(!!data);
         }
       } catch (error) {
-        console.error('[useAdmin] Failed to check admin status:', error);
+        logError('Failed to check admin status', 'admin', error instanceof Error ? error : undefined);
         // Clear corrupted session directly from localStorage
         try {
           Object.keys(localStorage).filter(k => k.startsWith('sb-')).forEach(k => localStorage.removeItem(k));
