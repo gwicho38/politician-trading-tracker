@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #45 - Testing: Add Tests for TradingSignals.tsx Component - COMPLETED
+Loop #46 - Testing: Add Tests for PoliticiansView.tsx Component - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -70,7 +70,7 @@ Loop #45 - Testing: Add Tests for TradingSignals.tsx Component - COMPLETED
 - [x] ~~Add tests for Dashboard.tsx~~ - Loop #43 (27 tests)
 - [x] ~~Add tests for TradesView.tsx~~ - Loop #44 (32 tests)
 - [x] ~~Add tests for TradingSignals.tsx~~ - Loop #45 (32 tests)
-- [ ] Add tests for PoliticianList.tsx
+- [x] ~~Add tests for PoliticiansView.tsx~~ - Loop #46 (29 tests)
 - [ ] Add tests for PoliticianDetails.tsx
 - [ ] Add tests for ReferencePortfolio.tsx
 - [ ] Add tests for useAlpacaCredentials.ts hook
@@ -84,6 +84,24 @@ Loop #45 - Testing: Add Tests for TradingSignals.tsx Component - COMPLETED
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #46
+- [2026-01-29] 🧪 **Testing: PoliticiansView.tsx Component Tests**
+  - Created `client/src/components/PoliticiansView.test.tsx` with 29 comprehensive tests
+  - Test coverage:
+    - **Header tests (2)**: Title and description rendering
+    - **Loading state tests (2)**: Spinner display/hide
+    - **Error state tests (1)**: Error message display
+    - **Empty state tests (1)**: Empty message when no politicians
+    - **Politician list tests (6)**: Names, party badges, volume, trades, initials avatar, missing name handling
+    - **Table headers and sorting tests (4)**: Headers render, sort by name/volume, toggle direction
+    - **Pagination tests (4)**: Controls visibility, itemLabel, setTotalItems, result pagination
+    - **Modal interaction tests (2)**: Open on row click, close on button click
+    - **Initial politician selection tests (3)**: Opens for found ID, doesn't open for not found, null handling
+    - **Edge cases tests (4)**: Undefined chamber, state fallback, zero values, undefined values
+  - Mocked PaginationControls, PoliticianProfileModal, hooks (usePoliticians, usePagination)
+  - All 300 client tests passing (271 existing + 29 new)
+  - Build successful
 
 ## ✅ Completed Loop #45
 - [2026-01-29] 🧪 **Testing: TradingSignals.tsx Component Tests**
