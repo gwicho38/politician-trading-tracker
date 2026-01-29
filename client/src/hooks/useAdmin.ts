@@ -38,7 +38,9 @@ export const useAdmin = () => {
         // Clear corrupted session directly from localStorage
         try {
           Object.keys(localStorage).filter(k => k.startsWith('sb-')).forEach(k => localStorage.removeItem(k));
-        } catch {}
+        } catch {
+          // Ignore localStorage errors in SSR/test environments
+        }
         setIsAdmin(false);
       } finally {
         setIsLoading(false);

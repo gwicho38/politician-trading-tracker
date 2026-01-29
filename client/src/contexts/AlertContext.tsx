@@ -20,7 +20,7 @@ export interface Alert {
   message: string;
   timestamp: Date;
   dismissed: boolean;
-  data?: any;
+  data?: Record<string, unknown>;
 }
 
 interface AlertContextValue {

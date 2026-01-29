@@ -11,7 +11,7 @@ export interface LogEntry {
   category?: string
   userId?: string
   sessionId?: string
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
   timestamp?: string
   userAgent?: string
   url?: string
@@ -86,7 +86,7 @@ class FrontendLogger {
     }
   }
 
-  private log(level: LogEntry['level'], message: string, category?: string, metadata?: Record<string, any>): void {
+  private log(level: LogEntry['level'], message: string, category?: string, metadata?: Record<string, unknown>): void {
     const logEntry: LogEntry = {
       level,
       message,
@@ -112,19 +112,19 @@ class FrontendLogger {
     }
   }
 
-  debug(message: string, category?: string, metadata?: Record<string, any>): void {
+  debug(message: string, category?: string, metadata?: Record<string, unknown>): void {
     this.log('debug', message, category, metadata)
   }
 
-  info(message: string, category?: string, metadata?: Record<string, any>): void {
+  info(message: string, category?: string, metadata?: Record<string, unknown>): void {
     this.log('info', message, category, metadata)
   }
 
-  warn(message: string, category?: string, metadata?: Record<string, any>): void {
+  warn(message: string, category?: string, metadata?: Record<string, unknown>): void {
     this.log('warn', message, category, metadata)
   }
 
-  error(message: string, category?: string, error?: Error, metadata?: Record<string, any>): void {
+  error(message: string, category?: string, error?: Error, metadata?: Record<string, unknown>): void {
     const errorMetadata = {
       ...metadata,
       error: error ? {
@@ -137,7 +137,7 @@ class FrontendLogger {
   }
 
   // Track user actions
-  trackAction(action: string, details?: Record<string, any>): void {
+  trackAction(action: string, details?: Record<string, unknown>): void {
     this.info(`User action: ${action}`, 'user_action', details)
   }
 

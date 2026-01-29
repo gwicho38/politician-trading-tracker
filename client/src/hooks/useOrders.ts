@@ -172,7 +172,7 @@ export function usePlaceOrder(tradingMode: 'paper' | 'live') {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (params: PlaceOrderParams): Promise<{ success: boolean; order?: any; error?: string }> => {
+    mutationFn: async (params: PlaceOrderParams): Promise<{ success: boolean; order?: TradingOrder; error?: string }> => {
       const accessToken = getAccessToken();
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;

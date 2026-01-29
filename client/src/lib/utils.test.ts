@@ -15,7 +15,8 @@ describe('cn()', () => {
   });
 
   it('handles conditional classes', () => {
-    const result = cn('foo', false && 'bar', 'baz');
+    const isEnabled = false;
+    const result = cn('foo', isEnabled && 'bar', 'baz');
     expect(result).toBe('foo baz');
   });
 
