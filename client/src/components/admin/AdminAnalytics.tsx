@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { TrendingUp, DollarSign, Users, FileText, Activity } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
+import { logError } from '@/lib/logger';
 
 type DashboardStats = Tables<'dashboard_stats'>;
 type ChartData = Tables<'chart_data'>;
@@ -44,7 +45,7 @@ const AdminAnalytics = () => {
           Object.entries(partyCounts).map(([name, value]) => ({ name, value }))
         );
       } catch (error) {
-        console.error('Error fetching analytics:', error);
+        logError('Error fetching analytics', 'admin', error instanceof Error ? error : undefined);
         toast({
           title: 'Error',
           description: 'Failed to fetch analytics data',

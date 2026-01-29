@@ -12,6 +12,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Loader2, RefreshCw, Download, ExternalLink, Clock, CheckCircle, AlertTriangle, XCircle, Minus, CloudDownload } from 'lucide-react';
 import { toast } from 'sonner';
+import { logError } from '@/lib/logger';
 
 interface TradingOrder {
   id: string;
@@ -62,7 +63,7 @@ const Orders = () => {
       // Check if user has API keys configured
       setHasLiveAccess(false); // TODO: Check actual subscription status
     } catch (error) {
-      console.error('Error checking API keys:', error);
+      logError('Error checking API keys', 'orders', error instanceof Error ? error : undefined);
     }
   };
 
@@ -83,7 +84,7 @@ const Orders = () => {
       });
 
       if (error) {
-        console.error('Orders error:', error);
+        logError('Orders error', 'orders', undefined, { error: error.message });
         throw new Error(error.message || 'Failed to fetch orders');
       }
 
@@ -94,7 +95,7 @@ const Orders = () => {
         throw new Error(data?.error || 'Failed to fetch orders');
       }
     } catch (error) {
-      console.error('Error loading orders:', error);
+      logError('Error loading orders', 'orders', error instanceof Error ? error : undefined);
       toast.error('Failed to load orders');
     } finally {
       setLoading(false);
@@ -120,7 +121,7 @@ const Orders = () => {
       });
 
       if (error) {
-        console.error('Sync error:', error);
+        logError('Sync error', 'orders', undefined, { error: error.message });
         throw new Error(error.message || 'Failed to sync orders');
       }
 
@@ -132,7 +133,7 @@ const Orders = () => {
         throw new Error(data?.error || 'Failed to sync orders');
       }
     } catch (error) {
-      console.error('Error syncing orders:', error);
+      logError('Error syncing orders', 'orders', error instanceof Error ? error : undefined);
       toast.error('Failed to sync orders from Alpaca');
     } finally {
       setSyncing(false);

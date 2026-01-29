@@ -30,6 +30,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { logError } from '@/lib/logger';
 
 function getSignalIcon(signalType: string) {
   switch (signalType) {
@@ -129,7 +130,7 @@ export function FloatingCart() {
         }
       }
     } catch (error) {
-      console.error('Error placing orders:', error);
+      logError('Error placing orders', 'cart', error instanceof Error ? error : undefined);
       toast.error(error instanceof Error ? error.message : 'Failed to place orders');
     } finally {
       setPlacingOrders(false);

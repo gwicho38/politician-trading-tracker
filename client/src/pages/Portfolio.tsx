@@ -12,6 +12,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Loader2, TrendingUp, TrendingDown, DollarSign, PieChart, BarChart, AlertTriangle, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { logError } from '@/lib/logger';
 
 interface AlpacaAccount {
   portfolio_value: string;
@@ -84,7 +85,7 @@ const Portfolio = () => {
       // This would typically call an API endpoint to check user settings
       setHasLiveAccess(false); // TODO: Check actual subscription status
     } catch (error) {
-      console.error('Error checking API keys:', error);
+      logError('Error checking API keys', 'portfolio', error instanceof Error ? error : undefined);
     }
   };
 
@@ -102,7 +103,7 @@ const Portfolio = () => {
       });
 
       if (portfolioError) {
-        console.error('Portfolio error:', portfolioError);
+        logError('Portfolio error', 'portfolio', undefined, { error: portfolioError.message });
         setConnectionStatus('error');
       } else if (portfolioData?.success) {
         setPositions(portfolioData.positions || []);
@@ -117,7 +118,7 @@ const Portfolio = () => {
       });
 
       if (ordersError) {
-        console.error('Orders error:', ordersError);
+        logError('Orders error', 'portfolio', undefined, { error: ordersError.message });
         setPendingOrders([]);
       } else if (ordersData?.success) {
         setPendingOrders(ordersData.orders || []);
@@ -126,7 +127,7 @@ const Portfolio = () => {
       }
 
     } catch (error) {
-      console.error('Error loading portfolio data:', error);
+      logError('Error loading portfolio data', 'portfolio', error instanceof Error ? error : undefined);
       setConnectionStatus('error');
       toast.error('Failed to load portfolio data');
     } finally {
@@ -140,7 +141,7 @@ const Portfolio = () => {
       toast.success(`Position in ${ticker} closed successfully`);
       loadPortfolioData(); // Refresh data
     } catch (error) {
-      console.error('Error closing position:', error);
+      logError('Error closing position', 'portfolio', error instanceof Error ? error : undefined);
       toast.error('Failed to close position');
     }
   };

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { Users, Shield, UserCheck } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
+import { logError } from '@/lib/logger';
 
 type AppRole = Database['public']['Enums']['app_role'];
 
@@ -67,7 +68,7 @@ const AdminUserManagement = () => {
 
       setUsers(usersWithRoles);
     } catch (error) {
-      console.error('Error fetching users:', error);
+      logError('Error fetching users', 'admin', error instanceof Error ? error : undefined);
       toast({
         title: 'Error',
         description: 'Failed to fetch users',
@@ -121,7 +122,7 @@ const AdminUserManagement = () => {
       
       fetchUsers();
     } catch (error) {
-      console.error('Error updating role:', error);
+      logError('Error updating role', 'admin', error instanceof Error ? error : undefined);
       toast({
         title: 'Error',
         description: 'Failed to update user role',

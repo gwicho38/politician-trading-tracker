@@ -3,6 +3,7 @@ import { AlertTriangle, RefreshCw, Home, Bug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { logError, logInfo } from '@/lib/logger';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -50,9 +51,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Log the error
-    console.error(`[ErrorBoundary${this.props.name ? `:${this.props.name}` : ''}] Caught error:`, error);
-    console.error('Component stack:', errorInfo.componentStack);
+    // Log the error to structured logger
+    const boundaryName = this.props.name ? `ErrorBoundary:${this.props.name}` : 'ErrorBoundary';
+    logError(`[${boundaryName}] Caught error`, 'error-boundary', error, {
+      componentStack: errorInfo.componentStack,
+    });
 
     this.setState({ errorInfo });
 
@@ -137,7 +140,7 @@ function ErrorFallback({ error, errorInfo, onRetry, name }: ErrorFallbackProps) 
       location: window.location.href,
       timestamp: new Date().toISOString(),
     };
-    console.log('Error report:', errorDetails);
+    logInfo('Error report', 'error-boundary', errorDetails);
     // TODO: Send to error reporting service (e.g., Sentry)
   };
 

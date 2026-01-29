@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Briefcase, ShoppingCart, Target, Plus, History, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { logError } from '@/lib/logger';
 
 interface AlpacaAccount {
   portfolio_value: string;
@@ -81,7 +82,7 @@ const TradingOperations = () => {
         loadRecentOrders()
       ]);
     } catch (error) {
-      console.error('Error loading data:', error);
+      logError('Error loading data', 'trading', error instanceof Error ? error : undefined);
     } finally {
       setLoading(false);
     }
@@ -109,7 +110,7 @@ const TradingOperations = () => {
         throw new Error(data.error || 'Invalid response from Alpaca API');
       }
     } catch (error) {
-      console.error('Error loading account info:', error);
+      logError('Error loading account info', 'trading', error instanceof Error ? error : undefined);
       // Set default account info on error
       setAccountInfo({
         portfolio_value: '0.00',
@@ -137,7 +138,7 @@ const TradingOperations = () => {
       ];
       setCartItems(mockCart);
     } catch (error) {
-      console.error('Error loading cart:', error);
+      logError('Error loading cart', 'trading', error instanceof Error ? error : undefined);
     }
   };
 
@@ -153,7 +154,7 @@ const TradingOperations = () => {
       if (error) throw error;
       setRecentOrders(data || []);
     } catch (error) {
-      console.error('Error loading orders:', error);
+      logError('Error loading orders', 'trading', error instanceof Error ? error : undefined);
       toast.error('Failed to load recent orders');
     }
   };
@@ -171,7 +172,7 @@ const TradingOperations = () => {
       toast.success('Cart trades executed successfully!');
       setCartItems([]); // Clear cart after execution
     } catch (error) {
-      console.error('Error executing trades:', error);
+      logError('Error executing trades', 'trading', error instanceof Error ? error : undefined);
       toast.error('Failed to execute trades');
     } finally {
       setExecutingTrades(false);
@@ -212,7 +213,7 @@ const TradingOperations = () => {
         throw new Error(data?.error || 'Failed to place order');
       }
     } catch (error) {
-      console.error('Error placing order:', error);
+      logError('Error placing order', 'trading', error instanceof Error ? error : undefined);
       toast.error(error instanceof Error ? error.message : 'Failed to place order');
     }
   };

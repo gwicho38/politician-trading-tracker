@@ -1,5 +1,6 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Mail } from 'lucide-react';
+import { logError } from '@/lib/logger';
 
 // Support email from environment variable with fallback
 const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@govmarket.trade';
@@ -32,9 +33,10 @@ export class RootErrorBoundary extends Component<RootErrorBoundaryProps, RootErr
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Log to console
-    console.error('[RootErrorBoundary] Application crashed:', error);
-    console.error('Component stack:', errorInfo.componentStack);
+    // Log to structured logger (also logs to console)
+    logError('[RootErrorBoundary] Application crashed', 'error-boundary', error, {
+      componentStack: errorInfo.componentStack,
+    });
 
     // TODO: Send to error reporting service (Sentry, etc.)
     // This would be the place to report to external services

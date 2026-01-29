@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Loader2, Clock, Play, Pause, RefreshCw, CheckCircle, XCircle, AlertTriangle, Download, Activity } from 'lucide-react';
 import { toast } from 'sonner';
+import { logError } from '@/lib/logger';
 
 interface ScheduledJob {
   id: string;
@@ -126,7 +127,7 @@ const ScheduledJobs = () => {
         .order('job_name');
 
       if (jobsError) {
-        console.error('Error fetching jobs:', jobsError);
+        logError('Error fetching jobs', 'jobs', undefined, { error: jobsError.message });
         toast.error('Failed to load scheduled jobs');
         return;
       }
@@ -165,7 +166,7 @@ const ScheduledJobs = () => {
       setJobs(jobsWithExecutions);
       setSchedulerRunning(jobsWithExecutions.length > 0);
     } catch (error) {
-      console.error('Error loading jobs:', error);
+      logError('Error loading jobs', 'jobs', error instanceof Error ? error : undefined);
       toast.error('Failed to load scheduled jobs');
     } finally {
       setLoading(false);
@@ -182,7 +183,7 @@ const ScheduledJobs = () => {
         .limit(50);
 
       if (execError) {
-        console.error('Error fetching executions:', execError);
+        logError('Error fetching executions', 'jobs', undefined, { error: execError.message });
         return;
       }
 
@@ -197,7 +198,7 @@ const ScheduledJobs = () => {
 
       setExecutions(formattedExecutions);
     } catch (error) {
-      console.error('Error loading executions:', error);
+      logError('Error loading executions', 'jobs', error instanceof Error ? error : undefined);
     }
   };
 
@@ -208,7 +209,7 @@ const ScheduledJobs = () => {
       setSchedulerRunning(true);
       loadJobs();
     } catch (error) {
-      console.error('Error restarting scheduler:', error);
+      logError('Error restarting scheduler', 'jobs', error instanceof Error ? error : undefined);
       toast.error('Failed to restart scheduler');
     }
   };

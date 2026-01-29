@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { logError } from '@/lib/logger';
 
 interface SyncStatus {
   lastSync: string | null;
@@ -128,7 +129,7 @@ const AdminDataCollection = () => {
         lastUpdated: lastTrade?.created_at || ''
       });
     } catch (error) {
-      console.error('Error loading data stats:', error);
+      logError('Error loading data stats', 'admin-data', error instanceof Error ? error : undefined);
     }
   };
 
@@ -149,7 +150,7 @@ const AdminDataCollection = () => {
         }));
       }
     } catch (error) {
-      console.error('Error loading sync status:', error);
+      logError('Error loading sync status', 'admin-data', error instanceof Error ? error : undefined);
     }
   };
 
@@ -182,7 +183,7 @@ const AdminDataCollection = () => {
       await loadSyncStatus();
 
     } catch (error) {
-      console.error('Sync error:', error);
+      logError('Sync error', 'admin-data', error instanceof Error ? error : undefined);
       setSyncStatus(prev => ({
         ...prev,
         status: 'failed',
@@ -225,7 +226,7 @@ const AdminDataCollection = () => {
       await loadDataStats();
 
     } catch (error) {
-      console.error('Politician sync error:', error);
+      logError('Politician sync error', 'admin-data', error instanceof Error ? error : undefined);
       setSyncStatus(prev => ({
         ...prev,
         status: 'failed',
@@ -268,7 +269,7 @@ const AdminDataCollection = () => {
       await loadDataStats();
 
     } catch (error) {
-      console.error('Trade sync error:', error);
+      logError('Trade sync error', 'admin-data', error instanceof Error ? error : undefined);
       setSyncStatus(prev => ({
         ...prev,
         status: 'failed',
@@ -311,7 +312,7 @@ const AdminDataCollection = () => {
       await loadSyncStatus();
 
     } catch (error) {
-      console.error('Stats update error:', error);
+      logError('Stats update error', 'admin-data', error instanceof Error ? error : undefined);
       setSyncStatus(prev => ({
         ...prev,
         status: 'failed',

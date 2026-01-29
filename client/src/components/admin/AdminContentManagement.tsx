@@ -13,6 +13,7 @@ import type { Tables } from '@/integrations/supabase/types';
 import PoliticianForm from './PoliticianForm';
 import TradeForm from './TradeForm';
 import { formatCurrencyCompact, formatDate as formatDateUtil } from '@/lib/formatters';
+import { logError } from '@/lib/logger';
 
 type Politician = Tables<'politicians'>;
 type Trade = Tables<'trades'>;
@@ -64,7 +65,7 @@ const AdminContentManagement = () => {
         politician_name: (t.politicians as any)?.name,
       })));
     } catch (error) {
-      console.error('Error fetching data:', error);
+      logError('Error fetching data', 'admin', error instanceof Error ? error : undefined);
       toast({
         title: 'Error',
         description: 'Failed to fetch content data',
@@ -87,7 +88,7 @@ const AdminContentManagement = () => {
       toast({ title: 'Success', description: 'Politician deleted' });
       fetchData();
     } catch (error) {
-      console.error('Error deleting politician:', error);
+      logError('Error deleting politician', 'admin', error instanceof Error ? error : undefined);
       toast({
         title: 'Error',
         description: 'Failed to delete politician',
@@ -104,7 +105,7 @@ const AdminContentManagement = () => {
       toast({ title: 'Success', description: 'Trade deleted' });
       fetchData();
     } catch (error) {
-      console.error('Error deleting trade:', error);
+      logError('Error deleting trade', 'admin', error instanceof Error ? error : undefined);
       toast({
         title: 'Error',
         description: 'Failed to delete trade',
