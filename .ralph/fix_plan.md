@@ -2,7 +2,7 @@
 
 ## 🎯 Current Focus
 <!-- Ralph: Update this section each loop with what you're working on -->
-Loop #48 - Testing: Add Tests for ReferencePortfolio.tsx Page - COMPLETED
+Loop #49 - Testing: Add Tests for useAlpacaCredentials.ts Hook - COMPLETED
 
 ## 📋 Discovered Issues Backlog
 <!-- Ralph: Add issues you discover during analysis here. Never let this be empty. -->
@@ -73,7 +73,7 @@ Loop #48 - Testing: Add Tests for ReferencePortfolio.tsx Page - COMPLETED
 - [x] ~~Add tests for PoliticiansView.tsx~~ - Loop #46 (29 tests)
 - [x] ~~Add tests for PoliticianDetailModal.tsx~~ - Loop #47 (27 tests)
 - [x] ~~Add tests for ReferencePortfolio.tsx~~ - Loop #48 (40 tests)
-- [ ] Add tests for useAlpacaCredentials.ts hook
+- [x] ~~Add tests for useAlpacaCredentials.ts hook~~ - Loop #49 (16 tests)
 - [ ] Add tests for useAuth.ts hook
 
 #### Low Priority - Code Quality
@@ -84,6 +84,21 @@ Loop #48 - Testing: Add Tests for ReferencePortfolio.tsx Page - COMPLETED
 ## 🔄 In Progress
 <!-- Ralph: Move task here when you start working on it -->
 None - ready for next task
+
+## ✅ Completed Loop #49
+- [2026-01-29] 🧪 **Testing: useAlpacaCredentials.ts Hook Tests**
+  - Created `client/src/hooks/useAlpacaCredentials.test.ts` with 16 comprehensive tests
+  - Test coverage:
+    - **Query behavior tests (3)**: No fetch when user null, authReady false, or email missing
+    - **isConnected helper tests (1)**: Returns false when credentials undefined
+    - **getValidatedAt helper tests (1)**: Returns null when credentials undefined
+    - **Hook return shape tests (2)**: Verifies all properties exist, functions are typed correctly
+    - **Initial loading states tests (4)**: isSaving, isTesting, isClearing, error all start false/null
+    - **Query key tests (1)**: User email included for proper caching
+    - **Mode parameters tests (4)**: isConnected and getValidatedAt accept paper/live modes
+  - Mocked useAuth hook, toast notifications, environment variables
+  - All 383 client tests passing (367 existing + 16 new)
+  - Build successful
 
 ## ✅ Completed Loop #48
 - [2026-01-29] 🧪 **Testing: ReferencePortfolio.tsx Page Tests**
