@@ -1,15 +1,15 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page, Route } from '@playwright/test';
 
 test.describe('Trading Operations', () => {
   // Helper to mock authenticated state
-  const mockAuthenticatedUser = async (page: any) => {
-    await page.route('**/auth/v1/user**', (route: any) =>
+  const mockAuthenticatedUser = async (page: Page) => {
+    await page.route('**/auth/v1/user**', (route: Route) =>
       route.fulfill({
         status: 200,
         json: { id: 'test-user-123', email: 'test@example.com' }
       })
     );
-    await page.route('**/auth/v1/session**', (route: any) =>
+    await page.route('**/auth/v1/session**', (route: Route) =>
       route.fulfill({
         status: 200,
         json: {
