@@ -75,6 +75,45 @@ function sanitizeResponseForLogging(response: Response, body?: unknown): Record<
   }
 }
 
+// Supabase client interface for edge functions
+interface SupabaseClient {
+  auth: {
+    getUser: (token: string) => Promise<{ data: { user: { id: string } | null }; error: Error | null }>;
+  };
+  from: (table: string) => {
+    select: (columns: string, options?: { count?: string; head?: boolean }) => {
+      eq: (column: string, value: unknown) => ReturnType<SupabaseClient['from']>['select'];
+      gte: (column: string, value: number) => ReturnType<SupabaseClient['from']>['select'];
+      order: (column: string, options: { ascending: boolean }) => ReturnType<SupabaseClient['from']>['select'];
+      range: (from: number, to: number) => Promise<{ data: TradingSignal[] | null; error: Error | null; count?: number }>;
+    };
+    insert: (data: unknown) => {
+      select: () => Promise<{ data: TradingSignal[] | null; error: Error | null }>;
+    };
+  };
+}
+
+// Trading signal interface
+interface TradingSignal {
+  id?: string;
+  ticker: string;
+  asset_name: string;
+  signal_type: string;
+  signal_strength: string;
+  confidence_score: number;
+  target_price?: number;
+  stop_loss?: number;
+  take_profit?: number;
+  politician_activity_count?: number;
+  buy_sell_ratio?: number;
+  generated_at: string;
+  is_active: boolean;
+  user_id?: string;
+  model_version?: string;
+  features?: Record<string, unknown>;
+  notes?: string;
+}
+
 serve(async (req) => {
   const startTime = Date.now()
   const requestId = crypto.randomUUID().substring(0, 8)
@@ -183,7 +222,7 @@ serve(async (req) => {
   }
 })
 
-async function handleGetSignals(supabaseClient: any, req: Request, requestId: string) {
+async function handleGetSignals(supabaseClient: SupabaseClient, req: Request, requestId: string) {
   try {
     const url = new URL(req.url)
     const limit = parseInt(url.searchParams.get('limit') || '100')
@@ -275,7 +314,7 @@ async function handleGetSignals(supabaseClient: any, req: Request, requestId: st
   }
 }
 
-async function handleGenerateSignals(supabaseClient: any, req: Request) {
+async function handleGenerateSignals(supabaseClient: SupabaseClient, req: Request) {
   try {
     const body = await req.json()
     const { lookbackDays = 30, minConfidence = 0.65, fetchMarketData = true } = body
@@ -395,7 +434,7 @@ async function handleGenerateSignals(supabaseClient: any, req: Request) {
   }
 }
 
-async function handleGetSignalStats(supabaseClient: any, req: Request) {
+async function handleGetSignalStats(supabaseClient: SupabaseClient, req: Request) {
   try {
     // Get signal statistics
     const { data: signals, error } = await supabaseClient

@@ -13,11 +13,20 @@ interface ScrapingConfig {
   requestDelay: number
 }
 
+// Minimal Supabase client interface for edge functions
+interface SupabaseClientInterface {
+  from: (table: string) => {
+    select: (columns?: string) => Promise<{ data: unknown[] | null; error: Error | null }>;
+    insert: (data: unknown) => Promise<{ data: unknown | null; error: Error | null }>;
+    upsert: (data: unknown, options?: { onConflict?: string }) => Promise<{ data: unknown | null; error: Error | null }>;
+  };
+}
+
 class PoliticianTradingCollector {
-  private supabase: any
+  private supabase: SupabaseClientInterface
   private config: ScrapingConfig
-  
-  constructor(supabaseClient: any) {
+
+  constructor(supabaseClient: SupabaseClientInterface) {
     this.supabase = supabaseClient
     this.config = {
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
@@ -294,7 +303,7 @@ class PoliticianTradingCollector {
     const startTime = new Date()
     const results = {
       started_at: startTime.toISOString(),
-      jobs: {} as any,
+      jobs: {} as Record<string, { status: string; new_disclosures: number; updated_disclosures: number; errors: string[] }>,
       summary: {
         total_new_disclosures: 0,
         total_updated_disclosures: 0,
@@ -350,9 +359,10 @@ class PoliticianTradingCollector {
             }
           }
 
-        } catch (error: any) {
+        } catch (error: unknown) {
+          const err = error as Error
           console.error(`Collection failed for collector:`, error)
-          results.summary.errors.push(error.message)
+          results.summary.errors.push(err.message)
         }
       }
 
@@ -374,11 +384,12 @@ class PoliticianTradingCollector {
       results.completed_at = new Date().toISOString()
       results.status = 'completed'
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as Error
       console.error('Full collection failed:', error)
-      results.error = error.message
+      results.error = err.message
       results.status = 'failed'
-      results.summary.errors.push(error.message)
+      results.summary.errors.push(err.message)
 
       // Update job status
       if (jobId) {
@@ -387,7 +398,7 @@ class PoliticianTradingCollector {
           .update({
             status: 'failed',
             completed_at: new Date().toISOString(),
-            error_message: error.message
+            error_message: err.message
           })
           .eq('id', jobId)
       }
@@ -435,13 +446,14 @@ Deno.serve(async (req) => {
       }
     )
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as Error
     console.error('Edge function error:', error)
-    
+
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error.message,
+      JSON.stringify({
+        success: false,
+        error: err.message,
         message: 'Failed to run politician trading collection'
       }),
       { 

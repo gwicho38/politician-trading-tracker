@@ -75,6 +75,30 @@ function sanitizeResponseForLogging(response: Response, body?: unknown): Record<
   }
 }
 
+// Supabase client interface for edge functions
+interface SupabaseClient {
+  auth: {
+    getUser: (token: string) => Promise<{ data: { user: { id: string } | null }; error: Error | null }>;
+  };
+  from: (table: string) => {
+    select: (columns: string) => {
+      eq: (column: string, value: unknown) => {
+        order: (column: string, options: { ascending: boolean }) => Promise<{ data: Position[] | null; error: Error | null }>;
+      };
+    };
+  };
+}
+
+// Position interface
+interface Position {
+  id: string;
+  symbol: string;
+  quantity: number;
+  market_value: number;
+  is_open: boolean;
+  created_at: string;
+}
+
 serve(async (req) => {
   const startTime = Date.now()
   const requestId = crypto.randomUUID().substring(0, 8)
@@ -198,7 +222,7 @@ serve(async (req) => {
   }
 })
 
-async function handleGetPortfolio(supabaseClient: any, req: Request, requestId: string) {
+async function handleGetPortfolio(supabaseClient: SupabaseClient, req: Request, requestId: string) {
   const handlerStartTime = Date.now()
 
   try {
@@ -240,7 +264,7 @@ async function handleGetPortfolio(supabaseClient: any, req: Request, requestId: 
     }
 
     // Get positions from database (handle case where table doesn't exist yet)
-    let positions: any[] = []
+    let positions: Position[] = []
     try {
       const { data, error } = await supabaseClient
         .from('positions')
@@ -255,7 +279,8 @@ async function handleGetPortfolio(supabaseClient: any, req: Request, requestId: 
         positions = data || []
       }
     } catch (e) {
-      log.warn('Exception fetching positions', { error: e.message })
+      const err = e as Error
+      log.warn('Exception fetching positions', { error: err.message })
     }
 
     const responseData = {
@@ -278,6 +303,7 @@ async function handleGetPortfolio(supabaseClient: any, req: Request, requestId: 
       }
     )
   } catch (error) {
+    const err = error as Error
     log.error('Error in handleGetPortfolio', error, {
       requestId,
       handler: 'get-portfolio',
@@ -286,7 +312,7 @@ async function handleGetPortfolio(supabaseClient: any, req: Request, requestId: 
     })
 
     const errorResponse = new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: err.message }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -297,7 +323,7 @@ async function handleGetPortfolio(supabaseClient: any, req: Request, requestId: 
   }
 }
 
-async function handleGetAccountInfo(supabaseClient: any, req: Request, requestId: string) {
+async function handleGetAccountInfo(supabaseClient: SupabaseClient, req: Request, requestId: string) {
   try {
     const url = new URL(req.url)
     const tradingMode = url.searchParams.get('trading_mode') || 'paper'
