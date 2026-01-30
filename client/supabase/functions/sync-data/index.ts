@@ -1,6 +1,49 @@
 import { createClient } from 'supabase'
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
+// Minimal Supabase client interface for edge functions
+interface SupabaseClient {
+  from: (table: string) => {
+    select: (columns?: string, options?: { count?: string; head?: boolean }) => {
+      eq: (column: string, value: unknown) => ReturnType<SupabaseClient['from']>['select'];
+      in: (column: string, values: unknown[]) => ReturnType<SupabaseClient['from']>['select'];
+      order: (column: string, options?: { ascending?: boolean }) => ReturnType<SupabaseClient['from']>['select'];
+      limit: (count: number) => ReturnType<SupabaseClient['from']>['select'];
+      range: (from: number, to: number) => Promise<{ data: unknown[] | null; error: Error | null; count?: number }>;
+    } & Promise<{ data: unknown[] | null; error: Error | null; count?: number }>;
+    insert: (data: unknown) => Promise<{ data: unknown | null; error: Error | null }>;
+    update: (data: unknown) => {
+      eq: (column: string, value: unknown) => Promise<{ data: unknown | null; error: Error | null }>;
+    };
+    upsert: (data: unknown, options?: { onConflict?: string }) => Promise<{ data: unknown | null; error: Error | null }>;
+  };
+  rpc: (fn: string, params?: Record<string, unknown>) => Promise<{ data: unknown | null; error: Error | null }>;
+}
+
+// Raw data interfaces for transformation
+interface RawPolitician {
+  full_name?: string;
+  name?: string;
+  role?: string;
+  party?: string;
+  state_or_country?: string;
+}
+
+interface RawDisclosure {
+  transaction_type?: string;
+  amount_exact?: number;
+  amount_range_min?: number;
+  amount_range_max?: number;
+  asset_ticker?: string;
+  asset_name?: string;
+  disclosure_date?: string;
+  transaction_date?: string;
+}
+
+interface TradeWithValue {
+  estimated_value?: number;
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -93,7 +136,7 @@ serve(async (req) => {
   }
 })
 
-async function handleSyncAll(supabaseClient: any, requestId: string) {
+async function handleSyncAll(supabaseClient: SupabaseClient, requestId: string) {
   const fn = 'handleSyncAll'
   logger.info(fn, 'START - Syncing all politicians', { requestId })
 
@@ -175,12 +218,12 @@ async function handleSyncAll(supabaseClient: any, requestId: string) {
   )
 }
 
-async function handleSyncPoliticians(supabaseClient: any, requestId: string) {
+async function handleSyncPoliticians(supabaseClient: SupabaseClient, requestId: string) {
   logger.debug('handleSyncPoliticians', 'Alias for handleSyncAll', { requestId })
   return await handleSyncAll(supabaseClient, requestId)
 }
 
-async function handleSyncTrades(supabaseClient: any, requestId: string) {
+async function handleSyncTrades(supabaseClient: SupabaseClient, requestId: string) {
   const fn = 'handleSyncTrades'
   logger.info(fn, 'START - Syncing all trades', { requestId })
 
@@ -299,7 +342,7 @@ async function handleSyncTrades(supabaseClient: any, requestId: string) {
   )
 }
 
-async function handleUpdateStats(supabaseClient: any, requestId: string) {
+async function handleUpdateStats(supabaseClient: SupabaseClient, requestId: string) {
   const fn = 'handleUpdateStats'
   logger.info(fn, 'START - Updating dashboard statistics', { requestId })
 
@@ -342,7 +385,7 @@ async function handleUpdateStats(supabaseClient: any, requestId: string) {
   )
 }
 
-async function handleSyncFull(supabaseClient: any, requestId: string) {
+async function handleSyncFull(supabaseClient: SupabaseClient, requestId: string) {
   const fn = 'handleSyncFull'
   const startTime = Date.now()
   logger.info(fn, 'START - Full synchronization', { requestId })
@@ -394,7 +437,7 @@ async function handleSyncFull(supabaseClient: any, requestId: string) {
 // HELPER FUNCTIONS
 // =============================================================================
 
-function transformPolitician(politician: any) {
+function transformPolitician(politician: RawPolitician) {
   const fn = 'transformPolitician'
   const originalRole = politician.role || ''
   const originalParty = politician.party || 'Other'
@@ -433,7 +476,7 @@ function transformPolitician(politician: any) {
   return result
 }
 
-function transformTrade(disclosure: any, politicianId: string) {
+function transformTrade(disclosure: RawDisclosure, politicianId: string) {
   const fn = 'transformTrade'
   const originalTransactionType = disclosure.transaction_type || ''
 
@@ -482,7 +525,7 @@ function transformTrade(disclosure: any, politicianId: string) {
   return result
 }
 
-async function updatePoliticianTotals(supabaseClient: any, requestId: string) {
+async function updatePoliticianTotals(supabaseClient: SupabaseClient, requestId: string) {
   const fn = 'updatePoliticianTotals'
   logger.info(fn, 'START - Updating politician totals', { requestId })
 
@@ -508,7 +551,7 @@ async function updatePoliticianTotals(supabaseClient: any, requestId: string) {
 
       if (trades) {
         total_trades = trades.length
-        total_volume = trades.reduce((sum: number, trade: any) => sum + (trade.estimated_value || 0), 0)
+        total_volume = trades.reduce((sum: number, trade: TradeWithValue) => sum + (trade.estimated_value || 0), 0)
       }
 
       logger.debug(fn, `Updating ${politician.id}: trades=${total_trades}, volume=$${total_volume}`)
@@ -533,7 +576,7 @@ async function updatePoliticianTotals(supabaseClient: any, requestId: string) {
   logger.info(fn, 'END', { requestId, updated: totalCount })
 }
 
-async function calculateDashboardStats(supabaseClient: any, requestId: string) {
+async function calculateDashboardStats(supabaseClient: SupabaseClient, requestId: string) {
   const fn = 'calculateDashboardStats'
   logger.debug(fn, 'START', { requestId })
 
@@ -545,7 +588,7 @@ async function calculateDashboardStats(supabaseClient: any, requestId: string) {
 
   let totalVolume = 0
   if (trades) {
-    totalVolume = trades.reduce((sum: number, trade: any) => sum + (trade.estimated_value || 0), 0)
+    totalVolume = trades.reduce((sum: number, trade: TradeWithValue) => sum + (trade.estimated_value || 0), 0)
   }
   logger.debug(fn, `trades=${totalTrades}, volume=$${totalVolume}`)
 
