@@ -8,7 +8,7 @@ const corsHeaders = {
 
 // Structured logging utility
 const log = {
-  info: (message: string, metadata?: any) => {
+  info: (message: string, metadata?: Record<string, unknown>) => {
     console.log(JSON.stringify({
       level: 'INFO',
       timestamp: new Date().toISOString(),
@@ -17,18 +17,19 @@ const log = {
       ...metadata
     }))
   },
-  error: (message: string, error?: any, metadata?: any) => {
+  error: (message: string, error?: Error | unknown, metadata?: Record<string, unknown>) => {
+    const err = error as Error | undefined
     console.error(JSON.stringify({
       level: 'ERROR',
       timestamp: new Date().toISOString(),
       service: 'portfolio',
       message,
-      error: error?.message || error,
-      stack: error?.stack,
+      error: err?.message || String(error),
+      stack: err?.stack,
       ...metadata
     }))
   },
-  warn: (message: string, metadata?: any) => {
+  warn: (message: string, metadata?: Record<string, unknown>) => {
     console.warn(JSON.stringify({
       level: 'WARN',
       timestamp: new Date().toISOString(),
@@ -40,8 +41,8 @@ const log = {
 }
 
 // Sanitize request for logging (remove sensitive headers)
-function sanitizeRequestForLogging(req: Request): any {
-  const headers = Object.fromEntries(req.headers.entries())
+function sanitizeRequestForLogging(req: Request): Record<string, unknown> {
+  const headers = Object.fromEntries(req.headers.entries()) as Record<string, string>
 
   // Remove sensitive headers
   const sensitiveHeaders = ['authorization', 'x-api-key', 'cookie', 'x-supabase-auth']
@@ -63,7 +64,7 @@ function sanitizeRequestForLogging(req: Request): any {
 }
 
 // Sanitize response for logging
-function sanitizeResponseForLogging(response: Response, body?: any): any {
+function sanitizeResponseForLogging(response: Response, body?: unknown): Record<string, unknown> {
   return {
     status: response.status,
     statusText: response.statusText,
@@ -106,7 +107,7 @@ serve(async (req) => {
     )
 
     const url = new URL(req.url)
-    let path = url.pathname.split('/').pop()
+    const path = url.pathname.split('/').pop()
 
     // Also check for action in request body (for supabase.functions.invoke)
     let action = path
