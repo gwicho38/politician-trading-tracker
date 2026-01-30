@@ -8,7 +8,7 @@ const corsHeaders = {
 
 // Structured logging utility
 const log = {
-  info: (message: string, metadata?: any) => {
+  info: (message: string, metadata?: Record<string, unknown>) => {
     console.log(JSON.stringify({
       level: 'INFO',
       timestamp: new Date().toISOString(),
@@ -17,18 +17,19 @@ const log = {
       ...metadata
     }))
   },
-  error: (message: string, error?: any, metadata?: any) => {
+  error: (message: string, error?: Error | unknown, metadata?: Record<string, unknown>) => {
+    const err = error as Error | undefined
     console.error(JSON.stringify({
       level: 'ERROR',
       timestamp: new Date().toISOString(),
       service: 'orders',
       message,
-      error: error?.message || error,
-      stack: error?.stack,
+      error: err?.message || String(error),
+      stack: err?.stack,
       ...metadata
     }))
   },
-  warn: (message: string, metadata?: any) => {
+  warn: (message: string, metadata?: Record<string, unknown>) => {
     console.warn(JSON.stringify({
       level: 'WARN',
       timestamp: new Date().toISOString(),
@@ -40,8 +41,8 @@ const log = {
 }
 
 // Sanitize request for logging (remove sensitive headers)
-function sanitizeRequestForLogging(req: Request): any {
-  const headers = Object.fromEntries(req.headers.entries())
+function sanitizeRequestForLogging(req: Request): Record<string, unknown> {
+  const headers = Object.fromEntries(req.headers.entries()) as Record<string, string>
 
   // Remove sensitive headers
   const sensitiveHeaders = ['authorization', 'x-api-key', 'cookie', 'x-supabase-auth']
@@ -63,7 +64,7 @@ function sanitizeRequestForLogging(req: Request): any {
 }
 
 // Sanitize response for logging
-function sanitizeResponseForLogging(response: Response, body?: any): any {
+function sanitizeResponseForLogging(response: Response, body?: unknown): Record<string, unknown> {
   return {
     status: response.status,
     statusText: response.statusText,
@@ -106,11 +107,11 @@ serve(async (req) => {
     )
 
     const url = new URL(req.url)
-    let path = url.pathname.split('/').pop()
+    const path = url.pathname.split('/').pop()
 
     // Also check for action in request body (for supabase.functions.invoke)
     let action = path
-    let bodyParams: any = {}
+    let bodyParams: Record<string, unknown> = {}
     if (req.method === 'POST') {
       try {
         bodyParams = await req.clone().json()
@@ -199,7 +200,31 @@ serve(async (req) => {
   }
 })
 
-async function handleGetOrders(supabaseClient: any, req: Request, requestId: string, bodyParams: any = {}) {
+interface SupabaseClient {
+  auth: {
+    getUser: (token: string) => Promise<{ data: { user: { id: string } | null }; error: Error | null }>;
+  };
+  from: (table: string) => {
+    select: (columns: string, options?: { count?: string; head?: boolean }) => {
+      eq: (column: string, value: string) => ReturnType<SupabaseClient['from']>['select'];
+      in: (column: string, values: string[]) => ReturnType<SupabaseClient['from']>['select'];
+      order: (column: string, options: { ascending: boolean }) => ReturnType<SupabaseClient['from']>['select'];
+      range: (from: number, to: number) => Promise<{ data: TradingOrder[] | null; error: Error | null; count?: number }>;
+    };
+  };
+}
+
+interface TradingOrder {
+  id: string;
+  status: string;
+  side: string;
+  filled_avg_price: number | null;
+  quantity: number;
+  submitted_at: string;
+  trading_mode: string;
+}
+
+async function handleGetOrders(supabaseClient: SupabaseClient, req: Request, requestId: string, bodyParams: Record<string, unknown> = {}) {
   const handlerStartTime = Date.now()
 
   try {
@@ -245,7 +270,7 @@ async function handleGetOrders(supabaseClient: any, req: Request, requestId: str
     }
 
     // Get orders from database (handle case where table doesn't exist yet)
-    let orders: any[] = []
+    let orders: TradingOrder[] = []
     let count = 0
 
     try {
@@ -294,7 +319,8 @@ async function handleGetOrders(supabaseClient: any, req: Request, requestId: str
       const countResult = await countQuery
       count = countResult.count || 0
     } catch (e) {
-      log.warn('Exception fetching orders', { error: e.message })
+      const err = e as Error
+      log.warn('Exception fetching orders', { error: err.message })
     }
 
     const responseData = {
@@ -340,7 +366,7 @@ async function handleGetOrders(supabaseClient: any, req: Request, requestId: str
   }
 }
 
-async function handleGetOrderStats(supabaseClient: any, req: Request) {
+async function handleGetOrderStats(supabaseClient: SupabaseClient, req: Request) {
   try {
     const url = new URL(req.url)
     const tradingMode = url.searchParams.get('trading_mode') || 'paper'
@@ -435,9 +461,10 @@ async function handleGetOrderStats(supabaseClient: any, req: Request) {
       }
     )
   } catch (error) {
+    const err = error as Error
     console.error('Error fetching order stats:', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: err.message }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
