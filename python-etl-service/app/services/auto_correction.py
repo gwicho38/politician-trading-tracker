@@ -13,6 +13,7 @@ Correction types:
 All corrections are logged to data_quality_corrections table for rollback.
 """
 
+import logging
 import os
 import uuid
 from datetime import datetime
@@ -21,6 +22,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from app.lib.database import get_supabase
+
+logger = logging.getLogger(__name__)
 
 
 class CorrectionType(str, Enum):
@@ -341,7 +344,7 @@ class AutoCorrector:
                         results.append(result)
 
             except Exception as e:
-                print(f"Error checking ticker {old_ticker}: {e}")
+                logger.error(f"Error checking ticker {old_ticker}: {e}")
 
         return results
 
@@ -391,7 +394,7 @@ class AutoCorrector:
                         break
 
         except Exception as e:
-            print(f"Error checking value ranges: {e}")
+            logger.error(f"Error checking value ranges: {e}")
 
         return results
 
@@ -510,7 +513,7 @@ class AutoCorrector:
             ).execute()
 
         except Exception as e:
-            print(f"Warning: Failed to log correction: {e}")
+            logger.warning(f"Failed to log correction: {e}")
 
         return correction_id
 
@@ -521,7 +524,7 @@ class AutoCorrector:
                 {"status": "applied", "applied_at": datetime.utcnow().isoformat()}
             ).eq("id", correction_id).execute()
         except Exception as e:
-            print(f"Warning: Failed to mark correction applied: {e}")
+            logger.warning(f"Failed to mark correction applied: {e}")
 
     # =========================================================================
     # Rollback Support
@@ -568,5 +571,5 @@ class AutoCorrector:
             return True
 
         except Exception as e:
-            print(f"Error rolling back correction: {e}")
+            logger.error(f"Error rolling back correction: {e}")
             return False

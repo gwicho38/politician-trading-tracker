@@ -122,7 +122,7 @@ class ErrorReportProcessor:
             )
 
             if response.status_code != 200:
-                print(f"Ollama error: {response.status_code} - {response.text}")
+                logger.error(f"Ollama error: {response.status_code} - {response.text}")
                 return []
 
             result = response.json()
@@ -397,7 +397,7 @@ Respond with ONLY the JSON object, no other text."""
                     errors += 1
 
             except Exception as e:
-                print(f"Error processing report {report.get('id')}: {e}")
+                logger.error(f"Error processing report {report.get('id')}: {e}")
                 errors += 1
                 results.append({
                     "report_id": report.get("id"),

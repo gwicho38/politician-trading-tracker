@@ -62,6 +62,30 @@ This is incorrect because `any` is Python's builtin function, not a type. The co
 
 ---
 
+#### 4. Traceability: Replace print() with proper logging
+**Category:** Traceability
+**Files Modified:**
+- `python-etl-service/app/services/auto_correction.py` - Added logger, replaced 5 print statements
+- `python-etl-service/app/services/politician_dedup.py` - Replaced 1 print statement
+- `python-etl-service/app/services/error_report_processor.py` - Replaced 2 print statements
+
+**Details:**
+Multiple files were using `print()` for error logging instead of the standard Python logger. This is problematic because:
+- No timestamps, log levels, or structured data
+- Can't be filtered or configured
+- Doesn't integrate with log aggregation systems
+- Inconsistent with rest of codebase
+
+**Fix:**
+- Added `logging` import and `logger = logging.getLogger(__name__)` to auto_correction.py
+- Replaced `print(f"Error...")` with `logger.error(f"...")`
+- Replaced `print(f"Warning...")` with `logger.warning(f"...")`
+- Replaced informational prints with `logger.info(f"...")`
+
+**Verification:** All 1499 tests pass.
+
+---
+
 ## Backlog - Discovered Issues for Future Loops
 
 ### High Priority
@@ -84,6 +108,7 @@ This is incorrect because `any` is Python's builtin function, not a type. The co
 - [ ] Review test coverage for edge cases in price calculations
 
 #### Logging
+- [x] Replace print() statements with proper logger calls
 - [ ] Review warning log messages for actionable information
 - [ ] Consider structured logging improvements
 
