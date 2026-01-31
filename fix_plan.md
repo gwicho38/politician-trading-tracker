@@ -39,6 +39,29 @@ The `parse_ptr_page_playwright` function used `page: Any` for the Playwright pag
 
 ---
 
+#### 3. Type Safety: Fix lowercase `any` type annotation
+**Category:** Type Safety
+**Files Modified:**
+- `python-etl-service/app/services/error_report_processor.py` - Fixed type annotations
+
+**Details:**
+The `CorrectionProposal` dataclass used lowercase `any` for type annotations:
+```python
+old_value: any  # Wrong - 'any' is a builtin function
+new_value: any  # Wrong - should be 'Any' from typing
+```
+
+This is incorrect because `any` is Python's builtin function, not a type. The correct type is `Any` from the `typing` module.
+
+**Fix:**
+- Added `Any` to typing imports
+- Changed `old_value: any` to `old_value: Any`
+- Changed `new_value: any` to `new_value: Any`
+
+**Verification:** All 1499 tests pass.
+
+---
+
 ## Backlog - Discovered Issues for Future Loops
 
 ### High Priority
@@ -48,6 +71,7 @@ The `parse_ptr_page_playwright` function used `page: Any` for the Playwright pag
 - [ ] Add proper type annotations to functions lacking them
 - [ ] Replace `Any` types with specific types (many remain - see grep for `Any` in codebase)
 - [x] Replace `page: Any` with Playwright `Page` type in senate_etl.py
+- [x] Fix lowercase `any` type annotations in error_report_processor.py
 
 #### Error Handling
 - [ ] Review exception handling in ETL services for proper error categorization
