@@ -12,7 +12,7 @@ import hashlib
 import logging
 import io
 from typing import Optional, Tuple, List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -378,7 +378,7 @@ class CongressSignalModel:
             'model_type': self.model_type,
             'training_metrics': self.training_metrics,
             'is_trained': self.is_trained,
-            'saved_at': datetime.utcnow().isoformat(),
+            'saved_at': datetime.now(timezone.utc).isoformat(),
         }
 
         with open(path, 'wb') as f:
@@ -488,7 +488,7 @@ def cache_prediction(
     """Cache a prediction result."""
     try:
         supabase = get_supabase()
-        expires_at = datetime.utcnow() + timedelta(hours=ttl_hours)
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
 
         supabase.table('ml_predictions_cache').upsert({
             'model_id': model_id,
@@ -509,7 +509,7 @@ def get_cached_prediction(ticker: str, feature_hash: str) -> Optional[Dict[str, 
     """Get cached prediction if available and not expired."""
     try:
         supabase = get_supabase()
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         result = supabase.table('ml_predictions_cache').select(
             'prediction, confidence, model_id'

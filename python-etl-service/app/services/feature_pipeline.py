@@ -11,7 +11,7 @@ import os
 import asyncio
 import logging
 from typing import Optional, List, Dict, Any, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
 import numpy as np
@@ -138,7 +138,7 @@ class FeaturePipeline:
         exclude_recent_days: int,
     ) -> List[Dict[str, Any]]:
         """Fetch trading disclosures from Supabase."""
-        end_date = datetime.utcnow() - timedelta(days=exclude_recent_days)
+        end_date = datetime.now(timezone.utc) - timedelta(days=exclude_recent_days)
         start_date = end_date - timedelta(days=lookback_days)
 
         all_disclosures = []
@@ -496,7 +496,7 @@ class TrainingJob:
         )
 
         self.status = "running"
-        self.started_at = datetime.utcnow()
+        self.started_at = datetime.now(timezone.utc)
         self.current_step = "Preparing training data..."
         self.progress = 10
 
@@ -553,7 +553,7 @@ class TrainingJob:
             # Update model record
             supabase.table('ml_models').update({
                 'status': 'active',
-                'training_completed_at': datetime.utcnow().isoformat(),
+                'training_completed_at': datetime.now(timezone.utc).isoformat(),
                 'metrics': training_result['metrics'],
                 'feature_importance': training_result['feature_importance'],
                 'hyperparameters': training_result['hyperparameters'],
@@ -571,14 +571,14 @@ class TrainingJob:
             self.progress = 100
             self.current_step = "Training completed"
             self.result_summary = training_result['metrics']
-            self.completed_at = datetime.utcnow()
+            self.completed_at = datetime.now(timezone.utc)
 
             logger.info(f"[{self.job_id}] Training completed: {training_result['metrics']}")
 
         except Exception as e:
             self.status = "failed"
             self.error_message = str(e)
-            self.completed_at = datetime.utcnow()
+            self.completed_at = datetime.now(timezone.utc)
 
             # Update model record if created
             if self.model_id:

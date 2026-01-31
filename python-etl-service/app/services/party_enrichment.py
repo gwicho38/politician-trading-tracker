@@ -11,7 +11,7 @@ import asyncio
 import logging
 import httpx
 from typing import Any, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from app.lib.database import get_supabase
 
 logger = logging.getLogger(__name__)
@@ -134,7 +134,7 @@ class PartyEnrichmentJob:
     async def run(self) -> None:
         """Execute the party enrichment job."""
         self.status = "running"
-        self.started_at = datetime.utcnow()
+        self.started_at = datetime.now(timezone.utc)
         self.message = "Fetching politicians with missing party data..."
 
         try:
@@ -170,7 +170,7 @@ class PartyEnrichmentJob:
             if self.total == 0:
                 self.status = "completed"
                 self.message = "No politicians need party enrichment"
-                self.completed_at = datetime.utcnow()
+                self.completed_at = datetime.now(timezone.utc)
                 return
 
             self.message = f"Processing {self.total} politicians..."
@@ -213,13 +213,13 @@ class PartyEnrichmentJob:
 
             self.status = "completed"
             self.message = f"Completed: {self.updated} updated, {self.skipped} skipped, {self.errors} errors"
-            self.completed_at = datetime.utcnow()
+            self.completed_at = datetime.now(timezone.utc)
             logger.info(f"[{self.job_id}] {self.message}")
 
         except Exception as e:
             self.status = "failed"
             self.message = f"Job failed: {str(e)}"
-            self.completed_at = datetime.utcnow()
+            self.completed_at = datetime.now(timezone.utc)
             logger.error(f"[{self.job_id}] {self.message}")
 
 

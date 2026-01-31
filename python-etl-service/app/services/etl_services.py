@@ -17,7 +17,7 @@ Usage:
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.lib.base_etl import BaseETLService, ETLResult
@@ -80,7 +80,7 @@ class HouseETLService(BaseETLService):
             limit: Optional limit on PDFs to process
             update_mode: If True, upsert instead of insert
         """
-        result = ETLResult(started_at=datetime.utcnow())
+        result = ETLResult(started_at=datetime.now(timezone.utc))
 
         try:
             # Import here to avoid circular imports
@@ -96,7 +96,7 @@ class HouseETLService(BaseETLService):
 
             # Extract results from job status
             status = JOB_STATUS.get(job_id, {})
-            result.completed_at = datetime.utcnow()
+            result.completed_at = datetime.now(timezone.utc)
 
             # Parse message for counts (e.g., "Completed: 50 transactions from 10 PDFs")
             message = status.get("message", "")
@@ -123,7 +123,7 @@ class HouseETLService(BaseETLService):
 
         except Exception as e:
             result.add_error(str(e))
-            result.completed_at = datetime.utcnow()
+            result.completed_at = datetime.now(timezone.utc)
             self.logger.exception(f"House ETL failed: {e}")
 
         return result
@@ -180,7 +180,7 @@ class SenateETLService(BaseETLService):
             limit: Optional limit on records to process
             update_mode: If True, upsert instead of insert
         """
-        result = ETLResult(started_at=datetime.utcnow())
+        result = ETLResult(started_at=datetime.now(timezone.utc))
 
         try:
             # Import here to avoid circular imports
@@ -197,7 +197,7 @@ class SenateETLService(BaseETLService):
 
             # Extract results from job status
             status = JOB_STATUS.get(job_id, {})
-            result.completed_at = datetime.utcnow()
+            result.completed_at = datetime.now(timezone.utc)
 
             # Parse message for counts
             message = status.get("message", "")
@@ -222,7 +222,7 @@ class SenateETLService(BaseETLService):
 
         except Exception as e:
             result.add_error(str(e))
-            result.completed_at = datetime.utcnow()
+            result.completed_at = datetime.now(timezone.utc)
             self.logger.exception(f"Senate ETL failed: {e}")
 
         return result

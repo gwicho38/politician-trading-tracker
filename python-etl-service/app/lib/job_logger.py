@@ -6,7 +6,7 @@ This provides persistent tracking of job runs that survives service restarts.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
@@ -40,7 +40,7 @@ def log_job_execution(
         The execution record ID if successful, None otherwise
     """
     try:
-        completed = completed_at or datetime.utcnow()
+        completed = completed_at or datetime.now(timezone.utc)
         duration = (completed - started_at).total_seconds() if completed_at else None
 
         record = {
@@ -85,7 +85,7 @@ def cleanup_old_executions(
         Number of records deleted
     """
     try:
-        cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
         query = supabase_client.table("job_executions").delete().lt(
             "started_at", cutoff
@@ -140,11 +140,11 @@ class JobExecutionContext:
         self.error = error
 
     async def __aenter__(self):
-        self.started_at = datetime.utcnow()
+        self.started_at = datetime.now(timezone.utc)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        completed_at = datetime.utcnow()
+        completed_at = datetime.now(timezone.utc)
         status = "failed" if exc_val or self.error else "success"
         error_msg = str(exc_val) if exc_val else self.error
 
