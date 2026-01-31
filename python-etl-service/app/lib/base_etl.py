@@ -27,7 +27,7 @@ Usage:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Callable
 import logging
 import asyncio
@@ -343,12 +343,12 @@ class BaseETLService(ABC):
         Returns:
             ETLResult with processing statistics and errors.
         """
-        result = ETLResult(started_at=datetime.utcnow())
+        result = ETLResult(started_at=datetime.now(timezone.utc))
 
         # Initialize job status
         self._job_status[job_id] = JobStatus(
             status="running",
-            started_at=datetime.utcnow().isoformat(),
+            started_at=datetime.now(timezone.utc).isoformat(),
             message=f"Starting {self.source_name} ETL...",
         )
 
@@ -367,7 +367,7 @@ class BaseETLService(ABC):
                     status="completed",
                     message="No disclosures to process",
                 )
-                result.completed_at = datetime.utcnow()
+                result.completed_at = datetime.now(timezone.utc)
                 return result
 
             # Apply limit if specified
@@ -416,9 +416,9 @@ class BaseETLService(ABC):
                     result.add_error(f"Failed to process disclosure: {e}")
 
             # Complete
-            result.completed_at = datetime.utcnow()
+            result.completed_at = datetime.now(timezone.utc)
             self._job_status[job_id].status = "completed"
-            self._job_status[job_id].completed_at = datetime.utcnow().isoformat()
+            self._job_status[job_id].completed_at = datetime.now(timezone.utc).isoformat()
             self._job_status[job_id].result = result
             self._job_status[job_id].message = (
                 f"Completed: {result.records_inserted} inserted, "
@@ -431,9 +431,9 @@ class BaseETLService(ABC):
 
         except Exception as e:
             result.add_error(f"ETL job failed: {e}")
-            result.completed_at = datetime.utcnow()
+            result.completed_at = datetime.now(timezone.utc)
             self._job_status[job_id].status = "failed"
-            self._job_status[job_id].completed_at = datetime.utcnow().isoformat()
+            self._job_status[job_id].completed_at = datetime.now(timezone.utc).isoformat()
             self._job_status[job_id].message = f"Failed: {e}"
             self.logger.exception(f"ETL job {job_id} failed")
 

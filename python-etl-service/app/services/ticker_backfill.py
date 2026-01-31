@@ -4,7 +4,7 @@ Ticker backfill service - fills in missing tickers for trading disclosures.
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -159,7 +159,7 @@ async def run_ticker_backfill(job_id: str, limit: Optional[int] = None) -> None:
 
         if total == 0:
             JOB_STATUS[job_id]["status"] = "completed"
-            JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+            JOB_STATUS[job_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
             JOB_STATUS[job_id]["message"] = "No disclosures need ticker backfill"
             return
 
@@ -196,7 +196,7 @@ async def run_ticker_backfill(job_id: str, limit: Optional[int] = None) -> None:
 
         # Complete
         JOB_STATUS[job_id]["status"] = "completed"
-        JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+        JOB_STATUS[job_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
         JOB_STATUS[job_id]["message"] = (
             f"Completed: {updated} updated, {no_ticker_found} no ticker found, {failed} failed"
         )
@@ -209,7 +209,7 @@ async def run_ticker_backfill(job_id: str, limit: Optional[int] = None) -> None:
     except Exception as e:
         logger.error(f"Ticker backfill job failed: {e}")
         JOB_STATUS[job_id]["status"] = "failed"
-        JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+        JOB_STATUS[job_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
         JOB_STATUS[job_id]["message"] = f"Error: {str(e)}"
         raise
 
@@ -288,7 +288,7 @@ async def run_transaction_type_backfill(job_id: str, limit: Optional[int] = None
 
         if total == 0:
             JOB_STATUS[job_id]["status"] = "completed"
-            JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+            JOB_STATUS[job_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
             JOB_STATUS[job_id]["message"] = "No disclosures need transaction_type backfill"
             return
 
@@ -333,7 +333,7 @@ async def run_transaction_type_backfill(job_id: str, limit: Optional[int] = None
 
         # Complete
         JOB_STATUS[job_id]["status"] = "completed"
-        JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+        JOB_STATUS[job_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
         JOB_STATUS[job_id]["message"] = (
             f"Completed: {updated} updated, {no_type_found} not found, {deleted} deleted, {failed} failed"
         )
@@ -346,7 +346,7 @@ async def run_transaction_type_backfill(job_id: str, limit: Optional[int] = None
     except Exception as e:
         logger.error(f"Transaction type backfill job failed: {e}")
         JOB_STATUS[job_id]["status"] = "failed"
-        JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+        JOB_STATUS[job_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
         JOB_STATUS[job_id]["message"] = f"Error: {str(e)}"
         raise
 

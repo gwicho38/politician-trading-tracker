@@ -11,7 +11,7 @@ Tests:
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from fastapi.testclient import TestClient
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 # =============================================================================
@@ -192,11 +192,11 @@ class TestFreshnessReport:
 
             # Mock house response
             mock_house_response = MagicMock()
-            mock_house_response.data = [{"created_at": datetime.utcnow().isoformat(), "source_url": "house"}]
+            mock_house_response.data = [{"created_at": datetime.now(timezone.utc).isoformat(), "source_url": "house"}]
 
             # Mock senate response
             mock_senate_response = MagicMock()
-            mock_senate_response.data = [{"created_at": datetime.utcnow().isoformat(), "source_url": "senate"}]
+            mock_senate_response.data = [{"created_at": datetime.now(timezone.utc).isoformat(), "source_url": "senate"}]
 
             # Mock jobs response
             mock_jobs_response = MagicMock()
@@ -222,7 +222,7 @@ class TestFreshnessReport:
             mock_client = MagicMock()
 
             mock_house_response = MagicMock()
-            mock_house_response.data = [{"created_at": datetime.utcnow().isoformat(), "source_url": "house"}]
+            mock_house_response.data = [{"created_at": datetime.now(timezone.utc).isoformat(), "source_url": "house"}]
 
             mock_senate_response = MagicMock()
             mock_senate_response.data = []
@@ -284,7 +284,7 @@ class TestValidateRecordIntegrity:
         """validate_record_integrity() detects future transaction date."""
         from app.routes.quality import validate_record_integrity
 
-        future_date = (datetime.utcnow() + timedelta(days=30)).date().isoformat()
+        future_date = (datetime.now(timezone.utc) + timedelta(days=30)).date().isoformat()
         record = {
             "politician_id": "pol-1",
             "transaction_date": future_date
@@ -748,7 +748,7 @@ class TestValidateRecordIntegrityEdgeCases:
         """validate_record_integrity() detects future disclosure date."""
         from app.routes.quality import validate_record_integrity
 
-        future_date = (datetime.utcnow() + timedelta(days=30)).date().isoformat()
+        future_date = (datetime.now(timezone.utc) + timedelta(days=30)).date().isoformat()
         record = {
             "politician_id": "pol-1",
             "disclosure_date": future_date
@@ -791,7 +791,7 @@ class TestFreshnessReportEdgeCases:
             mock_client = MagicMock()
 
             mock_house_response = MagicMock()
-            mock_house_response.data = [{"created_at": datetime.utcnow().isoformat(), "source_url": "house"}]
+            mock_house_response.data = [{"created_at": datetime.now(timezone.utc).isoformat(), "source_url": "house"}]
 
             mock_senate_response = MagicMock()
             mock_senate_response.data = []  # No senate data
@@ -822,10 +822,10 @@ class TestFreshnessReportEdgeCases:
             mock_client = MagicMock()
 
             mock_house_response = MagicMock()
-            mock_house_response.data = [{"created_at": datetime.utcnow().isoformat(), "source_url": "house"}]
+            mock_house_response.data = [{"created_at": datetime.now(timezone.utc).isoformat(), "source_url": "house"}]
 
             mock_senate_response = MagicMock()
-            mock_senate_response.data = [{"created_at": datetime.utcnow().isoformat(), "source_url": "senate"}]
+            mock_senate_response.data = [{"created_at": datetime.now(timezone.utc).isoformat(), "source_url": "senate"}]
 
             mock_jobs_response = MagicMock()
             mock_jobs_response.data = [
@@ -862,12 +862,12 @@ class TestFreshnessReportEdgeCases:
             mock_client = MagicMock()
 
             # House data is 72 hours old (stale)
-            stale_time = (datetime.utcnow() - timedelta(hours=72)).isoformat()
+            stale_time = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
             mock_house_response = MagicMock()
             mock_house_response.data = [{"created_at": stale_time, "source_url": "house"}]
 
             mock_senate_response = MagicMock()
-            mock_senate_response.data = [{"created_at": datetime.utcnow().isoformat(), "source_url": "senate"}]
+            mock_senate_response.data = [{"created_at": datetime.now(timezone.utc).isoformat(), "source_url": "senate"}]
 
             mock_jobs_response = MagicMock()
             mock_jobs_response.data = []

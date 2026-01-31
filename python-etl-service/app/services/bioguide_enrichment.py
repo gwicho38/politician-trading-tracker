@@ -9,7 +9,7 @@ import asyncio
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -290,7 +290,7 @@ async def run_bioguide_enrichment(
         if not politicians:
             JOB_STATUS[job_id]["status"] = "completed"
             JOB_STATUS[job_id]["message"] = "No politicians need enrichment"
-            JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+            JOB_STATUS[job_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
             return
 
         JOB_STATUS[job_id]["total"] = len(politicians)
@@ -303,7 +303,7 @@ async def run_bioguide_enrichment(
         if not matches:
             JOB_STATUS[job_id]["status"] = "completed"
             JOB_STATUS[job_id]["message"] = f"No matches found for {len(politicians)} politicians"
-            JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+            JOB_STATUS[job_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
             return
 
         # Step 4: Update politicians with Congress.gov data
@@ -328,7 +328,7 @@ async def run_bioguide_enrichment(
 
         # Complete
         JOB_STATUS[job_id]["status"] = "completed"
-        JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+        JOB_STATUS[job_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
         JOB_STATUS[job_id]["message"] = (
             f"Enrichment complete: {updated} updated, {failed} failed, "
             f"{len(politicians) - len(matches)} unmatched"
@@ -343,4 +343,4 @@ async def run_bioguide_enrichment(
         logger.exception(f"[BioguideEnrichment] Failed: {e}")
         JOB_STATUS[job_id]["status"] = "failed"
         JOB_STATUS[job_id]["message"] = str(e)
-        JOB_STATUS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+        JOB_STATUS[job_id]["completed_at"] = datetime.now(timezone.utc).isoformat()

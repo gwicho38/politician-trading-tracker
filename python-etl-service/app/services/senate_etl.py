@@ -19,7 +19,7 @@ import logging
 import os
 import re
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 from urllib.parse import quote
 
@@ -1179,7 +1179,7 @@ async def run_senate_etl(
         disclosures_processed = len(electronic_disclosures) - errors
 
         # Update final status
-        completed_at = datetime.utcnow()
+        completed_at = datetime.now(timezone.utc)
         JOB_STATUS[job_id]["status"] = "completed"
         JOB_STATUS[job_id]["message"] = (
             f"Completed: {len(senators)} senators, {disclosures_processed} disclosures, "
@@ -1215,7 +1215,7 @@ async def run_senate_etl(
             cleanup_old_executions(supabase, days=30)
 
     except Exception as e:
-        completed_at = datetime.utcnow()
+        completed_at = datetime.now(timezone.utc)
         JOB_STATUS[job_id]["status"] = "error"
         JOB_STATUS[job_id]["message"] = f"ETL failed: {str(e)}"
         JOB_STATUS[job_id]["completed_at"] = completed_at.isoformat()

@@ -3,7 +3,7 @@
 import os
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
@@ -125,7 +125,7 @@ async def trigger_etl(
         "progress": 0,
         "total": request.limit,  # Will be updated once we know total
         "message": "Job queued",
-        "started_at": datetime.utcnow().isoformat(),
+        "started_at": datetime.now(timezone.utc).isoformat(),
         "completed_at": None,
     }
 
@@ -200,7 +200,7 @@ async def trigger_backfill(
         "progress": 0,
         "total": None,
         "message": "Job queued",
-        "started_at": datetime.utcnow().isoformat(),
+        "started_at": datetime.now(timezone.utc).isoformat(),
         "completed_at": None,
     }
 
@@ -236,7 +236,7 @@ async def trigger_transaction_type_backfill(
         "progress": 0,
         "total": None,
         "message": "Job queued",
-        "started_at": datetime.utcnow().isoformat(),
+        "started_at": datetime.now(timezone.utc).isoformat(),
         "completed_at": None,
     }
 
@@ -275,7 +275,7 @@ async def trigger_bioguide_enrichment(
         "progress": 0,
         "total": None,
         "message": "Job queued",
-        "started_at": datetime.utcnow().isoformat(),
+        "started_at": datetime.now(timezone.utc).isoformat(),
         "completed_at": None,
     }
 

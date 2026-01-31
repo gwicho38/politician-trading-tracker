@@ -11,7 +11,7 @@ import logging
 import os
 import re
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import httpx
@@ -743,7 +743,7 @@ async def run_house_etl(
 
             # Complete
             stats = rate_limiter.get_stats()
-            completed_at = datetime.utcnow()
+            completed_at = datetime.now(timezone.utc)
             JOB_STATUS[job_id]["status"] = "completed"
             JOB_STATUS[job_id]["completed_at"] = completed_at.isoformat()
             JOB_STATUS[job_id]["rate_limiter_stats"] = stats
@@ -782,7 +782,7 @@ async def run_house_etl(
 
     except Exception as e:
         logger.exception(f"ETL failed: {e}")
-        completed_at = datetime.utcnow()
+        completed_at = datetime.now(timezone.utc)
         JOB_STATUS[job_id]["status"] = "failed"
         JOB_STATUS[job_id]["message"] = str(e)
         JOB_STATUS[job_id]["completed_at"] = completed_at.isoformat()

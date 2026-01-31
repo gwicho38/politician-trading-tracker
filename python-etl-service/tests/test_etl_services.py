@@ -11,7 +11,7 @@ Tests cover:
 
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.services.etl_services import (
     HouseETLService,
@@ -383,9 +383,9 @@ class TestETLResultTracking:
 
         with patch("app.services.house_etl.run_house_etl", new_callable=AsyncMock):
             with patch.dict("app.services.house_etl.JOB_STATUS", mock_job_status, clear=True):
-                before = datetime.utcnow()
+                before = datetime.now(timezone.utc)
                 result = await service.run(job_id="ts-job", year=2025)
-                after = datetime.utcnow()
+                after = datetime.now(timezone.utc)
 
         assert result.started_at >= before
         assert result.completed_at <= after

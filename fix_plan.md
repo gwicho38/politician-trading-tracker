@@ -86,6 +86,52 @@ Multiple files were using `print()` for error logging instead of the standard Py
 
 ---
 
+#### 5. Forward Compatibility: Replace deprecated datetime.utcnow()
+**Category:** Code Quality / Forward Compatibility
+**Files Modified:**
+- `python-etl-service/app/services/auto_correction.py` - 2 usages
+- `python-etl-service/app/services/politician_dedup.py` - 1 usage
+- `python-etl-service/app/services/error_report_processor.py` - 3 usages
+- `python-etl-service/app/lib/job_logger.py` - 4 usages
+- `python-etl-service/app/lib/base_etl.py` - 7 usages
+- `python-etl-service/app/services/etl_services.py` - 6 usages
+- `python-etl-service/app/services/feature_pipeline.py` - 5 usages
+- `python-etl-service/app/services/senate_etl.py` - 2 usages
+- `python-etl-service/app/services/house_etl.py` - 2 usages
+- `python-etl-service/app/services/ticker_backfill.py` - 6 usages
+- `python-etl-service/app/services/bioguide_enrichment.py` - 4 usages
+- `python-etl-service/app/services/ml_signal_model.py` - 3 usages
+- `python-etl-service/app/services/name_enrichment.py` - 4 usages
+- `python-etl-service/app/services/party_enrichment.py` - 4 usages
+- `python-etl-service/app/routes/quality.py` - 6 usages + fixed naive/aware datetime comparison bug
+- `python-etl-service/app/routes/etl.py` - 4 usages
+- `python-etl-service/tests/test_etl_services.py` - 2 usages
+- `python-etl-service/tests/test_quality_routes.py` - 11 usages
+
+**Details:**
+Python 3.12+ deprecates `datetime.utcnow()` in favor of `datetime.now(timezone.utc)`. The old method returns a naive datetime (no timezone info), while the new method returns a timezone-aware datetime. This change:
+- Prepares codebase for Python 3.12+ compatibility
+- Provides explicit timezone information in all datetime values
+- Avoids potential bugs from comparing naive and aware datetimes
+
+**Bug Found and Fixed:**
+During this migration, discovered a bug in `app/routes/quality.py` where the freshness report was incorrectly stripping timezone info from ISO strings:
+```python
+# Bug: .replace("+00:00", "") stripped timezone, creating naive datetime
+datetime.fromisoformat(last_sync.replace("Z", "+00:00").replace("+00:00", ""))
+# Fix: Keep timezone info
+datetime.fromisoformat(last_sync.replace("Z", "+00:00"))
+```
+
+**Fix:**
+- Added `timezone` to datetime imports in all affected files
+- Replaced all `datetime.utcnow()` with `datetime.now(timezone.utc)`
+- Fixed the naive/aware datetime comparison bug in quality.py
+
+**Verification:** All 1499 tests pass.
+
+---
+
 ## Backlog - Discovered Issues for Future Loops
 
 ### High Priority
@@ -136,4 +182,4 @@ Multiple files were using `print()` for error logging instead of the standard Py
 ## Next Priority
 
 **Focus Area:** Code Quality
-**Recommended Task:** Address the deprecated `datetime.utcnow()` usage. Python 3.12+ deprecates this in favor of `datetime.now(timezone.utc)`. Found 50+ usages across the codebase that should be updated for forward compatibility.
+**Recommended Task:** Update remaining test files that use `datetime.utcnow()`. While the app code has been migrated, there are still ~30 usages in test files (conftest.py, test_job_logger.py, test_ml_service_metrics.py, test_senate_etl_service.py, test_house_etl_service.py). These should be updated for consistency, though they don't affect runtime behavior.

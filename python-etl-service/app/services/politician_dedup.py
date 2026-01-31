@@ -19,7 +19,7 @@ import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from supabase import Client
@@ -276,7 +276,7 @@ class PoliticianDeduplicator:
 
             # Update winner with merged data
             if update_data:
-                update_data["updated_at"] = datetime.utcnow().isoformat()
+                update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
                 self.supabase.table("politicians").update(
                     update_data
                 ).eq("id", group.winner_id).execute()

@@ -14,7 +14,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, List, Optional
 
 import httpx
@@ -293,7 +293,7 @@ Respond with ONLY the JSON object, no other text."""
 
             # Apply disclosure updates
             if disclosure_updates:
-                disclosure_updates["updated_at"] = datetime.utcnow().isoformat()
+                disclosure_updates["updated_at"] = datetime.now(timezone.utc).isoformat()
                 self.supabase.table("trading_disclosures").update(
                     disclosure_updates
                 ).eq("id", disclosure_id).execute()
@@ -307,7 +307,7 @@ Respond with ONLY the JSON object, no other text."""
 
                 if disclosure.data and disclosure.data.get("politician_id"):
                     politician_id = disclosure.data["politician_id"]
-                    politician_updates["updated_at"] = datetime.utcnow().isoformat()
+                    politician_updates["updated_at"] = datetime.now(timezone.utc).isoformat()
                     self.supabase.table("politicians").update(
                         politician_updates
                     ).eq("id", politician_id).execute()
@@ -340,7 +340,7 @@ Respond with ONLY the JSON object, no other text."""
             self.supabase.table("user_error_reports").update({
                 "status": status,
                 "admin_notes": admin_notes,
-                "updated_at": datetime.utcnow().isoformat()
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }).eq("id", report_id).execute()
         except Exception as e:
             logger.error(f"Failed to update report status: {e}")

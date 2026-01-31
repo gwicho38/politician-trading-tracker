@@ -16,7 +16,7 @@ All corrections are logged to data_quality_corrections table for rollback.
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
@@ -521,7 +521,7 @@ class AutoCorrector:
         """Mark a correction as successfully applied."""
         try:
             self.supabase.table("data_quality_corrections").update(
-                {"status": "applied", "applied_at": datetime.utcnow().isoformat()}
+                {"status": "applied", "applied_at": datetime.now(timezone.utc).isoformat()}
             ).eq("id", correction_id).execute()
         except Exception as e:
             logger.warning(f"Failed to mark correction applied: {e}")
@@ -565,7 +565,7 @@ class AutoCorrector:
 
             # Mark as rolled back
             self.supabase.table("data_quality_corrections").update(
-                {"status": "rolled_back", "rolled_back_at": datetime.utcnow().isoformat()}
+                {"status": "rolled_back", "rolled_back_at": datetime.now(timezone.utc).isoformat()}
             ).eq("id", correction_id).execute()
 
             return True

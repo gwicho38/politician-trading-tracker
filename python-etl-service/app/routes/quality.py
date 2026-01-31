@@ -10,7 +10,7 @@ Endpoints for validating data quality:
 import os
 import random
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
@@ -117,7 +117,7 @@ async def validate_tickers(request: TickerValidationRequest):
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     # Get recent tickers from disclosures
-    cutoff_date = (datetime.utcnow() - timedelta(days=request.days_back)).isoformat()
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=request.days_back)).isoformat()
 
     try:
         response = (
@@ -268,7 +268,7 @@ async def audit_sources(request: AuditSourceRequest):
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
-    cutoff_date = (datetime.utcnow() - timedelta(days=request.days_back)).isoformat()
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=request.days_back)).isoformat()
 
     try:
         # Build query
@@ -335,7 +335,7 @@ def validate_record_integrity(record: dict) -> list:
     - No future dates
     """
     issues = []
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
 
     # Check transaction date
     if transaction_date := record.get("transaction_date"):
@@ -454,8 +454,8 @@ async def get_freshness_report():
         if house_response.data:
             last_sync = house_response.data[0]["created_at"]
             hours_ago = (
-                datetime.utcnow()
-                - datetime.fromisoformat(last_sync.replace("Z", "+00:00").replace("+00:00", ""))
+                datetime.now(timezone.utc)
+                - datetime.fromisoformat(last_sync.replace("Z", "+00:00"))
             ).total_seconds() / 3600
             sources.append(
                 {
@@ -479,8 +479,8 @@ async def get_freshness_report():
         if senate_response.data:
             last_sync = senate_response.data[0]["created_at"]
             hours_ago = (
-                datetime.utcnow()
-                - datetime.fromisoformat(last_sync.replace("Z", "+00:00").replace("+00:00", ""))
+                datetime.now(timezone.utc)
+                - datetime.fromisoformat(last_sync.replace("Z", "+00:00"))
             ).total_seconds() / 3600
             sources.append(
                 {
@@ -530,7 +530,7 @@ async def get_freshness_report():
         return FreshnessReport(
             sources=sources,
             overall_health=overall_health,
-            last_updated=datetime.utcnow().isoformat(),
+            last_updated=datetime.now(timezone.utc).isoformat(),
         )
 
     except Exception as e:
