@@ -22,6 +22,23 @@ The `_add_stock_returns` method in `FeaturePipeline` was performing divisions wi
 
 ---
 
+#### 2. Type Safety: Playwright Page Type Annotation
+**Category:** Type Safety
+**Files Modified:**
+- `python-etl-service/app/services/senate_etl.py` - Added proper Playwright Page type
+
+**Details:**
+The `parse_ptr_page_playwright` function used `page: Any` for the Playwright page parameter. This loses type information and IDE support for the Playwright API.
+
+**Fix:**
+- Added `TYPE_CHECKING` import and conditional import of `playwright.async_api.Page`
+- Changed function signature from `page: Any` to `page: "Page"`
+- Uses string annotation to avoid runtime import issues when Playwright isn't installed
+
+**Verification:** All 1499 tests pass.
+
+---
+
 ## Backlog - Discovered Issues for Future Loops
 
 ### High Priority
@@ -29,7 +46,8 @@ The `_add_stock_returns` method in `FeaturePipeline` was performing divisions wi
 #### Type Safety Improvements
 - [ ] Enable strict mypy mode for `python-etl-service` (currently disabled in pyproject.toml line 168)
 - [ ] Add proper type annotations to functions lacking them
-- [ ] Replace `Any` types with specific types
+- [ ] Replace `Any` types with specific types (many remain - see grep for `Any` in codebase)
+- [x] Replace `page: Any` with Playwright `Page` type in senate_etl.py
 
 #### Error Handling
 - [ ] Review exception handling in ETL services for proper error categorization
@@ -67,4 +85,4 @@ The `_add_stock_returns` method in `FeaturePipeline` was performing divisions wi
 ## Next Priority
 
 **Focus Area:** Type Safety
-**Recommended Task:** Enable stricter mypy checks for python-etl-service module and fix type errors that arise.
+**Recommended Task:** Add TypedDict for common return types like disclosure dictionaries. Many functions return `Dict[str, Any]` where a TypedDict would provide better type safety.

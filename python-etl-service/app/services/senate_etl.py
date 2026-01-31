@@ -20,8 +20,11 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 from urllib.parse import quote
+
+if TYPE_CHECKING:
+    from playwright.async_api import Page
 
 import httpx
 from bs4 import BeautifulSoup
@@ -524,7 +527,7 @@ async def search_all_ptr_disclosures_playwright(
 
 
 async def parse_ptr_page_playwright(
-    page: Any,  # Playwright page object
+    page: "Page",
     url: str,
 ) -> List[Dict[str, Any]]:
     """
