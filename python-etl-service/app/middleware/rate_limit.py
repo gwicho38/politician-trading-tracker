@@ -18,7 +18,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Dict, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from fastapi import HTTPException, Request, status
 
@@ -57,7 +57,7 @@ STRICT_LIMIT_ENDPOINTS: Dict[str, Tuple[int, int]] = {
 @dataclass
 class RateLimitEntry:
     """Tracks request timestamps for a client."""
-    timestamps: list = field(default_factory=list)
+    timestamps: List[float] = field(default_factory=list)
     lock: Lock = field(default_factory=Lock)
 
 

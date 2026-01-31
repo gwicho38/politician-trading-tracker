@@ -209,12 +209,36 @@ The `etl.py` route file had an inline User-Agent string that duplicated the cons
 
 ---
 
+#### 10. Type Safety: Add proper parameterized types to generic annotations
+**Category:** Type Safety
+**Files Modified:**
+- `python-etl-service/app/routes/error_reports.py` - Fixed `dict` → `Dict[str, int]` and `Dict[str, Any]`
+- `python-etl-service/app/middleware/rate_limit.py` - Fixed `list` → `List[float]`
+- `python-etl-service/app/services/sandbox.py` - Fixed `list` → `List[str]`
+
+**Details:**
+Several files used bare `dict` and `list` type annotations without type parameters. This loses type information and doesn't follow typing best practices:
+- `by_status: dict` → `by_status: Dict[str, int]`
+- `by_type: dict` → `by_type: Dict[str, int]`
+- `reports: List[dict]` → `reports: List[Dict[str, Any]]`
+- `timestamps: list` → `timestamps: List[float]`
+- `self.txt: list` → `self.txt: List[str]`
+
+**Fix:**
+- Added appropriate type parameters to all generic type annotations
+- Added `Dict`, `Any`, and `List` to typing imports where needed
+
+**Verification:** All 1499 tests pass.
+
+---
+
 ## Backlog - Discovered Issues for Future Loops
 
 ### High Priority
 
 #### Type Safety Improvements
 - [ ] Enable strict mypy mode for `python-etl-service` (currently disabled in pyproject.toml line 168)
+- [x] Add proper parameterized types to generic annotations (dict → Dict[str, X], list → List[X])
 - [x] Add return type annotations to module-level functions (3 functions fixed in Loop 8)
 - [ ] Replace `Any` types with specific types (many remain - see grep for `Any` in codebase)
 - [x] Replace `page: Any` with Playwright `Page` type in senate_etl.py
