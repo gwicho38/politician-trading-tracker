@@ -172,13 +172,32 @@ Both files contained boilerplate "TODO: Review this function" comments that prov
 
 ---
 
+#### 8. Type Safety: Add missing return type annotations
+**Category:** Type Safety
+**Files Modified:**
+- `python-etl-service/app/services/etl_services.py` - Added `-> None` to `init_services()`
+- `python-etl-service/app/middleware/auth.py` - Added `-> Callable` to `api_key_auth()`
+- `python-etl-service/app/lib/registry.py` - Added `-> Type[Any]` to `_get_base_class()`
+
+**Details:**
+Found 3 module-level functions missing return type annotations. Adding these annotations improves IDE support and prepares the codebase for stricter mypy checking.
+
+**Fix:**
+- `init_services()` → `init_services() -> None`
+- `api_key_auth(admin_only: bool = False)` → `api_key_auth(admin_only: bool = False) -> Callable`
+- `_get_base_class()` → `_get_base_class() -> Type[Any]`
+
+**Verification:** All 1499 tests pass.
+
+---
+
 ## Backlog - Discovered Issues for Future Loops
 
 ### High Priority
 
 #### Type Safety Improvements
 - [ ] Enable strict mypy mode for `python-etl-service` (currently disabled in pyproject.toml line 168)
-- [ ] Add proper type annotations to functions lacking them
+- [x] Add return type annotations to module-level functions (3 functions fixed in Loop 8)
 - [ ] Replace `Any` types with specific types (many remain - see grep for `Any` in codebase)
 - [x] Replace `page: Any` with Playwright `Page` type in senate_etl.py
 - [x] Fix lowercase `any` type annotations in error_report_processor.py

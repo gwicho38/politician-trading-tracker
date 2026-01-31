@@ -197,6 +197,6 @@ class ETLRegistry:
 
 # Import guard to avoid circular imports
 # BaseETLService is imported at runtime when needed
-def _get_base_class():
+def _get_base_class() -> Type[Any]:
     from app.lib.base_etl import BaseETLService
     return BaseETLService

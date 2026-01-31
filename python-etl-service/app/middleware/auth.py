@@ -256,7 +256,7 @@ async def require_admin_key(
     return api_key
 
 
-def api_key_auth(admin_only: bool = False):
+def api_key_auth(admin_only: bool = False) -> Callable:
     """
     Decorator for requiring API key authentication on route handlers.
 
