@@ -7,7 +7,7 @@ Provides mock Supabase clients, sample data, and common test utilities.
 import os
 import pytest
 from unittest.mock import Mock, MagicMock, patch
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Dict, Any, List
 import io
 
@@ -414,7 +414,7 @@ def initial_job_status():
         "progress": 0,
         "total": None,
         "message": "Starting job",
-        "started_at": datetime.utcnow().isoformat(),
+        "started_at": datetime.now(timezone.utc).isoformat(),
         "completed_at": None,
     }
 

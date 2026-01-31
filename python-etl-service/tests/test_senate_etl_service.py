@@ -9,7 +9,7 @@ Tests the core ETL functionality for US Senate financial disclosures:
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 
@@ -1237,7 +1237,7 @@ class TestRunSenateEtl:
         JOB_STATUS[job_id] = {
             "status": "pending",
             "message": "",
-            "started_at": datetime.utcnow().isoformat(),
+            "started_at": datetime.now(timezone.utc).isoformat(),
         }
         return job_id
 

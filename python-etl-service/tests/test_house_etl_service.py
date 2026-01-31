@@ -904,7 +904,7 @@ class TestRunHouseETL:
     def setup_job_status(self):
         """Set up initial job status."""
         from app.services.house_etl import JOB_STATUS
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         job_id = "test-job-123"
         JOB_STATUS[job_id] = {
@@ -912,7 +912,7 @@ class TestRunHouseETL:
             "message": "",
             "progress": 0,
             "total": 0,
-            "started_at": datetime.utcnow().isoformat(),
+            "started_at": datetime.now(timezone.utc).isoformat(),
             "completed_at": None,
         }
         yield job_id

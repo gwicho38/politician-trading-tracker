@@ -132,6 +132,26 @@ datetime.fromisoformat(last_sync.replace("Z", "+00:00"))
 
 ---
 
+#### 6. Complete datetime.utcnow() Migration in Test Files
+**Category:** Code Quality / Consistency
+**Files Modified:**
+- `python-etl-service/tests/test_job_logger.py` - 8 usages
+- `python-etl-service/tests/test_house_etl_service.py` - 1 usage
+- `python-etl-service/tests/conftest.py` - 1 usage
+- `python-etl-service/tests/test_ml_service_metrics.py` - 1 usage
+- `python-etl-service/tests/test_senate_etl_service.py` - 1 usage
+
+**Details:**
+Completed the datetime.utcnow() migration by updating all remaining test files. The codebase now has zero occurrences of the deprecated `datetime.utcnow()` method.
+
+**Fix:**
+- Added `timezone` to datetime imports in all affected test files
+- Replaced all `datetime.utcnow()` with `datetime.now(timezone.utc)`
+
+**Verification:** All 1499 tests pass. `grep -r "datetime.utcnow()"` returns no matches.
+
+---
+
 ## Backlog - Discovered Issues for Future Loops
 
 ### High Priority
@@ -181,5 +201,5 @@ datetime.fromisoformat(last_sync.replace("Z", "+00:00"))
 
 ## Next Priority
 
-**Focus Area:** Code Quality
-**Recommended Task:** Update remaining test files that use `datetime.utcnow()`. While the app code has been migrated, there are still ~30 usages in test files (conftest.py, test_job_logger.py, test_ml_service_metrics.py, test_senate_etl_service.py, test_house_etl_service.py). These should be updated for consistency, though they don't affect runtime behavior.
+**Focus Area:** Type Safety
+**Recommended Task:** Enable strict mypy mode for `python-etl-service`. Currently disabled in pyproject.toml. This would catch more type errors at development time and improve code quality. Start with enabling basic strict options and fixing any errors that arise.

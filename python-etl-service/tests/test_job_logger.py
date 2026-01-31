@@ -9,7 +9,7 @@ Tests:
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 # =============================================================================
@@ -28,8 +28,8 @@ class TestLogJobExecution:
         mock_response.data = [{"id": "test-id"}]
         mock_supabase.table.return_value.insert.return_value.execute.return_value = mock_response
 
-        started = datetime.utcnow()
-        completed = datetime.utcnow()
+        started = datetime.now(timezone.utc)
+        completed = datetime.now(timezone.utc)
 
         result = log_job_execution(
             mock_supabase,
@@ -51,8 +51,8 @@ class TestLogJobExecution:
         mock_response.data = [{"id": "test-id"}]
         mock_supabase.table.return_value.insert.return_value.execute.return_value = mock_response
 
-        started = datetime.utcnow()
-        completed = datetime.utcnow()
+        started = datetime.now(timezone.utc)
+        completed = datetime.now(timezone.utc)
 
         result = log_job_execution(
             mock_supabase,
@@ -77,7 +77,7 @@ class TestLogJobExecution:
         mock_response.data = [{"id": "test-id"}]
         mock_supabase.table.return_value.insert.return_value.execute.return_value = mock_response
 
-        started = datetime.utcnow()
+        started = datetime.now(timezone.utc)
         metadata = {"records_processed": 100, "source": "house"}
 
         result = log_job_execution(
@@ -128,7 +128,7 @@ class TestLogJobExecution:
             mock_supabase,
             job_id="test-job",
             status="success",
-            started_at=datetime.utcnow()
+            started_at=datetime.now(timezone.utc)
         )
 
         assert result is None
@@ -144,7 +144,7 @@ class TestLogJobExecution:
             mock_supabase,
             job_id="test-job",
             status="success",
-            started_at=datetime.utcnow()
+            started_at=datetime.now(timezone.utc)
         )
 
         assert result is None
@@ -162,7 +162,7 @@ class TestLogJobExecution:
             mock_supabase,
             job_id="test-job",
             status="success",
-            started_at=datetime.utcnow()
+            started_at=datetime.now(timezone.utc)
         )
 
         insert_call = mock_supabase.table.return_value.insert.call_args

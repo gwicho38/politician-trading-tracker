@@ -11,7 +11,7 @@ Run with: cd python-etl-service && pytest tests/test_ml_service_metrics.py -v
 
 import pytest
 from unittest.mock import Mock, MagicMock, patch, AsyncMock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import sys
 import os
@@ -483,7 +483,7 @@ class TestMLPipelineIntegration:
 
     def test_signal_validity_period(self):
         """Test signal has validity period."""
-        created_at = datetime.utcnow()
+        created_at = datetime.now(timezone.utc)
         valid_until = created_at + timedelta(days=7)
 
         signal = {
