@@ -152,6 +152,26 @@ Completed the datetime.utcnow() migration by updating all remaining test files. 
 
 ---
 
+#### 7. Code Quality: Remove non-actionable TODO comments
+**Category:** Code Quality
+**Files Modified:**
+- `python-etl-service/app/services/etl_services.py` - Removed 7 "TODO: Review this function" comments
+- `python-etl-service/app/services/politician_dedup.py` - Removed 9 "TODO: Review this function" comments
+
+**Details:**
+Both files contained boilerplate "TODO: Review this function" comments that provided no actionable information. These comments:
+- Were placed on every function without specific review notes
+- Added noise to the codebase
+- Gave false indication of pending work
+
+**Fix:**
+- Removed all 16 non-actionable TODO comments
+- Functions retain their docstrings which provide actual documentation
+
+**Verification:** All 1499 tests pass.
+
+---
+
 ## Backlog - Discovered Issues for Future Loops
 
 ### High Priority
@@ -179,6 +199,7 @@ Completed the datetime.utcnow() migration by updating all remaining test files. 
 - [ ] Consider structured logging improvements
 
 #### Code Quality
+- [x] Remove non-actionable "TODO: Review this function" comments (16 removed from etl_services.py and politician_dedup.py)
 - [ ] Review `placeholder` comments (lines 371-376) in feature_pipeline.py for unimplemented features
 
 ### Low Priority

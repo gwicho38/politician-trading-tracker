@@ -44,16 +44,13 @@ class PoliticianDeduplicator:
     Finds and merges duplicate politician records.
     """
 
-    # TODO: Review this function
     def __init__(self):
         self.supabase = self._get_supabase()
 
-    # TODO: Review this function
     def _get_supabase(self) -> Client | None:
         """Get Supabase client."""
         return get_supabase()
 
-    # TODO: Review this function
     def normalize_name(self, name: str) -> str:
         """
         Normalize a politician name for comparison.
@@ -105,7 +102,6 @@ class PoliticianDeduplicator:
 
         return normalized
 
-    # TODO: Review this function
     def find_duplicates(self, limit: int = 100) -> list[DuplicateGroup]:
         """
         Find groups of duplicate politicians.
@@ -178,7 +174,6 @@ class PoliticianDeduplicator:
             logger.error(f"Error finding duplicates: {e}")
             return []
 
-    # TODO: Review this function
     def _pick_winner(self, records: list[dict]) -> dict:
         """
         Pick the best record to keep.
@@ -200,7 +195,6 @@ class PoliticianDeduplicator:
 
         return max(records, key=score)
 
-    # TODO: Review this function
     def _count_disclosures(self, politician_ids: List[str]) -> int:
         """Count trading disclosures for given politician IDs."""
         if not self.supabase or not politician_ids:
@@ -221,7 +215,6 @@ class PoliticianDeduplicator:
             logger.warning(f"Failed to count disclosures for {len(politician_ids)} politicians: {e}")
             return 0
 
-    # TODO: Review this function
     def merge_group(self, group: DuplicateGroup, dry_run: bool = False) -> dict:
         """
         Merge a duplicate group.
@@ -307,7 +300,6 @@ class PoliticianDeduplicator:
                 "message": str(e)
             }
 
-    # TODO: Review this function
     def process_all(self, limit: int = 50, dry_run: bool = False) -> dict:
         """
         Find and merge all duplicate politicians.
@@ -357,7 +349,6 @@ class PoliticianDeduplicator:
             "results": results
         }
 
-    # TODO: Review this function
     def preview(self, limit: int = 20) -> dict:
         """
         Preview duplicate groups without merging.

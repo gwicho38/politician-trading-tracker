@@ -36,7 +36,6 @@ class HouseETLService(BaseETLService):
     source_id = "house"
     source_name = "US House of Representatives"
 
-    # TODO: Review this function
     async def fetch_disclosures(self, **kwargs) -> List[Dict[str, Any]]:
         """
         Fetch disclosures from House disclosure index.
@@ -49,7 +48,6 @@ class HouseETLService(BaseETLService):
         # This is a pass-through for the interface
         return []
 
-    # TODO: Review this function
     async def parse_disclosure(self, raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Parse a single disclosure.
@@ -59,7 +57,6 @@ class HouseETLService(BaseETLService):
         # The existing run_house_etl handles parsing internally
         return raw
 
-    # TODO: Review this function
     async def run(
         self,
         job_id: str,
@@ -141,7 +138,6 @@ class SenateETLService(BaseETLService):
     source_id = "senate"
     source_name = "US Senate"
 
-    # TODO: Review this function
     async def fetch_disclosures(self, **kwargs) -> List[Dict[str, Any]]:
         """
         Fetch disclosures from Senate EFD database.
@@ -150,7 +146,6 @@ class SenateETLService(BaseETLService):
         """
         return []
 
-    # TODO: Review this function
     async def parse_disclosure(self, raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Parse a single disclosure.
@@ -159,7 +154,6 @@ class SenateETLService(BaseETLService):
         """
         return raw
 
-    # TODO: Review this function
     async def run(
         self,
         job_id: str,
@@ -238,7 +232,6 @@ class SenateETLService(BaseETLService):
 #     ...
 
 
-# TODO: Review this function
 def init_services():
     """
     Initialize and register all ETL services.
