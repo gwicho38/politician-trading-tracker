@@ -20,6 +20,7 @@ from app.services.house_etl import (
     get_supabase,
     find_or_create_politician,
     upload_transaction_to_supabase,
+    USER_AGENT,
 )
 from app.services.senate_etl import (
     run_senate_etl,
@@ -380,7 +381,7 @@ async def ingest_single_url(request: IngestUrlRequest):
     # Download PDF
     async with httpx.AsyncClient(
         timeout=60.0,
-        headers={"User-Agent": "Mozilla/5.0 (compatible; PoliticianTradingETL/1.0)"}
+        headers={"User-Agent": USER_AGENT}
     ) as client:
         try:
             response = await client.get(url)

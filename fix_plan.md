@@ -191,6 +191,24 @@ Found 3 module-level functions missing return type annotations. Adding these ann
 
 ---
 
+#### 9. Code Quality: Consolidate duplicate USER_AGENT constant
+**Category:** Code Quality / DRY
+**Files Modified:**
+- `python-etl-service/app/routes/etl.py` - Import USER_AGENT from house_etl instead of inline duplicate
+
+**Details:**
+The `etl.py` route file had an inline User-Agent string that duplicated the constant defined in `house_etl.py`. This violates DRY (Don't Repeat Yourself) and makes maintenance harder if the User-Agent ever needs to change.
+
+**Fix:**
+- Added `USER_AGENT` to imports from `app.services.house_etl`
+- Replaced inline `"Mozilla/5.0 (compatible; PoliticianTradingETL/1.0)"` with `USER_AGENT` constant
+
+**Note:** The senate_etl.py intentionally uses a different, browser-like USER_AGENT because the Senate EFD site may be more strict about bot identification.
+
+**Verification:** All 1499 tests pass.
+
+---
+
 ## Backlog - Discovered Issues for Future Loops
 
 ### High Priority
@@ -219,7 +237,9 @@ Found 3 module-level functions missing return type annotations. Adding these ann
 
 #### Code Quality
 - [x] Remove non-actionable "TODO: Review this function" comments (16 removed from etl_services.py and politician_dedup.py)
+- [x] Consolidate duplicate USER_AGENT inline string in etl.py (now imports from house_etl)
 - [ ] Review `placeholder` comments (lines 371-376) in feature_pipeline.py for unimplemented features
+- [ ] Consider moving USER_AGENT constants to a shared constants module (house_etl and senate_etl use different UAs intentionally)
 
 ### Low Priority
 
