@@ -15,7 +15,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import httpx
 from supabase import Client
@@ -33,8 +33,8 @@ DEFAULT_MODEL = "llama3.1:8b"
 class CorrectionProposal:
     """A proposed correction from the LLM."""
     field: str
-    old_value: any
-    new_value: any
+    old_value: Any
+    new_value: Any
     confidence: float
     reasoning: str
 
