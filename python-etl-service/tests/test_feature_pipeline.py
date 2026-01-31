@@ -1151,7 +1151,7 @@ class TestAddStockReturnsWithYfinance:
 
     @pytest.mark.asyncio
     async def test_add_stock_returns_division_by_zero(self, pipeline):
-        """Test exception handling when price is zero (would cause ZeroDivisionError)."""
+        """Test that zero start price is handled gracefully without division by zero."""
         aggregations = [
             {'ticker': 'AAPL', 'week_start': '2025-01-06'},
         ]
@@ -1167,12 +1167,13 @@ class TestAddStockReturnsWithYfinance:
 
             result = await pipeline._add_stock_returns(aggregations)
 
-            # Division by zero should be caught and returns set to None
+            # Zero start price should be guarded against and returns set to None
             assert len(result) == 1
-            # With zero start price, calculation raises ZeroDivisionError which gets caught
-            # and forward returns are set to None
-            # Note: pandas may handle inf differently, let's just verify the function didn't crash
-            assert 'forward_return_7d' in result[0]
+            # With zero start price, the guard sets forward returns to None
+            # and market_momentum to 0 without triggering division by zero
+            assert result[0]['forward_return_7d'] is None
+            assert result[0]['forward_return_30d'] is None
+            assert result[0]['market_momentum'] == 0
 
     @pytest.mark.asyncio
     async def test_add_stock_returns_exception_in_price_calc(self, pipeline):

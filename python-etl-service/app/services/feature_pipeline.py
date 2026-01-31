@@ -325,6 +325,13 @@ class FeaturePipeline:
 
                 price_start = start_prices.iloc[0]
 
+                # Guard against zero-value starting price (avoids division by zero)
+                if price_start == 0:
+                    agg['forward_return_7d'] = None
+                    agg['forward_return_30d'] = None
+                    agg['market_momentum'] = 0
+                    continue
+
                 # 7-day forward price
                 date_7d = week_start + timedelta(days=7)
                 prices_7d = prices[prices.index >= date_7d.strftime('%Y-%m-%d')]
@@ -348,7 +355,11 @@ class FeaturePipeline:
                 prices_20d_back = prices[prices.index <= week_start.strftime('%Y-%m-%d')]
                 prices_20d_back = prices_20d_back[prices_20d_back.index >= date_20d_back.strftime('%Y-%m-%d')]
                 if len(prices_20d_back) >= 2:
-                    agg['market_momentum'] = (prices_20d_back.iloc[-1] - prices_20d_back.iloc[0]) / prices_20d_back.iloc[0]
+                    momentum_base = prices_20d_back.iloc[0]
+                    if momentum_base != 0:
+                        agg['market_momentum'] = (prices_20d_back.iloc[-1] - momentum_base) / momentum_base
+                    else:
+                        agg['market_momentum'] = 0
                 else:
                     agg['market_momentum'] = 0
 
