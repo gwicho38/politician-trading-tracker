@@ -9,7 +9,7 @@ for authorization as they can modify trading disclosure data.
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Any, Dict, List, Optional
 from enum import Enum
 
 from app.services.error_report_processor import ErrorReportProcessor
@@ -94,15 +94,15 @@ class ProcessOneResponse(BaseModel):
 
 class StatsResponse(BaseModel):
     """Response for error report statistics."""
-    by_status: dict = Field(..., description="Counts per status (pending, reviewed, fixed, invalid)")
-    by_type: dict = Field(..., description="Counts per error type")
+    by_status: Dict[str, int] = Field(..., description="Counts per status (pending, reviewed, fixed, invalid)")
+    by_type: Dict[str, int] = Field(..., description="Counts per error type")
     total: int = Field(..., description="Total number of reports")
 
 
 class NeedsReviewResponse(BaseModel):
     """Response for reports needing review."""
     count: int
-    reports: List[dict] = Field(..., description="List of report objects needing review")
+    reports: List[Dict[str, Any]] = Field(..., description="List of report objects needing review")
 
 
 class ForceApplyResponse(BaseModel):
@@ -129,10 +129,10 @@ class SuggestionResponse(BaseModel):
     model: str
     status: str = Field(..., description="no_corrections | suggestions_generated")
     message: Optional[str] = None
-    report_summary: dict
-    corrections: List[dict]
-    summary: Optional[dict] = None
-    next_steps: Optional[dict] = None
+    report_summary: Dict[str, Any]
+    corrections: List[Dict[str, Any]]
+    summary: Optional[Dict[str, Any]] = None
+    next_steps: Optional[Dict[str, Any]] = None
 
 
 class OllamaHealthResponse(BaseModel):

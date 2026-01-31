@@ -357,7 +357,7 @@ class SignalLambdaSandbox:
             def __init__(self, _getattr_: Any = None):
                 self._captured = captured_print
                 self._getattr = _getattr_
-                self.txt: list = []
+                self.txt: List[str] = []
 
             def write(self, text: str) -> None:
                 """Write method for file-like interface."""
