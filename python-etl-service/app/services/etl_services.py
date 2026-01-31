@@ -232,7 +232,7 @@ class SenateETLService(BaseETLService):
 #     ...
 
 
-def init_services():
+def init_services() -> None:
     """
     Initialize and register all ETL services.
 
