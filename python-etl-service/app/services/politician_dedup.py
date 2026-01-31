@@ -135,7 +135,7 @@ class PoliticianDeduplicator:
                     break
                 offset += page_size
 
-            print(f"[Dedup] Fetched {len(all_politicians)} politicians")
+            logger.info(f"Fetched {len(all_politicians)} politicians")
 
             if not all_politicians:
                 return []
