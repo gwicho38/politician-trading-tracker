@@ -121,3 +121,9 @@ client/playwright/.cache/
 
 # Agent state files
 .ralph/
+.ralphrc
+
+# Disk images and installers
+*.dmg
+*.pkg
+*.app
