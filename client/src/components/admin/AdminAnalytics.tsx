@@ -147,7 +147,7 @@ const AdminAnalytics = () => {
             <CardDescription>Buys vs Sells over time</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[300px]">
+            <div className="h-[200px] sm:h-[250px] md:h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -174,7 +174,7 @@ const AdminAnalytics = () => {
             <CardDescription>Monthly trading volume</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[300px]">
+            <div className="h-[200px] sm:h-[250px] md:h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -208,7 +208,7 @@ const AdminAnalytics = () => {
           <CardDescription>Distribution of tracked politicians</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="h-[300px] flex items-center justify-center">
+          <div className="h-[200px] sm:h-[250px] md:h-[300px] flex items-center justify-center">
             {partyBreakdown.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
