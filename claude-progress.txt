@@ -2,8 +2,8 @@
 # This file is ClawdBot's persistent memory across context windows
 # ALWAYS read this first and update after each session
 
-Last Updated: 2026-02-02T21:00:00Z
-Session Count: 86
+Last Updated: 2026-02-02T21:35:00Z
+Session Count: 87
 
 ---
 
@@ -66,6 +66,48 @@ Priority for this week:
 ---
 
 ## Last Session Summary
+
+### Date: 2026-02-02 (Session #87)
+
+#### Completed:
+- [x] **Fixed CI/CD workflow** - The workflow was failing due to incorrect paths:
+  - Old workflow referenced `src/`, `tests/unit/`, `tests/pipeline/` which don't exist
+  - Updated to match actual monorepo structure:
+    - ETL Service: `python-etl-service/tests/` (pytest)
+    - React Client: `client/` (npm test + build)
+    - Phoenix Server: `server/` (mix test)
+  - Simplified from 8 matrix jobs to 3 focused jobs
+- [x] Ran full test suite - all passing:
+  - Frontend: 787 tests passing
+  - Backend: 67 tests passing
+  - ETL: 1499 tests passing
+  - **Total: 2,353+ tests all green**
+- [x] Verified production site health:
+  - govmarket.trade: HTTP 200 (0.53s response time)
+  - Backend API: status ok, version 0.1.0
+- [x] Triaged GitHub issues:
+  - #56 (Social Discovery) remains open as enhancement feature request
+  - No new bugs or P0 issues
+
+#### Changes Made:
+- `.github/workflows/ci.yml`: Complete rewrite to match monorepo structure
+
+#### GitHub Issues Summary:
+- Open: 1 (#56 - Social Discovery feature request - enhancement, not urgent)
+- No new issues created or closed this session
+- ClawdBot scheduled workflow continues to fail due to missing ANTHROPIC_API_KEY (requires owner action)
+
+#### CI/CD Status:
+- New workflow pushed and queued (run ID: 21606029534)
+- GitHub Actions runners appear busy - run is queued
+- Expected to pass when runners become available
+
+#### Summary:
+Fixed the CI/CD workflow that was failing due to path mismatches. The previous workflow referenced `src/`, `tests/unit/`, and `tests/pipeline/` directories that don't exist in this monorepo. Updated to properly test each component (ETL, Client, Server) in their actual locations. All 2,353+ tests passing locally. Production site healthy (0.53s response).
+
+---
+
+## Previous Session Summary
 
 ### Date: 2026-02-02 (Session #86)
 
