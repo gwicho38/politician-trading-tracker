@@ -2,6 +2,11 @@ import '@testing-library/jest-dom';
 import { cleanup } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
 
+// Set up environment variables before any modules are loaded
+// This ensures Supabase client can be initialized even in test environment
+vi.stubEnv('VITE_SUPABASE_URL', 'https://test.supabase.co');
+vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'test-anon-key');
+
 // Cleanup after each test
 afterEach(() => {
   cleanup();
