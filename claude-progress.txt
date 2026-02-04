@@ -83,18 +83,25 @@ Priority for this week:
 - [x] Triaged GitHub issues:
   - #56 (Social Discovery) remains open as enhancement feature request
   - No bugs, P0, or ralph-task issues
-- [x] CI/CD passing on GitHub (5 consecutive successful runs)
+- [x] CI/CD investigation:
+  - Discovered server tests fail in CI due to missing PostgreSQL service
+  - `continue-on-error: true` masks the failure - CI shows success but tests don't actually run
+  - Created issue #91 to track the needed CI fix
+  - Cannot push workflow changes due to OAuth scope limitation (needs `workflow` scope)
 
 #### GitHub Issues Summary:
-- Open: 1 (#56 - Social Discovery feature request - enhancement, not urgent)
-- No new issues to close
+- Open: 2
+  - #56 - Social Discovery feature request (enhancement)
+  - #91 - CI PostgreSQL service needed (infrastructure, requires manual fix)
 
 #### CI/CD Status:
-- CI/CD push pipeline stable - all recent push runs succeeded
+- CI shows passing due to `continue-on-error: true` on server tests
+- Server tests actually fail in CI (no PostgreSQL service)
 - All 2,844 tests pass locally
+- Issue #91 created to track fix
 
 #### Summary:
-Routine health check session. All 2,844 tests passing across all test suites (frontend, backend, ETL, edge functions). All three production services healthy and responding. System remains stable.
+Health check session with CI investigation. All 2,844 tests pass locally. Discovered that server tests in CI fail due to missing PostgreSQL service, but this is masked by `continue-on-error: true`. Created issue #91 to track the needed CI workflow fix (requires manual intervention due to OAuth scope).
 
 ---
 
