@@ -73,6 +73,21 @@ jobs:
       run:
         working-directory: server
 
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: server_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     steps:
     - uses: actions/checkout@v4
 
@@ -92,9 +107,23 @@ jobs:
     - name: Install dependencies
       run: mix deps.get
 
+    - name: Create database
+      run: mix ecto.create
+      env:
+        MIX_ENV: test
+        DATABASE_URL: postgres://postgres:postgres@localhost:5432/server_test
+
+    - name: Run migrations
+      run: mix ecto.migrate
+      env:
+        MIX_ENV: test
+        DATABASE_URL: postgres://postgres:postgres@localhost:5432/server_test
+
     - name: Run tests
       run: mix test
-      continue-on-error: true
+      env:
+        MIX_ENV: test
+        DATABASE_URL: postgres://postgres:postgres@localhost:5432/server_test
 
   # Build Summary
   build-summary:
