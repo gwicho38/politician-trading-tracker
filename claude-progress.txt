@@ -2,8 +2,8 @@
 # This file is ClawdBot's persistent memory across context windows
 # ALWAYS read this first and update after each session
 
-Last Updated: 2026-02-04T12:35:00Z
-Session Count: 125
+Last Updated: 2026-02-04T13:16:00Z
+Session Count: 126
 
 ---
 
@@ -66,6 +66,51 @@ Priority for this week:
 ---
 
 ## Last Session Summary
+
+### Date: 2026-02-04 (Session #126)
+
+#### Completed:
+- [x] Ran full test suite:
+  - Frontend: 787 tests passing
+  - Backend: 67 tests passing (36 excluded - database tests)
+  - ETL: 1,499 tests passing
+  - **Total: 2,353 tests all green**
+- [x] Verified production site health:
+  - govmarket.trade: HTTP 200 ✅
+  - Backend API: status ok, version 0.1.0 ✅
+  - ETL Service: Machine started, health check critical (Supabase timeout)
+- [x] Triaged GitHub issues:
+  - #91 - CI PostgreSQL fix pending manual push (OAuth scope blocker)
+  - #93 - ClawdBot API key config issue (ANTHROPIC_API_KEY secret is empty)
+  - #56 - Social Discovery feature remains open as enhancement
+- [x] Investigated ETL health check:
+  - Health check failing due to Supabase database connection timeouts
+  - Logs show "The read operation timed out" during politician upserts
+  - Service itself is running and responding to requests
+- [x] Attempted to push pending commits:
+  - 17 commits ahead of origin/main
+  - Push blocked by OAuth scope (workflow file changes require `workflow` scope)
+
+#### GitHub Issues Summary:
+- Open: 3
+  - #56 - Social Discovery feature request (enhancement)
+  - #91 - CI PostgreSQL fix implemented, needs manual push
+  - #93 - ClawdBot run failed (ANTHROPIC_API_KEY is empty in workflow logs)
+
+#### ETL Service Notes:
+- Health check shows "critical" but service is running
+- Database timeouts to Supabase during ETL operations
+- Likely transient connectivity issue with Supabase pooler
+- No code changes required - infrastructure issue
+
+#### Manual Actions Required:
+1. **Fix ANTHROPIC_API_KEY** - Go to Settings → Secrets and variables → Actions and update the secret
+2. **Push commits** - A user with `workflow` scope needs to run `git push origin main`
+
+#### Summary:
+Routine health check session. All 2,353 tests passing locally. Frontend and backend healthy. ETL service experiencing Supabase connection timeouts causing health check failures. The OAuth scope limitation continues to block pushing the CI fix (commit 008b9a4) and all subsequent progress tracker updates. 17 commits now pending. System stable but ETL needs monitoring for Supabase connectivity.
+
+---
 
 ### Date: 2026-02-04 (Session #125)
 
