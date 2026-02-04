@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { OrderConfirmationModal } from './OrderConfirmationModal';
 
@@ -31,6 +31,11 @@ beforeAll(() => {
   Element.prototype.hasPointerCapture = vi.fn(() => false);
   Element.prototype.setPointerCapture = vi.fn();
   Element.prototype.releasePointerCapture = vi.fn();
+});
+
+// Helper to flush all pending promises and timers
+const flushPromises = () => act(async () => {
+  await new Promise(resolve => setTimeout(resolve, 0));
 });
 
 // Note: import.meta.env is handled by Vite during build and in tests,
@@ -76,7 +81,9 @@ describe('OrderConfirmationModal', () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Flush pending promises to avoid state updates after unmount
+    await flushPromises();
     vi.clearAllMocks();
   });
 
