@@ -3183,6 +3183,626 @@ def quiver_missing_trades(days: int, limit: int):
 
 
 # =============================================================================
+# QuiverQuant Validation Engine
+# =============================================================================
+
+def _parse_quiver_amount_range(range_str: str) -> tuple:
+    """Parse QuiverQuant amount range string into min/max values."""
+    if not range_str:
+        return None, None
+
+    # Handle formats like "$1,001 - $15,000" or "$15,001 - $50,000"
+    import re
+    matches = re.findall(r'\$?([\d,]+)', range_str)
+    if len(matches) >= 2:
+        try:
+            min_val = float(matches[0].replace(',', ''))
+            max_val = float(matches[1].replace(',', ''))
+            return min_val, max_val
+        except ValueError:
+            pass
+    elif len(matches) == 1:
+        try:
+            val = float(matches[0].replace(',', ''))
+            return val, val
+        except ValueError:
+            pass
+    return None, None
+
+
+def _normalize_transaction_type(tx_type: str) -> str:
+    """Normalize transaction type for comparison."""
+    if not tx_type:
+        return ""
+    tx_lower = tx_type.lower()
+    if "purchase" in tx_lower or "buy" in tx_lower:
+        return "purchase"
+    elif "sale" in tx_lower or "sell" in tx_lower:
+        return "sale"
+    elif "exchange" in tx_lower:
+        return "exchange"
+    return tx_lower
+
+
+def _create_match_key(bioguide_id: str, name: str, ticker: str, tx_date: str, tx_type: str) -> str:
+    """Create a unique key for matching trades."""
+    norm_name = _normalize_quiver_name(name) if name else ""
+    norm_type = _normalize_transaction_type(tx_type)
+    ticker_upper = (ticker or "").upper().strip()
+    date_part = (tx_date or "")[:10]
+
+    # Prefer bioguide_id, fall back to name
+    id_part = bioguide_id if bioguide_id else norm_name
+    return f"{id_part}|{ticker_upper}|{date_part}|{norm_type}"
+
+
+def _compare_fields(app_trade: dict, quiver_trade: dict, app_politician: dict) -> dict:
+    """Compare fields between app and QuiverQuant trade, return mismatches."""
+    from difflib import SequenceMatcher
+
+    mismatches = {}
+
+    # Critical fields
+    # Politician name (fuzzy match)
+    app_name = app_politician.get("full_name", "") if app_politician else ""
+    quiver_name = quiver_trade.get("Representative", "")
+    norm_app = _normalize_quiver_name(app_name)
+    norm_quiver = _normalize_quiver_name(quiver_name)
+
+    if norm_app and norm_quiver:
+        similarity = SequenceMatcher(None, norm_app, norm_quiver).ratio()
+        if similarity < 0.9:
+            mismatches["politician_name"] = {
+                "app": app_name,
+                "quiver": quiver_name,
+                "severity": "critical",
+                "match": False,
+                "similarity": round(similarity, 2)
+            }
+
+    # BioGuide ID
+    app_bioguide = app_politician.get("bioguide_id", "") if app_politician else ""
+    quiver_bioguide = quiver_trade.get("BioGuideID", "")
+    if app_bioguide and quiver_bioguide and app_bioguide != quiver_bioguide:
+        mismatches["bioguide_id"] = {
+            "app": app_bioguide,
+            "quiver": quiver_bioguide,
+            "severity": "critical",
+            "match": False
+        }
+
+    # Ticker
+    app_ticker = (app_trade.get("asset_ticker") or "").upper()
+    quiver_ticker = (quiver_trade.get("Ticker") or "").upper()
+    if app_ticker != quiver_ticker:
+        mismatches["ticker"] = {
+            "app": app_ticker,
+            "quiver": quiver_ticker,
+            "severity": "critical",
+            "match": False
+        }
+
+    # Transaction date
+    app_date = (app_trade.get("transaction_date") or "")[:10]
+    quiver_date = (quiver_trade.get("TransactionDate") or "")[:10]
+    if app_date != quiver_date:
+        mismatches["transaction_date"] = {
+            "app": app_date,
+            "quiver": quiver_date,
+            "severity": "critical",
+            "match": False
+        }
+
+    # Transaction type
+    app_type = _normalize_transaction_type(app_trade.get("transaction_type", ""))
+    quiver_type = _normalize_transaction_type(quiver_trade.get("Transaction", ""))
+    if app_type != quiver_type:
+        mismatches["transaction_type"] = {
+            "app": app_trade.get("transaction_type", ""),
+            "quiver": quiver_trade.get("Transaction", ""),
+            "severity": "critical",
+            "match": False
+        }
+
+    # Warning fields
+    # Disclosure date
+    app_disc = (app_trade.get("disclosure_date") or "")[:10]
+    quiver_disc = (quiver_trade.get("ReportDate") or "")[:10]
+    if app_disc and quiver_disc and app_disc != quiver_disc:
+        mismatches["disclosure_date"] = {
+            "app": app_disc,
+            "quiver": quiver_disc,
+            "severity": "warning",
+            "match": False
+        }
+
+    # Amount range
+    app_min = float(app_trade.get("amount_range_min") or 0)
+    app_max = float(app_trade.get("amount_range_max") or 0)
+    quiver_min, quiver_max = _parse_quiver_amount_range(quiver_trade.get("Range", ""))
+
+    if quiver_min is not None and quiver_max is not None:
+        if abs(app_min - quiver_min) > 1 or abs(app_max - quiver_max) > 1:
+            mismatches["amount_range"] = {
+                "app": f"${app_min:,.0f} - ${app_max:,.0f}",
+                "quiver": quiver_trade.get("Range", ""),
+                "severity": "warning",
+                "match": False
+            }
+
+    # Party
+    app_party = (app_politician.get("party") or "").upper()[:1] if app_politician else ""
+    quiver_party = (quiver_trade.get("Party") or "").upper()[:1]
+    if app_party and quiver_party and app_party != quiver_party:
+        mismatches["party"] = {
+            "app": app_party,
+            "quiver": quiver_party,
+            "severity": "warning",
+            "match": False
+        }
+
+    return mismatches
+
+
+def _diagnose_root_cause(mismatches: dict, app_trade: dict, quiver_trade: dict) -> str:
+    """Diagnose the root cause of mismatches."""
+    if not mismatches:
+        return None
+
+    # Check for name normalization issues
+    if "politician_name" in mismatches:
+        similarity = mismatches["politician_name"].get("similarity", 0)
+        if similarity > 0.7:
+            return "name_normalization"
+
+    # Check for date issues
+    if "transaction_date" in mismatches or "disclosure_date" in mismatches:
+        return "date_parse_error"
+
+    # Check for amount parsing
+    if "amount_range" in mismatches:
+        return "amount_parse_error"
+
+    # Check for transaction type mapping
+    if "transaction_type" in mismatches:
+        return "transaction_type_mapping"
+
+    # Check for ticker mismatch
+    if "ticker" in mismatches:
+        return "ticker_mismatch"
+
+    return "unknown"
+
+
+def _get_severity(mismatches: dict) -> str:
+    """Determine overall severity from mismatches."""
+    if not mismatches:
+        return "info"
+    for field_data in mismatches.values():
+        if field_data.get("severity") == "critical":
+            return "critical"
+    return "warning"
+
+
+def _store_validation_result(config: dict, result: dict) -> bool:
+    """Store a validation result in the database."""
+    import json
+
+    url = config["SUPABASE_URL"]
+    key = config["SUPABASE_KEY"]
+
+    payload = {
+        "trading_disclosure_id": result.get("trading_disclosure_id"),
+        "quiver_record": result.get("quiver_record"),
+        "match_key": result.get("match_key"),
+        "validation_status": result["validation_status"],
+        "field_mismatches": result.get("field_mismatches", {}),
+        "root_cause": result.get("root_cause"),
+        "severity": result.get("severity", "warning")
+    }
+
+    try:
+        response = httpx.post(
+            f"{url}/rest/v1/trade_validation_results",
+            headers={
+                "apikey": key,
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            },
+            json=payload,
+            timeout=30
+        )
+        return response.status_code in [200, 201]
+    except Exception as e:
+        console.print(f"[red]Error storing validation result: {e}[/red]")
+        return False
+
+
+def _update_disclosure_validation_status(config: dict, disclosure_id: str, status: str) -> bool:
+    """Update the validation status on a trading disclosure."""
+    from datetime import datetime
+
+    url = config["SUPABASE_URL"]
+    key = config["SUPABASE_KEY"]
+
+    try:
+        response = httpx.patch(
+            f"{url}/rest/v1/trading_disclosures?id=eq.{disclosure_id}",
+            headers={
+                "apikey": key,
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            },
+            json={
+                "quiver_validation_status": status,
+                "quiver_validated_at": datetime.now().isoformat()
+            },
+            timeout=30
+        )
+        return response.status_code in [200, 204]
+    except Exception:
+        return False
+
+
+@quiver.command("audit")
+@click.option("--full", is_flag=True, help="Run full historical audit")
+@click.option("--from", "from_date", help="Start date (YYYY-MM-DD)")
+@click.option("--to", "to_date", help="End date (YYYY-MM-DD)")
+@click.option("--limit", "-l", default=5000, help="Max QuiverQuant records to fetch")
+@click.option("--dry-run", is_flag=True, help="Don't store results, just report")
+def quiver_audit(full: bool, from_date: str, to_date: str, limit: int, dry_run: bool):
+    """
+    Run a deep validation audit comparing all trades against QuiverQuant.
+
+    Examples:
+        mcli run etl quiver audit --full
+        mcli run etl quiver audit --from 2025-01-01 --to 2025-06-30
+        mcli run etl quiver audit --full --dry-run
+    """
+    from datetime import datetime, timedelta
+    import json
+
+    api_key = _get_quiver_api_key()
+    if not api_key:
+        console.print("[red]Error: QUIVERQUANT_API_KEY not found[/red]")
+        raise SystemExit(1)
+
+    config = _get_quiver_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found[/red]")
+        raise SystemExit(1)
+
+    console.print("[bold cyan]QuiverQuant Validation Audit[/bold cyan]")
+    console.print("=" * 60)
+
+    if dry_run:
+        console.print("[yellow]DRY RUN - results will not be stored[/yellow]\n")
+
+    # Fetch QuiverQuant data
+    console.print(f"[cyan]Fetching up to {limit} records from QuiverQuant...[/cyan]")
+    qq_data = _fetch_quiverquant_data(api_key, limit=limit)
+
+    if not qq_data:
+        console.print("[red]Failed to fetch QuiverQuant data[/red]")
+        raise SystemExit(1)
+
+    console.print(f"  Fetched [green]{len(qq_data)}[/green] QuiverQuant records")
+
+    # Filter by date if specified
+    if from_date:
+        qq_data = [t for t in qq_data if (t.get("TransactionDate") or "")[:10] >= from_date]
+        console.print(f"  Filtered to [green]{len(qq_data)}[/green] records from {from_date}")
+    if to_date:
+        qq_data = [t for t in qq_data if (t.get("TransactionDate") or "")[:10] <= to_date]
+        console.print(f"  Filtered to [green]{len(qq_data)}[/green] records until {to_date}")
+
+    # Build QuiverQuant lookup by match key
+    qq_by_key = {}
+    for trade in qq_data:
+        key = _create_match_key(
+            trade.get("BioGuideID"),
+            trade.get("Representative"),
+            trade.get("Ticker"),
+            trade.get("TransactionDate"),
+            trade.get("Transaction")
+        )
+        qq_by_key[key] = trade
+
+    console.print(f"  Created [green]{len(qq_by_key)}[/green] unique match keys\n")
+
+    # Fetch app data with politicians
+    console.print("[cyan]Fetching app database records...[/cyan]")
+    app_trades = _fetch_quiver_supabase_data(
+        config, "trading_disclosures",
+        "id,asset_ticker,transaction_date,disclosure_date,transaction_type,amount_range_min,amount_range_max,politician_id,status",
+        limit=50000,
+        filters={"status": "eq.active"}
+    )
+
+    # Filter app trades by date
+    if from_date:
+        app_trades = [t for t in app_trades if (t.get("transaction_date") or "")[:10] >= from_date]
+    if to_date:
+        app_trades = [t for t in app_trades if (t.get("transaction_date") or "")[:10] <= to_date]
+
+    console.print(f"  Found [green]{len(app_trades)}[/green] app trades in range")
+
+    # Fetch politicians for lookup
+    politicians = _fetch_quiver_supabase_data(
+        config, "politicians",
+        "id,full_name,bioguide_id,party,chamber",
+        limit=10000
+    )
+    pol_by_id = {p["id"]: p for p in politicians if p.get("id")}
+    console.print(f"  Loaded [green]{len(pol_by_id)}[/green] politicians\n")
+
+    # Compare
+    console.print("[cyan]Comparing trades...[/cyan]")
+
+    results = {
+        "match": 0,
+        "mismatch": 0,
+        "app_only": 0,
+        "quiver_only": 0
+    }
+    root_causes = {}
+    mismatched_trades = []
+    app_keys_found = set()
+
+    for app_trade in app_trades:
+        politician = pol_by_id.get(app_trade.get("politician_id"))
+
+        key = _create_match_key(
+            politician.get("bioguide_id") if politician else None,
+            politician.get("full_name") if politician else None,
+            app_trade.get("asset_ticker"),
+            app_trade.get("transaction_date"),
+            app_trade.get("transaction_type")
+        )
+        app_keys_found.add(key)
+
+        if key in qq_by_key:
+            quiver_trade = qq_by_key[key]
+            mismatches = _compare_fields(app_trade, quiver_trade, politician)
+
+            if mismatches:
+                results["mismatch"] += 1
+                root_cause = _diagnose_root_cause(mismatches, app_trade, quiver_trade)
+                severity = _get_severity(mismatches)
+
+                root_causes[root_cause] = root_causes.get(root_cause, 0) + 1
+
+                if len(mismatched_trades) < 50:  # Keep first 50 for display
+                    mismatched_trades.append({
+                        "app": app_trade,
+                        "quiver": quiver_trade,
+                        "mismatches": mismatches,
+                        "root_cause": root_cause
+                    })
+
+                if not dry_run:
+                    _store_validation_result(config, {
+                        "trading_disclosure_id": app_trade.get("id"),
+                        "quiver_record": quiver_trade,
+                        "match_key": key,
+                        "validation_status": "mismatch",
+                        "field_mismatches": mismatches,
+                        "root_cause": root_cause,
+                        "severity": severity
+                    })
+                    _update_disclosure_validation_status(config, app_trade.get("id"), "mismatch")
+            else:
+                results["match"] += 1
+                if not dry_run:
+                    _update_disclosure_validation_status(config, app_trade.get("id"), "validated")
+        else:
+            results["app_only"] += 1
+            if not dry_run:
+                _store_validation_result(config, {
+                    "trading_disclosure_id": app_trade.get("id"),
+                    "match_key": key,
+                    "validation_status": "app_only",
+                    "root_cause": "missing_in_source",
+                    "severity": "warning"
+                })
+                _update_disclosure_validation_status(config, app_trade.get("id"), "unmatched")
+
+    # Find quiver-only trades
+    for key, quiver_trade in qq_by_key.items():
+        if key not in app_keys_found:
+            results["quiver_only"] += 1
+            root_causes["data_lag"] = root_causes.get("data_lag", 0) + 1
+
+            if not dry_run:
+                _store_validation_result(config, {
+                    "quiver_record": quiver_trade,
+                    "match_key": key,
+                    "validation_status": "quiver_only",
+                    "root_cause": "data_lag",
+                    "severity": "warning"
+                })
+
+    # Print results
+    total = sum(results.values())
+    match_pct = (results["match"] / total * 100) if total > 0 else 0
+
+    console.print("\n" + "=" * 60)
+    console.print("[bold]Validation Audit Results[/bold]")
+    console.print("=" * 60)
+
+    table = Table()
+    table.add_column("Status", style="bold")
+    table.add_column("Count", justify="right")
+    table.add_column("Percentage", justify="right")
+
+    table.add_row("✓ Matched", str(results["match"]), f"[green]{match_pct:.1f}%[/green]")
+    table.add_row("⚠ Mismatched", str(results["mismatch"]), f"[yellow]{results['mismatch']/total*100:.1f}%[/yellow]" if total else "0%")
+    table.add_row("✗ App Only", str(results["app_only"]), f"[yellow]{results['app_only']/total*100:.1f}%[/yellow]" if total else "0%")
+    table.add_row("✗ Quiver Only", str(results["quiver_only"]), f"[yellow]{results['quiver_only']/total*100:.1f}%[/yellow]" if total else "0%")
+    table.add_row("─" * 15, "─" * 8, "─" * 10)
+    table.add_row("[bold]Total[/bold]", f"[bold]{total}[/bold]", "[bold]100%[/bold]")
+
+    console.print(table)
+
+    if root_causes:
+        console.print("\n[bold]Root Cause Breakdown:[/bold]")
+        for cause, count in sorted(root_causes.items(), key=lambda x: -x[1]):
+            console.print(f"  {cause}: [cyan]{count}[/cyan]")
+
+    if mismatched_trades:
+        console.print(f"\n[bold]Sample Mismatches (first {len(mismatched_trades)}):[/bold]")
+        for i, m in enumerate(mismatched_trades[:5]):
+            console.print(f"\n  [{i+1}] {m['quiver'].get('Representative', 'Unknown')} - {m['quiver'].get('Ticker', '?')}")
+            console.print(f"      Root cause: [yellow]{m['root_cause']}[/yellow]")
+            for field, data in m["mismatches"].items():
+                console.print(f"      {field}: app=[cyan]{data['app']}[/cyan] vs quiver=[magenta]{data['quiver']}[/magenta]")
+
+    if not dry_run:
+        console.print(f"\n[green]Results stored in trade_validation_results table[/green]")
+
+
+@quiver.command("report")
+@click.option("--critical", is_flag=True, help="Show only critical mismatches")
+@click.option("--root-cause", "by_root_cause", is_flag=True, help="Group by root cause")
+@click.option("--unresolved", is_flag=True, help="Show only unresolved issues")
+@click.option("--export", "export_format", type=click.Choice(["json", "csv"]), help="Export format")
+def quiver_report(critical: bool, by_root_cause: bool, unresolved: bool, export_format: str):
+    """
+    Generate a report of validation results.
+
+    Examples:
+        mcli run etl quiver report
+        mcli run etl quiver report --critical
+        mcli run etl quiver report --root-cause
+        mcli run etl quiver report --export csv
+    """
+    config = _get_quiver_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found[/red]")
+        raise SystemExit(1)
+
+    # Build query filters
+    filters = {}
+    if critical:
+        filters["severity"] = "eq.critical"
+    if unresolved:
+        filters["resolved_at"] = "is.null"
+
+    # Fetch validation results
+    results = _fetch_quiver_supabase_data(
+        config, "trade_validation_results",
+        "*",
+        limit=10000,
+        filters=filters if filters else None,
+        order="validated_at.desc"
+    )
+
+    if not results:
+        console.print("[yellow]No validation results found[/yellow]")
+        return
+
+    console.print(f"\n[bold]QuiverQuant Validation Report[/bold]")
+    console.print("=" * 60)
+    console.print(f"Total results: [cyan]{len(results)}[/cyan]")
+
+    # Aggregate by status
+    by_status = {}
+    by_cause = {}
+    by_severity = {}
+
+    for r in results:
+        status = r.get("validation_status", "unknown")
+        cause = r.get("root_cause", "unknown")
+        severity = r.get("severity", "warning")
+
+        by_status[status] = by_status.get(status, 0) + 1
+        if cause:
+            by_cause[cause] = by_cause.get(cause, 0) + 1
+        by_severity[severity] = by_severity.get(severity, 0) + 1
+
+    console.print("\n[bold]By Status:[/bold]")
+    for status, count in sorted(by_status.items(), key=lambda x: -x[1]):
+        color = "green" if status == "match" else "yellow" if status in ["mismatch", "app_only"] else "red"
+        console.print(f"  {status}: [{color}]{count}[/{color}]")
+
+    if by_root_cause and by_cause:
+        console.print("\n[bold]By Root Cause:[/bold]")
+        for cause, count in sorted(by_cause.items(), key=lambda x: -x[1]):
+            console.print(f"  {cause}: [cyan]{count}[/cyan]")
+
+    console.print("\n[bold]By Severity:[/bold]")
+    for sev, count in sorted(by_severity.items()):
+        color = "red" if sev == "critical" else "yellow" if sev == "warning" else "dim"
+        console.print(f"  {sev}: [{color}]{count}[/{color}]")
+
+    # Export if requested
+    if export_format:
+        import json
+        from pathlib import Path
+
+        filename = f"quiver_validation_report.{export_format}"
+
+        if export_format == "json":
+            with open(filename, "w") as f:
+                json.dump(results, f, indent=2, default=str)
+        elif export_format == "csv":
+            import csv
+            with open(filename, "w", newline="") as f:
+                if results:
+                    writer = csv.DictWriter(f, fieldnames=results[0].keys())
+                    writer.writeheader()
+                    writer.writerows(results)
+
+        console.print(f"\n[green]Exported to {filename}[/green]")
+
+
+@quiver.command("resolve")
+@click.argument("validation_id")
+@click.option("--notes", "-n", required=True, help="Resolution notes")
+def quiver_resolve(validation_id: str, notes: str):
+    """
+    Mark a validation issue as resolved.
+
+    Example: mcli run etl quiver resolve abc123 --notes "Fixed name normalization"
+    """
+    from datetime import datetime
+
+    config = _get_quiver_supabase_config()
+    if not config.get("SUPABASE_URL"):
+        console.print("[red]Error: SUPABASE_URL not found[/red]")
+        raise SystemExit(1)
+
+    url = config["SUPABASE_URL"]
+    key = config["SUPABASE_KEY"]
+
+    try:
+        response = httpx.patch(
+            f"{url}/rest/v1/trade_validation_results?id=eq.{validation_id}",
+            headers={
+                "apikey": key,
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            },
+            json={
+                "resolved_at": datetime.now().isoformat(),
+                "resolution_notes": notes
+            },
+            timeout=30
+        )
+
+        if response.status_code in [200, 204]:
+            console.print(f"[green]Marked validation {validation_id} as resolved[/green]")
+            console.print(f"Notes: {notes}")
+        else:
+            console.print(f"[red]Failed to update: {response.status_code}[/red]")
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+
+
+# =============================================================================
 # Backfill Commands (Subgroup)
 # =============================================================================
 
