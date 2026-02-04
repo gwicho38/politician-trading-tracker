@@ -2,8 +2,8 @@
 # This file is ClawdBot's persistent memory across context windows
 # ALWAYS read this first and update after each session
 
-Last Updated: 2026-02-04T08:10:00Z
-Session Count: 117
+Last Updated: 2026-02-04T08:45:00Z
+Session Count: 118
 
 ---
 
@@ -66,6 +66,45 @@ Priority for this week:
 ---
 
 ## Last Session Summary
+
+### Date: 2026-02-04 (Session #118)
+
+#### Completed:
+- [x] Ran full test suite:
+  - Frontend: 787 tests passing (fixed unhandled error)
+  - Backend: 67 tests passing (36 excluded - database tests)
+  - ETL: 1,499 tests passing
+  - **Total: 2,353 tests all green**
+- [x] Fixed frontend test issue:
+  - OrderConfirmationModal test had unhandled promise rejection
+  - Added flushPromises helper and proper afterEach cleanup
+  - Committed fix as de682c0
+- [x] Verified production site health:
+  - govmarket.trade: HTTP 200 ✅
+  - Backend API: status ok, version 0.1.0 ✅
+  - ETL Service: status healthy ✅
+- [x] Triaged GitHub issues:
+  - #91 - CI PostgreSQL fix pending manual push (added status comment)
+  - #93 - ClawdBot API key config issue (added status comment)
+  - #56 - Social Discovery feature remains open as enhancement
+- [x] Attempted to push pending commits:
+  - 9 commits ahead of origin/main
+  - Push blocked by OAuth scope (workflow file changes require `workflow` scope)
+
+#### GitHub Issues Summary:
+- Open: 3
+  - #56 - Social Discovery feature request (enhancement)
+  - #91 - CI PostgreSQL fix implemented, needs manual push
+  - #93 - ClawdBot run failed (API key config issue)
+
+#### Manual Actions Required:
+1. **Fix ANTHROPIC_API_KEY** - Go to Settings → Secrets and variables → Actions and update the secret
+2. **Push commits** - A user with `workflow` scope needs to run `git push origin main`
+
+#### Summary:
+Fixed an unhandled promise rejection in the OrderConfirmationModal test suite. All 2,353 tests passing. All three production services healthy. Added status comments to issues #91 and #93. The OAuth scope limitation continues to block pushing commits that include the CI workflow fix.
+
+---
 
 ### Date: 2026-02-04 (Session #117)
 
