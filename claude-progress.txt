@@ -2,8 +2,8 @@
 # This file is ClawdBot's persistent memory across context windows
 # ALWAYS read this first and update after each session
 
-Last Updated: 2026-02-04T04:15:00Z
-Session Count: 110
+Last Updated: 2026-02-04T04:55:00Z
+Session Count: 111
 
 ---
 
@@ -67,6 +67,44 @@ Priority for this week:
 
 ## Last Session Summary
 
+### Date: 2026-02-04 (Session #111)
+
+#### Completed:
+- [x] Fixed PostgreSQL service issue in CI (Issue #91):
+  - Added postgres:15 service container to server-tests job
+  - Added database creation and migration steps
+  - Removed `continue-on-error: true` so CI properly fails on test failures
+  - Configured DATABASE_URL environment variable
+  - **Commit 008b9a4 ready but push blocked by OAuth scope**
+- [x] Closed Issue #92 (ClawdBot failure):
+  - Root cause: Missing ANTHROPIC_API_KEY secret in GitHub Actions
+  - Configuration issue, not code issue - requires admin to set secret
+- [x] Ran full test suite:
+  - Frontend: 787 tests passing
+  - Backend: 67 tests passing (36 excluded - database tests)
+  - ETL: 1,499 tests passing
+  - **Total: 2,353+ tests all green**
+- [x] Triaged GitHub issues:
+  - #91 - Commented with fix details, awaiting manual push
+  - #92 - Closed as configuration issue
+  - #56 - Social Discovery feature remains open
+
+#### GitHub Issues Summary:
+- Open: 2
+  - #56 - Social Discovery feature request (enhancement)
+  - #91 - CI PostgreSQL fix implemented, needs manual push
+
+#### Manual Action Required:
+The CI workflow fix (commit 008b9a4) is ready but cannot be pushed due to OAuth scope limitations. A user with `workflow` scope needs to push this commit:
+```bash
+git push origin main
+```
+
+#### Summary:
+Implemented fix for server tests PostgreSQL issue in CI. The fix adds postgres:15 service container and removes continue-on-error masking. Push blocked by OAuth scope - requires manual intervention. Closed ClawdBot failure issue #92 as it's a missing API key configuration issue.
+
+---
+
 ### Date: 2026-02-04 (Session #110)
 
 #### Completed:
@@ -92,13 +130,13 @@ Priority for this week:
 #### GitHub Issues Summary:
 - Open: 2
   - #56 - Social Discovery feature request (enhancement)
-  - #91 - CI PostgreSQL service needed (infrastructure, requires manual fix)
+  - #91 - CI PostgreSQL service needed (fix implemented in session #111)
 
 #### CI/CD Status:
 - CI shows passing due to `continue-on-error: true` on server tests
 - Server tests actually fail in CI (no PostgreSQL service)
 - All 2,844 tests pass locally
-- Issue #91 created to track fix
+- Fix implemented in session #111 (commit 008b9a4, pending push)
 
 #### Summary:
 Health check session with CI investigation. All 2,844 tests pass locally. Discovered that server tests in CI fail due to missing PostgreSQL service, but this is masked by `continue-on-error: true`. Created issue #91 to track the needed CI workflow fix (requires manual intervention due to OAuth scope).
