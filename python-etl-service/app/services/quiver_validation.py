@@ -135,6 +135,7 @@ class QuiverValidationService:
                             "ticker": app_trade.get("asset_ticker"),
                             "transaction_date": app_trade.get("transaction_date"),
                             "transaction_type": app_trade.get("transaction_type"),
+                            "chamber": self._get_chamber(politician, quiver_trade),
                         })
                 else:
                     results["match"] += 1
@@ -147,6 +148,7 @@ class QuiverValidationService:
                             "ticker": app_trade.get("asset_ticker"),
                             "transaction_date": app_trade.get("transaction_date"),
                             "transaction_type": app_trade.get("transaction_type"),
+                            "chamber": self._get_chamber(politician, None),
                         })
             else:
                 results["app_only"] += 1
@@ -161,6 +163,7 @@ class QuiverValidationService:
                         "ticker": app_trade.get("asset_ticker"),
                         "transaction_date": app_trade.get("transaction_date"),
                         "transaction_type": app_trade.get("transaction_type"),
+                        "chamber": self._get_chamber(politician, None),
                     })
 
         # Find Quiver-only records
@@ -180,6 +183,7 @@ class QuiverValidationService:
                         "ticker": quiver_trade.get("Ticker"),
                         "transaction_date": quiver_trade.get("TransactionDate"),
                         "transaction_type": quiver_trade.get("Transaction"),
+                        "chamber": self._get_chamber(None, quiver_trade),
                     })
 
         total = sum(results.values())
@@ -344,10 +348,25 @@ class QuiverValidationService:
                 return "critical"
         return "warning"
 
+    def _get_chamber(self, politician: Optional[dict], quiver_trade: Optional[dict]) -> str:
+        """Determine chamber from politician or QuiverQuant data."""
+        # Try politician first
+        if politician and politician.get("chamber"):
+            return politician["chamber"].lower()
+
+        # Try QuiverQuant data
+        if quiver_trade and quiver_trade.get("House"):
+            house_val = quiver_trade["House"].lower()
+            if house_val == "representatives":
+                return "house"
+            elif house_val == "senate":
+                return "senate"
+
+        return "unknown"
+
     async def _store_validation_result(self, result: dict) -> bool:
         """Store a validation result in the database."""
         try:
-            # Build payload with app_snapshot and quiver_snapshot
             payload = {
                 "trading_disclosure_id": result.get("trading_disclosure_id"),
                 "match_key": result.get("match_key"),
@@ -359,11 +378,12 @@ class QuiverValidationService:
                 "ticker": result.get("ticker"),
                 "transaction_date": result.get("transaction_date"),
                 "transaction_type": result.get("transaction_type"),
+                "chamber": result.get("chamber", "unknown"),
             }
 
-            # Add snapshots
+            # Add QuiverQuant record snapshot
             if result.get("quiver_record"):
-                payload["quiver_snapshot"] = result["quiver_record"]
+                payload["quiver_record"] = result["quiver_record"]
 
             self.supabase.table("trade_validation_results").insert(payload).execute()
             return True
