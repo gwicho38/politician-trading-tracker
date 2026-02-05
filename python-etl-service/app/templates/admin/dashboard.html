@@ -34,6 +34,15 @@
         <input type="hidden" name="key" value="{{ api_key }}">
 
         <div>
+            <label class="block text-sm text-gray-600 mb-1">Chamber</label>
+            <select name="chamber" class="border rounded px-3 py-2 text-sm">
+                <option value="">All</option>
+                <option value="house" {% if filters.chamber == 'house' %}selected{% endif %}>House</option>
+                <option value="senate" {% if filters.chamber == 'senate' %}selected{% endif %}>Senate</option>
+            </select>
+        </div>
+
+        <div>
             <label class="block text-sm text-gray-600 mb-1">Status</label>
             <select name="status" class="border rounded px-3 py-2 text-sm">
                 <option value="">All</option>

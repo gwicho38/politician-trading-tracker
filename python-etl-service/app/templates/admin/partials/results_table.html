@@ -1,6 +1,7 @@
 <table class="w-full">
     <thead class="bg-gray-50">
         <tr>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Chamber</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Politician</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ticker</th>
@@ -13,6 +14,15 @@
     <tbody class="divide-y divide-gray-200">
         {% for result in results %}
         <tr class="hover:bg-gray-50" id="row-{{ result.id }}">
+            <td class="px-4 py-3 text-sm">
+                {% if result.chamber == 'house' %}
+                <span class="text-blue-600 font-medium">H</span>
+                {% elif result.chamber == 'senate' %}
+                <span class="text-red-600 font-medium">S</span>
+                {% else %}
+                <span class="text-gray-400">-</span>
+                {% endif %}
+            </td>
             <td class="px-4 py-3">
                 {% if result.validation_status == 'match' %}
                 <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -64,7 +74,7 @@
         </tr>
         {% else %}
         <tr>
-            <td colspan="7" class="px-4 py-8 text-center text-gray-500">
+            <td colspan="8" class="px-4 py-8 text-center text-gray-500">
                 No validation results found. Run an audit to start.
             </td>
         </tr>

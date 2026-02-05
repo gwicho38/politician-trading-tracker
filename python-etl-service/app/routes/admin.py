@@ -82,6 +82,7 @@ async def admin_dashboard(
     results = await get_validation_results(
         supabase,
         page=1,
+        chamber=None,
         status=None,
         severity=None,
         resolved=False,
@@ -161,6 +162,7 @@ async def api_get_results(
     request: Request,
     key: str = Query(...),
     page: int = Query(1, ge=1),
+    chamber: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     severity: Optional[str] = Query(None),
     resolved: Optional[str] = Query("false"),
@@ -193,6 +195,7 @@ async def api_get_results(
     results = await get_validation_results(
         supabase,
         page=page,
+        chamber=chamber if chamber else None,
         status=status if status else None,
         severity=severity if severity else None,
         resolved=resolved_bool,
@@ -267,6 +270,7 @@ async def api_run_audit(
         results = await get_validation_results(
             supabase,
             page=1,
+            chamber=None,
             status=None,
             severity=None,
             resolved=False,
@@ -464,6 +468,7 @@ async def get_validation_stats(supabase) -> dict:
 async def get_validation_results(
     supabase,
     page: int,
+    chamber: Optional[str],
     status: Optional[str],
     severity: Optional[str],
     resolved: Optional[bool],
@@ -480,6 +485,9 @@ async def get_validation_results(
         )
 
         # Apply filters
+        if chamber:
+            query = query.eq("chamber", chamber)
+
         if status:
             query = query.eq("validation_status", status)
 
