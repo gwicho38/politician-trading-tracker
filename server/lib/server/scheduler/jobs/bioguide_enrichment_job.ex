@@ -18,20 +18,16 @@ defmodule Server.Scheduler.Jobs.BioguideEnrichmentJob do
 
   @etl_service_url "https://politician-trading-etl.fly.dev"
 
-  # TODO: Review this function
   @impl true
   def job_id, do: "bioguide-enrichment"
 
-  # TODO: Review this function
   @impl true
   def job_name, do: "BioGuide ID Enrichment"
 
-  # TODO: Review this function
   @impl true
   # Run weekly on Sunday at 4 AM UTC (less frequent since Congress membership changes slowly)
   def schedule, do: "0 4 * * 0"
 
-  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[BioguideEnrichmentJob] Triggering bioguide enrichment service")
@@ -47,9 +43,9 @@ defmodule Server.Scheduler.Jobs.BioguideEnrichmentJob do
     end
   end
 
-  # TODO: Review this function
   defp trigger_enrichment do
     url = "#{@etl_service_url}/etl/enrich-bioguide"
+    api_key = System.get_env("ETL_API_KEY") || ""
 
     # Process all politicians without bioguide_id (typically few hundred max)
     body = Jason.encode!(%{limit: nil})
@@ -60,7 +56,8 @@ defmodule Server.Scheduler.Jobs.BioguideEnrichmentJob do
         url,
         [
           {"Content-Type", "application/json"},
-          {"Accept", "application/json"}
+          {"Accept", "application/json"},
+          {"X-API-Key", api_key}
         ],
         body
       )
@@ -87,7 +84,6 @@ defmodule Server.Scheduler.Jobs.BioguideEnrichmentJob do
     end
   end
 
-  # TODO: Review this function
   @impl true
   def metadata do
     %{
