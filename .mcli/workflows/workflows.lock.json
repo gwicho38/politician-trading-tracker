@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "generated_at": "2026-02-05T11:07:27.297066Z",
+  "generated_at": "2026-02-05T11:21:15.268704Z",
   "commands": {
     "admin": {
       "file": "admin.py",
@@ -44,7 +44,7 @@
     "etl": {
       "file": "etl.py",
       "language": "python",
-      "content_hash": "sha256:1e10d4f80cce71f12edaff137f567ea9d9778d827359ed29aea16723ec260b31",
+      "content_hash": "sha256:ce20c35940c5928d541a0f1cafaa4b4d0ca05282aba7b972ee9054d5e6aed879",
       "version": "1.0.0",
       "group": "workflows",
       "description": "etl command",
@@ -52,7 +52,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-02-04T22:16:57.808293Z"
+      "last_modified": "2026-02-05T12:21:04.174748Z"
     },
     "jobs": {
       "file": "jobs.py",
