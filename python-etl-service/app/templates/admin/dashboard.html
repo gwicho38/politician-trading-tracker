@@ -1,0 +1,104 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Stats Cards -->
+<div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl font-bold text-gray-800">{{ stats.total }}</div>
+        <div class="text-sm text-gray-500">Total Validated</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl font-bold text-green-600">{{ stats.match }}</div>
+        <div class="text-sm text-gray-500">Matches ({{ "%.1f"|format(stats.match_pct) }}%)</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl font-bold text-yellow-600">{{ stats.mismatch }}</div>
+        <div class="text-sm text-gray-500">Mismatches ({{ "%.1f"|format(stats.mismatch_pct) }}%)</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl font-bold text-red-600">{{ stats.app_only }}</div>
+        <div class="text-sm text-gray-500">App Only</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl font-bold text-purple-600">{{ stats.quiver_only }}</div>
+        <div class="text-sm text-gray-500">QQ Only</div>
+    </div>
+</div>
+
+<!-- Filters and Actions -->
+<div class="bg-white rounded-lg shadow p-4 mb-6">
+    <form hx-get="/admin/api/results" hx-target="#results-table" hx-indicator=".htmx-indicator"
+          class="flex flex-wrap gap-4 items-end">
+        <input type="hidden" name="key" value="{{ api_key }}">
+
+        <div>
+            <label class="block text-sm text-gray-600 mb-1">Status</label>
+            <select name="status" class="border rounded px-3 py-2 text-sm">
+                <option value="">All</option>
+                <option value="mismatch" {% if filters.status == 'mismatch' %}selected{% endif %}>Mismatch</option>
+                <option value="app_only" {% if filters.status == 'app_only' %}selected{% endif %}>App Only</option>
+                <option value="quiver_only" {% if filters.status == 'quiver_only' %}selected{% endif %}>QQ Only</option>
+                <option value="match" {% if filters.status == 'match' %}selected{% endif %}>Match</option>
+            </select>
+        </div>
+
+        <div>
+            <label class="block text-sm text-gray-600 mb-1">Severity</label>
+            <select name="severity" class="border rounded px-3 py-2 text-sm">
+                <option value="">All</option>
+                <option value="critical" {% if filters.severity == 'critical' %}selected{% endif %}>Critical</option>
+                <option value="warning" {% if filters.severity == 'warning' %}selected{% endif %}>Warning</option>
+                <option value="info" {% if filters.severity == 'info' %}selected{% endif %}>Info</option>
+            </select>
+        </div>
+
+        <div>
+            <label class="block text-sm text-gray-600 mb-1">Root Cause</label>
+            <select name="root_cause" class="border rounded px-3 py-2 text-sm">
+                <option value="">All</option>
+                <option value="name_normalization">Name Normalization</option>
+                <option value="date_parse_error">Date Parse Error</option>
+                <option value="amount_parse_error">Amount Parse Error</option>
+                <option value="transaction_type_mapping">Transaction Type</option>
+                <option value="ticker_mismatch">Ticker Mismatch</option>
+                <option value="missing_in_source">Missing in Source</option>
+                <option value="data_lag">Data Lag</option>
+            </select>
+        </div>
+
+        <div>
+            <label class="block text-sm text-gray-600 mb-1">Resolved</label>
+            <select name="resolved" class="border rounded px-3 py-2 text-sm">
+                <option value="false" {% if filters.resolved == 'false' %}selected{% endif %}>Unresolved</option>
+                <option value="true" {% if filters.resolved == 'true' %}selected{% endif %}>Resolved</option>
+                <option value="">All</option>
+            </select>
+        </div>
+
+        <div class="flex-grow">
+            <label class="block text-sm text-gray-600 mb-1">Search (politician/ticker)</label>
+            <input type="text" name="search" value="{{ filters.search or '' }}"
+                   placeholder="Search..." class="border rounded px-3 py-2 text-sm w-full">
+        </div>
+
+        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 text-sm">
+            Filter
+        </button>
+
+        <button type="button" hx-post="/admin/api/audit" hx-target="#results-table"
+                hx-indicator=".htmx-indicator" hx-vals='{"key": "{{ api_key }}", "limit": 100}'
+                class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm">
+            Run Audit (100)
+        </button>
+    </form>
+</div>
+
+<!-- Results Table -->
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <div id="results-table">
+        {% include "admin/partials/results_table.html" %}
+    </div>
+</div>
+{% endblock %}

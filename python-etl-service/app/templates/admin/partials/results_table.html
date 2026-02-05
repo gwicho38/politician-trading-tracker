@@ -1,0 +1,96 @@
+<table class="w-full">
+    <thead class="bg-gray-50">
+        <tr>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Politician</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ticker</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Root Cause</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Severity</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+        </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-200">
+        {% for result in results %}
+        <tr class="hover:bg-gray-50" id="row-{{ result.id }}">
+            <td class="px-4 py-3">
+                {% if result.validation_status == 'match' %}
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    Match
+                </span>
+                {% elif result.validation_status == 'mismatch' %}
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                    Mismatch
+                </span>
+                {% elif result.validation_status == 'app_only' %}
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                    App Only
+                </span>
+                {% else %}
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                    QQ Only
+                </span>
+                {% endif %}
+            </td>
+            <td class="px-4 py-3 text-sm text-gray-900">{{ result.politician_name or 'Unknown' }}</td>
+            <td class="px-4 py-3 text-sm font-mono text-gray-900">{{ result.ticker or '-' }}</td>
+            <td class="px-4 py-3 text-sm text-gray-500">{{ result.transaction_date or '-' }}</td>
+            <td class="px-4 py-3 text-sm">
+                {% if result.root_cause %}
+                <span class="text-gray-600">{{ result.root_cause | replace('_', ' ') | title }}</span>
+                {% else %}
+                <span class="text-gray-400">-</span>
+                {% endif %}
+            </td>
+            <td class="px-4 py-3">
+                {% if result.severity == 'critical' %}
+                <span class="text-red-600 font-medium text-sm">Critical</span>
+                {% elif result.severity == 'warning' %}
+                <span class="text-yellow-600 text-sm">Warning</span>
+                {% else %}
+                <span class="text-gray-400 text-sm">Info</span>
+                {% endif %}
+            </td>
+            <td class="px-4 py-3">
+                {% if result.resolved_at %}
+                <span class="text-green-600 text-sm">Resolved</span>
+                {% elif result.validation_status != 'match' %}
+                <a href="/admin/detail/{{ result.id }}?key={{ api_key }}"
+                   class="text-indigo-600 hover:text-indigo-800 text-sm font-medium">
+                    View &rarr;
+                </a>
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="7" class="px-4 py-8 text-center text-gray-500">
+                No validation results found. Run an audit to start.
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if results %}
+<div class="bg-gray-50 px-4 py-3 flex items-center justify-between border-t">
+    <div class="text-sm text-gray-500">
+        Showing {{ results|length }} results
+        {% if page > 1 %}(page {{ page }}){% endif %}
+    </div>
+    <div class="flex space-x-2">
+        {% if page > 1 %}
+        <button hx-get="/admin/api/results?page={{ page - 1 }}&key={{ api_key }}"
+                hx-target="#results-table" class="px-3 py-1 border rounded text-sm hover:bg-gray-100">
+            Previous
+        </button>
+        {% endif %}
+        {% if results|length >= 50 %}
+        <button hx-get="/admin/api/results?page={{ page + 1 }}&key={{ api_key }}"
+                hx-target="#results-table" class="px-3 py-1 border rounded text-sm hover:bg-gray-100">
+            Next
+        </button>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
