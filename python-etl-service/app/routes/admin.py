@@ -222,17 +222,28 @@ async def api_run_audit(
 
     Accepts key from either query param or form body (for HTMX compatibility).
     """
-    # HTMX sends hx-vals in body, so check both query and form
+    # HTMX sends hx-vals in body as form-urlencoded
     if not key:
         try:
             form_data = await request.form()
             key = form_data.get("key")
-            if form_data.get("limit"):
-                limit = int(form_data.get("limit"))
-        except Exception:
-            pass
+            limit_str = form_data.get("limit")
+            if limit_str:
+                limit = int(limit_str)
+            logger.info(f"Parsed form data: key={key[:10] if key else None}..., limit={limit}")
+        except Exception as e:
+            logger.warning(f"Failed to parse form data: {e}")
+            # Try JSON body as fallback
+            try:
+                body = await request.json()
+                key = body.get("key")
+                limit = body.get("limit", limit)
+                logger.info(f"Parsed JSON body: key={key[:10] if key else None}...")
+            except Exception as e2:
+                logger.warning(f"Failed to parse JSON body: {e2}")
 
     if not key or not validate_api_key(key, require_admin=True):
+        logger.warning(f"Auth failed: key={'present' if key else 'missing'}")
         return HTMLResponse(
             '<div class="text-red-600 p-4">Invalid API key</div>',
             status_code=401,
