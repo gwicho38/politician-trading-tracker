@@ -1,0 +1,242 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Validation Detail{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <a href="/admin?key={{ api_key }}" class="text-indigo-600 hover:text-indigo-800 text-sm">
+        &larr; Back to Dashboard
+    </a>
+</div>
+
+<!-- Header -->
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <div class="flex justify-between items-start">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-800">{{ result.politician_name or 'Unknown Politician' }}</h2>
+            <p class="text-gray-500 mt-1">
+                <span class="font-mono">{{ result.ticker or 'N/A' }}</span>
+                &bull; {{ result.transaction_date or 'Unknown Date' }}
+                &bull; {{ result.transaction_type or 'Unknown Type' }}
+            </p>
+        </div>
+        <div>
+            {% if result.validation_status == 'mismatch' %}
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+                Mismatch
+            </span>
+            {% elif result.validation_status == 'app_only' %}
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+                App Only
+            </span>
+            {% elif result.validation_status == 'quiver_only' %}
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
+                QQ Only
+            </span>
+            {% endif %}
+            {% if result.severity == 'critical' %}
+            <span class="ml-2 text-red-600 font-medium">Critical</span>
+            {% elif result.severity == 'warning' %}
+            <span class="ml-2 text-yellow-600">Warning</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Root Cause Analysis -->
+{% if result.root_cause %}
+<div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+    <h3 class="font-medium text-blue-800 mb-2">Root Cause Analysis</h3>
+    <p class="text-blue-700">
+        <strong>{{ result.root_cause | replace('_', ' ') | title }}</strong>
+    </p>
+    {% if result.root_cause == 'name_normalization' %}
+    <p class="text-blue-600 text-sm mt-1">The politician name differs due to formatting (e.g., "John Smith" vs "SMITH, JOHN"). Consider improving name normalization in the ETL parser.</p>
+    {% elif result.root_cause == 'date_parse_error' %}
+    <p class="text-blue-600 text-sm mt-1">The transaction date was parsed differently. Check date format handling in the PDF parser.</p>
+    {% elif result.root_cause == 'amount_parse_error' %}
+    <p class="text-blue-600 text-sm mt-1">The amount range or value differs. Review amount parsing logic for edge cases.</p>
+    {% elif result.root_cause == 'transaction_type_mapping' %}
+    <p class="text-blue-600 text-sm mt-1">Transaction type mapping differs (e.g., "Purchase" vs "Buy"). Update the transaction type enum mapping.</p>
+    {% elif result.root_cause == 'ticker_mismatch' %}
+    <p class="text-blue-600 text-sm mt-1">The ticker symbol differs. May need ticker symbol normalization or alias handling.</p>
+    {% elif result.root_cause == 'missing_in_source' %}
+    <p class="text-blue-600 text-sm mt-1">This trade exists in our database but not in QuiverQuant. May be a duplicate or mis-parsed entry.</p>
+    {% elif result.root_cause == 'data_lag' %}
+    <p class="text-blue-600 text-sm mt-1">QuiverQuant has data that we haven't ingested yet. Check ETL scheduling and data freshness.</p>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Side-by-Side Comparison -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+    <!-- Our Data -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="bg-gray-100 px-4 py-3 border-b rounded-t-lg">
+            <h3 class="font-medium text-gray-800">Our Data (App)</h3>
+        </div>
+        <div class="p-4 space-y-3">
+            {% for field in comparison_fields %}
+            <div class="{% if field.differs %}bg-yellow-50 -mx-4 px-4 py-2{% endif %}">
+                <label class="block text-xs font-medium text-gray-500 uppercase">{{ field.label }}</label>
+                <div class="text-gray-900 {% if field.differs %}font-medium{% endif %}">
+                    {{ field.app_value or '-' }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- QuiverQuant Data -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="bg-indigo-100 px-4 py-3 border-b rounded-t-lg">
+            <h3 class="font-medium text-indigo-800">QuiverQuant Data</h3>
+        </div>
+        <div class="p-4 space-y-3">
+            {% for field in comparison_fields %}
+            <div class="{% if field.differs %}bg-yellow-50 -mx-4 px-4 py-2{% endif %}">
+                <label class="block text-xs font-medium text-gray-500 uppercase">{{ field.label }}</label>
+                <div class="text-gray-900 {% if field.differs %}font-medium{% endif %}">
+                    {{ field.qq_value or '-' }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Fix Actions -->
+{% if not result.resolved_at %}
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h3 class="font-medium text-gray-800 mb-4">Apply Fix</h3>
+
+    <div class="space-y-4">
+        <!-- Accept All QuiverQuant Values -->
+        <div class="border rounded-lg p-4">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h4 class="font-medium text-gray-700">Accept All QuiverQuant Values</h4>
+                    <p class="text-sm text-gray-500">Replace all our values with QuiverQuant's data</p>
+                </div>
+                <button hx-post="/admin/api/fix/{{ result.id }}"
+                        hx-vals='{"action": "accept_all_qq", "key": "{{ api_key }}"}'
+                        hx-confirm="Replace all values with QuiverQuant data?"
+                        hx-target="#action-result"
+                        class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 text-sm">
+                    Accept QQ Data
+                </button>
+            </div>
+        </div>
+
+        <!-- Field-by-Field Fixes -->
+        <div class="border rounded-lg p-4">
+            <h4 class="font-medium text-gray-700 mb-3">Fix Individual Fields</h4>
+            <div class="space-y-2">
+                {% for field in comparison_fields %}
+                {% if field.differs %}
+                <div class="flex items-center justify-between py-2 border-b last:border-b-0">
+                    <div>
+                        <span class="text-sm font-medium text-gray-700">{{ field.label }}:</span>
+                        <span class="text-sm text-gray-500">{{ field.app_value or '-' }}</span>
+                        <span class="text-gray-400 mx-2">&rarr;</span>
+                        <span class="text-sm text-indigo-600">{{ field.qq_value or '-' }}</span>
+                    </div>
+                    <button hx-post="/admin/api/fix/{{ result.id }}"
+                            hx-vals='{"action": "field_update", "field": "{{ field.name }}", "value": "{{ field.qq_value }}", "key": "{{ api_key }}"}'
+                            hx-target="#action-result"
+                            class="text-indigo-600 hover:text-indigo-800 text-sm">
+                        Apply
+                    </button>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Mark as Resolved -->
+        <div class="border rounded-lg p-4">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h4 class="font-medium text-gray-700">Mark as Resolved (No Action)</h4>
+                    <p class="text-sm text-gray-500">Accept the discrepancy without changes</p>
+                </div>
+                <button hx-post="/admin/api/fix/{{ result.id }}"
+                        hx-vals='{"action": "mark_resolved", "key": "{{ api_key }}"}'
+                        hx-target="#action-result"
+                        class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 text-sm">
+                    Mark Resolved
+                </button>
+            </div>
+        </div>
+
+        <!-- Delete Trade (Soft Delete) -->
+        {% if result.validation_status == 'app_only' %}
+        <div class="border border-red-200 rounded-lg p-4 bg-red-50">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h4 class="font-medium text-red-700">Delete This Trade</h4>
+                    <p class="text-sm text-red-500">Soft-delete this trade from our database (can be undone)</p>
+                </div>
+                <button hx-post="/admin/api/fix/{{ result.id }}"
+                        hx-vals='{"action": "delete_trade", "key": "{{ api_key }}"}'
+                        hx-confirm="Are you sure you want to delete this trade? This is a soft delete."
+                        hx-target="#action-result"
+                        class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 text-sm">
+                    Delete Trade
+                </button>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div id="action-result" class="mt-4"></div>
+</div>
+{% else %}
+<div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+    <h3 class="font-medium text-green-800">Resolved</h3>
+    <p class="text-green-600 text-sm">This issue was resolved on {{ result.resolved_at }}</p>
+</div>
+{% endif %}
+
+<!-- Fix History -->
+{% if fix_history %}
+<div class="bg-white rounded-lg shadow p-6">
+    <h3 class="font-medium text-gray-800 mb-4">Fix History</h3>
+    <div class="space-y-3">
+        {% for fix in fix_history %}
+        <div class="border-l-4 border-gray-300 pl-4 py-2">
+            <div class="text-sm text-gray-600">
+                <span class="font-medium">{{ fix.action_type | replace('_', ' ') | title }}</span>
+                {% if fix.field_changed %}
+                on <span class="font-mono">{{ fix.field_changed }}</span>
+                {% endif %}
+            </div>
+            {% if fix.old_value or fix.new_value %}
+            <div class="text-xs text-gray-500 mt-1">
+                {{ fix.old_value or '(empty)' }} &rarr; {{ fix.new_value or '(empty)' }}
+            </div>
+            {% endif %}
+            <div class="text-xs text-gray-400 mt-1">
+                {{ fix.performed_at }} by {{ fix.performed_by }}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Raw Data (Collapsible) -->
+<details class="mt-6">
+    <summary class="text-sm text-gray-500 cursor-pointer hover:text-gray-700">View Raw Data</summary>
+    <div class="mt-2 grid grid-cols-2 gap-4">
+        <div class="bg-gray-50 p-4 rounded">
+            <h4 class="text-xs font-medium text-gray-500 mb-2">App Snapshot</h4>
+            <pre class="text-xs overflow-x-auto">{{ result.app_snapshot | tojson(indent=2) if result.app_snapshot else '{}' }}</pre>
+        </div>
+        <div class="bg-gray-50 p-4 rounded">
+            <h4 class="text-xs font-medium text-gray-500 mb-2">QuiverQuant Snapshot</h4>
+            <pre class="text-xs overflow-x-auto">{{ result.quiver_snapshot | tojson(indent=2) if result.quiver_snapshot else '{}' }}</pre>
+        </div>
+    </div>
+</details>
+{% endblock %}

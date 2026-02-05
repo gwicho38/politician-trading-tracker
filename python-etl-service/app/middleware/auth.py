@@ -38,6 +38,7 @@ ETL_ADMIN_API_KEY = os.environ.get("ETL_ADMIN_API_KEY")
 ETL_AUTH_DISABLED = os.environ.get("ETL_AUTH_DISABLED", "false").lower() == "true"
 
 # Public endpoints that don't require authentication
+# Note: Admin routes bypass middleware auth but handle their own auth via query param
 PUBLIC_ENDPOINTS: Set[str] = {
     "/",
     "/health",
@@ -48,6 +49,9 @@ PUBLIC_ENDPOINTS: Set[str] = {
     "/redoc",
     "/redoc/",
 }
+
+# Admin routes handle their own authentication via query param
+ADMIN_PREFIX = "/admin"
 
 
 def constant_time_compare(a: str, b: str) -> bool:
@@ -323,6 +327,11 @@ class AuthMiddleware:
 
         # Allow public endpoints
         if path in PUBLIC_ENDPOINTS:
+            await self.app(scope, receive, send)
+            return
+
+        # Admin routes handle their own authentication via query param
+        if path.startswith(ADMIN_PREFIX):
             await self.app(scope, receive, send)
             return
 
