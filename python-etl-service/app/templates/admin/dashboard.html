@@ -97,9 +97,10 @@
         </button>
 
         <button type="button" hx-post="/admin/api/audit" hx-target="#results-table"
-                hx-indicator=".htmx-indicator" hx-vals='{"key": "{{ api_key }}", "limit": 100}'
+                hx-indicator=".htmx-indicator" hx-include="[name='chamber']"
+                hx-vals='{"key": "{{ api_key }}", "limit": 500}'
                 class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm">
-            Run Audit (100)
+            Run Audit
         </button>
     </form>
 </div>

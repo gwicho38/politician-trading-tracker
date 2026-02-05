@@ -32,6 +32,7 @@ class QuiverValidationService:
         limit: int = 100,
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
+        chamber: Optional[str] = None,
         dry_run: bool = False,
     ) -> dict:
         """
@@ -41,6 +42,7 @@ class QuiverValidationService:
             limit: Maximum number of QuiverQuant records to fetch
             from_date: Start date filter (YYYY-MM-DD)
             to_date: End date filter (YYYY-MM-DD)
+            chamber: Filter by chamber ('house' or 'senate')
             dry_run: If True, don't store results
 
         Returns:
@@ -52,7 +54,7 @@ class QuiverValidationService:
         if not self.supabase:
             raise ValueError("Supabase not configured")
 
-        logger.info(f"Starting QuiverQuant validation audit (limit={limit})")
+        logger.info(f"Starting QuiverQuant validation audit (limit={limit}, chamber={chamber})")
 
         # Fetch QuiverQuant data
         qq_data = await self._fetch_quiverquant_data(limit)
@@ -66,6 +68,13 @@ class QuiverValidationService:
             qq_data = [t for t in qq_data if (t.get("TransactionDate") or "")[:10] >= from_date]
         if to_date:
             qq_data = [t for t in qq_data if (t.get("TransactionDate") or "")[:10] <= to_date]
+
+        # Filter by chamber if specified
+        if chamber:
+            chamber_map = {"house": "representatives", "senate": "senate"}
+            qq_chamber_val = chamber_map.get(chamber.lower(), chamber.lower())
+            qq_data = [t for t in qq_data if (t.get("House") or "").lower() == qq_chamber_val]
+            logger.info(f"Filtered to {len(qq_data)} {chamber} records from QuiverQuant")
 
         # Build QuiverQuant lookup by match key
         qq_by_key = {}
@@ -89,6 +98,16 @@ class QuiverValidationService:
         politicians = await self._fetch_politicians()
         pol_by_id = {p["id"]: p for p in politicians if p.get("id")}
         logger.info(f"Loaded {len(pol_by_id)} politicians")
+
+        # Filter app trades by chamber if specified
+        if chamber:
+            filtered_trades = []
+            for trade in app_trades:
+                pol = pol_by_id.get(trade.get("politician_id"))
+                if pol and (pol.get("chamber") or "").lower() == chamber.lower():
+                    filtered_trades.append(trade)
+            app_trades = filtered_trades
+            logger.info(f"Filtered to {len(app_trades)} {chamber} trades from app")
 
         # Compare trades
         results = {
@@ -218,12 +237,16 @@ class QuiverValidationService:
     async def _fetch_app_trades(
         self, from_date: Optional[str] = None, to_date: Optional[str] = None
     ) -> list:
-        """Fetch trading disclosures from app database."""
+        """Fetch trading disclosures from app database.
+
+        Only fetches actual trades (purchase/sale), not holdings or other disclosure types.
+        """
         try:
             query = (
                 self.supabase.table("trading_disclosures")
                 .select("id,asset_ticker,transaction_date,disclosure_date,transaction_type,amount_range_min,amount_range_max,politician_id,status")
                 .eq("status", "active")
+                .in_("transaction_type", ["purchase", "sale", "sale_partial", "sale_full", "exchange"])
                 .limit(5000)
             )
 
