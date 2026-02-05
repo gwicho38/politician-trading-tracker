@@ -71,14 +71,16 @@ CREATE INDEX IF NOT EXISTS idx_disclosure_deleted
 
 ALTER TABLE validation_fix_log ENABLE ROW LEVEL SECURITY;
 
--- Service role has full access
+-- Service role has full access (drop first for idempotency)
+DROP POLICY IF EXISTS "Service role full access on fix_log" ON validation_fix_log;
 CREATE POLICY "Service role full access on fix_log"
     ON validation_fix_log
     FOR ALL
     USING (true)
     WITH CHECK (true);
 
--- Authenticated users can read
+-- Authenticated users can read (drop first for idempotency)
+DROP POLICY IF EXISTS "Authenticated read on fix_log" ON validation_fix_log;
 CREATE POLICY "Authenticated read on fix_log"
     ON validation_fix_log
     FOR SELECT
