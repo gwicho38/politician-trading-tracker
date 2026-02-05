@@ -258,7 +258,7 @@ async def api_run_audit(
 
     # Import and run the validation audit
     try:
-        from app.services.quiver.validation import QuiverValidationService
+        from app.services.quiver_validation import QuiverValidationService
 
         service = QuiverValidationService()
         audit_results = await service.run_audit(limit=limit)
