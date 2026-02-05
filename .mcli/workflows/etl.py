@@ -3389,7 +3389,7 @@ def _store_validation_result(config: dict, result: dict) -> bool:
     import json
 
     url = config["SUPABASE_URL"]
-    key = config["SUPABASE_KEY"]
+    key = config.get("SUPABASE_KEY") or config.get("SUPABASE_SERVICE_ROLE_KEY")
 
     payload = {
         "trading_disclosure_id": result.get("trading_disclosure_id"),
@@ -3424,7 +3424,7 @@ def _update_disclosure_validation_status(config: dict, disclosure_id: str, statu
     from datetime import datetime
 
     url = config["SUPABASE_URL"]
-    key = config["SUPABASE_KEY"]
+    key = config.get("SUPABASE_KEY") or config.get("SUPABASE_SERVICE_ROLE_KEY")
 
     try:
         response = httpx.patch(
@@ -3775,7 +3775,7 @@ def quiver_resolve(validation_id: str, notes: str):
         raise SystemExit(1)
 
     url = config["SUPABASE_URL"]
-    key = config["SUPABASE_KEY"]
+    key = config.get("SUPABASE_KEY") or config.get("SUPABASE_SERVICE_ROLE_KEY")
 
     try:
         response = httpx.patch(
