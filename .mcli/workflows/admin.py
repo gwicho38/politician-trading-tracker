@@ -177,13 +177,68 @@ def show_keys(full: bool):
         console.print("\n[dim]Use --full to show complete key values[/dim]")
 
 
+@admin.command("push-secrets")
+@click.option("--app", default="politician-trading-etl", help="Fly.io app name")
+@click.option("--dry-run", is_flag=True, help="Show what would be pushed without pushing")
+def push_secrets(app: str, dry_run: bool):
+    """
+    Push API keys from .env to Fly.io secrets.
+
+    Examples:
+        mcli run admin push-secrets              # Push to default ETL app
+        mcli run admin push-secrets --dry-run    # Preview what would be pushed
+        mcli run admin push-secrets --app myapp  # Push to specific app
+    """
+    load_env()
+
+    secrets_to_push = [
+        ("ETL_ADMIN_API_KEY", os.environ.get("ETL_ADMIN_API_KEY")),
+        ("ETL_API_KEY", os.environ.get("ETL_API_KEY")),
+        ("QUIVERQUANT_API_KEY", os.environ.get("QUIVERQUANT_API_KEY")),
+    ]
+
+    # Filter to only configured secrets
+    secrets_to_push = [(k, v) for k, v in secrets_to_push if v]
+
+    if not secrets_to_push:
+        console.print("[yellow]No secrets configured in .env to push[/yellow]")
+        console.print("Run [cyan]mcli run admin setup-keys[/cyan] first")
+        return
+
+    console.print(f"\n[bold]Pushing secrets to Fly.io app: {app}[/bold]\n")
+
+    for key, value in secrets_to_push:
+        if dry_run:
+            console.print(f"  [dim]Would set[/dim] {key}={value[:15]}...")
+        else:
+            console.print(f"  Setting {key}...", end=" ")
+            result = subprocess.run(
+                ["flyctl", "secrets", "set", f"{key}={value}", "-a", app],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                console.print("[green]OK[/green]")
+            else:
+                console.print(f"[red]FAILED[/red]: {result.stderr}")
+
+    if dry_run:
+        console.print("\n[dim]Use without --dry-run to actually push secrets[/dim]")
+    else:
+        console.print("\n[green]Secrets pushed to Fly.io![/green]")
+
+
 @admin.command("setup-keys")
 @click.option("--force", is_flag=True, help="Overwrite existing keys")
-def setup_keys(force: bool):
+@click.option("--push", is_flag=True, help="Also push to Fly.io after setup")
+@click.option("--app", default="politician-trading-etl", help="Fly.io app name for --push")
+def setup_keys(force: bool, push: bool, app: str):
     """
     Interactive setup for API keys.
 
-    Example: mcli run admin setup-keys
+    Examples:
+        mcli run admin setup-keys           # Setup keys locally
+        mcli run admin setup-keys --push    # Setup and push to Fly.io
     """
     load_env()
 
@@ -193,6 +248,8 @@ def setup_keys(force: bool):
         title="Admin Setup"
     ))
 
+    keys_changed = []
+
     # ETL Admin Key
     existing_admin = os.environ.get("ETL_ADMIN_API_KEY")
     if existing_admin and not force:
@@ -201,6 +258,7 @@ def setup_keys(force: bool):
         if click.confirm("\nGenerate new ETL_ADMIN_API_KEY?", default=True):
             key = generate_api_key("etl_admin")
             set_env_value("ETL_ADMIN_API_KEY", key)
+            keys_changed.append("ETL_ADMIN_API_KEY")
             console.print(f"[green]Generated and saved:[/green] {key[:20]}...")
             console.print(f"[dim]Full key: {key}[/dim]")
 
@@ -212,6 +270,7 @@ def setup_keys(force: bool):
         if click.confirm("\nGenerate new ETL_API_KEY?", default=True):
             key = generate_api_key("etl")
             set_env_value("ETL_API_KEY", key)
+            keys_changed.append("ETL_API_KEY")
             console.print(f"[green]Generated and saved:[/green] {key[:20]}...")
 
     # QuiverQuant Key
@@ -224,12 +283,36 @@ def setup_keys(force: bool):
         quiver_key = click.prompt("Enter your QuiverQuant API key (or press Enter to skip)", default="", show_default=False)
         if quiver_key:
             set_env_value("QUIVERQUANT_API_KEY", quiver_key)
+            keys_changed.append("QUIVERQUANT_API_KEY")
             console.print("[green]Saved QUIVERQUANT_API_KEY[/green]")
 
-    console.print("\n[bold green]Setup complete![/bold green]")
-    console.print("\nNext steps:")
-    console.print("  1. Push secrets to cloud: [cyan]lsh push[/cyan]")
-    console.print("  2. Start dashboard: [cyan]mcli run admin dashboard[/cyan]")
+    console.print("\n[bold green]Local setup complete![/bold green]")
+
+    # Push to Fly.io if requested
+    if push:
+        console.print(f"\n[cyan]Pushing secrets to Fly.io ({app})...[/cyan]")
+        load_env()  # Reload to get new values
+
+        for key in ["ETL_ADMIN_API_KEY", "ETL_API_KEY", "QUIVERQUANT_API_KEY"]:
+            value = os.environ.get(key)
+            if value:
+                console.print(f"  Setting {key}...", end=" ")
+                result = subprocess.run(
+                    ["flyctl", "secrets", "set", f"{key}={value}", "-a", app],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    console.print("[green]OK[/green]")
+                else:
+                    console.print(f"[red]FAILED[/red]")
+
+        console.print("\n[green]Secrets pushed to Fly.io![/green]")
+    else:
+        console.print("\nNext steps:")
+        console.print("  1. Push secrets to Fly.io: [cyan]mcli run admin push-secrets[/cyan]")
+        console.print("     Or use lsh: [cyan]lsh push[/cyan]")
+        console.print("  2. Open dashboard: [cyan]mcli run admin dashboard[/cyan]")
 
 
 # ============================================================================
