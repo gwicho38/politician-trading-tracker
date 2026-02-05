@@ -214,13 +214,25 @@ async def api_get_results(
 @router.post("/api/audit", response_class=HTMLResponse)
 async def api_run_audit(
     request: Request,
-    key: str = Query(...),
+    key: Optional[str] = Query(None),
     limit: int = Query(100, ge=10, le=1000),
 ):
     """
     Trigger a validation audit and return results as HTML partial.
+
+    Accepts key from either query param or form body (for HTMX compatibility).
     """
-    if not validate_api_key(key, require_admin=True):
+    # HTMX sends hx-vals in body, so check both query and form
+    if not key:
+        try:
+            form_data = await request.form()
+            key = form_data.get("key")
+            if form_data.get("limit"):
+                limit = int(form_data.get("limit"))
+        except Exception:
+            pass
+
+    if not key or not validate_api_key(key, require_admin=True):
         return HTMLResponse(
             '<div class="text-red-600 p-4">Invalid API key</div>',
             status_code=401,
@@ -278,8 +290,8 @@ async def api_run_audit(
 async def api_apply_fix(
     request: Request,
     result_id: str,
-    key: str = Query(...),
-    action: str = Query(...),
+    key: Optional[str] = Query(None),
+    action: Optional[str] = Query(None),
     field: Optional[str] = Query(None),
     value: Optional[str] = Query(None),
 ):
@@ -291,11 +303,30 @@ async def api_apply_fix(
     - field_update: Update a single field
     - mark_resolved: Mark as resolved without changes
     - delete_trade: Soft-delete the trade
+
+    Accepts params from either query string or form body (for HTMX compatibility).
     """
-    if not validate_api_key(key, require_admin=True):
+    # HTMX sends hx-vals in body, so check both query and form
+    if not key or not action:
+        try:
+            form_data = await request.form()
+            key = key or form_data.get("key")
+            action = action or form_data.get("action")
+            field = field or form_data.get("field")
+            value = value or form_data.get("value")
+        except Exception:
+            pass
+
+    if not key or not validate_api_key(key, require_admin=True):
         return HTMLResponse(
             '<div class="text-red-600 p-4">Invalid API key</div>',
             status_code=401,
+        )
+
+    if not action:
+        return HTMLResponse(
+            '<div class="text-red-600 p-4">Action is required</div>',
+            status_code=400,
         )
 
     supabase = get_supabase()
