@@ -516,7 +516,7 @@ async def get_validation_results(
 def build_comparison_fields(result: dict) -> list:
     """Build field-by-field comparison from validation result."""
     app_snapshot = result.get("app_snapshot") or {}
-    qq_snapshot = result.get("quiver_snapshot") or {}
+    qq_snapshot = result.get("quiver_snapshot") or result.get("quiver_record") or {}
 
     # Handle JSON strings
     if isinstance(app_snapshot, str):
@@ -531,20 +531,25 @@ def build_comparison_fields(result: dict) -> list:
         except json.JSONDecodeError:
             qq_snapshot = {}
 
+    # Field mappings: (internal_name, label, app_key, qq_key)
     fields = [
-        ("politician_name", "Politician Name"),
-        ("ticker", "Ticker"),
-        ("transaction_date", "Transaction Date"),
-        ("transaction_type", "Transaction Type"),
-        ("amount_range_min", "Amount Min"),
-        ("amount_range_max", "Amount Max"),
-        ("asset_name", "Asset Name"),
+        ("politician_name", "Politician Name", "politician_name", "Representative"),
+        ("ticker", "Ticker", "asset_ticker", "Ticker"),
+        ("transaction_date", "Transaction Date", "transaction_date", "TransactionDate"),
+        ("transaction_type", "Transaction Type", "transaction_type", "Transaction"),
+        ("amount_range_min", "Amount Min", "amount_range_min", "Range"),
+        ("amount_range_max", "Amount Max", "amount_range_max", "Range"),
+        ("asset_name", "Asset Name", "asset_name", "Asset"),
     ]
 
     comparison = []
-    for field_name, label in fields:
-        app_value = app_snapshot.get(field_name)
-        qq_value = qq_snapshot.get(field_name)
+    for field_name, label, app_key, qq_key in fields:
+        # Try snapshot first, then fall back to display columns
+        app_value = app_snapshot.get(app_key)
+        if app_value is None and field_name in result:
+            app_value = result.get(field_name)
+
+        qq_value = qq_snapshot.get(qq_key)
 
         # Normalize for comparison
         app_str = str(app_value) if app_value is not None else ""
