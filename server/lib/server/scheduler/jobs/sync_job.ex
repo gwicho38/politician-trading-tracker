@@ -18,10 +18,9 @@ defmodule Server.Scheduler.Jobs.SyncJob do
   @impl true
   def job_name, do: "Scheduled Sync"
 
-  # TODO: Review this function
   @impl true
-  # Every minute (testing)
-  def schedule, do: "* * * * *"
+  # Every 15 minutes - reduced frequency to avoid edge function cold start timeouts
+  def schedule, do: "*/15 * * * *"
 
   # TODO: Review this function
   @impl true
