@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 
-from app.routes import health, etl, enrichment, ml, quality, error_reports, dedup, signals
+from app.routes import health, etl, enrichment, ml, quality, error_reports, dedup, signals, admin
 from app.lib.logging_config import configure_logging, get_logger
 from app.middleware.correlation import CorrelationMiddleware
 from app.middleware.auth import AuthMiddleware
@@ -131,6 +131,25 @@ for s in signals:
 ```
 """,
     },
+    {
+        "name": "admin",
+        "description": """
+Admin dashboard for QuiverQuant validation management.
+
+**Features:**
+- View validation results with filtering
+- Side-by-side comparison of app vs QuiverQuant data
+- Apply fixes (accept QQ values, update fields, mark resolved)
+- Audit trail for all changes
+
+**Access:**
+Requires admin API key via `?key=YOUR_ADMIN_KEY` query parameter.
+
+**URLs:**
+- `GET /admin` - Dashboard
+- `GET /admin/detail/{id}` - Single result detail view
+""",
+    },
 ]
 
 
@@ -239,6 +258,7 @@ app.include_router(quality.router, prefix="/quality", tags=["quality"])
 app.include_router(error_reports.router, prefix="/error-reports", tags=["error-reports"])
 app.include_router(dedup.router, tags=["deduplication"])
 app.include_router(signals.router, prefix="/signals", tags=["signals"])
+app.include_router(admin.router, prefix="/admin", tags=["admin"])
 
 
 @app.get("/")
@@ -271,5 +291,7 @@ async def root():
             "signals_apply_lambda": "POST /signals/apply-lambda",
             "signals_validate_lambda": "POST /signals/validate-lambda",
             "signals_lambda_help": "GET /signals/lambda-help",
+            "admin_dashboard": "GET /admin?key=YOUR_ADMIN_KEY",
+            "admin_detail": "GET /admin/detail/{id}?key=YOUR_ADMIN_KEY",
         },
     }
