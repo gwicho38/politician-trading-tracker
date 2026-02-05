@@ -219,6 +219,7 @@ async def api_run_audit(
     request: Request,
     key: Optional[str] = Query(None),
     limit: int = Query(100, ge=10, le=1000),
+    chamber: Optional[str] = Query(None),
 ):
     """
     Trigger a validation audit and return results as HTML partial.
@@ -233,7 +234,8 @@ async def api_run_audit(
             limit_str = form_data.get("limit")
             if limit_str:
                 limit = int(limit_str)
-            logger.info(f"Parsed form data: key={key[:10] if key else None}..., limit={limit}")
+            chamber = chamber or form_data.get("chamber")
+            logger.info(f"Parsed form data: key={key[:10] if key else None}..., limit={limit}, chamber={chamber}")
         except Exception as e:
             logger.warning(f"Failed to parse form data: {e}")
             # Try JSON body as fallback
@@ -241,6 +243,7 @@ async def api_run_audit(
                 body = await request.json()
                 key = body.get("key")
                 limit = body.get("limit", limit)
+                chamber = chamber or body.get("chamber")
                 logger.info(f"Parsed JSON body: key={key[:10] if key else None}...")
             except Exception as e2:
                 logger.warning(f"Failed to parse JSON body: {e2}")
@@ -264,7 +267,7 @@ async def api_run_audit(
         from app.services.quiver_validation import QuiverValidationService
 
         service = QuiverValidationService()
-        audit_results = await service.run_audit(limit=limit)
+        audit_results = await service.run_audit(limit=limit, chamber=chamber if chamber else None)
 
         # Refresh the results view
         results = await get_validation_results(
