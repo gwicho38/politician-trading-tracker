@@ -214,6 +214,53 @@ async def api_get_results(
     )
 
 
+@router.post("/api/clear-results", response_class=HTMLResponse)
+async def api_clear_results(
+    request: Request,
+    key: Optional[str] = Query(None),
+):
+    """
+    Clear all validation results to prepare for a fresh audit.
+    """
+    # Parse key from form or query
+    if not key:
+        try:
+            form_data = await request.form()
+            key = form_data.get("key")
+        except Exception:
+            pass
+
+    if not key or not validate_api_key(key, require_admin=True):
+        return HTMLResponse(
+            '<div class="text-red-600 p-4">Invalid API key</div>',
+            status_code=401,
+        )
+
+    supabase = get_supabase()
+    if not supabase:
+        return HTMLResponse(
+            '<div class="text-red-600 p-4">Database error</div>',
+            status_code=500,
+        )
+
+    try:
+        # Delete all validation results
+        # Use a filter that matches all records (validated_at is not null for older, or any non-null id)
+        supabase.table("trade_validation_results").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+
+        logger.info("Cleared all validation results")
+        return HTMLResponse(
+            '<div class="bg-green-100 text-green-800 p-4 rounded">All validation results cleared. Run a fresh audit.</div>',
+            status_code=200,
+        )
+    except Exception as e:
+        logger.exception("Failed to clear results")
+        return HTMLResponse(
+            f'<div class="text-red-600 p-4">Failed to clear: {str(e)}</div>',
+            status_code=500,
+        )
+
+
 @router.post("/api/audit", response_class=HTMLResponse)
 async def api_run_audit(
     request: Request,

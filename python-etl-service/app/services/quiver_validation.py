@@ -77,18 +77,36 @@ class QuiverValidationService:
             logger.info(f"Filtered to {len(qq_data)} {chamber} records from QuiverQuant")
 
         # Build QuiverQuant lookup by match key
+        # Create dual indexes: one by bioguide_id, one by normalized name
+        # This allows matching even when one side lacks bioguide_id
         qq_by_key = {}
+        qq_by_name_key = {}
         for trade in qq_data:
-            key = self._create_match_key(
-                trade.get("BioGuideID"),
-                trade.get("Representative"),
+            bioguide_id = trade.get("BioGuideID")
+            rep_name = trade.get("Representative")
+
+            # Primary key with bioguide_id
+            if bioguide_id:
+                key = self._create_match_key(
+                    bioguide_id,
+                    None,  # Don't use name when we have bioguide_id
+                    trade.get("Ticker"),
+                    trade.get("TransactionDate"),
+                    trade.get("Transaction"),
+                )
+                qq_by_key[key] = trade
+
+            # Secondary key with normalized name (for fallback matching)
+            name_key = self._create_match_key(
+                None,  # Force name-based key
+                rep_name,
                 trade.get("Ticker"),
                 trade.get("TransactionDate"),
                 trade.get("Transaction"),
             )
-            qq_by_key[key] = trade
+            qq_by_name_key[name_key] = trade
 
-        logger.info(f"Created {len(qq_by_key)} unique match keys")
+        logger.info(f"Created {len(qq_by_key)} bioguide keys, {len(qq_by_name_key)} name keys")
 
         # Fetch app trades
         app_trades = await self._fetch_app_trades(from_date, to_date)
@@ -121,18 +139,37 @@ class QuiverValidationService:
 
         for app_trade in app_trades:
             politician = pol_by_id.get(app_trade.get("politician_id"))
+            bioguide_id = politician.get("bioguide_id") if politician else None
+            full_name = politician.get("full_name") if politician else None
 
+            # Create primary key (with bioguide_id if available, else name)
             key = self._create_match_key(
-                politician.get("bioguide_id") if politician else None,
-                politician.get("full_name") if politician else None,
+                bioguide_id,
+                full_name,
                 app_trade.get("asset_ticker"),
                 app_trade.get("transaction_date"),
                 app_trade.get("transaction_type"),
             )
             app_keys_found.add(key)
 
-            if key in qq_by_key:
+            # Also create name-only key for fallback matching
+            name_only_key = self._create_match_key(
+                None,  # Force name-based key
+                full_name,
+                app_trade.get("asset_ticker"),
+                app_trade.get("transaction_date"),
+                app_trade.get("transaction_type"),
+            )
+            app_keys_found.add(name_only_key)
+
+            # Try to find a match - first by bioguide_id key, then by name key
+            quiver_trade = None
+            if bioguide_id and key in qq_by_key:
                 quiver_trade = qq_by_key[key]
+            elif name_only_key in qq_by_name_key:
+                quiver_trade = qq_by_name_key[name_only_key]
+
+            if quiver_trade:
                 mismatches = self._compare_fields(app_trade, quiver_trade, politician)
 
                 if mismatches:
@@ -186,12 +223,30 @@ class QuiverValidationService:
                     })
 
         # Find Quiver-only records
+        # Check both bioguide_id-based and name-based keys
+        seen_quiver_trades = set()
         for key, quiver_trade in qq_by_key.items():
-            if key not in app_keys_found:
-                results["quiver_only"] += 1
-                root_causes["data_lag"] = root_causes.get("data_lag", 0) + 1
+            trade_id = f"{quiver_trade.get('BioGuideID')}|{quiver_trade.get('Ticker')}|{quiver_trade.get('TransactionDate')}"
+            if trade_id in seen_quiver_trades:
+                continue
 
-                if not dry_run:
+            # Check if this trade was matched via bioguide_id key OR name key
+            name_key = self._create_match_key(
+                None,
+                quiver_trade.get("Representative"),
+                quiver_trade.get("Ticker"),
+                quiver_trade.get("TransactionDate"),
+                quiver_trade.get("Transaction"),
+            )
+            if key in app_keys_found or name_key in app_keys_found:
+                seen_quiver_trades.add(trade_id)
+                continue
+
+            seen_quiver_trades.add(trade_id)
+            results["quiver_only"] += 1
+            root_causes["data_lag"] = root_causes.get("data_lag", 0) + 1
+
+            if not dry_run:
                     await self._store_validation_result({
                         "quiver_record": quiver_trade,
                         "match_key": key,
@@ -262,15 +317,31 @@ class QuiverValidationService:
             return []
 
     async def _fetch_politicians(self) -> list:
-        """Fetch politicians from app database."""
+        """Fetch politicians from app database.
+
+        Uses pagination to get all politicians since Supabase has a 1000 row default limit.
+        """
         try:
-            response = (
-                self.supabase.table("politicians")
-                .select("id,full_name,bioguide_id,party,chamber")
-                .limit(10000)
-                .execute()
-            )
-            return response.data or []
+            all_politicians = []
+            page_size = 1000
+            offset = 0
+
+            while True:
+                response = (
+                    self.supabase.table("politicians")
+                    .select("id,full_name,bioguide_id,party,chamber")
+                    .range(offset, offset + page_size - 1)
+                    .execute()
+                )
+                batch = response.data or []
+                all_politicians.extend(batch)
+
+                if len(batch) < page_size:
+                    # Last page
+                    break
+                offset += page_size
+
+            return all_politicians
         except Exception as e:
             logger.error(f"Failed to fetch politicians: {e}")
             return []
@@ -284,10 +355,12 @@ class QuiverValidationService:
         tx_type: Optional[str],
     ) -> str:
         """Create a normalized match key for comparing trades."""
-        # Normalize name
+        # Normalize name - strip "Hon. " prefix and other honorifics
         norm_name = ""
         if name:
-            norm_name = re.sub(r"[^a-z]", "", name.lower())
+            # Remove common prefixes that differ between sources
+            clean_name = re.sub(r"^(Hon\.|Dr\.|Mr\.|Mrs\.|Ms\.)\s*", "", name, flags=re.IGNORECASE)
+            norm_name = re.sub(r"[^a-z]", "", clean_name.lower())
 
         # Normalize ticker
         norm_ticker = (ticker or "").upper().strip()
