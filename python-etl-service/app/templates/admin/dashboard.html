@@ -96,6 +96,14 @@
             Filter
         </button>
 
+        <button type="button" hx-post="/admin/api/clear-results" hx-target="#results-table"
+                hx-indicator=".htmx-indicator"
+                hx-vals='{"key": "{{ api_key }}"}'
+                hx-confirm="Clear all validation results? This cannot be undone."
+                class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 text-sm">
+            Clear Results
+        </button>
+
         <button type="button" hx-post="/admin/api/audit" hx-target="#results-table"
                 hx-indicator=".htmx-indicator" hx-include="[name='chamber']"
                 hx-vals='{"key": "{{ api_key }}", "limit": 500}'
