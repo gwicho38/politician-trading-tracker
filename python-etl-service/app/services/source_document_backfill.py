@@ -77,6 +77,10 @@ class SourceDocumentBackfillService:
         app_records = await self._fetch_records_without_source_id(year)
         logger.info(f"Found {len(app_records)} app records without source_document_id")
 
+        # Debug: Check how many records have politician names
+        records_with_names = sum(1 for r in app_records if r.get("politician_name"))
+        logger.info(f"Records with politician names: {records_with_names}/{len(app_records)}")
+
         if not app_records:
             return {
                 "year": year,
@@ -99,6 +103,10 @@ class SourceDocumentBackfillService:
         matches = []
         unmatched = []
 
+        # Log sample of official names for debugging
+        sample_official_names = list(official_by_name.keys())[:5]
+        logger.info(f"Sample official names: {sample_official_names}")
+
         for record in app_records:
             # Get politician name from record
             politician_name = record.get("politician_name")
@@ -113,6 +121,10 @@ class SourceDocumentBackfillService:
                 continue
 
             normalized_app_name = self._normalize_name(politician_name)
+
+            # Log first few normalizations for debugging
+            if len(matches) + len(unmatched) < 5:
+                logger.info(f"App name: '{politician_name}' -> normalized: '{normalized_app_name}'")
             disclosure_date = record.get("disclosure_date")
 
             # Try exact name match first
