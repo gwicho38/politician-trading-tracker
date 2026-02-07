@@ -3,7 +3,7 @@ import { ArrowUpRight, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { usePoliticians, type Politician } from '@/hooks/useSupabaseData';
 import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
-import { cn } from '@/lib/utils';
+import { cn, formatChamber } from '@/lib/utils';
 import { PoliticianDetailModal } from '@/components/detail-modals';
 import { toParty } from '@/lib/typeGuards';
 
@@ -53,7 +53,7 @@ const TopTraders = () => {
                   type="button"
                   onClick={() => setSelectedPolitician(politician)}
                   className="group w-full flex items-center justify-between rounded-lg p-2 sm:p-3 transition-all duration-200 hover:bg-secondary/50 cursor-pointer gap-2 text-left"
-                  aria-label={`View details for ${politician.name}, ${party} party, ${politician.chamber || 'Unknown'}, ${formatCurrency(politician.total_volume ?? 0)} total volume, ${politician.total_trades ?? 0} trades`}
+                  aria-label={`View details for ${politician.name}, ${party} party, ${formatChamber(politician.chamber)}, ${formatCurrency(politician.total_volume ?? 0)} total volume, ${politician.total_trades ?? 0} trades`}
                 >
                   <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                     <div className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-secondary font-mono text-xs sm:text-sm font-bold text-muted-foreground flex-shrink-0" aria-hidden="true">
@@ -72,7 +72,7 @@ const TopTraders = () => {
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground truncate">
-                        {politician.chamber || 'Unknown'} • {politician.state || politician.jurisdiction_id || 'Unknown'}
+                        {formatChamber(politician.chamber)} • {politician.state || politician.jurisdiction_id || 'Unknown'}
                       </p>
                     </div>
                   </div>
