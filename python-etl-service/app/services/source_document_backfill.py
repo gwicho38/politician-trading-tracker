@@ -297,15 +297,15 @@ class SourceDocumentBackfillService:
         return filings
 
     async def _fetch_records_without_source_id(self, year: int) -> List[Dict[str, Any]]:
-        """Fetch trading disclosures without source_document_id for a year."""
+        """Fetch trading disclosures without source_document_id for a year, with politician names."""
         try:
             start_date = f"{year}-01-01"
             end_date = f"{year}-12-31"
 
-            # Fetch records without source_document_id
+            # Fetch records with politician join to get names
             response = (
                 self.supabase.table("trading_disclosures")
-                .select("id, politician_id, disclosure_date, transaction_date, transaction_type")
+                .select("id, politician_id, disclosure_date, transaction_date, transaction_type, politicians(name)")
                 .eq("status", "active")
                 .is_("source_document_id", "null")
                 .gte("disclosure_date", start_date)
@@ -313,13 +313,24 @@ class SourceDocumentBackfillService:
                 .limit(5000)
                 .execute()
             )
-            return response.data or []
+
+            # Flatten the politician name from the join
+            records = []
+            for row in (response.data or []):
+                politician_data = row.get("politicians")
+                if politician_data:
+                    row["politician_name"] = politician_data.get("name")
+                else:
+                    row["politician_name"] = None
+                records.append(row)
+
+            return records
         except Exception as e:
             logger.error(f"Failed to fetch records: {e}")
             return []
 
     async def _get_politician_name(self, politician_id: str) -> Optional[str]:
-        """Fetch politician name by ID."""
+        """Fetch politician name by ID (fallback method)."""
         try:
             response = (
                 self.supabase.table("politicians")
