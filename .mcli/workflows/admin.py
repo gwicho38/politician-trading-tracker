@@ -900,6 +900,263 @@ def validate_source(use_local: bool, year: int, from_year: int, to_year: int, va
         raise SystemExit(1)
 
 
+@admin.command("validate-counts")
+@click.option("--local", "use_local", is_flag=True, help="Use local server")
+@click.option("--from-year", default=2020, help="Start year")
+@click.option("--to-year", default=2026, help="End year")
+def validate_counts(use_local: bool, from_year: int, to_year: int):
+    """
+    Count-based validation that doesn't require source_document_id.
+
+    Compares official PTR filing counts against app records and chart data.
+    Useful for verifying data completeness without exact document matching.
+
+    Note: Chart trades typically exceed PTR count since one filing contains
+    multiple trades.
+
+    Examples:
+        mcli run admin validate-counts                  # Validate 2020-2026
+        mcli run admin validate-counts --from-year 2024 # Validate 2024+
+    """
+    load_env()
+
+    admin_key = os.environ.get("ETL_ADMIN_API_KEY")
+    if not admin_key:
+        console.print("[red]ETL_ADMIN_API_KEY not configured![/red]")
+        raise SystemExit(1)
+
+    base_url = LOCAL_ETL_URL if use_local else PROD_ETL_URL
+
+    console.print(f"\n[bold]Count-Based Validation ({from_year}-{to_year})[/bold]")
+    console.print(f"Server: {base_url}\n")
+
+    try:
+        response = httpx.get(
+            f"{base_url}/admin/api/validate-counts",
+            params={
+                "key": admin_key,
+                "from_year": from_year,
+                "to_year": to_year,
+            },
+            timeout=600.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if "error" in data:
+            console.print(f"[red]Error: {data['error']}[/red]")
+            raise SystemExit(1)
+
+        # Display summary
+        console.print(Panel.fit(
+            f"[cyan]Years:[/cyan] {data.get('from_year')}-{data.get('to_year')}\n"
+            f"[green]Total Official PTR Filings:[/green] {data.get('total_official_ptrs', 0):,}\n"
+            f"[green]Total Chart Trades (buys+sells):[/green] {data.get('total_chart_trades', 0):,}\n"
+            f"[cyan]Total App Disclosures:[/cyan] {data.get('total_app_disclosures', 0):,}\n"
+            f"[bold]Chart/Official Ratio:[/bold] {data.get('overall_chart_ratio_pct', 0)}%",
+            title="Count Validation Summary"
+        ))
+
+        # Show interpretation
+        interpretation = data.get("interpretation", "")
+        if interpretation:
+            console.print(f"\n[yellow]Analysis:[/yellow] {interpretation}")
+
+        # Show summary
+        summary = data.get("summary", {})
+        console.print(f"\n[green]Good years (≥90%):[/green] {summary.get('good_years', 0)}")
+        console.print(f"[yellow]Partial years (50-90%):[/yellow] {summary.get('partial_years', 0)}")
+        console.print(f"[red]Low years (<50%):[/red] {summary.get('low_years', 0)}")
+
+        # Display yearly results
+        yearly = data.get("yearly_results", [])
+        if yearly:
+            table = Table(title="Yearly Count Comparison")
+            table.add_column("Year", style="cyan", justify="center")
+            table.add_column("Official PTRs", justify="right")
+            table.add_column("Chart Trades", justify="right")
+            table.add_column("Chart Ratio", justify="right")
+            table.add_column("App Disclosures", justify="right")
+            table.add_column("Politicians", justify="right")
+            table.add_column("Status")
+
+            for r in yearly:
+                status_color = {"good": "green", "partial": "yellow", "low": "red"}.get(r["status"], "white")
+                table.add_row(
+                    str(r["year"]),
+                    f"{r['official_ptr_count']:,}",
+                    f"{r['chart_total_trades']:,}",
+                    f"{r['chart_ratio_pct']}%",
+                    f"{r['app_disclosures_by_disclosure_date']:,}",
+                    f"{r['app_unique_politicians']}/{r['official_unique_politicians']}",
+                    f"[{status_color}]{r['status']}[/{status_color}]",
+                )
+
+            console.print(table)
+
+    except httpx.ConnectError:
+        console.print(f"[red]Cannot connect to {base_url}[/red]")
+        raise SystemExit(1)
+    except Exception as e:
+        console.print(f"[red]Validation failed: {e}[/red]")
+        raise SystemExit(1)
+
+
+@admin.command("backfill-source-ids")
+@click.option("--local", "use_local", is_flag=True, help="Use local server")
+@click.option("--year", default=None, type=int, help="Single year to backfill")
+@click.option("--from-year", default=2020, help="Start year (if not using --year)")
+@click.option("--to-year", default=2026, help="End year (if not using --year)")
+@click.option("--execute", is_flag=True, help="Actually update records (default is dry-run)")
+@click.option("--threshold", default=0.8, help="Name match threshold (0.5-1.0)")
+def backfill_source_ids(use_local: bool, year: int, from_year: int, to_year: int, execute: bool, threshold: float):
+    """
+    Backfill missing source_document_id values by matching to official filings.
+
+    Uses fuzzy name matching and date proximity to find corresponding
+    House Clerk filings for records without source_document_id.
+
+    By default runs in DRY-RUN mode - use --execute to actually update records.
+
+    Examples:
+        mcli run admin backfill-source-ids                   # Dry-run all years
+        mcli run admin backfill-source-ids --year 2025       # Dry-run 2025 only
+        mcli run admin backfill-source-ids --execute         # Actually update records
+        mcli run admin backfill-source-ids --threshold 0.9   # Stricter matching
+    """
+    load_env()
+
+    admin_key = os.environ.get("ETL_ADMIN_API_KEY")
+    if not admin_key:
+        console.print("[red]ETL_ADMIN_API_KEY not configured![/red]")
+        raise SystemExit(1)
+
+    base_url = LOCAL_ETL_URL if use_local else PROD_ETL_URL
+    dry_run = not execute
+
+    if year:
+        console.print(f"\n[bold]Backfill Source Document IDs ({year})[/bold]")
+    else:
+        console.print(f"\n[bold]Backfill Source Document IDs ({from_year}-{to_year})[/bold]")
+
+    console.print(f"Server: {base_url}")
+    console.print(f"Mode: [{'red' if execute else 'green'}]{'EXECUTE' if execute else 'DRY-RUN'}[/{'red' if execute else 'green'}]")
+    console.print(f"Match threshold: {threshold}\n")
+
+    if execute:
+        if not click.confirm("This will UPDATE database records. Continue?", default=False):
+            console.print("[yellow]Cancelled[/yellow]")
+            return
+
+    try:
+        params = {
+            "key": admin_key,
+            "dry_run": dry_run,
+            "threshold": threshold,
+        }
+        if year:
+            params["year"] = year
+        else:
+            params["from_year"] = from_year
+            params["to_year"] = to_year
+
+        response = httpx.get(
+            f"{base_url}/admin/api/backfill-source-ids",
+            params=params,
+            timeout=600.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if "error" in data:
+            console.print(f"[red]Error: {data['error']}[/red]")
+            raise SystemExit(1)
+
+        # Check if single year or multi-year response
+        if "yearly_results" in data:
+            # Multi-year response
+            console.print(Panel.fit(
+                f"[cyan]Years:[/cyan] {data.get('from_year')}-{data.get('to_year')}\n"
+                f"[cyan]Mode:[/cyan] {'DRY-RUN' if data.get('dry_run') else 'EXECUTED'}\n"
+                f"[green]Total Matched:[/green] {data.get('total_matched', 0):,}\n"
+                f"[yellow]Total Unmatched:[/yellow] {data.get('total_unmatched', 0):,}\n"
+                f"[bold green]Records Updated:[/bold green] {data.get('total_updated', 0):,}",
+                title="Backfill Summary"
+            ))
+
+            # Yearly breakdown
+            yearly = data.get("yearly_results", [])
+            if yearly:
+                table = Table(title="Yearly Backfill Results")
+                table.add_column("Year", style="cyan", justify="center")
+                table.add_column("Official PTRs", justify="right")
+                table.add_column("Without ID", justify="right")
+                table.add_column("Matched", justify="right")
+                table.add_column("Updated", justify="right")
+
+                for r in yearly:
+                    if "error" in r:
+                        table.add_row(str(r.get("year", "?")), "-", "-", "-", f"[red]error[/red]")
+                    else:
+                        table.add_row(
+                            str(r["year"]),
+                            str(r.get("official_ptrs", 0)),
+                            str(r.get("records_without_id", 0)),
+                            str(r.get("matched", 0)),
+                            str(r.get("updated", 0)),
+                        )
+
+                console.print(table)
+        else:
+            # Single year response
+            console.print(Panel.fit(
+                f"[cyan]Year:[/cyan] {data.get('year')}\n"
+                f"[cyan]Mode:[/cyan] {'DRY-RUN' if data.get('dry_run') else 'EXECUTED'}\n"
+                f"[green]Official PTRs:[/green] {data.get('official_ptrs', 0)}\n"
+                f"[green]Records Without ID:[/green] {data.get('records_without_id', 0)}\n"
+                f"[green]Matched:[/green] {data.get('matched', 0)}\n"
+                f"[yellow]Unmatched:[/yellow] {data.get('unmatched', 0)}\n"
+                f"[bold green]Updated:[/bold green] {data.get('updated', 0)}",
+                title="Backfill Results"
+            ))
+
+        # Show sample matches
+        sample_matches = data.get("sample_matches", [])
+        if not sample_matches and "yearly_results" in data:
+            for yr in data.get("yearly_results", []):
+                if yr.get("sample_matches"):
+                    sample_matches = yr["sample_matches"]
+                    break
+
+        if sample_matches:
+            console.print("\n[green]Sample Matches:[/green]")
+            match_table = Table()
+            match_table.add_column("App Name", style="cyan")
+            match_table.add_column("Matched To")
+            match_table.add_column("Doc ID")
+            match_table.add_column("Score")
+
+            for m in sample_matches[:5]:
+                match_table.add_row(
+                    m.get("politician_name", "")[:25],
+                    m.get("matched_name", "")[:25],
+                    m.get("doc_id", ""),
+                    f"{m.get('score', 0):.2f}",
+                )
+
+            console.print(match_table)
+
+        if dry_run:
+            console.print("\n[dim]This was a dry-run. Use --execute to actually update records.[/dim]")
+
+    except httpx.ConnectError:
+        console.print(f"[red]Cannot connect to {base_url}[/red]")
+        raise SystemExit(1)
+    except Exception as e:
+        console.print(f"[red]Backfill failed: {e}[/red]")
+        raise SystemExit(1)
+
+
 @admin.command("url")
 @click.option("--local", "use_local", is_flag=True, help="Get local URL")
 @click.option("--port", default=8000, help="Port for local server")
