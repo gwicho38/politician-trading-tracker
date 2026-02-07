@@ -609,6 +609,191 @@ def validate_charts(use_local: bool, from_year: int, to_year: int, no_store: boo
         raise SystemExit(1)
 
 
+@admin.command("validate-source")
+@click.option("--local", "use_local", is_flag=True, help="Use local server")
+@click.option("--year", default=2025, help="Year to validate")
+@click.option("--no-store", is_flag=True, help="Don't store results in database")
+@click.option("--records", is_flag=True, help="Validate individual records (not just monthly aggregates)")
+@click.option("--month", default=None, type=int, help="Filter to specific month (1-12)")
+@click.option("--limit", default=100, help="Limit for individual records (with --records)")
+def validate_source(use_local: bool, year: int, no_store: bool, records: bool, month: int, limit: int):
+    """
+    Validate app data against official House Clerk disclosure index.
+
+    This is ground-truth validation - comparing against the same source
+    our ETL scrapes from. Shows data coverage and missing documents.
+
+    Examples:
+        mcli run admin validate-source                    # Validate 2025 data
+        mcli run admin validate-source --year 2024        # Validate 2024 data
+        mcli run admin validate-source --records          # Check individual records
+        mcli run admin validate-source --records --month 1  # Check January records
+    """
+    load_env()
+
+    admin_key = os.environ.get("ETL_ADMIN_API_KEY")
+    if not admin_key:
+        console.print("[red]ETL_ADMIN_API_KEY not configured![/red]")
+        console.print("Run: [cyan]mcli run admin setup-keys[/cyan]")
+        raise SystemExit(1)
+
+    base_url = LOCAL_ETL_URL if use_local else PROD_ETL_URL
+
+    console.print(f"\n[bold]Validating Against House Clerk Source ({year})[/bold]")
+    console.print(f"Server: {base_url}\n")
+
+    try:
+        if records:
+            # Validate individual records
+            params = {
+                "key": admin_key,
+                "year": year,
+                "limit": limit,
+            }
+            if month:
+                params["month"] = month
+
+            response = httpx.get(
+                f"{base_url}/admin/api/validate-source/records",
+                params=params,
+                timeout=300.0,
+            )
+        else:
+            # Validate monthly aggregates
+            response = httpx.get(
+                f"{base_url}/admin/api/validate-source",
+                params={
+                    "key": admin_key,
+                    "year": year,
+                    "store": not no_store,
+                },
+                timeout=300.0,
+            )
+
+        response.raise_for_status()
+        data = response.json()
+
+        if "error" in data:
+            console.print(f"[red]Error: {data['error']}[/red]")
+            raise SystemExit(1)
+
+        if records:
+            # Display individual record results
+            console.print(Panel.fit(
+                f"[cyan]Year:[/cyan] {data.get('year')}\n"
+                f"[cyan]Month:[/cyan] {data.get('month') or 'All'}\n"
+                f"[green]Total Checked:[/green] {data.get('total_checked', 0)}\n"
+                f"[green]Matched:[/green] {data.get('matched', 0)}\n"
+                f"[red]Missing:[/red] {data.get('missing', 0)}\n"
+                f"[cyan]Coverage:[/cyan] {data.get('coverage_pct', 0)}%",
+                title="Individual Record Validation"
+            ))
+
+            results = data.get("results", [])
+            if results:
+                table = Table(title="Record Validation Results")
+                table.add_column("Doc ID", style="cyan")
+                table.add_column("Politician", style="white")
+                table.add_column("Filing Date")
+                table.add_column("Status")
+
+                for r in results[:50]:  # Show first 50
+                    status_color = "green" if r["status"] == "match" else "red"
+                    table.add_row(
+                        r.get("doc_id", ""),
+                        r.get("politician_name", "")[:30],
+                        r.get("filing_date", "")[:10] if r.get("filing_date") else "",
+                        f"[{status_color}]{r['status']}[/{status_color}]",
+                    )
+
+                console.print(table)
+
+                if len(results) > 50:
+                    console.print(f"\n[dim]Showing 50 of {len(results)} results[/dim]")
+        else:
+            # Display monthly aggregate results
+            console.print(Panel.fit(
+                f"[cyan]Year:[/cyan] {data.get('year')}\n"
+                f"[cyan]Source:[/cyan] {data.get('source', 'house_clerk')}\n"
+                f"[green]Validated Months:[/green] {data.get('validated_months', 0)}\n"
+                f"[green]Matches (≥95%):[/green] {data.get('matches', 0)}\n"
+                f"[yellow]Warnings (80-95%):[/yellow] {data.get('warnings', 0)}\n"
+                f"[red]Mismatches (<80%):[/red] {data.get('mismatches', 0)}\n"
+                f"[cyan]Total Official PTR Filings:[/cyan] {data.get('total_official_ptr_filings', 0)}\n"
+                f"[cyan]Total App Disclosures:[/cyan] {data.get('total_app_disclosures', 0)}\n"
+                f"[bold]Overall Coverage:[/bold] {data.get('overall_coverage_pct', 0)}%",
+                title="Source Validation Summary"
+            ))
+
+            results = data.get("results", [])
+            if results:
+                table = Table(title="Monthly Coverage Comparison")
+                table.add_column("Month", style="cyan")
+                table.add_column("Official PTRs", justify="right")
+                table.add_column("App Disclosures", justify="right")
+                table.add_column("Coverage %", justify="right")
+                table.add_column("Missing Docs", justify="right")
+                table.add_column("Status")
+
+                for r in results:
+                    status_color = {
+                        "match": "green",
+                        "warning": "yellow",
+                        "mismatch": "red",
+                    }.get(r["status"], "white")
+
+                    coverage_str = f"{r['coverage_pct']:.1f}%"
+
+                    table.add_row(
+                        r["month_label"],
+                        str(r["official_ptr_filings"]),
+                        str(r["app_disclosures"]),
+                        coverage_str,
+                        str(r["missing_doc_count"]),
+                        f"[{status_color}]{r['status']}[/{status_color}]",
+                    )
+
+                console.print(table)
+
+                # Show chart data comparison
+                chart_table = Table(title="Chart Data vs App Disclosures")
+                chart_table.add_column("Month", style="cyan")
+                chart_table.add_column("Chart Buys", justify="right")
+                chart_table.add_column("Chart Sells", justify="right")
+                chart_table.add_column("App Buys", justify="right")
+                chart_table.add_column("App Sells", justify="right")
+
+                for r in results:
+                    chart_table.add_row(
+                        r["month_label"],
+                        str(r.get("chart_buys", 0)),
+                        str(r.get("chart_sells", 0)),
+                        str(r.get("app_buys", 0)),
+                        str(r.get("app_sells", 0)),
+                    )
+
+                console.print(chart_table)
+
+                # Show sample missing docs if any
+                for r in results:
+                    if r.get("missing_docs"):
+                        console.print(f"\n[yellow]Sample missing docs for {r['month_label']}:[/yellow]")
+                        for doc_id in r["missing_docs"][:5]:
+                            console.print(f"  - {doc_id}")
+                        if len(r["missing_docs"]) > 5:
+                            console.print(f"  ... and {len(r['missing_docs']) - 5} more")
+                        break  # Only show for first month with missing docs
+
+    except httpx.ConnectError:
+        console.print(f"[red]Cannot connect to {base_url}[/red]")
+        if use_local:
+            console.print("Start the server with: [cyan]mcli run admin start-server[/cyan]")
+        raise SystemExit(1)
+    except Exception as e:
+        console.print(f"[red]Validation failed: {e}[/red]")
+        raise SystemExit(1)
+
+
 @admin.command("url")
 @click.option("--local", "use_local", is_flag=True, help="Get local URL")
 @click.option("--port", default=8000, help="Port for local server")
