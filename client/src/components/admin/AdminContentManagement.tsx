@@ -13,6 +13,7 @@ import type { Tables } from '@/integrations/supabase/types';
 import PoliticianForm from './PoliticianForm';
 import TradeForm from './TradeForm';
 import { formatCurrencyCompact, formatDate as formatDateUtil } from '@/lib/formatters';
+import { formatChamber } from '@/lib/utils';
 import { logError } from '@/lib/logger';
 
 type Politician = Tables<'politicians'>;
@@ -237,7 +238,7 @@ const AdminContentManagement = () => {
                             {politician.party}
                           </Badge>
                         </TableCell>
-                        <TableCell>{politician.chamber}</TableCell>
+                        <TableCell>{formatChamber(politician.chamber)}</TableCell>
                         <TableCell>{politician.state || '-'}</TableCell>
                         <TableCell>{politician.total_trades}</TableCell>
                         <TableCell>{formatCurrency(politician.total_volume)}</TableCell>

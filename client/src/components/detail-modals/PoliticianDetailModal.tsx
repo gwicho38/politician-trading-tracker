@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { usePoliticianDetail, type Politician } from '@/hooks/useSupabaseData';
 import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
-import { cn } from '@/lib/utils';
+import { cn, formatChamber } from '@/lib/utils';
 
 interface PoliticianDetailModalProps {
   politician: Politician | null;
@@ -46,7 +46,7 @@ export function PoliticianDetailModal({
                 </Badge>
               </DialogTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                {politician.chamber} {politician.state && `• ${politician.state}`}
+                {formatChamber(politician.chamber)} {politician.state && `• ${politician.state}`}
               </p>
             </div>
           </div>

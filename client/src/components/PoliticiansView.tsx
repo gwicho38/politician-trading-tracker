@@ -5,7 +5,7 @@ import { usePoliticians, type Politician } from '@/hooks/useSupabaseData';
 import { usePagination } from '@/hooks/usePagination';
 import { PaginationControls } from '@/components/PaginationControls';
 import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
-import { cn } from '@/lib/utils';
+import { cn, formatChamber } from '@/lib/utils';
 import { PoliticianProfileModal } from '@/components/detail-modals';
 
 // Sortable fields for politicians
@@ -188,14 +188,14 @@ const PoliticiansView = ({ initialPoliticianId, onPoliticianSelected }: Politici
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground truncate sm:hidden">
-                        {politician.chamber || 'Unknown'}
+                        {formatChamber(politician.chamber)}
                       </p>
                     </div>
                   </div>
 
                   {/* Chamber & State */}
                   <div className="col-span-2 hidden sm:block text-sm text-muted-foreground">
-                    <p className="truncate">{politician.chamber || 'Unknown'}</p>
+                    <p className="truncate">{formatChamber(politician.chamber)}</p>
                     <p className="text-xs truncate">{politician.state || politician.jurisdiction_id || ''}</p>
                   </div>
 

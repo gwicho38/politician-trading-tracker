@@ -44,7 +44,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { cn } from '@/lib/utils';
+import { cn, formatRole } from '@/lib/utils';
 import { logError } from '@/lib/logger';
 import { useTradingDisclosures, SortField, SortDirection, TradingDisclosure } from '@/hooks/useSupabaseData';
 import { ReportErrorModal } from '@/components/ReportErrorModal';
@@ -729,7 +729,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                         </Badge>
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {politician?.role || 'Unknown'}{politician?.state_or_country ? ` - ${politician.state_or_country}` : ''}
+                        {formatRole(politician?.role)}{politician?.state_or_country ? ` - ${politician.state_or_country}` : ''}
                       </div>
                     </TableCell>
 
