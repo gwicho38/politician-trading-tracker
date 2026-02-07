@@ -505,6 +505,102 @@ async def api_validate_source_all(
         raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
 
 
+@router.get("/api/validate-counts")
+async def api_validate_counts(
+    request: Request,
+    key: str = Query(...),
+    from_year: int = Query(2020),
+    to_year: int = Query(2026),
+):
+    """
+    Count-based validation that doesn't require source_document_id.
+
+    Compares:
+    - Official PTR filing counts per year
+    - App trading_disclosures counts per year
+    - Chart data totals (buys + sells) per year
+
+    This is useful when source_document_id isn't populated, as it validates
+    that we have approximately the right number of records.
+
+    Note: Chart trades can exceed PTR count since one filing contains multiple trades.
+    """
+    if not validate_api_key(key, require_admin=True):
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    try:
+        from app.services.source_validation import CountBasedValidationService
+
+        service = CountBasedValidationService()
+        results = await service.validate_counts(
+            from_year=from_year,
+            to_year=to_year,
+        )
+
+        return results
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Count-based validation failed")
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
+
+
+@router.get("/api/backfill-source-ids")
+async def api_backfill_source_ids(
+    request: Request,
+    key: str = Query(...),
+    year: Optional[int] = Query(None),
+    from_year: int = Query(2020),
+    to_year: int = Query(2026),
+    dry_run: bool = Query(True),
+    threshold: float = Query(0.8, ge=0.5, le=1.0),
+):
+    """
+    Backfill missing source_document_id values by matching records to official filings.
+
+    Uses fuzzy name matching and date proximity to find corresponding official
+    House Clerk filings for trading_disclosures records without source_document_id.
+
+    Args:
+        year: Single year to backfill (if set, ignores from_year/to_year)
+        from_year: Start year for backfill range
+        to_year: End year for backfill range
+        dry_run: If True, only report matches without updating (default: True)
+        threshold: Minimum match score (0.5-1.0) for name similarity
+
+    Returns:
+        Backfill results with match statistics and sample matches
+    """
+    if not validate_api_key(key, require_admin=True):
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    try:
+        from app.services.source_document_backfill import SourceDocumentBackfillService
+
+        service = SourceDocumentBackfillService()
+
+        if year:
+            results = await service.backfill_year(
+                year=year,
+                dry_run=dry_run,
+                similarity_threshold=threshold,
+            )
+        else:
+            results = await service.backfill_all_years(
+                from_year=from_year,
+                to_year=to_year,
+                dry_run=dry_run,
+                similarity_threshold=threshold,
+            )
+
+        return results
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Backfill failed")
+        raise HTTPException(status_code=500, detail=f"Backfill failed: {str(e)}")
+
+
 @router.post("/api/fix/{result_id}", response_class=HTMLResponse)
 async def api_apply_fix(
     request: Request,

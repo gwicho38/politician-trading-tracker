@@ -701,3 +701,274 @@ async def validate_all_historical(from_year: int = 2020, to_year: int = 2026, st
     """Validate all historical data across years."""
     service = SourceValidationService()
     return await service.validate_all_years(from_year, to_year, store)
+
+
+class CountBasedValidationService:
+    """
+    Alternative validation that compares record counts rather than exact document IDs.
+
+    Useful when source_document_id isn't populated, but we want to verify
+    we have approximately the right number of records.
+    """
+
+    def __init__(self):
+        self.supabase = get_supabase()
+
+    async def validate_counts(
+        self,
+        from_year: int = 2020,
+        to_year: int = 2026,
+        chamber: str = "house",
+    ) -> Dict[str, Any]:
+        """
+        Compare record counts against official source counts.
+
+        This doesn't require source_document_id - it just compares:
+        - Number of official PTR filings per year
+        - Number of trading_disclosures records per year
+        - Chart data aggregates per year
+
+        Args:
+            from_year: Start year
+            to_year: End year
+            chamber: Chamber to validate (house or senate)
+
+        Returns:
+            Count comparison results
+        """
+        if not self.supabase:
+            raise ValueError("Supabase not configured")
+
+        logger.info(f"Starting count-based validation ({from_year}-{to_year})")
+
+        yearly_results = []
+
+        for year in range(from_year, to_year + 1):
+            logger.info(f"Validating counts for {year}...")
+
+            # Get official PTR count
+            official_count = await self._get_official_ptr_count(year)
+
+            # Get app disclosure count (by disclosure_date)
+            app_by_disclosure = await self._get_app_disclosure_count(year, "disclosure_date")
+
+            # Get app disclosure count (by transaction_date) - may differ
+            app_by_transaction = await self._get_app_disclosure_count(year, "transaction_date")
+
+            # Get chart data totals
+            chart_totals = await self._get_chart_data_totals(year)
+
+            # Get unique politicians count
+            app_politicians = await self._get_app_politicians_count(year)
+            official_politicians = await self._get_official_politicians_count(year)
+
+            # Calculate ratios
+            disclosure_ratio = (app_by_disclosure / official_count * 100) if official_count > 0 else 0
+            transaction_ratio = (app_by_transaction / official_count * 100) if official_count > 0 else 0
+            chart_ratio = ((chart_totals["buys"] + chart_totals["sells"]) / official_count * 100) if official_count > 0 else 0
+
+            # Determine status based on chart data ratio (most reliable)
+            if chart_ratio >= 90:
+                status = "good"
+            elif chart_ratio >= 50:
+                status = "partial"
+            else:
+                status = "low"
+
+            yearly_results.append({
+                "year": year,
+                "official_ptr_count": official_count,
+                "app_disclosures_by_disclosure_date": app_by_disclosure,
+                "app_disclosures_by_transaction_date": app_by_transaction,
+                "chart_buys": chart_totals["buys"],
+                "chart_sells": chart_totals["sells"],
+                "chart_total_trades": chart_totals["buys"] + chart_totals["sells"],
+                "chart_volume": chart_totals["volume"],
+                "app_unique_politicians": app_politicians,
+                "official_unique_politicians": official_politicians,
+                "disclosure_ratio_pct": round(disclosure_ratio, 1),
+                "transaction_ratio_pct": round(transaction_ratio, 1),
+                "chart_ratio_pct": round(chart_ratio, 1),
+                "status": status,
+            })
+
+        # Calculate totals
+        total_official = sum(r["official_ptr_count"] for r in yearly_results)
+        total_chart_trades = sum(r["chart_total_trades"] for r in yearly_results)
+        total_app_disclosures = sum(r["app_disclosures_by_disclosure_date"] for r in yearly_results)
+
+        overall_chart_ratio = (total_chart_trades / total_official * 100) if total_official > 0 else 0
+
+        good_years = sum(1 for r in yearly_results if r["status"] == "good")
+        partial_years = sum(1 for r in yearly_results if r["status"] == "partial")
+        low_years = sum(1 for r in yearly_results if r["status"] == "low")
+
+        return {
+            "validation_type": "count_based",
+            "from_year": from_year,
+            "to_year": to_year,
+            "chamber": chamber,
+            "total_official_ptrs": total_official,
+            "total_chart_trades": total_chart_trades,
+            "total_app_disclosures": total_app_disclosures,
+            "overall_chart_ratio_pct": round(overall_chart_ratio, 1),
+            "summary": {
+                "good_years": good_years,
+                "partial_years": partial_years,
+                "low_years": low_years,
+            },
+            "yearly_results": yearly_results,
+            "interpretation": self._get_interpretation(overall_chart_ratio, total_official, total_chart_trades),
+        }
+
+    async def _get_official_ptr_count(self, year: int) -> int:
+        """Get count of PTR filings from official House index."""
+        try:
+            url = HOUSE_ZIP_URL_TEMPLATE.format(base_url=HOUSE_BASE_URL, year=year)
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.get(
+                    url,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; ValidationBot/1.0)"},
+                )
+
+                if response.status_code != 200:
+                    return 0
+
+                zip_content = response.content
+                txt_filename = f"{year}FD.txt"
+
+                with zipfile.ZipFile(io.BytesIO(zip_content)) as z:
+                    if txt_filename not in z.namelist():
+                        return 0
+
+                    with z.open(txt_filename) as f:
+                        content = f.read().decode("utf-8", errors="ignore")
+
+                # Count PTR filings (filing_type = "P")
+                count = 0
+                for line in content.strip().split("\n")[1:]:
+                    fields = line.split("\t")
+                    if len(fields) >= 5 and fields[4].strip() == "P":
+                        count += 1
+
+                return count
+
+        except Exception as e:
+            logger.error(f"Error getting official PTR count: {e}")
+            return 0
+
+    async def _get_app_disclosure_count(self, year: int, date_field: str) -> int:
+        """Get count of app disclosures for a year."""
+        try:
+            start_date = f"{year}-01-01"
+            end_date = f"{year}-12-31"
+
+            response = (
+                self.supabase.table("trading_disclosures")
+                .select("id", count="exact")
+                .eq("status", "active")
+                .gte(date_field, start_date)
+                .lte(date_field, end_date)
+                .execute()
+            )
+            return response.count or 0
+        except Exception as e:
+            logger.error(f"Error getting app disclosure count: {e}")
+            return 0
+
+    async def _get_chart_data_totals(self, year: int) -> Dict[str, int]:
+        """Get chart data totals for a year."""
+        try:
+            response = (
+                self.supabase.table("chart_data")
+                .select("buys, sells, volume")
+                .eq("year", year)
+                .execute()
+            )
+
+            buys = sum(r.get("buys", 0) for r in (response.data or []))
+            sells = sum(r.get("sells", 0) for r in (response.data or []))
+            volume = sum(r.get("volume", 0) for r in (response.data or []))
+
+            return {"buys": buys, "sells": sells, "volume": volume}
+        except Exception as e:
+            logger.error(f"Error getting chart data: {e}")
+            return {"buys": 0, "sells": 0, "volume": 0}
+
+    async def _get_app_politicians_count(self, year: int) -> int:
+        """Get count of unique politicians in app data for a year."""
+        try:
+            start_date = f"{year}-01-01"
+            end_date = f"{year}-12-31"
+
+            response = (
+                self.supabase.table("trading_disclosures")
+                .select("politician_id")
+                .eq("status", "active")
+                .gte("disclosure_date", start_date)
+                .lte("disclosure_date", end_date)
+                .execute()
+            )
+
+            unique_ids = set(r["politician_id"] for r in (response.data or []) if r.get("politician_id"))
+            return len(unique_ids)
+        except Exception as e:
+            logger.error(f"Error getting app politicians count: {e}")
+            return 0
+
+    async def _get_official_politicians_count(self, year: int) -> int:
+        """Get count of unique politicians in official index for a year."""
+        try:
+            url = HOUSE_ZIP_URL_TEMPLATE.format(base_url=HOUSE_BASE_URL, year=year)
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.get(
+                    url,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; ValidationBot/1.0)"},
+                )
+
+                if response.status_code != 200:
+                    return 0
+
+                zip_content = response.content
+                txt_filename = f"{year}FD.txt"
+
+                with zipfile.ZipFile(io.BytesIO(zip_content)) as z:
+                    if txt_filename not in z.namelist():
+                        return 0
+
+                    with z.open(txt_filename) as f:
+                        content = f.read().decode("utf-8", errors="ignore")
+
+                # Get unique politicians from PTR filings
+                politicians = set()
+                for line in content.strip().split("\n")[1:]:
+                    fields = line.split("\t")
+                    if len(fields) >= 5 and fields[4].strip() == "P":
+                        # fields[1] is last name, fields[2] is first name
+                        name = f"{fields[2].strip()} {fields[1].strip()}"
+                        politicians.add(name.lower())
+
+                return len(politicians)
+
+        except Exception as e:
+            logger.error(f"Error getting official politicians count: {e}")
+            return 0
+
+    def _get_interpretation(self, ratio: float, official: int, chart: int) -> str:
+        """Generate human-readable interpretation of results."""
+        if ratio >= 100:
+            return f"Chart data ({chart:,} trades) exceeds official PTR count ({official:,}). This is expected since one PTR filing can contain multiple trades."
+        elif ratio >= 80:
+            return f"Good coverage. Chart data ({chart:,} trades) represents {ratio:.1f}% of official filings ({official:,}). Data is likely complete."
+        elif ratio >= 50:
+            return f"Partial coverage. Chart data ({chart:,} trades) represents {ratio:.1f}% of official filings ({official:,}). Some data may be missing."
+        else:
+            return f"Low coverage. Chart data ({chart:,} trades) represents only {ratio:.1f}% of official filings ({official:,}). Significant data gap detected."
+
+
+async def validate_counts(from_year: int = 2020, to_year: int = 2026) -> Dict[str, Any]:
+    """Run count-based validation."""
+    service = CountBasedValidationService()
+    return await service.validate_counts(from_year, to_year)

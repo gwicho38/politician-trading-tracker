@@ -1,11 +1,11 @@
 {
   "version": "2.0",
-  "generated_at": "2026-02-07T12:43:08.136333Z",
+  "generated_at": "2026-02-07T14:00:52.785708Z",
   "commands": {
     "admin": {
       "file": "admin.py",
       "language": "python",
-      "content_hash": "sha256:625c498df1ad2d5078c41d374b7adae1a898a7c13d4f2b72b6cf65a244894188",
+      "content_hash": "sha256:b037f6140ebc21124ad515a4ad43e422f9a697f983b9ff6dc8608de364c5be10",
       "version": "1.0.0",
       "group": "workflows",
       "description": "admin command",
@@ -13,7 +13,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-02-07T13:41:58.535656Z"
+      "last_modified": "2026-02-07T14:59:40.644566Z"
     },
     "client": {
       "file": "client.py",
