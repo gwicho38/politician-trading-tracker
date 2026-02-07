@@ -26,6 +26,10 @@ supabase>=2.3.0
 pandas>=2.1.0
 numpy>=1.24.0
 
+# Fuzzy string matching
+thefuzz>=0.22.0
+python-Levenshtein>=0.25.0
+
 # Date handling
 python-dateutil>=2.8.2
 

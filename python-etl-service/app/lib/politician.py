@@ -20,6 +20,7 @@ def find_or_create_politician(
     chamber: str = "house",
     state: Optional[str] = None,
     district: Optional[str] = None,
+    bioguide_id: Optional[str] = None,
     disclosure: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
     """Find existing politician or create a new one.
@@ -29,6 +30,11 @@ def find_or_create_politician(
     - A `disclosure` dict with politician info (for backward compatibility)
     - Individual parameters (name, first_name, last_name, etc.)
 
+    Lookup priority:
+    1. bioguide_id (if provided) - Most reliable identifier
+    2. first_name + last_name + role (for House)
+    3. Fuzzy name match (for Senate or when first/last not available)
+
     Args:
         supabase: Supabase client instance
         name: Full name of the politician (used for Senate)
@@ -37,6 +43,7 @@ def find_or_create_politician(
         chamber: "house" or "senate"
         state: State abbreviation (e.g., "CA")
         district: District identifier (e.g., "CA12")
+        bioguide_id: Official Congress bioguide ID (e.g., "A000123")
         disclosure: Dict with politician info (legacy support for House ETL)
 
     Returns:
@@ -51,6 +58,9 @@ def find_or_create_politician(
         state = state_district[:2] if len(state_district) >= 2 else None
         district = state_district
         chamber = "house"
+        # Check if disclosure has bioguide_id
+        if not bioguide_id:
+            bioguide_id = disclosure.get("bioguide_id")
 
     # Build full name if not provided
     if not name and (first_name or last_name):
@@ -67,7 +77,23 @@ def find_or_create_politician(
     # Determine role based on chamber
     role = "Senator" if chamber == "senate" else "Representative"
 
-    # Try to find existing politician
+    # Priority 1: Try to find by bioguide_id (most reliable)
+    if bioguide_id:
+        try:
+            response = (
+                supabase.table("politicians")
+                .select("id")
+                .eq("bioguide_id", bioguide_id)
+                .limit(1)
+                .execute()
+            )
+            if response.data and len(response.data) > 0:
+                logger.debug(f"Found existing politician by bioguide_id: {bioguide_id}")
+                return response.data[0]["id"]
+        except Exception as e:
+            logger.debug(f"Error finding politician by bioguide_id: {e}")
+
+    # Priority 2: Try to find by name
     try:
         if first_name and last_name and chamber == "house":
             # House: match on first_name, last_name, and role
@@ -113,6 +139,10 @@ def find_or_create_politician(
             "state": state,
         }
 
+        # Add bioguide_id if provided
+        if bioguide_id:
+            politician_data["bioguide_id"] = bioguide_id
+
         # Add House-specific fields
         if chamber == "house" and district:
             politician_data["state_or_country"] = state
@@ -121,7 +151,8 @@ def find_or_create_politician(
         response = supabase.table("politicians").insert(politician_data).execute()
 
         if response.data and len(response.data) > 0:
-            logger.info(f"Created new politician: {clean_name} ({role})")
+            logger.info(f"Created new politician: {clean_name} ({role})" +
+                       (f" [bioguide: {bioguide_id}]" if bioguide_id else ""))
             return response.data[0]["id"]
 
     except Exception as e:

@@ -2944,6 +2944,7 @@ dependencies = [
     { name = "stripe" },
     { name = "supabase" },
     { name = "ta-lib" },
+    { name = "thefuzz" },
     { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "torch", version = "2.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "tqdm" },
@@ -3021,6 +3022,7 @@ requires-dist = [
     { name = "stripe", specifier = ">=11.0.0" },
     { name = "supabase", specifier = ">=2.18.1" },
     { name = "ta-lib", specifier = ">=0.4.28" },
+    { name = "thefuzz", specifier = ">=0.22.0" },
     { name = "torch", specifier = ">=2.0.0" },
     { name = "tqdm", specifier = ">=4.66.1" },
     { name = "urllib3", specifier = ">=2.6.0" },
@@ -4634,6 +4636,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/87/c8/ba3007b827aa733530cd456f8734b6859629f7d50f83baa5dd6e112ec4fa/ta_lib-0.6.8-cp39-cp39-win32.whl", hash = "sha256:02388054c059945e5f02625f5075bac20a1803573cb43e7d096091027511961f", size = 774163, upload-time = "2025-10-20T20:49:55.305Z" },
     { url = "https://files.pythonhosted.org/packages/97/25/9229b07f122207d2eb6a83f93cd48ec0391b57c9b2be7d2612520b24440f/ta_lib-0.6.8-cp39-cp39-win_amd64.whl", hash = "sha256:b165f5e6de1ccc964e863bd2035807a4d3bad3e0481f9db2dc52034d6ad4f9de", size = 919439, upload-time = "2025-10-20T20:49:52.824Z" },
     { url = "https://files.pythonhosted.org/packages/ab/fe/728321283985373a71e52448693525126ea1308a2d49ca483f95089bdf25/ta_lib-0.6.8-cp39-cp39-win_arm64.whl", hash = "sha256:b6c6e4858d8c3f88e19b7aa94b6a7619108f0bee51da9fa67b0785a8b59955f9", size = 759707, upload-time = "2025-10-20T20:49:54.207Z" },
+]
+
+[[package]]
+name = "thefuzz"
+version = "0.22.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "rapidfuzz", version = "3.13.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "rapidfuzz", version = "3.14.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/81/4b/d3eb25831590d6d7d38c2f2e3561d3ba41d490dc89cd91d9e65e7c812508/thefuzz-0.22.1.tar.gz", hash = "sha256:7138039a7ecf540da323792d8592ef9902b1d79eb78c147d4f20664de79f3680", size = 19993, upload-time = "2024-01-19T19:18:23.135Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/82/4f/1695e70ceb3604f19eda9908e289c687ea81c4fecef4d90a9d1d0f2f7ae9/thefuzz-0.22.1-py3-none-any.whl", hash = "sha256:59729b33556850b90e1093c4cf9e618af6f2e4c985df193fdf3c5b5cf02ca481", size = 8245, upload-time = "2024-01-19T19:18:20.362Z" },
 ]
 
 [[package]]
