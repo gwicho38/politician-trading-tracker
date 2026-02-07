@@ -482,6 +482,133 @@ def health(use_local: bool, port: int):
         raise SystemExit(1)
 
 
+@admin.command("validate-charts")
+@click.option("--local", "use_local", is_flag=True, help="Use local server")
+@click.option("--from-year", default=2024, help="Start year for validation")
+@click.option("--to-year", default=2026, help="End year for validation")
+@click.option("--no-store", is_flag=True, help="Don't store results in database")
+def validate_charts(use_local: bool, from_year: int, to_year: int, no_store: bool):
+    """
+    Validate chart data points against QuiverQuant.
+
+    Compares each monthly data point (buys, sells, volume) from
+    the Trading Activity and Trade Volume charts against QuiverQuant.
+
+    Examples:
+        mcli run admin validate-charts                    # Validate production charts
+        mcli run admin validate-charts --local            # Validate against local server
+        mcli run admin validate-charts --from-year 2025   # Validate 2025+ only
+    """
+    load_env()
+
+    admin_key = os.environ.get("ETL_ADMIN_API_KEY")
+    if not admin_key:
+        console.print("[red]ETL_ADMIN_API_KEY not configured![/red]")
+        console.print("Run: [cyan]mcli run admin setup-keys[/cyan]")
+        raise SystemExit(1)
+
+    base_url = LOCAL_ETL_URL if use_local else PROD_ETL_URL
+
+    console.print(f"\n[bold]Validating Chart Data ({from_year}-{to_year})[/bold]")
+    console.print(f"Server: {base_url}\n")
+
+    try:
+        response = httpx.get(
+            f"{base_url}/admin/api/validate-charts",
+            params={
+                "key": admin_key,
+                "from_year": from_year,
+                "to_year": to_year,
+                "store": not no_store,
+            },
+            timeout=300.0,  # Chart validation can take a while
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if "error" in data:
+            console.print(f"[red]Error: {data['error']}[/red]")
+            raise SystemExit(1)
+
+        # Display summary
+        console.print(Panel.fit(
+            f"[green]Validated Months:[/green] {data.get('validated_months', 0)}\n"
+            f"[green]Matches:[/green] {data.get('matches', 0)}\n"
+            f"[yellow]Warnings:[/yellow] {data.get('warnings', 0)}\n"
+            f"[red]Mismatches:[/red] {data.get('mismatches', 0)}\n"
+            f"[cyan]Match Rate:[/cyan] {data.get('match_rate', 0)}%",
+            title="Validation Summary"
+        ))
+
+        # Display detailed results
+        results = data.get("results", [])
+        if results:
+            table = Table(title="Monthly Data Point Comparison")
+            table.add_column("Month", style="cyan")
+            table.add_column("App Buys", justify="right")
+            table.add_column("QQ Buys", justify="right")
+            table.add_column("Buy Δ", justify="right")
+            table.add_column("App Sells", justify="right")
+            table.add_column("QQ Sells", justify="right")
+            table.add_column("Sell Δ", justify="right")
+            table.add_column("Status")
+
+            for r in results:
+                status_color = {
+                    "match": "green",
+                    "warning": "yellow",
+                    "mismatch": "red",
+                }.get(r["status"], "white")
+
+                buy_diff_str = f"{r['buy_diff']:+d}" if r['buy_diff'] != 0 else "0"
+                sell_diff_str = f"{r['sell_diff']:+d}" if r['sell_diff'] != 0 else "0"
+
+                table.add_row(
+                    r["month_label"],
+                    str(r["app_buys"]),
+                    str(r["qq_buys"]),
+                    buy_diff_str,
+                    str(r["app_sells"]),
+                    str(r["qq_sells"]),
+                    sell_diff_str,
+                    f"[{status_color}]{r['status']}[/{status_color}]",
+                )
+
+            console.print(table)
+
+            # Volume table
+            vol_table = Table(title="Monthly Volume Comparison")
+            vol_table.add_column("Month", style="cyan")
+            vol_table.add_column("App Volume", justify="right")
+            vol_table.add_column("QQ Volume", justify="right")
+            vol_table.add_column("Difference", justify="right")
+            vol_table.add_column("% Diff", justify="right")
+
+            for r in results:
+                vol_diff = r["volume_diff"]
+                vol_diff_str = f"${vol_diff:+,.0f}" if vol_diff != 0 else "$0"
+                pct_str = f"{r['volume_pct_diff']:+.1f}%"
+
+                vol_table.add_row(
+                    r["month_label"],
+                    f"${r['app_volume']:,.0f}",
+                    f"${r['qq_volume']:,.0f}",
+                    vol_diff_str,
+                    pct_str,
+                )
+
+            console.print(vol_table)
+
+    except httpx.ConnectError:
+        console.print(f"[red]Cannot connect to {base_url}[/red]")
+        if use_local:
+            console.print("Start the server with: [cyan]mcli run admin start-server[/cyan]")
+        raise SystemExit(1)
+    except Exception as e:
+        console.print(f"[red]Validation failed: {e}[/red]")
+        raise SystemExit(1)
+
+
 @admin.command("url")
 @click.option("--local", "use_local", is_flag=True, help="Get local URL")
 @click.option("--port", default=8000, help="Port for local server")

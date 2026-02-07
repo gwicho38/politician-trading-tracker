@@ -351,6 +351,45 @@ async def api_run_audit(
         )
 
 
+@router.get("/api/validate-charts")
+async def api_validate_charts(
+    request: Request,
+    key: str = Query(...),
+    from_year: int = Query(2024),
+    to_year: int = Query(2026),
+    store: bool = Query(True),
+):
+    """
+    Validate chart data (Trading Activity + Volume) against QuiverQuant.
+
+    Compares each monthly data point:
+    - Buy counts
+    - Sell counts
+    - Volume totals
+
+    Returns JSON with per-month comparison and variance analysis.
+    """
+    if not validate_api_key(key, require_admin=True):
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    try:
+        from app.services.chart_validation import ChartValidationService
+
+        service = ChartValidationService()
+        results = await service.validate_chart_data(
+            from_year=from_year,
+            to_year=to_year,
+            store_results=store,
+        )
+
+        return results
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Chart validation failed")
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
+
+
 @router.post("/api/fix/{result_id}", response_class=HTMLResponse)
 async def api_apply_fix(
     request: Request,
