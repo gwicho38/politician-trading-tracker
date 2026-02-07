@@ -390,6 +390,81 @@ async def api_validate_charts(
         raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
 
 
+@router.get("/api/validate-source")
+async def api_validate_source(
+    request: Request,
+    key: str = Query(...),
+    year: int = Query(2025),
+    store: bool = Query(True),
+):
+    """
+    Validate app data against official House Clerk disclosure index.
+
+    Compares against the ground-truth source by:
+    - Downloading official House ZIP index for the year
+    - Parsing all PTR (Periodic Transaction Report) filings
+    - Comparing filing counts and document IDs against app data
+    - Calculating coverage percentage per month
+
+    Returns JSON with per-month comparison and missing document analysis.
+    """
+    if not validate_api_key(key, require_admin=True):
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    try:
+        from app.services.source_validation import SourceValidationService
+
+        service = SourceValidationService()
+        results = await service.validate_house_data(
+            year=year,
+            store_results=store,
+        )
+
+        return results
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Source validation failed")
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
+
+
+@router.get("/api/validate-source/records")
+async def api_validate_source_records(
+    request: Request,
+    key: str = Query(...),
+    year: int = Query(2025),
+    month: Optional[int] = Query(None, ge=1, le=12),
+    limit: int = Query(100, ge=10, le=1000),
+):
+    """
+    Validate individual disclosure records against House Clerk source.
+
+    Checks each official filing to see if it exists in our app database.
+    Useful for identifying specific missing documents.
+
+    Returns per-record validation results with document IDs.
+    """
+    if not validate_api_key(key, require_admin=True):
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    try:
+        from app.services.source_validation import SourceValidationService
+
+        service = SourceValidationService()
+        results = await service.validate_individual_records(
+            year=year,
+            month=month,
+            limit=limit,
+        )
+
+        return results
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Source record validation failed")
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
+
+
 @router.post("/api/fix/{result_id}", response_class=HTMLResponse)
 async def api_apply_fix(
     request: Request,
