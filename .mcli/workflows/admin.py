@@ -611,12 +611,15 @@ def validate_charts(use_local: bool, from_year: int, to_year: int, no_store: boo
 
 @admin.command("validate-source")
 @click.option("--local", "use_local", is_flag=True, help="Use local server")
-@click.option("--year", default=2025, help="Year to validate")
+@click.option("--year", default=2025, help="Year to validate (ignored with --all)")
+@click.option("--from-year", default=2020, help="Start year for --all validation")
+@click.option("--to-year", default=2026, help="End year for --all validation")
+@click.option("--all", "validate_all", is_flag=True, help="Validate all historical data (2020-2026)")
 @click.option("--no-store", is_flag=True, help="Don't store results in database")
 @click.option("--records", is_flag=True, help="Validate individual records (not just monthly aggregates)")
 @click.option("--month", default=None, type=int, help="Filter to specific month (1-12)")
 @click.option("--limit", default=100, help="Limit for individual records (with --records)")
-def validate_source(use_local: bool, year: int, no_store: bool, records: bool, month: int, limit: int):
+def validate_source(use_local: bool, year: int, from_year: int, to_year: int, validate_all: bool, no_store: bool, records: bool, month: int, limit: int):
     """
     Validate app data against official House Clerk disclosure index.
 
@@ -626,6 +629,8 @@ def validate_source(use_local: bool, year: int, no_store: bool, records: bool, m
     Examples:
         mcli run admin validate-source                    # Validate 2025 data
         mcli run admin validate-source --year 2024        # Validate 2024 data
+        mcli run admin validate-source --all              # Validate ALL years (2020-2026)
+        mcli run admin validate-source --all --from-year 2022  # Validate 2022-2026
         mcli run admin validate-source --records          # Check individual records
         mcli run admin validate-source --records --month 1  # Check January records
     """
@@ -638,6 +643,107 @@ def validate_source(use_local: bool, year: int, no_store: bool, records: bool, m
         raise SystemExit(1)
 
     base_url = LOCAL_ETL_URL if use_local else PROD_ETL_URL
+
+    # Handle --all flag for comprehensive validation
+    if validate_all:
+        console.print(f"\n[bold]Comprehensive Historical Validation ({from_year}-{to_year})[/bold]")
+        console.print(f"Server: {base_url}\n")
+        console.print("[cyan]Fetching all app source documents and validating against each year...[/cyan]\n")
+
+        try:
+            response = httpx.get(
+                f"{base_url}/admin/api/validate-source/all",
+                params={
+                    "key": admin_key,
+                    "from_year": from_year,
+                    "to_year": to_year,
+                    "store": not no_store,
+                },
+                timeout=600.0,  # 10 minutes for comprehensive validation
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if "error" in data:
+                console.print(f"[red]Error: {data['error']}[/red]")
+                raise SystemExit(1)
+
+            # Display summary
+            console.print(Panel.fit(
+                f"[cyan]Source:[/cyan] {data.get('source', 'house_clerk')}\n"
+                f"[cyan]Years Validated:[/cyan] {data.get('from_year')}-{data.get('to_year')}\n"
+                f"[green]Total App Documents:[/green] {data.get('total_app_documents', 0):,}\n"
+                f"[green]Total Official PTR Filings:[/green] {data.get('total_official_ptr_filings', 0):,}\n"
+                f"[green]Total Matched:[/green] {data.get('total_matched', 0):,}\n"
+                f"[red]Total Missing:[/red] {data.get('total_missing', 0):,}\n"
+                f"[bold cyan]Overall Coverage:[/bold cyan] {data.get('overall_coverage_pct', 0)}%",
+                title="Comprehensive Validation Summary"
+            ))
+
+            # Show status breakdown
+            summary = data.get("summary", {})
+            console.print(f"\n[green]✓ Matches (≥95%):[/green] {summary.get('matches', 0)} years")
+            console.print(f"[yellow]⚠ Warnings (80-95%):[/yellow] {summary.get('warnings', 0)} years")
+            console.print(f"[red]✗ Mismatches (<80%):[/red] {summary.get('mismatches', 0)} years")
+            if summary.get('errors', 0) > 0:
+                console.print(f"[red]! Errors:[/red] {summary.get('errors', 0)} years")
+
+            # Display yearly breakdown
+            yearly_results = data.get("yearly_results", [])
+            if yearly_results:
+                table = Table(title="Yearly Validation Results")
+                table.add_column("Year", style="cyan", justify="center")
+                table.add_column("Official PTRs", justify="right")
+                table.add_column("Matched", justify="right")
+                table.add_column("Missing", justify="right")
+                table.add_column("Coverage %", justify="right")
+                table.add_column("Status")
+
+                for r in yearly_results:
+                    if r.get("status") == "error":
+                        table.add_row(
+                            str(r["year"]),
+                            "-", "-", "-", "-",
+                            f"[red]error[/red]",
+                        )
+                    else:
+                        status_color = {
+                            "match": "green",
+                            "warning": "yellow",
+                            "mismatch": "red",
+                        }.get(r["status"], "white")
+
+                        table.add_row(
+                            str(r["year"]),
+                            f"{r['official_ptr_count']:,}",
+                            f"{r['matched_count']:,}",
+                            f"{r['missing_count']:,}",
+                            f"{r['coverage_pct']:.1f}%",
+                            f"[{status_color}]{r['status']}[/{status_color}]",
+                        )
+
+                console.print(table)
+
+                # Show sample missing docs from first year with mismatches
+                for r in yearly_results:
+                    if r.get("status") in ("mismatch", "warning") and r.get("sample_missing"):
+                        console.print(f"\n[yellow]Sample missing docs from {r['year']}:[/yellow]")
+                        for doc_id in r["sample_missing"][:5]:
+                            console.print(f"  - {doc_id}")
+                        if len(r["sample_missing"]) > 5:
+                            console.print(f"  ... and more")
+                        break
+
+        except httpx.ConnectError:
+            console.print(f"[red]Cannot connect to {base_url}[/red]")
+            if use_local:
+                console.print("Start the server with: [cyan]mcli run admin start-server[/cyan]")
+            raise SystemExit(1)
+        except Exception as e:
+            console.print(f"[red]Validation failed: {e}[/red]")
+            raise SystemExit(1)
+
+        return  # Exit after --all validation
 
     console.print(f"\n[bold]Validating Against House Clerk Source ({year})[/bold]")
     console.print(f"Server: {base_url}\n")

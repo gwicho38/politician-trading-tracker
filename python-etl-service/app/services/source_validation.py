@@ -502,6 +502,188 @@ class SourceValidationService:
             return False
 
 
+    async def validate_all_years(
+        self,
+        from_year: int = 2020,
+        to_year: int = 2026,
+        store_results: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Validate all historical data across multiple years.
+
+        Fetches all app source_document_ids first (without date filter),
+        then validates against each year's official House index.
+
+        Args:
+            from_year: Start year for validation
+            to_year: End year for validation
+            store_results: Whether to store validation results
+
+        Returns:
+            Comprehensive validation results across all years
+        """
+        if not self.supabase:
+            raise ValueError("Supabase not configured")
+
+        logger.info(f"Starting comprehensive House validation ({from_year}-{to_year})")
+
+        # Step 1: Fetch ALL app source document IDs (no date filter)
+        all_app_doc_ids = await self._fetch_all_app_source_documents()
+        logger.info(f"Found {len(all_app_doc_ids)} unique source documents in app")
+
+        yearly_results = []
+        total_official_ptrs = 0
+        total_matched = 0
+        total_missing = 0
+
+        # Step 2: Validate each year
+        for year in range(from_year, to_year + 1):
+            logger.info(f"Validating year {year}...")
+
+            # Fetch official index for this year
+            official_index = await self._fetch_house_index(year)
+            if not official_index:
+                yearly_results.append({
+                    "year": year,
+                    "status": "error",
+                    "error": f"Failed to fetch House index for {year}",
+                })
+                continue
+
+            # Filter to PTR filings only
+            ptr_filings = [f for f in official_index if f.get("filing_type") == FILING_TYPE_PTR]
+            official_ptr_doc_ids = {f["doc_id"] for f in ptr_filings if f.get("doc_id")}
+
+            # Calculate matches
+            matched_docs = official_ptr_doc_ids & all_app_doc_ids
+            missing_docs = official_ptr_doc_ids - all_app_doc_ids
+
+            coverage_pct = (len(matched_docs) / len(official_ptr_doc_ids) * 100) if official_ptr_doc_ids else 100
+
+            if coverage_pct >= 95:
+                status = "match"
+            elif coverage_pct >= 80:
+                status = "warning"
+            else:
+                status = "mismatch"
+
+            year_result = {
+                "year": year,
+                "official_ptr_count": len(official_ptr_doc_ids),
+                "matched_count": len(matched_docs),
+                "missing_count": len(missing_docs),
+                "coverage_pct": round(coverage_pct, 1),
+                "status": status,
+                "sample_missing": list(missing_docs)[:10],
+            }
+            yearly_results.append(year_result)
+
+            total_official_ptrs += len(official_ptr_doc_ids)
+            total_matched += len(matched_docs)
+            total_missing += len(missing_docs)
+
+            # Store results if requested
+            if store_results:
+                await self._store_yearly_validation(year_result)
+
+        # Calculate overall summary
+        overall_coverage = (total_matched / total_official_ptrs * 100) if total_official_ptrs > 0 else 0
+
+        matches = sum(1 for r in yearly_results if r.get("status") == "match")
+        warnings = sum(1 for r in yearly_results if r.get("status") == "warning")
+        mismatches = sum(1 for r in yearly_results if r.get("status") == "mismatch")
+        errors = sum(1 for r in yearly_results if r.get("status") == "error")
+
+        return {
+            "source": "house_clerk",
+            "from_year": from_year,
+            "to_year": to_year,
+            "years_validated": len(yearly_results) - errors,
+            "total_app_documents": len(all_app_doc_ids),
+            "total_official_ptr_filings": total_official_ptrs,
+            "total_matched": total_matched,
+            "total_missing": total_missing,
+            "overall_coverage_pct": round(overall_coverage, 1),
+            "summary": {
+                "matches": matches,
+                "warnings": warnings,
+                "mismatches": mismatches,
+                "errors": errors,
+            },
+            "yearly_results": yearly_results,
+        }
+
+    async def _fetch_all_app_source_documents(self) -> set:
+        """Fetch all unique source document IDs from app database (no date filter)."""
+        try:
+            all_doc_ids = set()
+            offset = 0
+            page_size = 10000
+
+            while True:
+                response = (
+                    self.supabase.table("trading_disclosures")
+                    .select("source_document_id")
+                    .eq("status", "active")
+                    .not_.is_("source_document_id", "null")
+                    .range(offset, offset + page_size - 1)
+                    .execute()
+                )
+
+                if not response.data:
+                    break
+
+                for row in response.data:
+                    doc_id = row.get("source_document_id")
+                    if doc_id:
+                        all_doc_ids.add(str(doc_id))
+
+                if len(response.data) < page_size:
+                    break
+
+                offset += page_size
+                logger.info(f"Fetched {len(all_doc_ids)} source documents so far...")
+
+            return all_doc_ids
+        except Exception as e:
+            logger.error(f"Failed to fetch all source documents: {e}")
+            return set()
+
+    async def _store_yearly_validation(self, result: Dict[str, Any]) -> bool:
+        """Store yearly validation result."""
+        try:
+            year = result["year"]
+            payload = {
+                "validation_status": result["status"],
+                "match_key": f"source_house_yearly_{year}",
+                "field_mismatches": {
+                    "official_ptr_count": result["official_ptr_count"],
+                    "matched_count": result["matched_count"],
+                    "missing_count": result["missing_count"],
+                    "coverage_pct": result["coverage_pct"],
+                },
+                "root_cause": "source_coverage" if result["status"] != "match" else None,
+                "severity": "warning" if result["status"] == "warning" else (
+                    "critical" if result["status"] == "mismatch" else "info"
+                ),
+                "politician_name": None,
+                "ticker": None,
+                "transaction_date": f"{year}-01-01",
+                "transaction_type": "yearly_source_validation",
+                "chamber": "house",
+            }
+
+            self.supabase.table("trade_validation_results").upsert(
+                payload,
+                on_conflict="match_key",
+            ).execute()
+
+            return True
+        except Exception as e:
+            logger.error(f"Failed to store yearly validation: {e}")
+            return False
+
+
 # Convenience functions
 async def validate_house_source(year: int = 2025, store: bool = True) -> Dict[str, Any]:
     """Validate House data against official source."""
@@ -513,3 +695,9 @@ async def validate_records(year: int, month: Optional[int] = None, limit: int = 
     """Validate individual records against source."""
     service = SourceValidationService()
     return await service.validate_individual_records(year, month, limit)
+
+
+async def validate_all_historical(from_year: int = 2020, to_year: int = 2026, store: bool = True) -> Dict[str, Any]:
+    """Validate all historical data across years."""
+    service = SourceValidationService()
+    return await service.validate_all_years(from_year, to_year, store)

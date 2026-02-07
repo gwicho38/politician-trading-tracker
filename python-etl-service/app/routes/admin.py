@@ -465,6 +465,46 @@ async def api_validate_source_records(
         raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
 
 
+@router.get("/api/validate-source/all")
+async def api_validate_source_all(
+    request: Request,
+    key: str = Query(...),
+    from_year: int = Query(2020),
+    to_year: int = Query(2026),
+    store: bool = Query(True),
+):
+    """
+    Comprehensive historical validation against House Clerk source.
+
+    Fetches ALL source_document_ids from app database (no date filter),
+    then validates against each year's official House Clerk PTR index.
+
+    This provides the most accurate coverage calculation by comparing
+    document IDs directly without date-based filtering issues.
+
+    Returns yearly breakdown with overall coverage statistics.
+    """
+    if not validate_api_key(key, require_admin=True):
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    try:
+        from app.services.source_validation import SourceValidationService
+
+        service = SourceValidationService()
+        results = await service.validate_all_years(
+            from_year=from_year,
+            to_year=to_year,
+            store_results=store,
+        )
+
+        return results
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Comprehensive source validation failed")
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
+
+
 @router.post("/api/fix/{result_id}", response_class=HTMLResponse)
 async def api_apply_fix(
     request: Request,
