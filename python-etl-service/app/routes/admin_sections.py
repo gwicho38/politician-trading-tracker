@@ -105,12 +105,10 @@ async def admin_overview(
 
     # Validation results
     try:
-        resp = supabase.table("trade_validation_results").select("id,validation_status").execute()
-        results = resp.data or []
-        stats["total_validations"] = len(results)
-        stats["validation_mismatches"] = sum(
-            1 for r in results if r.get("validation_status") == "mismatch"
-        )
+        resp = supabase.table("trade_validation_results").select("id", count="exact").execute()
+        stats["total_validations"] = resp.count if resp.count is not None else 0
+        resp = supabase.table("trade_validation_results").select("id", count="exact").eq("validation_status", "mismatch").execute()
+        stats["validation_mismatches"] = resp.count if resp.count is not None else 0
     except Exception:
         stats["total_validations"] = 0
         stats["validation_mismatches"] = 0
@@ -154,33 +152,32 @@ async def admin_etl(
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not configured")
 
-    # Get recent disclosures stats
-    stats = {}
-    try:
-        # House disclosures count
-        resp = (
-            supabase.table("trading_disclosures")
-            .select("id,chamber,created_at", count="exact")
-            .execute()
-        )
-        all_disclosures = resp.data or []
-        stats["house_count"] = sum(
-            1 for d in all_disclosures if d.get("chamber", "").lower() == "house"
-        )
-        stats["senate_count"] = sum(
-            1 for d in all_disclosures if d.get("chamber", "").lower() == "senate"
-        )
-        stats["total_count"] = len(all_disclosures)
+    # Get recent disclosures stats using server-side counting
+    stats = {"house_count": 0, "senate_count": 0, "total_count": 0, "recent_24h": 0}
 
-        # Recent (last 24h)
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-        stats["recent_24h"] = sum(
-            1 for d in all_disclosures
-            if d.get("created_at", "") >= cutoff
-        )
+    # Total disclosures
+    try:
+        resp = supabase.table("trading_disclosures").select("id", count="exact").execute()
+        stats["total_count"] = resp.count if resp.count is not None else 0
     except Exception as e:
-        logger.error(f"Failed to get ETL stats: {e}")
-        stats = {"house_count": 0, "senate_count": 0, "total_count": 0, "recent_24h": 0}
+        logger.error(f"Failed to get total disclosures count: {e}")
+
+    # Chamber breakdown from politicians table (chamber lives there, not on disclosures)
+    try:
+        resp = supabase.table("politicians").select("id", count="exact").eq("chamber", "house").execute()
+        stats["house_count"] = resp.count if resp.count is not None else 0
+        resp = supabase.table("politicians").select("id", count="exact").eq("chamber", "senate").execute()
+        stats["senate_count"] = resp.count if resp.count is not None else 0
+    except Exception as e:
+        logger.error(f"Failed to get chamber counts: {e}")
+
+    # Recent (last 24h)
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        resp = supabase.table("trading_disclosures").select("id", count="exact").gte("created_at", cutoff).execute()
+        stats["recent_24h"] = resp.count if resp.count is not None else 0
+    except Exception as e:
+        logger.error(f"Failed to get recent disclosures count: {e}")
 
     return templates.TemplateResponse(
         "admin/etl_jobs.html",
@@ -395,35 +392,41 @@ async def admin_quality(
 
     stats = {}
 
-    # Get freshness info
+    # Get freshness info using server-side counting
     try:
         cutoff_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         cutoff_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
 
-        resp = supabase.table("trading_disclosures").select("created_at,chamber").execute()
-        all_records = resp.data or []
+        # Total records
+        resp = supabase.table("trading_disclosures").select("id", count="exact").execute()
+        stats["total_records"] = resp.count if resp.count is not None else 0
 
-        stats["total_records"] = len(all_records)
-        stats["records_7d"] = sum(1 for r in all_records if r.get("created_at", "") >= cutoff_7d)
-        stats["records_24h"] = sum(1 for r in all_records if r.get("created_at", "") >= cutoff_24h)
+        # Records in last 7 days
+        resp = supabase.table("trading_disclosures").select("id", count="exact").gte("created_at", cutoff_7d).execute()
+        stats["records_7d"] = resp.count if resp.count is not None else 0
+
+        # Records in last 24h
+        resp = supabase.table("trading_disclosures").select("id", count="exact").gte("created_at", cutoff_24h).execute()
+        stats["records_24h"] = resp.count if resp.count is not None else 0
 
         # Find most recent record
-        if all_records:
-            dates = [r.get("created_at", "") for r in all_records if r.get("created_at")]
-            stats["newest_record"] = max(dates) if dates else "N/A"
+        resp = supabase.table("trading_disclosures").select("created_at").order("created_at", desc=True).limit(1).execute()
+        if resp.data:
+            stats["newest_record"] = resp.data[0].get("created_at", "N/A")
         else:
             stats["newest_record"] = "N/A"
     except Exception as e:
         logger.error(f"Failed to get quality stats: {e}")
         stats = {"total_records": 0, "records_7d": 0, "records_24h": 0, "newest_record": "N/A"}
 
-    # Validation results summary
+    # Validation results summary using server-side counting
     try:
-        resp = supabase.table("trade_validation_results").select("validation_status").execute()
-        validations = resp.data or []
-        stats["validation_total"] = len(validations)
-        stats["validation_match"] = sum(1 for v in validations if v.get("validation_status") == "match")
-        stats["validation_mismatch"] = sum(1 for v in validations if v.get("validation_status") == "mismatch")
+        resp = supabase.table("trade_validation_results").select("id", count="exact").execute()
+        stats["validation_total"] = resp.count if resp.count is not None else 0
+        resp = supabase.table("trade_validation_results").select("id", count="exact").eq("validation_status", "match").execute()
+        stats["validation_match"] = resp.count if resp.count is not None else 0
+        resp = supabase.table("trade_validation_results").select("id", count="exact").eq("validation_status", "mismatch").execute()
+        stats["validation_mismatch"] = resp.count if resp.count is not None else 0
     except Exception:
         stats["validation_total"] = 0
         stats["validation_match"] = 0
