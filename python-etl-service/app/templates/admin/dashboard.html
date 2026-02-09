@@ -27,6 +27,100 @@
     </div>
 </div>
 
+<!-- Source Document Backfill Section -->
+<details class="bg-white rounded-lg shadow mb-6">
+    <summary class="px-4 py-3 cursor-pointer hover:bg-gray-50 font-medium text-gray-700 flex items-center justify-between">
+        <span>Source Document ID Backfill</span>
+        <svg class="w-5 h-5 text-gray-500 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+        </svg>
+    </summary>
+    <div class="p-4 border-t">
+        <p class="text-sm text-gray-600 mb-4">
+            Match trading disclosures to official House Clerk filings by politician name and date.
+            Records without <code class="bg-gray-100 px-1 rounded">source_document_id</code> will be matched against the official index.
+        </p>
+
+        <div class="flex flex-wrap gap-4 items-end mb-4">
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">Year</label>
+                <select id="backfill-year" class="border rounded px-3 py-2 text-sm">
+                    <option value="">All Years (2020-2026)</option>
+                    <option value="2026">2026</option>
+                    <option value="2025" selected>2025</option>
+                    <option value="2024">2024</option>
+                    <option value="2023">2023</option>
+                    <option value="2022">2022</option>
+                    <option value="2021">2021</option>
+                    <option value="2020">2020</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">Match Threshold</label>
+                <select id="backfill-threshold" class="border rounded px-3 py-2 text-sm">
+                    <option value="0.9">Strict (90%)</option>
+                    <option value="0.8" selected>Normal (80%)</option>
+                    <option value="0.7">Relaxed (70%)</option>
+                </select>
+            </div>
+
+            <button type="button" id="backfill-dry-run-btn"
+                    hx-get="/admin/api/backfill-source-ids"
+                    hx-target="#backfill-results"
+                    hx-indicator="#backfill-loading"
+                    class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm">
+                Preview Matches (Dry Run)
+            </button>
+
+            <button type="button" id="backfill-execute-btn"
+                    hx-get="/admin/api/backfill-source-ids"
+                    hx-target="#backfill-results"
+                    hx-indicator="#backfill-loading"
+                    hx-confirm="This will update database records. Are you sure?"
+                    class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm">
+                Execute Backfill
+            </button>
+
+            <div id="backfill-loading" class="htmx-indicator">
+                <svg class="animate-spin h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+        </div>
+
+        <!-- Results display -->
+        <div id="backfill-results" class="text-sm"></div>
+    </div>
+</details>
+
+<script>
+// Update HTMX request URLs with form values
+document.addEventListener('DOMContentLoaded', function() {
+    const apiKey = '{{ api_key }}';
+
+    function updateBackfillUrl(isDryRun) {
+        const year = document.getElementById('backfill-year').value;
+        const threshold = document.getElementById('backfill-threshold').value;
+
+        let url = `/admin/api/backfill-source-ids?key=${apiKey}&dry_run=${isDryRun}&threshold=${threshold}`;
+        if (year) {
+            url += `&year=${year}`;
+        }
+        return url;
+    }
+
+    document.getElementById('backfill-dry-run-btn').addEventListener('htmx:configRequest', function(evt) {
+        evt.detail.path = updateBackfillUrl(true);
+    });
+
+    document.getElementById('backfill-execute-btn').addEventListener('htmx:configRequest', function(evt) {
+        evt.detail.path = updateBackfillUrl(false);
+    });
+});
+</script>
+
 <!-- Filters and Actions -->
 <div class="bg-white rounded-lg shadow p-4 mb-6">
     <form hx-get="/admin/api/results" hx-target="#results-table" hx-indicator=".htmx-indicator"

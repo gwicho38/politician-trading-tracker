@@ -1,0 +1,85 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Overview{% endblock %}
+
+{% block content %}
+<h2 class="text-2xl font-bold text-gray-800 mb-6">System Overview</h2>
+
+<!-- Core Stats -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl font-bold text-indigo-600">{{ stats.total_disclosures | default(0) | int }}</div>
+        <div class="text-sm text-gray-500">Total Disclosures</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl font-bold text-green-600">{{ stats.disclosures_24h | default(0) | int }}</div>
+        <div class="text-sm text-gray-500">New (24h)</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl font-bold text-gray-800">{{ stats.total_politicians | default(0) | int }}</div>
+        <div class="text-sm text-gray-500">Politicians</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl font-bold text-purple-600">{{ stats.active_models | default(0) | int }}</div>
+        <div class="text-sm text-gray-500">Active ML Models</div>
+    </div>
+</div>
+
+<!-- Subsystem Health Cards -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <!-- Validation -->
+    <a href="/admin?key={{ api_key }}" class="bg-white rounded-lg shadow p-5 hover:shadow-md transition-shadow">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold text-gray-700">Validation</h3>
+            {% if stats.validation_mismatches > 0 %}
+            <span class="bg-yellow-100 text-yellow-700 text-xs px-2 py-1 rounded-full">{{ stats.validation_mismatches }} mismatches</span>
+            {% else %}
+            <span class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">Clean</span>
+            {% endif %}
+        </div>
+        <div class="text-2xl font-bold text-gray-800">{{ stats.total_validations | default(0) }}</div>
+        <div class="text-xs text-gray-500">Validation results</div>
+    </a>
+
+    <!-- ML Models -->
+    <a href="/admin/ml?key={{ api_key }}" class="bg-white rounded-lg shadow p-5 hover:shadow-md transition-shadow">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold text-gray-700">ML Models</h3>
+            {% if stats.running_jobs > 0 %}
+            <span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full">{{ stats.running_jobs }} training</span>
+            {% else %}
+            <span class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">{{ stats.total_models }} models</span>
+            {% endif %}
+        </div>
+        <div class="text-2xl font-bold text-gray-800">{{ stats.active_models | default(0) }} active</div>
+        <div class="text-xs text-gray-500">of {{ stats.total_models | default(0) }} total models</div>
+    </a>
+
+    <!-- Error Reports -->
+    <a href="/admin/errors?key={{ api_key }}" class="bg-white rounded-lg shadow p-5 hover:shadow-md transition-shadow">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold text-gray-700">Error Reports</h3>
+            {% if stats.pending_error_reports > 0 %}
+            <span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full">{{ stats.pending_error_reports }} pending</span>
+            {% else %}
+            <span class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">All clear</span>
+            {% endif %}
+        </div>
+        <div class="text-2xl font-bold text-gray-800">{{ stats.total_error_reports | default(0) }}</div>
+        <div class="text-xs text-gray-500">Total reports</div>
+    </a>
+</div>
+
+<!-- Quick Actions -->
+<div class="bg-white rounded-lg shadow p-5">
+    <h3 class="font-semibold text-gray-700 mb-4">Quick Actions</h3>
+    <div class="flex flex-wrap gap-3">
+        <a href="/admin/etl?key={{ api_key }}" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 text-sm">Run ETL</a>
+        <a href="/admin/ml?key={{ api_key }}" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 text-sm">Train Model</a>
+        <a href="/admin/quality?key={{ api_key }}" class="bg-teal-600 text-white px-4 py-2 rounded hover:bg-teal-700 text-sm">Quality Check</a>
+        <a href="/admin/enrichment?key={{ api_key }}" class="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700 text-sm">Enrich Data</a>
+        <a href="/admin?key={{ api_key }}" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm">Run Audit</a>
+        <a href="/admin/errors?key={{ api_key }}" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 text-sm">Process Errors</a>
+    </div>
+</div>
+{% endblock %}

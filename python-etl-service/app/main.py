@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 
 from app.routes import health, etl, enrichment, ml, quality, error_reports, dedup, signals, admin
+from app.routes import admin_sections
 from app.lib.logging_config import configure_logging, get_logger
 from app.middleware.correlation import CorrelationMiddleware
 from app.middleware.auth import AuthMiddleware
@@ -134,20 +135,30 @@ for s in signals:
     {
         "name": "admin",
         "description": """
-Admin dashboard for QuiverQuant validation management.
+Admin dashboard for GovMarket.trade platform management.
 
-**Features:**
-- View validation results with filtering
-- Side-by-side comparison of app vs QuiverQuant data
-- Apply fixes (accept QQ values, update fields, mark resolved)
-- Audit trail for all changes
+**Sections:**
+- **Overview** - System health summary
+- **Validation** - QuiverQuant data validation management
+- **ETL Jobs** - Trigger and monitor House/Senate ETL pipelines
+- **ML Models** - View, train, and activate ML models
+- **Data Quality** - Ticker validation, source audit, freshness
+- **Enrichment** - Party, name, and BioGuide enrichment
+- **Error Reports** - User-submitted error report processing
+- **Audit Log** - Unified event timeline
 
 **Access:**
 Requires admin API key via `?key=YOUR_ADMIN_KEY` query parameter.
 
 **URLs:**
-- `GET /admin` - Dashboard
-- `GET /admin/detail/{id}` - Single result detail view
+- `GET /admin/overview` - System overview
+- `GET /admin` - Validation dashboard
+- `GET /admin/etl` - ETL management
+- `GET /admin/ml` - ML model management
+- `GET /admin/quality` - Data quality
+- `GET /admin/enrichment` - Enrichment management
+- `GET /admin/errors` - Error reports
+- `GET /admin/audit-log` - Audit log
 """,
     },
 ]
@@ -259,6 +270,7 @@ app.include_router(error_reports.router, prefix="/error-reports", tags=["error-r
 app.include_router(dedup.router, tags=["deduplication"])
 app.include_router(signals.router, prefix="/signals", tags=["signals"])
 app.include_router(admin.router, prefix="/admin", tags=["admin"])
+app.include_router(admin_sections.router, prefix="/admin", tags=["admin"])
 
 
 @app.get("/")
@@ -291,7 +303,14 @@ async def root():
             "signals_apply_lambda": "POST /signals/apply-lambda",
             "signals_validate_lambda": "POST /signals/validate-lambda",
             "signals_lambda_help": "GET /signals/lambda-help",
-            "admin_dashboard": "GET /admin?key=YOUR_ADMIN_KEY",
+            "admin_overview": "GET /admin/overview?key=YOUR_ADMIN_KEY",
+            "admin_validation": "GET /admin?key=YOUR_ADMIN_KEY",
             "admin_detail": "GET /admin/detail/{id}?key=YOUR_ADMIN_KEY",
+            "admin_etl": "GET /admin/etl?key=YOUR_ADMIN_KEY",
+            "admin_ml": "GET /admin/ml?key=YOUR_ADMIN_KEY",
+            "admin_quality": "GET /admin/quality?key=YOUR_ADMIN_KEY",
+            "admin_enrichment": "GET /admin/enrichment?key=YOUR_ADMIN_KEY",
+            "admin_errors": "GET /admin/errors?key=YOUR_ADMIN_KEY",
+            "admin_audit_log": "GET /admin/audit-log?key=YOUR_ADMIN_KEY",
         },
     }
