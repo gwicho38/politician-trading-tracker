@@ -28,14 +28,57 @@
 <!-- Train New Model -->
 <div class="bg-white rounded-lg shadow p-5 mb-6 border-l-4 border-indigo-500">
     <h3 class="font-semibold text-gray-700 mb-3">Train New Model</h3>
-    <div class="flex items-end gap-4">
+    <!-- Row 1: Core parameters -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <div>
             <label class="block text-sm text-gray-600 mb-1">Model Type</label>
-            <select id="model-type" class="border rounded px-3 py-2 text-sm">
+            <select id="model-type" class="border rounded px-3 py-2 text-sm w-full">
                 <option value="xgboost">XGBoost</option>
                 <option value="lightgbm">LightGBM</option>
             </select>
         </div>
+        <div>
+            <label class="block text-sm text-gray-600 mb-1">Lookback Days</label>
+            <select id="lookback-days" class="border rounded px-3 py-2 text-sm w-full">
+                <option value="180">180</option>
+                <option value="365" selected>365</option>
+                <option value="730">730</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm text-gray-600 mb-1">Prediction Window</label>
+            <select id="prediction-window" class="border rounded px-3 py-2 text-sm w-full">
+                <option value="7" selected>7 days</option>
+                <option value="14">14 days</option>
+                <option value="30">30 days</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm text-gray-600 mb-1">Classes</label>
+            <select id="num-classes" class="border rounded px-3 py-2 text-sm w-full">
+                <option value="5" selected>5 (strong_buy to strong_sell)</option>
+                <option value="3">3 (buy / hold / sell)</option>
+            </select>
+        </div>
+    </div>
+    <!-- Row 2: Feature toggles -->
+    <div class="flex flex-wrap items-center gap-4 mb-4">
+        <span class="text-sm text-gray-600 font-medium">Features:</span>
+        <label class="inline-flex items-center gap-1.5 text-sm">
+            <input type="checkbox" id="enable-sector" checked class="rounded border-gray-300">
+            <span>Sector</span>
+        </label>
+        <label class="inline-flex items-center gap-1.5 text-sm">
+            <input type="checkbox" id="enable-market-regime" checked class="rounded border-gray-300">
+            <span>Market Regime (VIX/SPY)</span>
+        </label>
+        <label class="inline-flex items-center gap-1.5 text-sm">
+            <input type="checkbox" id="enable-sentiment" class="rounded border-gray-300">
+            <span>Sentiment (slow)</span>
+        </label>
+    </div>
+    <!-- Action -->
+    <div class="flex items-center gap-4">
         <button type="button" id="train-btn"
                 hx-post="/admin/api/trigger-training"
                 hx-target="#train-result"
@@ -104,7 +147,11 @@
                     {{ model.training_completed_at[:10] if model.training_completed_at else '-' }}
                 </td>
                 <td class="px-4 py-3">
-                    <div id="model-action-{{ model.id[:8] }}">
+                    <div id="model-action-{{ model.id[:8] }}" class="flex items-center gap-1 flex-wrap">
+                    <a href="/admin/ml/{{ model.id }}?key={{ api_key }}"
+                       class="text-indigo-600 hover:text-indigo-800 text-xs border border-indigo-300 px-2 py-1 rounded">
+                        View
+                    </a>
                     {% if model.status not in ('active', 'training') %}
                     <button type="button"
                             hx-post="/admin/api/activate-model"
@@ -114,8 +161,16 @@
                             class="text-green-600 hover:text-green-800 text-xs border border-green-300 px-2 py-1 rounded">
                         Activate
                     </button>
+                    <button type="button"
+                            hx-post="/admin/api/delete-model"
+                            hx-target="#model-action-{{ model.id[:8] }}"
+                            hx-vals='{"key": "{{ api_key }}", "model_id": "{{ model.id }}"}'
+                            hx-confirm="Permanently delete this model? This cannot be undone."
+                            class="text-red-600 hover:text-red-800 text-xs border border-red-300 px-2 py-1 rounded">
+                        Delete
+                    </button>
                     {% elif model.status == 'active' %}
-                    <span class="text-green-600 text-xs">Current</span>
+                    <span class="text-green-600 text-xs font-medium">Active</span>
                     {% endif %}
                     </div>
                 </td>
@@ -186,6 +241,12 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('train-btn').addEventListener('htmx:configRequest', function(evt) {
         evt.detail.parameters['key'] = apiKey;
         evt.detail.parameters['model_type'] = document.getElementById('model-type').value;
+        evt.detail.parameters['lookback_days'] = document.getElementById('lookback-days').value;
+        evt.detail.parameters['prediction_window'] = document.getElementById('prediction-window').value;
+        evt.detail.parameters['num_classes'] = document.getElementById('num-classes').value;
+        evt.detail.parameters['enable_sector'] = document.getElementById('enable-sector').checked ? 'on' : 'off';
+        evt.detail.parameters['enable_market_regime'] = document.getElementById('enable-market-regime').checked ? 'on' : 'off';
+        evt.detail.parameters['enable_sentiment'] = document.getElementById('enable-sentiment').checked ? 'on' : 'off';
     });
 });
 </script>

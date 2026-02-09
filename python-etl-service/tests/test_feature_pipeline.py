@@ -24,6 +24,7 @@ from app.services.feature_pipeline import (
     LABEL_THRESHOLDS,
     _training_jobs,
 )
+from app.models.training_config import TrainingConfig, FeatureToggles
 
 
 class TestGenerateLabel:
@@ -77,6 +78,34 @@ class TestGenerateLabel:
         assert generate_label(LABEL_THRESHOLDS['buy'] + 0.001) == 1
         assert generate_label(LABEL_THRESHOLDS['sell'] - 0.001) == -1
         assert generate_label(LABEL_THRESHOLDS['strong_sell'] - 0.001) == -2
+
+    def test_3class_buy_label(self):
+        """Test 3-class mode returns 1 (buy) for positive return above threshold."""
+        assert generate_label(0.03, num_classes=3) == 1
+
+    def test_3class_sell_label(self):
+        """Test 3-class mode returns -1 (sell) for negative return below threshold."""
+        assert generate_label(-0.03, num_classes=3) == -1
+
+    def test_3class_hold_label(self):
+        """Test 3-class mode returns 0 (hold) for return within thresholds."""
+        assert generate_label(0.01, num_classes=3) == 0
+
+    def test_3class_strong_returns_still_buy_sell(self):
+        """Test 3-class mode maps strong returns to buy/sell (no strong_buy/strong_sell)."""
+        assert generate_label(0.10, num_classes=3) == 1
+        assert generate_label(-0.10, num_classes=3) == -1
+
+    def test_custom_thresholds(self):
+        """Test generate_label with custom thresholds."""
+        custom = {
+            "strong_buy": 0.10,
+            "buy": 0.01,
+            "sell": -0.01,
+            "strong_sell": -0.10,
+        }
+        # 0.03 > 0.01 (buy) but not > 0.10 (strong_buy) => buy (1)
+        assert generate_label(0.03, thresholds=custom) == 1
 
 
 class TestFeaturePipelineInit:
@@ -164,7 +193,11 @@ class TestFeaturePipelineExtractFeatures:
         assert features['bipartisan'] == 0.0
 
     def test_extract_features_has_all_required_keys(self, pipeline):
-        """Test extracted features contain all expected keys."""
+        """Test extracted features contain all expected keys with default config.
+
+        Default TrainingConfig has enable_sector=True and enable_market_regime=True,
+        but enable_sentiment=False, so sentiment_score should NOT be present.
+        """
         aggregation = {}
 
         features = pipeline._extract_features(aggregation)
@@ -172,11 +205,14 @@ class TestFeaturePipelineExtractFeatures:
         expected_keys = [
             'politician_count', 'buy_sell_ratio', 'recent_activity_30d',
             'bipartisan', 'net_volume', 'volume_magnitude', 'party_alignment',
-            'committee_relevance', 'disclosure_delay', 'sentiment_score',
-            'market_momentum', 'sector_performance',
+            'disclosure_delay', 'market_momentum',
+            'committee_relevance', 'sector_performance',
+            'vix_level', 'market_return_20d', 'market_breadth',
         ]
         for key in expected_keys:
             assert key in features, f"Missing key: {key}"
+        # sentiment_score should NOT be present with default config
+        assert 'sentiment_score' not in features
 
 
 class TestFeaturePipelineAggregateByWeek:
@@ -223,6 +259,10 @@ class TestFeaturePipelineAggregateByWeek:
         assert agg['buy_count'] == 2
         assert agg['sell_count'] == 0
         assert agg['bipartisan'] is True  # Both D and R
+        # party_alignment: 1 D + 1 R = 50/50 split, max(1,1)/2 = 0.5
+        assert agg['party_alignment'] == 0.5
+        # committee_relevance should be present in the aggregation
+        assert 'committee_relevance' in agg
 
     def test_aggregate_by_week_filters_by_min_politicians(self, pipeline):
         """Test filtering by minimum politicians."""
@@ -721,6 +761,48 @@ class TestJobManagement:
             mock_run.assert_called_once()
 
 
+class TestCreateTrainingJobWithConfig:
+    """Tests for create_training_job with TrainingConfig parameter."""
+
+    def setup_method(self):
+        """Clear job registry before each test."""
+        _training_jobs.clear()
+
+    def test_create_with_config(self):
+        """Test creating a training job with an explicit TrainingConfig."""
+        config = TrainingConfig(
+            lookback_days=180,
+            model_type="lightgbm",
+            num_classes=3,
+            prediction_window_days=14,
+            features=FeatureToggles(enable_sentiment=True, enable_sector=False),
+        )
+
+        job = create_training_job(config=config)
+
+        assert job.config is config
+        assert job.config.lookback_days == 180
+        assert job.config.model_type == "lightgbm"
+        assert job.config.num_classes == 3
+        assert job.config.prediction_window_days == 14
+        assert job.config.features.enable_sentiment is True
+        assert job.config.features.enable_sector is False
+
+    def test_create_without_config_uses_defaults(self):
+        """Test creating a training job without config creates default TrainingConfig."""
+        job = create_training_job()
+
+        assert job.config is not None
+        assert isinstance(job.config, TrainingConfig)
+        assert job.config.lookback_days == 365
+        assert job.config.model_type == "xgboost"
+        assert job.config.num_classes == 5
+        assert job.config.prediction_window_days == 7
+        assert job.config.features.enable_sentiment is False
+        assert job.config.features.enable_sector is True
+        assert job.config.features.enable_market_regime is True
+
+
 class TestFeaturePipelineAddStockReturns:
     """Tests for FeaturePipeline._add_stock_returns method."""
 
@@ -943,6 +1025,18 @@ class TestAddStockReturnsWithYfinance:
             # This doesn't work because the import is inside the function
             # Let's test a different way
 
+    def _build_multi_ticker_mock(self, tickers, dates, base_price=150.0, increment=0.5):
+        """Helper to build a multi-index DataFrame mimicking yfinance multi-ticker download."""
+        data = {}
+        for ticker in tickers:
+            data[ticker] = pd.DataFrame({
+                'Close': pd.Series(
+                    [base_price + i * increment for i in range(len(dates))],
+                    index=dates,
+                ),
+            })
+        return pd.concat(data, axis=1)
+
     @pytest.mark.asyncio
     async def test_add_stock_returns_success(self, pipeline):
         """Test successful stock returns fetching with yfinance (lines 278-360)."""
@@ -953,17 +1047,20 @@ class TestAddStockReturnsWithYfinance:
             },
         ]
 
-        # Create mock price data
         dates = pd.date_range('2024-12-15', '2025-02-15', freq='D')
-        mock_prices = pd.Series(
-            [150.0 + i * 0.5 for i in range(len(dates))],  # Increasing prices
-            index=dates
-        )
 
         with patch("yfinance.download") as mock_download:
-            # Mock the download to return price data
-            mock_df = pd.DataFrame({'Close': mock_prices})
-            mock_download.return_value = mock_df
+            def mock_download_fn(tickers, **kwargs):
+                if len(tickers) == 1:
+                    return pd.DataFrame({
+                        'Close': pd.Series(
+                            [150.0 + i * 0.5 for i in range(len(dates))],
+                            index=dates,
+                        )
+                    })
+                return self._build_multi_ticker_mock(tickers, dates)
+
+            mock_download.side_effect = mock_download_fn
 
             result = await pipeline._add_stock_returns(aggregations)
 
@@ -1081,10 +1178,19 @@ class TestAddStockReturnsWithYfinance:
 
         # Price data covers 7 days but not 30 days
         dates = pd.date_range('2025-01-06', '2025-01-20', freq='D')  # 15 days
-        mock_prices = pd.Series([150.0 + i for i in range(len(dates))], index=dates)
 
         with patch("yfinance.download") as mock_download:
-            mock_download.return_value = pd.DataFrame({'Close': mock_prices})
+            def mock_download_fn(tickers, **kwargs):
+                if len(tickers) == 1:
+                    return pd.DataFrame({
+                        'Close': pd.Series(
+                            [150.0 + i for i in range(len(dates))],
+                            index=dates,
+                        )
+                    })
+                return self._build_multi_ticker_mock(tickers, dates, base_price=150.0, increment=1.0)
+
+            mock_download.side_effect = mock_download_fn
 
             result = await pipeline._add_stock_returns(aggregations)
 
@@ -1102,14 +1208,19 @@ class TestAddStockReturnsWithYfinance:
 
         # Price data with clear momentum
         dates = pd.date_range('2024-12-15', '2025-02-28', freq='D')
-        # Prices go from 100 to 150 over the period
-        mock_prices = pd.Series(
-            [100.0 + (i / len(dates)) * 50 for i in range(len(dates))],
-            index=dates
-        )
 
         with patch("yfinance.download") as mock_download:
-            mock_download.return_value = pd.DataFrame({'Close': mock_prices})
+            def mock_download_fn(tickers, **kwargs):
+                if len(tickers) == 1:
+                    return pd.DataFrame({
+                        'Close': pd.Series(
+                            [100.0 + (i / len(dates)) * 50 for i in range(len(dates))],
+                            index=dates,
+                        )
+                    })
+                return self._build_multi_ticker_mock(tickers, dates, base_price=100.0, increment=0.5)
+
+            mock_download.side_effect = mock_download_fn
 
             result = await pipeline._add_stock_returns(aggregations)
 
@@ -1160,17 +1271,32 @@ class TestAddStockReturnsWithYfinance:
         dates = pd.date_range('2025-01-06', '2025-02-15', freq='D')
         # First price is 0, subsequent prices are positive
         prices = [0.0] + [150.0] * (len(dates) - 1)
-        mock_prices = pd.Series(prices, index=dates)
 
         with patch("yfinance.download") as mock_download:
-            mock_download.return_value = pd.DataFrame({'Close': mock_prices})
+            def mock_download_fn(tickers, **kwargs):
+                if len(tickers) == 1:
+                    return pd.DataFrame({
+                        'Close': pd.Series(prices, index=dates)
+                    })
+                # For multi-ticker batches, build proper multi-index DataFrame
+                data = {}
+                for ticker in tickers:
+                    if ticker == 'AAPL':
+                        data[ticker] = pd.DataFrame({
+                            'Close': pd.Series(prices, index=dates)
+                        })
+                    else:
+                        data[ticker] = pd.DataFrame({
+                            'Close': pd.Series([150.0] * len(dates), index=dates)
+                        })
+                return pd.concat(data, axis=1)
+
+            mock_download.side_effect = mock_download_fn
 
             result = await pipeline._add_stock_returns(aggregations)
 
             # Zero start price should be guarded against and returns set to None
             assert len(result) == 1
-            # With zero start price, the guard sets forward returns to None
-            # and market_momentum to 0 without triggering division by zero
             assert result[0]['forward_return_7d'] is None
             assert result[0]['forward_return_30d'] is None
             assert result[0]['market_momentum'] == 0
