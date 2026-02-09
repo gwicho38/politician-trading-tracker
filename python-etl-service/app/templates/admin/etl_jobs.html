@@ -1,0 +1,112 @@
+{% extends "admin/base.html" %}
+
+{% block title %}ETL Jobs{% endblock %}
+
+{% block content %}
+<h2 class="text-2xl font-bold text-gray-800 mb-6">ETL Pipeline Management</h2>
+
+<!-- Stats -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl font-bold text-gray-800">{{ stats.total_count | default(0) | int }}</div>
+        <div class="text-sm text-gray-500">Total Disclosures</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl font-bold text-blue-600">{{ stats.house_count | default(0) | int }}</div>
+        <div class="text-sm text-gray-500">House</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl font-bold text-indigo-600">{{ stats.senate_count | default(0) | int }}</div>
+        <div class="text-sm text-gray-500">Senate</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl font-bold text-green-600">{{ stats.recent_24h | default(0) | int }}</div>
+        <div class="text-sm text-gray-500">New (24h)</div>
+    </div>
+</div>
+
+<!-- Trigger ETL -->
+<div class="bg-white rounded-lg shadow p-5 mb-6">
+    <h3 class="font-semibold text-gray-700 mb-4">Trigger ETL Job</h3>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- House ETL -->
+        <div class="border rounded-lg p-4">
+            <h4 class="font-medium text-gray-700 mb-3">House Disclosures</h4>
+            <p class="text-sm text-gray-500 mb-3">Extract financial disclosures from the House Clerk PDF filings.</p>
+            <div class="flex items-end gap-3">
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">Year</label>
+                    <select id="house-year" class="border rounded px-3 py-2 text-sm">
+                        <option value="2026">2026</option>
+                        <option value="2025" selected>2025</option>
+                        <option value="2024">2024</option>
+                        <option value="2023">2023</option>
+                    </select>
+                </div>
+                <button type="button" id="house-etl-btn"
+                        hx-post="/admin/api/trigger-etl"
+                        hx-target="#etl-result"
+                        hx-indicator="#etl-loading"
+                        hx-confirm="Start House ETL job? This may take several minutes."
+                        class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm">
+                    Run House ETL
+                </button>
+            </div>
+        </div>
+
+        <!-- Senate ETL -->
+        <div class="border rounded-lg p-4">
+            <h4 class="font-medium text-gray-700 mb-3">Senate Disclosures</h4>
+            <p class="text-sm text-gray-500 mb-3">Extract electronic filings from the Senate EFD search system.</p>
+            <button type="button" id="senate-etl-btn"
+                    hx-post="/admin/api/trigger-etl"
+                    hx-target="#etl-result"
+                    hx-indicator="#etl-loading"
+                    hx-confirm="Start Senate ETL job? This may take several minutes."
+                    class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 text-sm">
+                Run Senate ETL
+            </button>
+        </div>
+    </div>
+
+    <div class="mt-4 flex items-center gap-3">
+        <div id="etl-loading" class="htmx-indicator">
+            <svg class="animate-spin h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+        </div>
+        <div id="etl-result"></div>
+    </div>
+</div>
+
+<!-- API Endpoints Reference -->
+<div class="bg-white rounded-lg shadow p-5">
+    <h3 class="font-semibold text-gray-700 mb-3">ETL API Endpoints</h3>
+    <div class="text-sm text-gray-600 space-y-2">
+        <div class="flex gap-2"><code class="bg-gray-100 px-2 py-0.5 rounded text-xs">POST</code> <code>/etl/trigger</code> - Trigger ETL pipeline</div>
+        <div class="flex gap-2"><code class="bg-gray-100 px-2 py-0.5 rounded text-xs">GET</code> <code>/etl/status/{job_id}</code> - Check job status</div>
+        <div class="flex gap-2"><code class="bg-gray-100 px-2 py-0.5 rounded text-xs">GET</code> <code>/etl/jobs</code> - List recent jobs</div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const apiKey = '{{ api_key }}';
+
+    document.getElementById('house-etl-btn').addEventListener('htmx:configRequest', function(evt) {
+        const year = document.getElementById('house-year').value;
+        evt.detail.parameters['key'] = apiKey;
+        evt.detail.parameters['source'] = 'house';
+        evt.detail.parameters['year'] = year;
+    });
+
+    document.getElementById('senate-etl-btn').addEventListener('htmx:configRequest', function(evt) {
+        evt.detail.parameters['key'] = apiKey;
+        evt.detail.parameters['source'] = 'senate';
+        evt.detail.parameters['year'] = '2025';
+    });
+});
+</script>
+{% endblock %}

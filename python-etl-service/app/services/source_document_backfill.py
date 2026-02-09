@@ -314,10 +314,10 @@ class SourceDocumentBackfillService:
             start_date = f"{year}-01-01"
             end_date = f"{year}-12-31"
 
-            # Fetch records with politician join to get names
+            # Fetch records without source_document_id
             response = (
                 self.supabase.table("trading_disclosures")
-                .select("id, politician_id, disclosure_date, transaction_date, transaction_type, politicians(name)")
+                .select("id, politician_id, disclosure_date, transaction_date, transaction_type")
                 .eq("status", "active")
                 .is_("source_document_id", "null")
                 .gte("disclosure_date", start_date)
@@ -326,15 +326,34 @@ class SourceDocumentBackfillService:
                 .execute()
             )
 
-            # Flatten the politician name from the join
-            records = []
-            for row in (response.data or []):
-                politician_data = row.get("politicians")
-                if politician_data:
-                    row["politician_name"] = politician_data.get("name")
-                else:
-                    row["politician_name"] = None
-                records.append(row)
+            records = response.data or []
+            if not records:
+                return []
+
+            # Batch fetch politician names - the PostgREST join wasn't working
+            # so we fetch politician names separately in a batch
+            politician_ids = list(set(r["politician_id"] for r in records if r.get("politician_id")))
+
+            politician_names = {}
+            if politician_ids:
+                # Fetch in batches of 100 to avoid URL length limits
+                for i in range(0, len(politician_ids), 100):
+                    batch_ids = politician_ids[i:i+100]
+                    pol_response = (
+                        self.supabase.table("politicians")
+                        .select("id, name")
+                        .in_("id", batch_ids)
+                        .execute()
+                    )
+                    for pol in (pol_response.data or []):
+                        politician_names[pol["id"]] = pol["name"]
+
+                logger.info(f"Fetched names for {len(politician_names)}/{len(politician_ids)} politicians")
+
+            # Attach politician names to records
+            for record in records:
+                pol_id = record.get("politician_id")
+                record["politician_name"] = politician_names.get(pol_id) if pol_id else None
 
             return records
         except Exception as e:

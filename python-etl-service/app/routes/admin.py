@@ -99,6 +99,7 @@ async def admin_dashboard(
             "results": results,
             "filters": {"resolved": "false"},
             "page": 1,
+            "active_section": "validation",
         },
     )
 
@@ -148,6 +149,7 @@ async def admin_detail(
             "result": result,
             "comparison_fields": comparison_fields,
             "fix_history": fix_history,
+            "active_section": "validation",
         },
     )
 
@@ -572,6 +574,12 @@ async def api_backfill_source_ids(
         Backfill results with match statistics and sample matches
     """
     if not validate_api_key(key, require_admin=True):
+        # Check if HTMX request
+        if request.headers.get("HX-Request"):
+            return HTMLResponse(
+                '<div class="text-red-600 p-2">Invalid API key</div>',
+                status_code=401,
+            )
         raise HTTPException(status_code=401, detail="Invalid API key")
 
     try:
@@ -593,11 +601,25 @@ async def api_backfill_source_ids(
                 similarity_threshold=threshold,
             )
 
+        # Check if HTMX request - return formatted HTML
+        if request.headers.get("HX-Request"):
+            return HTMLResponse(format_backfill_results_html(results, dry_run))
+
         return results
     except ValueError as e:
+        if request.headers.get("HX-Request"):
+            return HTMLResponse(
+                f'<div class="text-red-600 p-2">Error: {str(e)}</div>',
+                status_code=400,
+            )
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception("Backfill failed")
+        if request.headers.get("HX-Request"):
+            return HTMLResponse(
+                f'<div class="text-red-600 p-2">Backfill failed: {str(e)}</div>',
+                status_code=500,
+            )
         raise HTTPException(status_code=500, detail=f"Backfill failed: {str(e)}")
 
 
@@ -712,6 +734,127 @@ async def api_apply_fix(
 # ============================================================================
 # Helper Functions
 # ============================================================================
+
+
+def format_backfill_results_html(results: dict, dry_run: bool) -> str:
+    """Format backfill results as HTML for HTMX display."""
+    # Check if it's a single year or multi-year result
+    if "yearly_results" in results:
+        # Multi-year results
+        total_matched = results.get("total_matched", 0)
+        total_updated = results.get("total_updated", 0)
+        total_unmatched = results.get("total_unmatched", 0)
+
+        mode_label = "DRY RUN" if dry_run else "EXECUTED"
+        mode_class = "bg-blue-100 text-blue-800" if dry_run else "bg-green-100 text-green-800"
+
+        html = f'''
+        <div class="{mode_class} p-3 rounded mb-3">
+            <span class="font-bold">{mode_label}</span> - Years {results.get("from_year")}-{results.get("to_year")}
+        </div>
+        <div class="grid grid-cols-3 gap-4 mb-4">
+            <div class="bg-green-50 p-3 rounded text-center">
+                <div class="text-2xl font-bold text-green-700">{total_matched}</div>
+                <div class="text-sm text-green-600">Matched</div>
+            </div>
+            <div class="bg-blue-50 p-3 rounded text-center">
+                <div class="text-2xl font-bold text-blue-700">{total_updated}</div>
+                <div class="text-sm text-blue-600">Updated</div>
+            </div>
+            <div class="bg-yellow-50 p-3 rounded text-center">
+                <div class="text-2xl font-bold text-yellow-700">{total_unmatched}</div>
+                <div class="text-sm text-yellow-600">Unmatched</div>
+            </div>
+        </div>
+        '''
+
+        # Year-by-year breakdown
+        html += '<div class="border rounded overflow-hidden"><table class="w-full text-sm">'
+        html += '<thead class="bg-gray-50"><tr><th class="px-3 py-2 text-left">Year</th><th class="px-3 py-2 text-right">Official PTRs</th><th class="px-3 py-2 text-right">Missing IDs</th><th class="px-3 py-2 text-right">Matched</th><th class="px-3 py-2 text-right">Updated</th></tr></thead>'
+        html += '<tbody>'
+        for yr in results.get("yearly_results", []):
+            if "error" in yr:
+                html += f'<tr class="border-t"><td class="px-3 py-2">{yr.get("year", "?")}</td><td colspan="4" class="px-3 py-2 text-red-600">{yr.get("error")}</td></tr>'
+            else:
+                html += f'''<tr class="border-t">
+                    <td class="px-3 py-2">{yr.get("year", "?")}</td>
+                    <td class="px-3 py-2 text-right">{yr.get("official_ptrs", 0):,}</td>
+                    <td class="px-3 py-2 text-right">{yr.get("records_without_id", 0):,}</td>
+                    <td class="px-3 py-2 text-right text-green-600">{yr.get("matched", 0):,}</td>
+                    <td class="px-3 py-2 text-right text-blue-600">{yr.get("updated", 0):,}</td>
+                </tr>'''
+        html += '</tbody></table></div>'
+
+    else:
+        # Single year results
+        year = results.get("year", "?")
+        matched = results.get("matched", 0)
+        updated = results.get("updated", 0)
+        unmatched = results.get("unmatched", 0)
+        records_without_id = results.get("records_without_id", 0)
+        official_ptrs = results.get("official_ptrs", 0)
+
+        mode_label = "DRY RUN" if dry_run else "EXECUTED"
+        mode_class = "bg-blue-100 text-blue-800" if dry_run else "bg-green-100 text-green-800"
+
+        html = f'''
+        <div class="{mode_class} p-3 rounded mb-3">
+            <span class="font-bold">{mode_label}</span> - Year {year}
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div class="bg-gray-50 p-3 rounded text-center">
+                <div class="text-xl font-bold text-gray-700">{official_ptrs:,}</div>
+                <div class="text-xs text-gray-600">Official PTRs</div>
+            </div>
+            <div class="bg-yellow-50 p-3 rounded text-center">
+                <div class="text-xl font-bold text-yellow-700">{records_without_id:,}</div>
+                <div class="text-xs text-yellow-600">Missing IDs</div>
+            </div>
+            <div class="bg-green-50 p-3 rounded text-center">
+                <div class="text-xl font-bold text-green-700">{matched:,}</div>
+                <div class="text-xs text-green-600">Matched</div>
+            </div>
+            <div class="bg-blue-50 p-3 rounded text-center">
+                <div class="text-xl font-bold text-blue-700">{updated:,}</div>
+                <div class="text-xs text-blue-600">Updated</div>
+            </div>
+        </div>
+        '''
+
+        # Sample matches table
+        sample_matches = results.get("sample_matches", [])
+        if sample_matches:
+            html += '<div class="mb-4"><h4 class="font-medium text-gray-700 mb-2">Sample Matches</h4>'
+            html += '<div class="border rounded overflow-x-auto"><table class="w-full text-xs">'
+            html += '<thead class="bg-gray-50"><tr><th class="px-2 py-1 text-left">Politician</th><th class="px-2 py-1 text-left">Matched To</th><th class="px-2 py-1 text-left">Doc ID</th><th class="px-2 py-1 text-right">Score</th></tr></thead>'
+            html += '<tbody>'
+            for m in sample_matches[:10]:
+                score_pct = int(m.get("score", 0) * 100)
+                html += f'''<tr class="border-t">
+                    <td class="px-2 py-1">{m.get("politician_name", "?")[:25]}</td>
+                    <td class="px-2 py-1">{m.get("matched_name", "?")[:25]}</td>
+                    <td class="px-2 py-1 font-mono text-xs">{m.get("doc_id", "?")}</td>
+                    <td class="px-2 py-1 text-right text-green-600">{score_pct}%</td>
+                </tr>'''
+            html += '</tbody></table></div></div>'
+
+        # Sample unmatched
+        sample_unmatched = results.get("sample_unmatched", [])
+        if sample_unmatched:
+            html += '<div><h4 class="font-medium text-gray-700 mb-2">Sample Unmatched</h4>'
+            html += '<div class="border rounded overflow-x-auto"><table class="w-full text-xs">'
+            html += '<thead class="bg-gray-50"><tr><th class="px-2 py-1 text-left">Politician</th><th class="px-2 py-1 text-left">Reason</th><th class="px-2 py-1 text-right">Best Score</th></tr></thead>'
+            html += '<tbody>'
+            for u in sample_unmatched[:10]:
+                best_score = int(u.get("best_score", 0) * 100)
+                html += f'''<tr class="border-t">
+                    <td class="px-2 py-1">{u.get("politician_name", "N/A")[:30]}</td>
+                    <td class="px-2 py-1 text-yellow-600">{u.get("reason", "?")}</td>
+                    <td class="px-2 py-1 text-right">{best_score}%</td>
+                </tr>'''
+            html += '</tbody></table></div></div>'
+
+    return html
 
 
 async def get_validation_stats(supabase) -> dict:

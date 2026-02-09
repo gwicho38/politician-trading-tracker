@@ -3,30 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Admin{% endblock %} - QuiverQuant Validation</title>
+    <title>{% block title %}Admin{% endblock %} - GovMarket Admin</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <style>
         [hx-indicator] .htmx-indicator { display: none; }
         [hx-indicator].htmx-request .htmx-indicator { display: inline; }
         .htmx-request.htmx-indicator { display: inline; }
+        .nav-link { @apply block px-3 py-2 rounded text-sm transition-colors; }
+        .nav-link:hover { @apply bg-indigo-700; }
+        .nav-link.active { @apply bg-indigo-800 font-semibold; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
-    <nav class="bg-indigo-600 text-white p-4">
-        <div class="max-w-7xl mx-auto flex justify-between items-center">
-            <div class="flex items-center space-x-4">
-                <h1 class="text-xl font-bold">QuiverQuant Validation Admin</h1>
-                <a href="/admin?key={{ api_key }}" class="text-indigo-200 hover:text-white text-sm">Dashboard</a>
+    <nav class="bg-indigo-600 text-white">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex items-center justify-between h-14">
+                <div class="flex items-center space-x-6">
+                    <a href="/admin/overview?key={{ api_key }}" class="text-lg font-bold hover:text-indigo-200">GovMarket Admin</a>
+                    <div class="hidden md:flex items-center space-x-1">
+                        <a href="/admin/overview?key={{ api_key }}" class="nav-link {% if active_section == 'overview' %}active{% endif %}">Overview</a>
+                        <a href="/admin?key={{ api_key }}" class="nav-link {% if active_section == 'validation' %}active{% endif %}">Validation</a>
+                        <a href="/admin/etl?key={{ api_key }}" class="nav-link {% if active_section == 'etl' %}active{% endif %}">ETL Jobs</a>
+                        <a href="/admin/ml?key={{ api_key }}" class="nav-link {% if active_section == 'ml' %}active{% endif %}">ML Models</a>
+                        <a href="/admin/quality?key={{ api_key }}" class="nav-link {% if active_section == 'quality' %}active{% endif %}">Quality</a>
+                        <a href="/admin/enrichment?key={{ api_key }}" class="nav-link {% if active_section == 'enrichment' %}active{% endif %}">Enrichment</a>
+                        <a href="/admin/errors?key={{ api_key }}" class="nav-link {% if active_section == 'errors' %}active{% endif %}">Errors</a>
+                        <a href="/admin/audit-log?key={{ api_key }}" class="nav-link {% if active_section == 'audit' %}active{% endif %}">Audit Log</a>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <span class="htmx-indicator text-sm text-indigo-200">
+                        <svg class="animate-spin h-4 w-4 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Loading...
+                    </span>
+                    <a href="/docs" target="_blank" class="text-xs text-indigo-300 hover:text-white">API Docs</a>
+                </div>
             </div>
-            <div class="text-sm text-indigo-200">
-                <span class="htmx-indicator">
-                    <svg class="animate-spin h-4 w-4 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Loading...
-                </span>
+            <!-- Mobile nav -->
+            <div class="md:hidden pb-3 flex flex-wrap gap-1">
+                <a href="/admin/overview?key={{ api_key }}" class="nav-link {% if active_section == 'overview' %}active{% endif %}">Overview</a>
+                <a href="/admin?key={{ api_key }}" class="nav-link {% if active_section == 'validation' %}active{% endif %}">Validation</a>
+                <a href="/admin/etl?key={{ api_key }}" class="nav-link {% if active_section == 'etl' %}active{% endif %}">ETL</a>
+                <a href="/admin/ml?key={{ api_key }}" class="nav-link {% if active_section == 'ml' %}active{% endif %}">ML</a>
+                <a href="/admin/quality?key={{ api_key }}" class="nav-link {% if active_section == 'quality' %}active{% endif %}">Quality</a>
+                <a href="/admin/enrichment?key={{ api_key }}" class="nav-link {% if active_section == 'enrichment' %}active{% endif %}">Enrichment</a>
+                <a href="/admin/errors?key={{ api_key }}" class="nav-link {% if active_section == 'errors' %}active{% endif %}">Errors</a>
+                <a href="/admin/audit-log?key={{ api_key }}" class="nav-link {% if active_section == 'audit' %}active{% endif %}">Audit</a>
             </div>
         </div>
     </nav>
