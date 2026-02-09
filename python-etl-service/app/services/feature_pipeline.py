@@ -12,12 +12,13 @@ import asyncio
 import logging
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta, timezone
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 import numpy as np
 import pandas as pd
 import httpx
 from app.lib.database import get_supabase
+from app.models.training_config import TrainingConfig, DEFAULT_THRESHOLDS_5CLASS
 
 logger = logging.getLogger(__name__)
 
@@ -28,36 +29,58 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "https://ollama.lefv.info")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
 OLLAMA_API_KEY = os.environ.get("OLLAMA_API_KEY")
 
-# Label thresholds based on 7-day forward returns
+# Legacy label thresholds (kept for backward compat with tests importing this)
 LABEL_THRESHOLDS = {
-    'strong_buy': 0.05,    # > 5% return
-    'buy': 0.02,           # 2-5% return
-    'sell': -0.02,         # -2% to -5% return
-    'strong_sell': -0.05,  # < -5% return
+    'strong_buy': 0.05,
+    'buy': 0.02,
+    'sell': -0.02,
+    'strong_sell': -0.05,
 }
 
+# Market regime tickers added to yfinance batch download
+MARKET_TICKERS = ["^VIX", "SPY"]
 
-def generate_label(forward_return_7d: float) -> int:
-    """
-    Generate label based on 7-day forward stock return.
+# SPDR Sector ETFs for market breadth calculation
+from app.services.sector_cache import SECTOR_ETFS
 
-    Returns:
-        2: strong_buy (return > 5%)
-        1: buy (return 2-5%)
-        0: hold (return -2% to 2%)
-       -1: sell (return -5% to -2%)
-       -2: strong_sell (return < -5%)
+
+def generate_label(
+    forward_return: float,
+    num_classes: int = 5,
+    thresholds: Optional[Dict[str, float]] = None,
+) -> int:
     """
-    if forward_return_7d > LABEL_THRESHOLDS['strong_buy']:
-        return 2
-    elif forward_return_7d > LABEL_THRESHOLDS['buy']:
-        return 1
-    elif forward_return_7d < LABEL_THRESHOLDS['strong_sell']:
-        return -2
-    elif forward_return_7d < LABEL_THRESHOLDS['sell']:
-        return -1
+    Generate label based on forward stock return.
+
+    5-class mode:
+        2: strong_buy, 1: buy, 0: hold, -1: sell, -2: strong_sell
+    3-class mode:
+        1: buy, 0: hold, -1: sell
+    """
+    if thresholds is None:
+        thresholds = LABEL_THRESHOLDS
+
+    if num_classes == 3:
+        buy_thresh = thresholds.get("buy", 0.02)
+        sell_thresh = thresholds.get("sell", -0.02)
+        if forward_return > buy_thresh:
+            return 1
+        elif forward_return < sell_thresh:
+            return -1
+        else:
+            return 0
     else:
-        return 0
+        # 5-class (original logic)
+        if forward_return > thresholds.get('strong_buy', 0.05):
+            return 2
+        elif forward_return > thresholds.get('buy', 0.02):
+            return 1
+        elif forward_return < thresholds.get('strong_sell', -0.05):
+            return -2
+        elif forward_return < thresholds.get('sell', -0.02):
+            return -1
+        else:
+            return 0
 
 
 class FeaturePipeline:
@@ -66,9 +89,9 @@ class FeaturePipeline:
 
     Features are extracted from:
     1. Disclosure data (politician count, buy/sell ratio, bipartisan, etc.)
-    2. Politician metadata (party, committee relevance)
-    3. Market data (price momentum, sector performance)
-    4. Sentiment (LLM-derived news sentiment)
+    2. Politician metadata (party alignment, chamber-based committee relevance)
+    3. Market data (price momentum, sector performance, VIX, SPY, breadth)
+    4. Sentiment (LLM-derived sentiment, opt-in)
     """
 
     def __init__(self):
@@ -79,6 +102,7 @@ class FeaturePipeline:
         lookback_days: int = 365,
         min_politicians: int = 2,
         exclude_recent_days: int = 7,
+        config: Optional[TrainingConfig] = None,
     ) -> Tuple[pd.DataFrame, np.ndarray]:
         """
         Prepare labeled training data from historical disclosures.
@@ -87,14 +111,22 @@ class FeaturePipeline:
             lookback_days: Number of days of historical data to use
             min_politicians: Minimum politicians trading to include ticker
             exclude_recent_days: Exclude recent days (need forward returns)
+            config: TrainingConfig for feature selection and labeling
 
         Returns:
             Tuple of (features_df, labels_array)
         """
-        logger.info(f"Preparing training data for last {lookback_days} days...")
+        if config is None:
+            config = TrainingConfig(lookback_days=lookback_days)
+
+        actual_lookback = config.lookback_days
+        # Need enough forward days for the prediction window
+        actual_exclude = max(exclude_recent_days, config.prediction_window_days + 3)
+
+        logger.info(f"Preparing training data for last {actual_lookback} days (window={config.prediction_window_days}d, classes={config.num_classes})...")
 
         # 1. Fetch disclosures
-        disclosures = await self._fetch_disclosures(lookback_days, exclude_recent_days)
+        disclosures = await self._fetch_disclosures(actual_lookback, actual_exclude)
         logger.info(f"Fetched {len(disclosures)} disclosures")
 
         if not disclosures:
@@ -104,19 +136,30 @@ class FeaturePipeline:
         weekly_aggregations = self._aggregate_by_week(disclosures, min_politicians)
         logger.info(f"Created {len(weekly_aggregations)} weekly ticker aggregations")
 
-        # 3. Fetch stock returns for labeling
-        weekly_aggregations = await self._add_stock_returns(weekly_aggregations)
+        # 3. Fetch stock returns + market regime data
+        weekly_aggregations = await self._add_stock_returns(weekly_aggregations, config)
 
-        # 4. Extract features for each aggregation
+        # 4. Add sector performance if enabled
+        if config.features.enable_sector:
+            self._add_sector_performance(weekly_aggregations)
+
+        # 5. Extract features for each aggregation
         features_list = []
         labels = []
 
-        for agg in weekly_aggregations:
-            if agg.get('forward_return_7d') is None:
-                continue  # Skip if no return data
+        # Determine which return column to use for labeling
+        return_key = f'forward_return_{config.prediction_window_days}d'
 
-            features = self._extract_features(agg)
-            label = generate_label(agg['forward_return_7d'])
+        for agg in weekly_aggregations:
+            fwd_return = agg.get(return_key)
+            if fwd_return is None:
+                # Fallback: try 7d return for backward compat
+                fwd_return = agg.get('forward_return_7d')
+            if fwd_return is None:
+                continue
+
+            features = self._extract_features(agg, config)
+            label = generate_label(fwd_return, config.num_classes, config.thresholds)
 
             features_list.append(features)
             labels.append(label)
@@ -173,7 +216,6 @@ class FeaturePipeline:
         min_politicians: int,
     ) -> List[Dict[str, Any]]:
         """Aggregate disclosures by ticker per week."""
-        # Group by ticker and week
         weekly_data = defaultdict(lambda: defaultdict(list))
 
         for d in disclosures:
@@ -182,11 +224,10 @@ class FeaturePipeline:
                 continue
 
             tx_date = datetime.fromisoformat(d['transaction_date'].replace('Z', '+00:00'))
-            week_key = tx_date.isocalendar()[:2]  # (year, week_number)
+            week_key = tx_date.isocalendar()[:2]
 
             weekly_data[(ticker, week_key)]['disclosures'].append(d)
 
-        # Aggregate each ticker-week
         aggregations = []
 
         for (ticker, week_key), data in weekly_data.items():
@@ -194,13 +235,14 @@ class FeaturePipeline:
             if not disclosures_list:
                 continue
 
-            # Calculate features
             buys = 0
             sells = 0
             buy_volume = 0
             sell_volume = 0
             politicians = set()
             parties = set()
+            party_counts = Counter()
+            chambers = set()
             disclosure_delays = []
 
             for d in disclosures_list:
@@ -219,24 +261,47 @@ class FeaturePipeline:
                 if d.get('politician_id'):
                     politicians.add(d['politician_id'])
 
-                if d.get('politician', {}).get('party'):
-                    parties.add(d['politician']['party'])
+                politician_data = d.get('politician') or {}
+                party = politician_data.get('party')
+                if party:
+                    parties.add(party)
+                    party_counts[party] += 1
 
-                # Disclosure delay
+                chamber = politician_data.get('chamber')
+                if chamber:
+                    chambers.add(chamber.lower() if isinstance(chamber, str) else chamber)
+
                 if d.get('transaction_date') and d.get('disclosure_date'):
-                    tx_date = datetime.fromisoformat(d['transaction_date'].replace('Z', '+00:00'))
-                    disc_date = datetime.fromisoformat(d['disclosure_date'].replace('Z', '+00:00'))
-                    delay = (disc_date - tx_date).days
+                    tx_dt = datetime.fromisoformat(d['transaction_date'].replace('Z', '+00:00'))
+                    disc_dt = datetime.fromisoformat(d['disclosure_date'].replace('Z', '+00:00'))
+                    delay = (disc_dt - tx_dt).days
                     if delay >= 0:
                         disclosure_delays.append(delay)
 
-            # Filter by minimum politicians
             if len(politicians) < min_politicians:
                 continue
 
-            # Get week start date for labeling
             year, week_num = week_key
             week_start = datetime.fromisocalendar(year, week_num, 1)
+
+            # Real party_alignment: consensus measure (0.5 = split, 1.0 = all same party)
+            total_party_trades = sum(party_counts.values())
+            if total_party_trades > 0:
+                party_alignment = max(party_counts.values()) / total_party_trades
+            else:
+                party_alignment = 0.5
+
+            # Real committee_relevance: chamber-based proxy
+            has_house = 'house' in chambers
+            has_senate = 'senate' in chambers
+            if has_house and not has_senate:
+                committee_relevance = 0.7
+            elif has_senate and not has_house:
+                committee_relevance = 0.4
+            elif has_house and has_senate:
+                committee_relevance = 0.5
+            else:
+                committee_relevance = 0.5
 
             aggregations.append({
                 'ticker': ticker,
@@ -251,6 +316,8 @@ class FeaturePipeline:
                 'total_volume': buy_volume + sell_volume,
                 'bipartisan': 'D' in parties and 'R' in parties,
                 'parties': list(parties),
+                'party_alignment': party_alignment,
+                'committee_relevance': committee_relevance,
                 'avg_disclosure_delay': np.mean(disclosure_delays) if disclosure_delays else 30,
                 'disclosure_count': len(disclosures_list),
             })
@@ -260,29 +327,40 @@ class FeaturePipeline:
     async def _add_stock_returns(
         self,
         aggregations: List[Dict[str, Any]],
+        config: Optional[TrainingConfig] = None,
     ) -> List[Dict[str, Any]]:
-        """Add forward stock returns to aggregations."""
+        """Add forward stock returns and market regime data to aggregations."""
         try:
             import yfinance as yf
         except ImportError:
             logger.warning("yfinance not installed - skipping stock returns")
             return aggregations
 
-        # Group by ticker for efficient fetching
+        if config is None:
+            config = TrainingConfig()
+
         tickers = list(set(a['ticker'] for a in aggregations))
         logger.info(f"Fetching stock data for {len(tickers)} tickers...")
 
-        # Determine date range
         all_dates = [datetime.fromisoformat(a['week_start']) for a in aggregations]
         min_date = min(all_dates) - timedelta(days=30)
-        max_date = max(all_dates) + timedelta(days=40)  # Need 30 days forward
+        max_date = max(all_dates) + timedelta(days=40)
 
-        # Fetch in batches to avoid rate limits
+        # Add market regime tickers to download
+        extra_tickers = []
+        if config.features.enable_market_regime:
+            extra_tickers.extend(MARKET_TICKERS)
+        if config.features.enable_sector:
+            extra_tickers.extend(SECTOR_ETFS)
+
+        all_tickers = tickers + [t for t in extra_tickers if t not in tickers]
+
+        # Fetch in batches
         price_data = {}
         batch_size = 100
 
-        for i in range(0, len(tickers), batch_size):
-            batch = tickers[i:i + batch_size]
+        for i in range(0, len(all_tickers), batch_size):
+            batch = all_tickers[i:i + batch_size]
             try:
                 data = yf.download(
                     batch,
@@ -293,7 +371,6 @@ class FeaturePipeline:
                 )
 
                 if len(batch) == 1:
-                    # Single ticker returns different format
                     price_data[batch[0]] = data['Close']
                 else:
                     for ticker in batch:
@@ -310,47 +387,40 @@ class FeaturePipeline:
 
             if ticker not in price_data:
                 agg['forward_return_7d'] = None
+                agg['forward_return_14d'] = None
                 agg['forward_return_30d'] = None
                 continue
 
             prices = price_data[ticker]
 
             try:
-                # Get price at week start (or closest available)
                 start_prices = prices[prices.index >= week_start.strftime('%Y-%m-%d')]
                 if len(start_prices) == 0:
                     agg['forward_return_7d'] = None
+                    agg['forward_return_14d'] = None
                     agg['forward_return_30d'] = None
                     continue
 
                 price_start = start_prices.iloc[0]
 
-                # Guard against zero-value starting price (avoids division by zero)
                 if price_start == 0:
                     agg['forward_return_7d'] = None
+                    agg['forward_return_14d'] = None
                     agg['forward_return_30d'] = None
                     agg['market_momentum'] = 0
                     continue
 
-                # 7-day forward price
-                date_7d = week_start + timedelta(days=7)
-                prices_7d = prices[prices.index >= date_7d.strftime('%Y-%m-%d')]
-                if len(prices_7d) > 0:
-                    price_7d = prices_7d.iloc[0]
-                    agg['forward_return_7d'] = (price_7d - price_start) / price_start
-                else:
-                    agg['forward_return_7d'] = None
+                # Forward returns for all windows
+                for days in (7, 14, 30):
+                    date_fwd = week_start + timedelta(days=days)
+                    prices_fwd = prices[prices.index >= date_fwd.strftime('%Y-%m-%d')]
+                    if len(prices_fwd) > 0:
+                        price_fwd = prices_fwd.iloc[0]
+                        agg[f'forward_return_{days}d'] = (price_fwd - price_start) / price_start
+                    else:
+                        agg[f'forward_return_{days}d'] = None
 
-                # 30-day forward price
-                date_30d = week_start + timedelta(days=30)
-                prices_30d = prices[prices.index >= date_30d.strftime('%Y-%m-%d')]
-                if len(prices_30d) > 0:
-                    price_30d = prices_30d.iloc[0]
-                    agg['forward_return_30d'] = (price_30d - price_start) / price_start
-                else:
-                    agg['forward_return_30d'] = None
-
-                # Add market momentum (20-day lookback)
+                # Market momentum (20-day lookback)
                 date_20d_back = week_start - timedelta(days=20)
                 prices_20d_back = prices[prices.index <= week_start.strftime('%Y-%m-%d')]
                 prices_20d_back = prices_20d_back[prices_20d_back.index >= date_20d_back.strftime('%Y-%m-%d')]
@@ -366,26 +436,127 @@ class FeaturePipeline:
             except Exception as e:
                 logger.warning(f"Error calculating returns for {ticker}: {e}")
                 agg['forward_return_7d'] = None
+                agg['forward_return_14d'] = None
                 agg['forward_return_30d'] = None
+
+        # Add market regime features from ^VIX and SPY
+        if config.features.enable_market_regime:
+            self._add_market_regime_features(aggregations, price_data)
 
         return aggregations
 
-    def _extract_features(self, aggregation: Dict[str, Any]) -> Dict[str, float]:
-        """Extract feature vector from aggregation."""
-        return {
+    def _add_market_regime_features(
+        self,
+        aggregations: List[Dict[str, Any]],
+        price_data: Dict[str, Any],
+    ):
+        """Add VIX level, SPY return, and market breadth features."""
+        vix_prices = price_data.get("^VIX")
+        spy_prices = price_data.get("SPY")
+
+        for agg in aggregations:
+            week_start = datetime.fromisoformat(agg['week_start'])
+            ws_str = week_start.strftime('%Y-%m-%d')
+
+            # VIX level (normalized by /30)
+            if vix_prices is not None:
+                try:
+                    vix_at = vix_prices[vix_prices.index <= ws_str]
+                    if len(vix_at) > 0:
+                        agg['vix_level'] = float(vix_at.iloc[-1]) / 30.0
+                    else:
+                        agg['vix_level'] = 0.5
+                except Exception:
+                    agg['vix_level'] = 0.5
+            else:
+                agg['vix_level'] = 0.5
+
+            # SPY 20-day return
+            if spy_prices is not None:
+                try:
+                    date_20d_back = week_start - timedelta(days=20)
+                    spy_window = spy_prices[spy_prices.index >= date_20d_back.strftime('%Y-%m-%d')]
+                    spy_window = spy_window[spy_window.index <= ws_str]
+                    if len(spy_window) >= 2 and spy_window.iloc[0] != 0:
+                        agg['market_return_20d'] = (spy_window.iloc[-1] - spy_window.iloc[0]) / spy_window.iloc[0]
+                    else:
+                        agg['market_return_20d'] = 0.0
+                except Exception:
+                    agg['market_return_20d'] = 0.0
+            else:
+                agg['market_return_20d'] = 0.0
+
+            # Market breadth: fraction of sector ETFs with positive 20-day returns
+            positive_sectors = 0
+            total_sectors = 0
+            for etf in SECTOR_ETFS:
+                etf_prices = price_data.get(etf)
+                if etf_prices is None:
+                    continue
+                try:
+                    date_20d_back = week_start - timedelta(days=20)
+                    etf_window = etf_prices[etf_prices.index >= date_20d_back.strftime('%Y-%m-%d')]
+                    etf_window = etf_window[etf_window.index <= ws_str]
+                    if len(etf_window) >= 2 and etf_window.iloc[0] != 0:
+                        ret = (etf_window.iloc[-1] - etf_window.iloc[0]) / etf_window.iloc[0]
+                        total_sectors += 1
+                        if ret > 0:
+                            positive_sectors += 1
+                except Exception:
+                    pass
+
+            agg['market_breadth'] = positive_sectors / total_sectors if total_sectors > 0 else 0.5
+
+    def _add_sector_performance(self, aggregations: List[Dict[str, Any]]):
+        """Add sector ETF performance for each ticker's sector."""
+        from app.services.sector_cache import get_sector_cache
+
+        cache = get_sector_cache()
+        tickers = list(set(a['ticker'] for a in aggregations))
+        cache.batch_resolve(tickers)
+
+        for agg in aggregations:
+            sector_etf = cache.get_sector(agg['ticker'])
+            if sector_etf and f'_sector_return_{sector_etf}' in agg:
+                agg['sector_performance'] = agg[f'_sector_return_{sector_etf}']
+            else:
+                # Use market_return_20d as fallback if available
+                agg.setdefault('sector_performance', agg.get('market_return_20d', 0.0))
+
+    def _extract_features(
+        self,
+        aggregation: Dict[str, Any],
+        config: Optional[TrainingConfig] = None,
+    ) -> Dict[str, float]:
+        """Extract feature vector from aggregation based on config."""
+        if config is None:
+            config = TrainingConfig()
+
+        features: Dict[str, float] = {
             'politician_count': aggregation.get('politician_count', 0),
-            'buy_sell_ratio': min(aggregation.get('buy_sell_ratio', 1.0), 10.0),  # Cap ratio
+            'buy_sell_ratio': min(aggregation.get('buy_sell_ratio', 1.0), 10.0),
             'recent_activity_30d': aggregation.get('disclosure_count', 0),
             'bipartisan': 1.0 if aggregation.get('bipartisan', False) else 0.0,
             'net_volume': aggregation.get('net_volume', 0),
             'volume_magnitude': np.log1p(abs(aggregation.get('total_volume', 0))),
-            'party_alignment': 0.5,  # Placeholder - would need majority party data
-            'committee_relevance': 0.5,  # Placeholder - would need sector-committee mapping
+            'party_alignment': aggregation.get('party_alignment', 0.5),
             'disclosure_delay': aggregation.get('avg_disclosure_delay', 30),
-            'sentiment_score': 0.0,  # Placeholder - would need Ollama sentiment
             'market_momentum': aggregation.get('market_momentum', 0.0),
-            'sector_performance': 0.0,  # Placeholder - would need sector ETF data
         }
+
+        if config.features.enable_sector:
+            features['committee_relevance'] = aggregation.get('committee_relevance', 0.5)
+            features['sector_performance'] = aggregation.get('sector_performance', 0.0)
+
+        if config.features.enable_market_regime:
+            features['vix_level'] = aggregation.get('vix_level', 0.5)
+            features['market_return_20d'] = aggregation.get('market_return_20d', 0.0)
+            features['market_breadth'] = aggregation.get('market_breadth', 0.5)
+
+        if config.features.enable_sentiment:
+            features['sentiment_score'] = aggregation.get('sentiment_score', 0.0)
+
+        return features
 
     async def extract_sentiment(
         self,
@@ -394,10 +565,6 @@ class FeaturePipeline:
     ) -> float:
         """
         Use Ollama to extract sentiment score from news text.
-
-        Args:
-            ticker: Stock ticker
-            news_text: News article or snippet
 
         Returns:
             Sentiment score from -1 (bearish) to 1 (bullish)
@@ -435,10 +602,9 @@ Return ONLY a number between -1 and 1:"""
                 result = response.json()
                 answer = result.get("choices", [{}])[0].get("message", {}).get("content", "0").strip()
 
-                # Parse the number
                 try:
                     score = float(answer)
-                    return max(-1.0, min(1.0, score))  # Clamp to [-1, 1]
+                    return max(-1.0, min(1.0, score))
                 except ValueError:
                     return 0.0
 
@@ -456,11 +622,17 @@ class TrainingJob:
         lookback_days: int = 365,
         model_type: str = 'xgboost',
         triggered_by: str = 'api',
+        config: Optional[TrainingConfig] = None,
     ):
         self.job_id = job_id
         self.lookback_days = lookback_days
         self.model_type = model_type
         self.triggered_by = triggered_by
+        self.config = config or TrainingConfig(
+            lookback_days=lookback_days,
+            model_type=model_type,
+            triggered_by=triggered_by,
+        )
         self.status = "pending"
         self.progress = 0
         self.current_step = ""
@@ -503,6 +675,9 @@ class TrainingJob:
         try:
             supabase = get_supabase()
 
+            config = self.config
+            hyperparams_dict = config.to_hyperparameters_dict()
+
             # Create model record in database
             model_result = supabase.table('ml_models').insert({
                 'model_name': f'congress_signal_{self.job_id}',
@@ -510,18 +685,16 @@ class TrainingJob:
                 'model_type': self.model_type,
                 'status': 'training',
                 'training_started_at': self.started_at.isoformat(),
-                'hyperparameters': {
-                    'lookback_days': self.lookback_days,
-                    'model_type': self.model_type,
-                },
+                'hyperparameters': hyperparams_dict,
             }).execute()
 
             self.model_id = model_result.data[0]['id']
 
-            # Prepare training data
+            # Prepare training data with config
             pipeline = FeaturePipeline()
             features_df, labels = await pipeline.prepare_training_data(
-                lookback_days=self.lookback_days,
+                lookback_days=config.lookback_days,
+                config=config,
             )
 
             if len(features_df) < 100:
@@ -530,18 +703,21 @@ class TrainingJob:
             self.current_step = "Training model..."
             self.progress = 50
 
-            # Train model
+            # Train model with config
             model = CongressSignalModel()
-            training_result = model.train(features_df, labels)
+            training_result = model.train(
+                features_df,
+                labels,
+                hyperparams=config.hyperparams,
+                config=config,
+            )
 
             self.current_step = "Saving model..."
             self.progress = 80
 
-            # Save model artifact locally
             model_path = f"{MODEL_STORAGE_PATH}/{self.model_id}.pkl"
             model.save(model_path)
 
-            # Upload to Supabase Storage for persistent storage across restarts
             self.current_step = "Uploading to storage..."
             self.progress = 85
             storage_path = upload_model_to_storage(self.model_id, model_path)
@@ -550,13 +726,16 @@ class TrainingJob:
             else:
                 logger.warning(f"[{self.job_id}] Failed to upload model to storage - model may not persist")
 
-            # Update model record
+            # Merge config into hyperparameters for storage
+            stored_hyperparams = training_result['hyperparameters']
+            stored_hyperparams.update(hyperparams_dict)
+
             supabase.table('ml_models').update({
                 'status': 'active',
                 'training_completed_at': datetime.now(timezone.utc).isoformat(),
                 'metrics': training_result['metrics'],
                 'feature_importance': training_result['feature_importance'],
-                'hyperparameters': training_result['hyperparameters'],
+                'hyperparameters': stored_hyperparams,
                 'model_artifact_path': model_path,
                 'training_samples': int(training_result['metrics']['training_samples']),
                 'validation_samples': int(training_result['metrics']['validation_samples']),
@@ -580,7 +759,6 @@ class TrainingJob:
             self.error_message = str(e)
             self.completed_at = datetime.now(timezone.utc)
 
-            # Update model record if created
             if self.model_id:
                 try:
                     supabase.table('ml_models').update({
@@ -606,21 +784,20 @@ def create_training_job(
     lookback_days: int = 365,
     model_type: str = 'xgboost',
     triggered_by: str = 'api',
+    config: Optional[TrainingConfig] = None,
 ) -> TrainingJob:
-    """Create a new training job.
-
-    Args:
-        lookback_days: Number of days of historical data to use
-        model_type: Model type ('xgboost' or 'lightgbm')
-        triggered_by: Source that triggered training:
-            - 'api': Direct API call
-            - 'scheduler': Weekly scheduled training
-            - 'batch_retraining': Threshold-based batch retraining
-            - 'manual': Manual trigger
-    """
+    """Create a new training job."""
     import uuid
     job_id = str(uuid.uuid4())[:8]
-    job = TrainingJob(job_id, lookback_days, model_type, triggered_by)
+
+    if config is None:
+        config = TrainingConfig(
+            lookback_days=lookback_days,
+            model_type=model_type,
+            triggered_by=triggered_by,
+        )
+
+    job = TrainingJob(job_id, lookback_days, model_type, triggered_by, config=config)
     _training_jobs[job_id] = job
     return job
 

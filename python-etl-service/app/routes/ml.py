@@ -23,7 +23,10 @@ from app.services.ml_signal_model import (
     cache_prediction,
     compute_feature_hash,
     FEATURE_NAMES,
+    DEFAULT_FEATURE_NAMES,
     SIGNAL_LABELS,
+    get_signal_labels,
+    get_feature_names,
 )
 from app.services.feature_pipeline import (
     get_training_job,
@@ -31,6 +34,7 @@ from app.services.feature_pipeline import (
     run_training_job_in_background,
     get_supabase,
 )
+from app.models.training_config import TrainingConfig, FeatureToggles
 from app.middleware.auth import require_admin_key
 from app.lib.audit_log import log_audit_event, AuditAction, AuditContext
 
@@ -57,6 +61,9 @@ class FeatureVector(BaseModel):
     sentiment_score: float = Field(default=0, ge=-1, le=1)
     market_momentum: float = 0
     sector_performance: float = 0
+    vix_level: float = Field(default=0.5, ge=0, description="VIX level normalized by /30")
+    market_return_20d: float = Field(default=0.0, description="SPY 20-day return")
+    market_breadth: float = Field(default=0.5, ge=0, le=1, description="Fraction of sectors with positive 20d returns")
 
 
 class PredictRequest(BaseModel):
@@ -85,6 +92,11 @@ class TrainRequest(BaseModel):
     """Request body for triggering training."""
     lookback_days: int = Field(default=365, ge=30, le=730)
     model_type: str = Field(default="xgboost", pattern="^(xgboost|lightgbm)$")
+    prediction_window_days: int = Field(default=7, description="Forward return window: 7, 14, or 30")
+    num_classes: int = Field(default=5, description="3 (buy/hold/sell) or 5 (strong_buy/.../strong_sell)")
+    enable_sector: bool = Field(default=True, description="Include sector features")
+    enable_market_regime: bool = Field(default=True, description="Include VIX/SPY/breadth features")
+    enable_sentiment: bool = Field(default=False, description="Include LLM sentiment (slow)")
     triggered_by: str = Field(
         default="api",
         description="Source that triggered the training: api, scheduler, batch_retraining, manual"
@@ -177,7 +189,7 @@ async def predict_signal(request: PredictRequest):
             return PredictResponse(
                 ticker=ticker,
                 prediction=cached['prediction'],
-                signal_type=SIGNAL_LABELS.get(cached['prediction'], 'hold'),
+                signal_type=SIGNAL_LABELS.get(cached['prediction'], 'hold'),  # cache doesn't store num_classes, use 5-class
                 confidence=cached['confidence'],
                 cached=True,
                 model_id=cached.get('model_id'),
@@ -209,10 +221,11 @@ async def predict_signal(request: PredictRequest):
                 confidence=confidence,
             )
 
+        labels = get_signal_labels(model.num_classes)
         return PredictResponse(
             ticker=ticker,
             prediction=prediction,
-            signal_type=SIGNAL_LABELS.get(prediction, 'hold'),
+            signal_type=labels.get(prediction, 'hold'),
             confidence=confidence,
             cached=False,
         )
@@ -249,11 +262,12 @@ async def batch_predict_signals(request: BatchPredictRequest):
             # Direct model inference - no cache lookup/write to avoid HTTP overhead
             feature_vector = model.prepare_features(features_dict)
             prediction, confidence = model.predict(feature_vector)
+            labels = get_signal_labels(model.num_classes)
 
             results.append(PredictResponse(
                 ticker=ticker,
                 prediction=prediction,
-                signal_type=SIGNAL_LABELS.get(prediction, 'hold'),
+                signal_type=labels.get(prediction, 'hold'),
                 confidence=confidence,
                 cached=False,
             ))
@@ -301,24 +315,29 @@ async def trigger_training(
     4. Uploads model artifact to Supabase storage
     5. Records model metadata in `ml_models` table
     """
-    job = create_training_job(
+    config = TrainingConfig(
         lookback_days=request.lookback_days,
         model_type=request.model_type,
+        prediction_window_days=request.prediction_window_days,
+        num_classes=request.num_classes,
+        features=FeatureToggles(
+            enable_sector=request.enable_sector,
+            enable_market_regime=request.enable_market_regime,
+            enable_sentiment=request.enable_sentiment,
+        ),
         triggered_by=request.triggered_by,
     )
 
-    logger.info(f"Training triggered by: {request.triggered_by}")
+    job = create_training_job(config=config)
+
+    logger.info(f"Training triggered by: {request.triggered_by}, config: {config.num_classes}-class, {config.prediction_window_days}d window")
 
     # Log the training trigger
     log_audit_event(
         action=AuditAction.MODEL_TRAIN,
         resource_type="ml_training_job",
         resource_id=job.job_id,
-        details={
-            "lookback_days": request.lookback_days,
-            "model_type": request.model_type,
-            "triggered_by": request.triggered_by,
-        },
+        details=config.to_hyperparameters_dict(),
     )
 
     # Run in background
@@ -453,12 +472,15 @@ async def get_feature_importance(model_id: str):
             raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
 
         data = result.data[0]
+        # Feature names from hyperparameters if available, else defaults
+        hyper = data.get('hyperparameters') or {}
+        feature_names = hyper.get('feature_names', DEFAULT_FEATURE_NAMES)
         return {
             "model_id": model_id,
             "model_name": data.get('model_name'),
             "model_version": data.get('model_version'),
             "feature_importance": data.get('feature_importance', {}),
-            "feature_names": FEATURE_NAMES,
+            "feature_names": feature_names,
         }
 
     except HTTPException:
@@ -547,5 +569,5 @@ async def ml_health():
         "status": "healthy",
         "model_loaded": model is not None,
         "model_version": model.model_version if model else None,
-        "feature_count": len(FEATURE_NAMES),
+        "feature_count": len(model.feature_names) if model else len(DEFAULT_FEATURE_NAMES),
     }

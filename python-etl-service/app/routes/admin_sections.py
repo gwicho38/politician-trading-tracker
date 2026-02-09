@@ -303,13 +303,26 @@ async def api_trigger_training(
     background_tasks: BackgroundTasks,
     key: Optional[str] = Query(None),
 ):
-    """Trigger ML model training via HTMX."""
+    """Trigger ML model training via HTMX with full TrainingConfig support."""
     model_type = "xgboost"
+    lookback_days = 365
+    prediction_window = 7
+    num_classes = 5
+    enable_sector = True
+    enable_market_regime = True
+    enable_sentiment = False
+
     if not key:
         try:
             form_data = await request.form()
             key = form_data.get("key")
             model_type = form_data.get("model_type", "xgboost")
+            lookback_days = int(form_data.get("lookback_days", 365))
+            prediction_window = int(form_data.get("prediction_window", 7))
+            num_classes = int(form_data.get("num_classes", 5))
+            enable_sector = form_data.get("enable_sector", "on") == "on"
+            enable_market_regime = form_data.get("enable_market_regime", "on") == "on"
+            enable_sentiment = form_data.get("enable_sentiment") == "on"
         except Exception:
             pass
 
@@ -319,20 +332,212 @@ async def api_trigger_training(
 
     try:
         from app.services.feature_pipeline import create_training_job, run_training_job_in_background
-        job = await create_training_job(
+        from app.models.training_config import TrainingConfig, FeatureToggles
+
+        config = TrainingConfig(
+            lookback_days=lookback_days,
             model_type=model_type,
-            lookback_days=365,
+            prediction_window_days=prediction_window,
+            num_classes=num_classes,
+            features=FeatureToggles(
+                enable_sector=enable_sector,
+                enable_market_regime=enable_market_regime,
+                enable_sentiment=enable_sentiment,
+            ),
             triggered_by="admin_dashboard",
         )
-        background_tasks.add_task(run_training_job_in_background, job["id"])
+
+        job = create_training_job(config=config)
+        background_tasks.add_task(run_training_job_in_background, job)
+        desc = f"{model_type}, {num_classes}-class, {prediction_window}d window"
         return HTMLResponse(
             f'<div class="bg-green-100 text-green-800 p-3 rounded">'
-            f'Training started ({model_type}). Job: <code class="text-xs">{job["id"][:8]}...</code>'
+            f'Training started ({desc}). Job: <code class="text-xs">{job.job_id}</code>'
             f' <a href="/admin/ml?key={key}" class="underline">Refresh page</a></div>'
         )
     except Exception as e:
         logger.exception("Training trigger failed")
         return HTMLResponse(f'<div class="text-red-600 p-3">Training failed: {str(e)}</div>', status_code=500)
+
+
+@router.get("/ml/{model_id}", response_class=HTMLResponse)
+async def admin_ml_detail(
+    request: Request,
+    model_id: str,
+    api_key: str = Depends(require_admin_for_dashboard),
+):
+    """Detail view for a single ML model - view metrics, edit metadata, delete."""
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
+    try:
+        resp = (
+            supabase.table("ml_models")
+            .select("*")
+            .eq("id", model_id)
+            .single()
+            .execute()
+        )
+        model = resp.data
+    except Exception as e:
+        logger.error(f"Failed to fetch model {model_id}: {e}")
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    # Get training jobs linked to this model
+    jobs = []
+    try:
+        resp = (
+            supabase.table("ml_training_jobs")
+            .select("*")
+            .eq("model_id", model_id)
+            .order("created_at", desc=True)
+            .limit(10)
+            .execute()
+        )
+        jobs = resp.data or []
+    except Exception as e:
+        logger.error(f"Failed to fetch training jobs for model {model_id}: {e}")
+
+    # Get prediction count from cache
+    prediction_count = 0
+    try:
+        resp = (
+            supabase.table("ml_predictions_cache")
+            .select("id", count="exact")
+            .eq("model_id", model_id)
+            .execute()
+        )
+        prediction_count = resp.count if resp.count is not None else 0
+    except Exception:
+        pass
+
+    return templates.TemplateResponse(
+        "admin/ml_model_detail.html",
+        {
+            "request": request,
+            "api_key": api_key,
+            "model": model,
+            "jobs": jobs,
+            "prediction_count": prediction_count,
+            "active_section": "ml",
+        },
+    )
+
+
+@router.post("/api/update-model", response_class=HTMLResponse)
+async def api_update_model(
+    request: Request,
+    key: Optional[str] = Query(None),
+):
+    """Update ML model metadata via HTMX."""
+    model_id = None
+    updates = {}
+    if not key:
+        try:
+            form_data = await request.form()
+            key = form_data.get("key")
+            model_id = form_data.get("model_id")
+            # Collect editable fields
+            for field in ("model_name", "model_version", "status"):
+                val = form_data.get(field)
+                if val is not None and val != "":
+                    updates[field] = val
+        except Exception:
+            pass
+
+    from app.middleware.auth import validate_api_key
+    if not key or not validate_api_key(key, require_admin=True):
+        return HTMLResponse('<div class="text-red-600 p-3">Invalid API key</div>', status_code=401)
+
+    if not model_id:
+        return HTMLResponse('<div class="text-red-600 p-3">Model ID required</div>', status_code=400)
+
+    if not updates:
+        return HTMLResponse('<div class="text-yellow-600 p-3">No changes provided</div>', status_code=400)
+
+    # Validate status value
+    valid_statuses = ("pending", "training", "active", "archived", "failed")
+    if "status" in updates and updates["status"] not in valid_statuses:
+        return HTMLResponse(
+            f'<div class="text-red-600 p-3">Invalid status. Must be one of: {", ".join(valid_statuses)}</div>',
+            status_code=400,
+        )
+
+    supabase = get_supabase()
+    if not supabase:
+        return HTMLResponse('<div class="text-red-600 p-3">Database error</div>', status_code=500)
+
+    try:
+        # If activating, deactivate others first
+        if updates.get("status") == "active":
+            supabase.table("ml_models").update({"status": "archived"}).eq("status", "active").execute()
+
+        supabase.table("ml_models").update(updates).eq("id", model_id).execute()
+        updated_fields = ", ".join(f"{k}={v}" for k, v in updates.items())
+        return HTMLResponse(
+            f'<div class="bg-green-100 text-green-800 p-3 rounded">'
+            f'Model updated: {updated_fields}.'
+            f' <a href="/admin/ml/{model_id}?key={key}" class="underline">Refresh</a></div>'
+        )
+    except Exception as e:
+        logger.exception("Model update failed")
+        return HTMLResponse(f'<div class="text-red-600 p-3">Update failed: {str(e)}</div>', status_code=500)
+
+
+@router.post("/api/delete-model", response_class=HTMLResponse)
+async def api_delete_model(
+    request: Request,
+    key: Optional[str] = Query(None),
+):
+    """Delete an ML model via HTMX."""
+    model_id = None
+    if not key:
+        try:
+            form_data = await request.form()
+            key = form_data.get("key")
+            model_id = form_data.get("model_id")
+        except Exception:
+            pass
+
+    from app.middleware.auth import validate_api_key
+    if not key or not validate_api_key(key, require_admin=True):
+        return HTMLResponse('<div class="text-red-600 p-3">Invalid API key</div>', status_code=401)
+
+    if not model_id:
+        return HTMLResponse('<div class="text-red-600 p-3">Model ID required</div>', status_code=400)
+
+    supabase = get_supabase()
+    if not supabase:
+        return HTMLResponse('<div class="text-red-600 p-3">Database error</div>', status_code=500)
+
+    try:
+        # Check the model exists and isn't active
+        resp = supabase.table("ml_models").select("id,status").eq("id", model_id).single().execute()
+        model = resp.data
+        if not model:
+            return HTMLResponse('<div class="text-red-600 p-3">Model not found</div>', status_code=404)
+        if model.get("status") == "active":
+            return HTMLResponse(
+                '<div class="text-red-600 p-3">Cannot delete the active model. Activate another model first.</div>',
+                status_code=400,
+            )
+
+        # Delete associated predictions cache
+        supabase.table("ml_predictions_cache").delete().eq("model_id", model_id).execute()
+        # Delete the model
+        supabase.table("ml_models").delete().eq("id", model_id).execute()
+
+        return HTMLResponse(
+            f'<div class="bg-green-100 text-green-800 p-3 rounded">'
+            f'Model deleted. <a href="/admin/ml?key={key}" class="underline">Back to models</a></div>'
+        )
+    except Exception as e:
+        logger.exception("Model deletion failed")
+        return HTMLResponse(f'<div class="text-red-600 p-3">Delete failed: {str(e)}</div>', status_code=500)
 
 
 @router.post("/api/activate-model", response_class=HTMLResponse)

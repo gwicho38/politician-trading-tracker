@@ -1,0 +1,312 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Model: {{ model.model_name or 'unnamed' }}{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="/admin/ml?key={{ api_key }}" class="text-indigo-600 hover:text-indigo-800 text-sm">&larr; Back to Models</a>
+</div>
+
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h2 class="text-2xl font-bold text-gray-800">{{ model.model_name or 'unnamed' }}</h2>
+        <p class="text-sm text-gray-500 mt-1">ID: <code class="bg-gray-100 px-1 rounded text-xs">{{ model.id }}</code></p>
+    </div>
+    <div class="flex items-center gap-2">
+        {% if model.status == 'active' %}
+        <span class="bg-green-100 text-green-700 text-sm px-3 py-1 rounded-full font-medium">Active</span>
+        {% elif model.status == 'training' %}
+        <span class="bg-yellow-100 text-yellow-700 text-sm px-3 py-1 rounded-full font-medium">Training</span>
+        {% elif model.status == 'failed' %}
+        <span class="bg-red-100 text-red-700 text-sm px-3 py-1 rounded-full font-medium">Failed</span>
+        {% elif model.status == 'archived' %}
+        <span class="bg-gray-100 text-gray-600 text-sm px-3 py-1 rounded-full font-medium">Archived</span>
+        {% else %}
+        <span class="bg-gray-100 text-gray-600 text-sm px-3 py-1 rounded-full font-medium">{{ model.status }}</span>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-gray-800">{{ model.model_type or '?' }}</div>
+        <div class="text-xs text-gray-500">Type</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-indigo-600">{{ model.model_version or '?' }}</div>
+        <div class="text-xs text-gray-500">Version</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        {% if model.metrics %}
+            {% set accuracy = model.metrics.get('accuracy') or model.metrics.get('f1_score') %}
+            <div class="text-2xl font-bold text-green-600">{{ "%.1f" | format((accuracy or 0) * 100) }}%</div>
+        {% else %}
+            <div class="text-2xl font-bold text-gray-400">-</div>
+        {% endif %}
+        <div class="text-xs text-gray-500">Accuracy</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-gray-700">{{ model.training_samples or '-' }}</div>
+        <div class="text-xs text-gray-500">Training Samples</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-gray-700">{{ prediction_count }}</div>
+        <div class="text-xs text-gray-500">Cached Predictions</div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Edit Model -->
+    <div class="bg-white rounded-lg shadow p-5 border-l-4 border-indigo-500">
+        <h3 class="font-semibold text-gray-700 mb-4">Edit Model</h3>
+        <form id="edit-form">
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">Model Name</label>
+                    <input type="text" name="model_name" value="{{ model.model_name or '' }}"
+                           class="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">Version</label>
+                    <input type="text" name="model_version" value="{{ model.model_version or '' }}"
+                           class="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">Status</label>
+                    <select name="status" class="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:outline-none">
+                        <option value="pending" {% if model.status == 'pending' %}selected{% endif %}>Pending</option>
+                        <option value="training" {% if model.status == 'training' %}selected{% endif %}>Training</option>
+                        <option value="active" {% if model.status == 'active' %}selected{% endif %}>Active</option>
+                        <option value="archived" {% if model.status == 'archived' %}selected{% endif %}>Archived</option>
+                        <option value="failed" {% if model.status == 'failed' %}selected{% endif %}>Failed</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-3 pt-2">
+                    <button type="button" id="save-btn"
+                            hx-post="/admin/api/update-model"
+                            hx-target="#edit-result"
+                            hx-indicator="#save-loading"
+                            class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 text-sm">
+                        Save Changes
+                    </button>
+                    <div id="save-loading" class="htmx-indicator">
+                        <svg class="animate-spin h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </form>
+        <div id="edit-result" class="mt-3"></div>
+    </div>
+
+    <!-- Danger Zone -->
+    <div class="bg-white rounded-lg shadow p-5 border-l-4 border-red-500">
+        <h3 class="font-semibold text-red-700 mb-4">Danger Zone</h3>
+        {% if model.status == 'active' %}
+        <p class="text-sm text-gray-600 mb-3">This is the active model. To delete it, activate another model first.</p>
+        <button disabled class="bg-gray-300 text-gray-500 px-4 py-2 rounded text-sm cursor-not-allowed">
+            Delete Model
+        </button>
+        {% else %}
+        <p class="text-sm text-gray-600 mb-3">Permanently delete this model, its cached predictions, and associated data. This cannot be undone.</p>
+        <button type="button"
+                hx-post="/admin/api/delete-model"
+                hx-target="#delete-result"
+                hx-vals='{"key": "{{ api_key }}", "model_id": "{{ model.id }}"}'
+                hx-confirm="Are you sure you want to permanently delete this model? This cannot be undone."
+                class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 text-sm">
+            Delete Model
+        </button>
+        {% endif %}
+        <div id="delete-result" class="mt-3"></div>
+
+        {% if model.status != 'active' %}
+        <div class="mt-4 pt-4 border-t">
+            <p class="text-sm text-gray-600 mb-3">Activate this model for signal generation. The current active model will be archived.</p>
+            <button type="button"
+                    hx-post="/admin/api/activate-model"
+                    hx-target="#activate-result"
+                    hx-vals='{"key": "{{ api_key }}", "model_id": "{{ model.id }}"}'
+                    hx-confirm="Activate this model? The current active model will be archived."
+                    class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm">
+                Activate Model
+            </button>
+            <div id="activate-result" class="mt-3"></div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Metrics -->
+{% if model.metrics %}
+<div class="bg-white rounded-lg shadow overflow-hidden mb-6">
+    <div class="px-5 py-3 border-b">
+        <h3 class="font-semibold text-gray-700">Performance Metrics</h3>
+    </div>
+    <div class="p-5">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {% for metric_name, metric_value in model.metrics.items() %}
+            <div class="bg-gray-50 rounded p-3 text-center">
+                {% if metric_value is number and metric_value <= 1.0 %}
+                <div class="text-xl font-bold text-gray-800">{{ "%.2f" | format(metric_value * 100) }}%</div>
+                {% else %}
+                <div class="text-xl font-bold text-gray-800">{{ metric_value }}</div>
+                {% endif %}
+                <div class="text-xs text-gray-500">{{ metric_name | replace('_', ' ') | title }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Hyperparameters -->
+{% if model.hyperparameters %}
+<div class="bg-white rounded-lg shadow overflow-hidden mb-6">
+    <div class="px-5 py-3 border-b">
+        <h3 class="font-semibold text-gray-700">Hyperparameters</h3>
+    </div>
+    <div class="p-5">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {% for param_name, param_value in model.hyperparameters.items() %}
+            <div class="bg-gray-50 rounded p-3">
+                <div class="text-xs text-gray-500 mb-1">{{ param_name | replace('_', ' ') | title }}</div>
+                <div class="text-sm font-mono font-medium text-gray-800">{{ param_value }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Feature Importance -->
+{% if model.feature_importance %}
+<div class="bg-white rounded-lg shadow overflow-hidden mb-6">
+    <div class="px-5 py-3 border-b">
+        <h3 class="font-semibold text-gray-700">Feature Importance</h3>
+    </div>
+    <div class="p-5">
+        {% set sorted_features = model.feature_importance.items() | sort(attribute='1', reverse=true) %}
+        {% for feature_name, importance in sorted_features[:15] %}
+        <div class="flex items-center gap-3 mb-2">
+            <div class="w-40 text-xs text-gray-600 truncate" title="{{ feature_name }}">{{ feature_name | replace('_', ' ') }}</div>
+            <div class="flex-1 bg-gray-200 rounded-full h-4 overflow-hidden">
+                {% set max_imp = sorted_features[0][1] if sorted_features else 1 %}
+                {% set pct = (importance / max_imp * 100) if max_imp > 0 else 0 %}
+                <div class="bg-indigo-500 h-4 rounded-full" style="width: {{ pct }}%"></div>
+            </div>
+            <div class="w-16 text-right text-xs font-mono text-gray-600">{{ "%.4f" | format(importance) }}</div>
+        </div>
+        {% endfor %}
+        {% if model.feature_importance | length > 15 %}
+        <p class="text-xs text-gray-400 mt-2">Showing top 15 of {{ model.feature_importance | length }} features</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Training Info -->
+<div class="bg-white rounded-lg shadow overflow-hidden mb-6">
+    <div class="px-5 py-3 border-b">
+        <h3 class="font-semibold text-gray-700">Training Details</h3>
+    </div>
+    <div class="p-5">
+        <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <div>
+                <dt class="text-gray-500">Training Started</dt>
+                <dd class="font-medium text-gray-800">{{ model.training_started_at[:19] if model.training_started_at else '-' }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500">Training Completed</dt>
+                <dd class="font-medium text-gray-800">{{ model.training_completed_at[:19] if model.training_completed_at else '-' }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500">Training Samples</dt>
+                <dd class="font-medium text-gray-800">{{ "{:,}".format(model.training_samples) if model.training_samples else '-' }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500">Validation Samples</dt>
+                <dd class="font-medium text-gray-800">{{ "{:,}".format(model.validation_samples) if model.validation_samples else '-' }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500">Artifact Path</dt>
+                <dd class="font-medium text-gray-800 font-mono text-xs break-all">{{ model.model_artifact_path or '-' }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500">Created</dt>
+                <dd class="font-medium text-gray-800">{{ model.created_at[:19] if model.created_at else '-' }}</dd>
+            </div>
+            {% if model.error_message %}
+            <div class="md:col-span-2">
+                <dt class="text-red-600">Error</dt>
+                <dd class="font-medium text-red-700 bg-red-50 p-2 rounded text-xs">{{ model.error_message }}</dd>
+            </div>
+            {% endif %}
+        </dl>
+    </div>
+</div>
+
+<!-- Related Training Jobs -->
+{% if jobs %}
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <div class="px-5 py-3 border-b">
+        <h3 class="font-semibold text-gray-700">Related Training Jobs</h3>
+    </div>
+    <table class="w-full text-sm">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-4 py-3 text-left">Job ID</th>
+                <th class="px-4 py-3 text-left">Type</th>
+                <th class="px-4 py-3 text-left">Status</th>
+                <th class="px-4 py-3 text-left">Started</th>
+                <th class="px-4 py-3 text-left">Triggered By</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in jobs %}
+            <tr class="border-t hover:bg-gray-50">
+                <td class="px-4 py-3 font-mono text-xs">{{ job.id[:8] }}...</td>
+                <td class="px-4 py-3">{{ job.job_type or '?' }}</td>
+                <td class="px-4 py-3">
+                    {% if job.status == 'completed' %}
+                    <span class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">completed</span>
+                    {% elif job.status == 'running' %}
+                    <span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full">running</span>
+                    {% elif job.status == 'failed' %}
+                    <span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full">failed</span>
+                    {% else %}
+                    <span class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">{{ job.status }}</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-gray-500">{{ job.started_at[:16] if job.started_at else '-' }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ job.triggered_by or '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const apiKey = '{{ api_key }}';
+    const modelId = '{{ model.id }}';
+
+    document.getElementById('save-btn').addEventListener('htmx:configRequest', function(evt) {
+        evt.detail.parameters['key'] = apiKey;
+        evt.detail.parameters['model_id'] = modelId;
+        // Collect form field values
+        const form = document.getElementById('edit-form');
+        const inputs = form.querySelectorAll('input, select');
+        inputs.forEach(function(input) {
+            if (input.name) {
+                evt.detail.parameters[input.name] = input.value;
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

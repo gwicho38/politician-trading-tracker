@@ -12,6 +12,7 @@ Tests cover:
 import pytest
 import numpy as np
 import pandas as pd
+import pickle
 import tempfile
 import os
 from pathlib import Path
@@ -29,10 +30,15 @@ from app.services.ml_signal_model import (
     cache_prediction,
     get_cached_prediction,
     FEATURE_NAMES,
+    DEFAULT_FEATURE_NAMES,
     SIGNAL_LABELS,
+    SIGNAL_LABELS_3CLASS,
     MODEL_STORAGE_BUCKET,
+    get_signal_labels,
+    get_feature_names,
     _active_model,
 )
+from app.models.training_config import TrainingConfig
 
 
 class TestStorageBucketExists:
@@ -186,7 +192,8 @@ class TestCongressSignalModelInit:
 
         assert model.model is None
         assert model.is_trained is False
-        assert model.feature_names == FEATURE_NAMES
+        assert model.feature_names == DEFAULT_FEATURE_NAMES
+        assert model.num_classes == 5
         assert model.model_version == "1.0.0"
         assert model.model_type == "xgboost"
 
@@ -241,8 +248,8 @@ class TestCongressSignalModelPrepareFeatures:
         assert features[2] == 0  # recent_activity_30d default
         assert features[3] == 0  # bipartisan default (False -> 0)
         assert features[6] == 0.5  # party_alignment default
-        assert features[7] == 0.5  # committee_relevance default
-        assert features[8] == 30  # disclosure_delay default
+        assert features[7] == 30  # disclosure_delay default
+        assert features[9] == 0.5  # committee_relevance default
 
     def test_prepare_features_bipartisan_false(self, model):
         """Test bipartisan False converts to 0."""
@@ -267,7 +274,7 @@ class TestCongressSignalModelPrepareFeatures:
 
         features = model.prepare_features(ticker_data)
 
-        assert len(features) == len(FEATURE_NAMES)
+        assert len(features) == len(DEFAULT_FEATURE_NAMES)
 
     def test_prepare_features_dtype(self, model):
         """Test features are float32."""
@@ -334,7 +341,7 @@ class TestCongressSignalModelPredictBatch:
         model.is_trained = True
         model.model = MagicMock()
         model.scaler = MagicMock()
-        model.scaler.transform.return_value = np.array([[0] * 12])
+        model.scaler.transform.return_value = np.array([[0] * len(DEFAULT_FEATURE_NAMES)])
         model.model.predict.return_value = np.array([3])  # buy
         model.model.predict_proba.return_value = np.array([[0.1, 0.1, 0.1, 0.6, 0.1]])
         return model
@@ -415,6 +422,7 @@ class TestCongressSignalModelSaveLoad:
             assert loaded_model.model_version == "2.0.0"
             assert loaded_model.is_trained is True
             assert loaded_model.training_metrics == {'accuracy': 0.85}
+            assert loaded_model.num_classes == 5
 
 
 class TestCongressSignalModelGetFeatureImportance:
@@ -433,11 +441,11 @@ class TestCongressSignalModelGetFeatureImportance:
         model = CongressSignalModel()
         model.is_trained = True
         model.model = MagicMock()
-        model.model.feature_importances_ = np.array([0.1] * len(FEATURE_NAMES))
+        model.model.feature_importances_ = np.array([0.1] * len(DEFAULT_FEATURE_NAMES))
 
         result = model.get_feature_importance()
 
-        assert len(result) == len(FEATURE_NAMES)
+        assert len(result) == len(DEFAULT_FEATURE_NAMES)
         assert all(isinstance(v, float) for v in result.values())
 
 
@@ -674,15 +682,15 @@ class TestCongressSignalModelTrain:
         np.random.seed(42)
         n_samples = 100
         X = pd.DataFrame(
-            np.random.rand(n_samples, len(FEATURE_NAMES)),
-            columns=FEATURE_NAMES
+            np.random.rand(n_samples, len(DEFAULT_FEATURE_NAMES)),
+            columns=DEFAULT_FEATURE_NAMES
         )
         y = np.array([i % 5 - 2 for i in range(n_samples)])
 
         # Mock XGBoost and sklearn
         mock_xgb_module = MagicMock()
         mock_classifier = MagicMock()
-        mock_classifier.feature_importances_ = np.array([0.1] * len(FEATURE_NAMES))
+        mock_classifier.feature_importances_ = np.array([0.1] * len(DEFAULT_FEATURE_NAMES))
         mock_classifier.predict.return_value = np.array([2] * 20)  # Shifted predictions
         mock_xgb_module.XGBClassifier.return_value = mock_classifier
 
@@ -722,8 +730,8 @@ class TestCongressSignalModelTrain:
         np.random.seed(42)
         n_samples = 50
         X = pd.DataFrame(
-            np.random.rand(n_samples, len(FEATURE_NAMES)),
-            columns=FEATURE_NAMES
+            np.random.rand(n_samples, len(DEFAULT_FEATURE_NAMES)),
+            columns=DEFAULT_FEATURE_NAMES
         )
         y = np.array([i % 5 - 2 for i in range(n_samples)])
 
@@ -735,7 +743,7 @@ class TestCongressSignalModelTrain:
 
         mock_xgb_module = MagicMock()
         mock_classifier = MagicMock()
-        mock_classifier.feature_importances_ = np.array([0.1] * len(FEATURE_NAMES))
+        mock_classifier.feature_importances_ = np.array([0.1] * len(DEFAULT_FEATURE_NAMES))
         mock_classifier.predict.return_value = np.array([2] * 15)
         mock_xgb_module.XGBClassifier.return_value = mock_classifier
 
@@ -770,14 +778,14 @@ class TestCongressSignalModelTrain:
         np.random.seed(42)
         n_samples = 50
         X = pd.DataFrame(
-            np.random.rand(n_samples, len(FEATURE_NAMES)),
-            columns=FEATURE_NAMES
+            np.random.rand(n_samples, len(DEFAULT_FEATURE_NAMES)),
+            columns=DEFAULT_FEATURE_NAMES
         )
         y = np.array([i % 5 - 2 for i in range(n_samples)])
 
         mock_xgb_module = MagicMock()
         mock_classifier = MagicMock()
-        mock_classifier.feature_importances_ = np.array([0.1] * len(FEATURE_NAMES))
+        mock_classifier.feature_importances_ = np.array([0.1] * len(DEFAULT_FEATURE_NAMES))
         mock_classifier.predict.return_value = np.array([2] * 10)
         mock_xgb_module.XGBClassifier.return_value = mock_classifier
 
@@ -810,14 +818,15 @@ class TestCongressSignalModelTrain:
         np.random.seed(42)
         n_samples = 50
         X = pd.DataFrame(
-            np.random.rand(n_samples, len(FEATURE_NAMES)),
-            columns=FEATURE_NAMES
+            np.random.rand(n_samples, len(DEFAULT_FEATURE_NAMES)),
+            columns=DEFAULT_FEATURE_NAMES
         )
         y = np.array([i % 5 - 2 for i in range(n_samples)])
 
-        # Create realistic importance values
-        importance_values = np.array([0.15, 0.12, 0.10, 0.09, 0.08, 0.08,
-                                      0.07, 0.07, 0.06, 0.06, 0.06, 0.06])
+        # Create realistic importance values (14 features)
+        importance_values = np.array([0.10, 0.09, 0.08, 0.08, 0.07, 0.07,
+                                      0.07, 0.07, 0.06, 0.06, 0.06, 0.06,
+                                      0.07, 0.06])
 
         mock_xgb_module = MagicMock()
         mock_classifier = MagicMock()
@@ -843,8 +852,8 @@ class TestCongressSignalModelTrain:
             result = model.train(X, y)
 
         importance = result['feature_importance']
-        assert len(importance) == len(FEATURE_NAMES)
-        for feature in FEATURE_NAMES:
+        assert len(importance) == len(DEFAULT_FEATURE_NAMES)
+        for feature in DEFAULT_FEATURE_NAMES:
             assert feature in importance
             assert isinstance(importance[feature], float)
 
@@ -852,7 +861,7 @@ class TestCongressSignalModelTrain:
         """Test ImportError raised when XGBoost not available."""
         model = CongressSignalModel()
 
-        X = pd.DataFrame(np.random.rand(10, len(FEATURE_NAMES)), columns=FEATURE_NAMES)
+        X = pd.DataFrame(np.random.rand(10, len(DEFAULT_FEATURE_NAMES)), columns=DEFAULT_FEATURE_NAMES)
         y = np.array([0] * 10)
 
         with patch.dict('sys.modules', {'xgboost': None}):
@@ -868,14 +877,14 @@ class TestCongressSignalModelTrain:
         np.random.seed(42)
         n_samples = 50
         X = pd.DataFrame(
-            np.random.rand(n_samples, len(FEATURE_NAMES)),
-            columns=FEATURE_NAMES
+            np.random.rand(n_samples, len(DEFAULT_FEATURE_NAMES)),
+            columns=DEFAULT_FEATURE_NAMES
         )
         y = np.array([-2, -1, 0, 1, 2] * 10)
 
         mock_xgb_module = MagicMock()
         mock_classifier = MagicMock()
-        mock_classifier.feature_importances_ = np.array([0.1] * len(FEATURE_NAMES))
+        mock_classifier.feature_importances_ = np.array([0.1] * len(DEFAULT_FEATURE_NAMES))
         # Return shifted predictions (0-4 range)
         mock_classifier.predict.return_value = np.array([0, 1, 2, 3, 4] * 2)
         mock_xgb_module.XGBClassifier.return_value = mock_classifier
@@ -912,14 +921,14 @@ class TestCongressSignalModelTrain:
         np.random.seed(42)
         n_samples = 50
         X = pd.DataFrame(
-            np.random.rand(n_samples, len(FEATURE_NAMES)) * 100,  # Large values
-            columns=FEATURE_NAMES
+            np.random.rand(n_samples, len(DEFAULT_FEATURE_NAMES)) * 100,  # Large values
+            columns=DEFAULT_FEATURE_NAMES
         )
         y = np.array([i % 5 - 2 for i in range(n_samples)])
 
         mock_xgb_module = MagicMock()
         mock_classifier = MagicMock()
-        mock_classifier.feature_importances_ = np.array([0.1] * len(FEATURE_NAMES))
+        mock_classifier.feature_importances_ = np.array([0.1] * len(DEFAULT_FEATURE_NAMES))
         mock_classifier.predict.return_value = np.array([2] * 10)
         mock_xgb_module.XGBClassifier.return_value = mock_classifier
 
@@ -1114,3 +1123,85 @@ class TestLoadActiveModelSuccessPaths:
 
                         assert result is not None
                         mock_download.assert_called_once()
+
+
+class TestCongressSignalModelNumClasses:
+    """Tests for num_classes save/load behavior."""
+
+    def test_save_load_3class(self):
+        """Test saving and loading a 3-class model preserves num_classes."""
+        model = CongressSignalModel()
+        model.is_trained = True
+        model.num_classes = 3
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "model_3class.pkl")
+            model.save(path)
+
+            loaded_model = CongressSignalModel()
+            loaded_model.load(path)
+
+            assert loaded_model.num_classes == 3
+
+    def test_load_old_model_defaults_to_5class(self):
+        """Test loading an old model without num_classes defaults to 5."""
+        model = CongressSignalModel()
+        model.is_trained = True
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "old_model.pkl")
+
+            # Save model data without num_classes key (simulating old format)
+            model_data = {
+                'model': model.model,
+                'scaler': model.scaler,
+                'feature_names': model.feature_names,
+                'model_version': model.model_version,
+                'model_type': model.model_type,
+                'training_metrics': model.training_metrics,
+                'is_trained': model.is_trained,
+            }
+
+            with open(path, 'wb') as f:
+                pickle.dump(model_data, f)
+
+            loaded_model = CongressSignalModel()
+            loaded_model.load(path)
+
+            assert loaded_model.num_classes == 5
+
+
+class TestGetSignalLabels:
+    """Tests for get_signal_labels helper function."""
+
+    def test_5class_labels(self):
+        """Test get_signal_labels(5) returns SIGNAL_LABELS."""
+        result = get_signal_labels(5)
+        assert result == SIGNAL_LABELS
+
+    def test_3class_labels(self):
+        """Test get_signal_labels(3) returns SIGNAL_LABELS_3CLASS."""
+        result = get_signal_labels(3)
+        assert result == SIGNAL_LABELS_3CLASS
+
+    def test_default_5class(self):
+        """Test get_signal_labels() defaults to SIGNAL_LABELS (5-class)."""
+        result = get_signal_labels()
+        assert result == SIGNAL_LABELS
+
+
+class TestGetFeatureNames:
+    """Tests for get_feature_names helper function."""
+
+    def test_returns_defaults_without_config(self):
+        """Test get_feature_names() returns DEFAULT_FEATURE_NAMES when no config provided."""
+        result = get_feature_names()
+        assert result == DEFAULT_FEATURE_NAMES
+
+    def test_returns_config_features(self):
+        """Test get_feature_names(config) returns config.get_feature_names()."""
+        config = TrainingConfig(
+            features={"enable_sentiment": True, "enable_sector": True, "enable_market_regime": True}
+        )
+        result = get_feature_names(config)
+        assert result == config.get_feature_names()
