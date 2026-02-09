@@ -504,7 +504,7 @@ class SourceValidationService:
 
     async def validate_all_years(
         self,
-        from_year: int = 2020,
+        from_year: int = 2008,
         to_year: int = 2026,
         store_results: bool = True,
     ) -> Dict[str, Any]:
@@ -697,7 +697,7 @@ async def validate_records(year: int, month: Optional[int] = None, limit: int = 
     return await service.validate_individual_records(year, month, limit)
 
 
-async def validate_all_historical(from_year: int = 2020, to_year: int = 2026, store: bool = True) -> Dict[str, Any]:
+async def validate_all_historical(from_year: int = 2008, to_year: int = 2026, store: bool = True) -> Dict[str, Any]:
     """Validate all historical data across years."""
     service = SourceValidationService()
     return await service.validate_all_years(from_year, to_year, store)
@@ -716,7 +716,7 @@ class CountBasedValidationService:
 
     async def validate_counts(
         self,
-        from_year: int = 2020,
+        from_year: int = 2008,
         to_year: int = 2026,
         chamber: str = "house",
     ) -> Dict[str, Any]:
@@ -968,7 +968,7 @@ class CountBasedValidationService:
             return f"Low coverage. Chart data ({chart:,} trades) represents only {ratio:.1f}% of official filings ({official:,}). Significant data gap detected."
 
 
-async def validate_counts(from_year: int = 2020, to_year: int = 2026) -> Dict[str, Any]:
+async def validate_counts(from_year: int = 2008, to_year: int = 2026) -> Dict[str, Any]:
     """Run count-based validation."""
     service = CountBasedValidationService()
     return await service.validate_counts(from_year, to_year)

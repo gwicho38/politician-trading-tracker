@@ -319,17 +319,39 @@ def setup_keys(force: bool, push: bool, app: str):
 # Dashboard Commands
 # ============================================================================
 
+# Valid admin sections and their URL paths (relative to /admin)
+ADMIN_SECTIONS = {
+    "dashboard": "",
+    "overview": "/overview",
+    "etl": "/etl",
+    "ml": "/ml",
+    "quality": "/quality",
+    "enrichment": "/enrichment",
+    "errors": "/errors",
+    "audit-log": "/audit-log",
+}
+
 
 @admin.command("dashboard")
 @click.option("--local", "use_local", is_flag=True, help="Use local server (default: production)")
 @click.option("--start-server", is_flag=True, help="Start local ETL server first")
 @click.option("--port", default=8000, help="Port for local server")
-def dashboard(use_local: bool, start_server: bool, port: int):
+@click.option(
+    "--section", "-s",
+    type=click.Choice(list(ADMIN_SECTIONS.keys()), case_sensitive=False),
+    default="dashboard",
+    help="Admin section to open",
+)
+@click.option("--all", "open_all", is_flag=True, help="Open all sections in separate tabs")
+def dashboard(use_local: bool, start_server: bool, port: int, section: str, open_all: bool):
     """
     Open the admin dashboard in your browser.
 
     Examples:
         mcli run admin dashboard                    # Open production dashboard
+        mcli run admin dashboard -s etl             # Open ETL section
+        mcli run admin dashboard --section quality  # Open Data Quality section
+        mcli run admin dashboard --all              # Open all sections in tabs
         mcli run admin dashboard --local            # Open local dashboard
         mcli run admin dashboard --local --start-server  # Start server and open
     """
@@ -360,14 +382,24 @@ def dashboard(use_local: bool, start_server: bool, port: int):
     else:
         base_url = PROD_ETL_URL
 
-    dashboard_url = f"{base_url}/admin?key={admin_key}"
+    if open_all:
+        console.print(f"\n[bold]Opening All Admin Sections[/bold]")
+        for name, path in ADMIN_SECTIONS.items():
+            url = f"{base_url}/admin{path}?key={admin_key}"
+            webbrowser.open(url)
+            console.print(f"  [green]Opened:[/green] {name} ({base_url}/admin{path}?key=***)")
+            time.sleep(0.3)  # Small delay between tab opens
+        console.print(f"\n[green]Opened {len(ADMIN_SECTIONS)} sections in browser[/green]")
+    else:
+        path = ADMIN_SECTIONS[section]
+        dashboard_url = f"{base_url}/admin{path}?key={admin_key}"
 
-    console.print(f"\n[bold]Opening Admin Dashboard[/bold]")
-    console.print(f"URL: {base_url}/admin?key=***")
+        console.print(f"\n[bold]Opening Admin Dashboard[/bold] ({section})")
+        console.print(f"URL: {base_url}/admin{path}?key=***")
 
-    webbrowser.open(dashboard_url)
+        webbrowser.open(dashboard_url)
 
-    console.print("\n[green]Dashboard opened in browser[/green]")
+        console.print("\n[green]Dashboard opened in browser[/green]")
 
     if start_server:
         console.print("\n[yellow]Server is running in background.[/yellow]")
@@ -1161,14 +1193,25 @@ def backfill_source_ids(use_local: bool, year: int, from_year: int, to_year: int
 @click.option("--local", "use_local", is_flag=True, help="Get local URL")
 @click.option("--port", default=8000, help="Port for local server")
 @click.option("--copy", is_flag=True, help="Copy URL to clipboard")
-def url(use_local: bool, port: int, copy: bool):
+@click.option(
+    "--section", "-s",
+    type=click.Choice(list(ADMIN_SECTIONS.keys()), case_sensitive=False),
+    default="dashboard",
+    help="Admin section URL to get",
+)
+@click.option("--all", "show_all", is_flag=True, help="Show URLs for all sections")
+def url(use_local: bool, port: int, copy: bool, section: str, show_all: bool):
     """
     Get the admin dashboard URL with API key.
 
     Examples:
-        mcli run admin url              # Get production URL
-        mcli run admin url --local      # Get local URL
-        mcli run admin url --copy       # Copy to clipboard
+        mcli run admin url                  # Get production dashboard URL
+        mcli run admin url -s etl           # Get ETL section URL
+        mcli run admin url --section ml     # Get ML Models section URL
+        mcli run admin url --all            # Show all section URLs
+        mcli run admin url --local          # Get local URL
+        mcli run admin url --copy           # Copy URL to clipboard
+        mcli run admin url -s etl --copy    # Copy ETL section URL
     """
     load_env()
 
@@ -1179,17 +1222,31 @@ def url(use_local: bool, port: int, copy: bool):
         raise SystemExit(1)
 
     base_url = f"http://localhost:{port}" if use_local else PROD_ETL_URL
-    full_url = f"{base_url}/admin?key={admin_key}"
 
-    console.print(f"\n[bold]Admin Dashboard URL[/bold]")
-    console.print(full_url)
+    if show_all:
+        console.print(f"\n[bold]Admin Dashboard URLs[/bold]")
+        table = Table()
+        table.add_column("Section", style="cyan")
+        table.add_column("URL")
 
-    if copy:
-        try:
-            subprocess.run(["pbcopy"], input=full_url.encode(), check=True)
-            console.print("\n[green]Copied to clipboard![/green]")
-        except Exception:
-            console.print("\n[yellow]Could not copy to clipboard[/yellow]")
+        for name, path_suffix in ADMIN_SECTIONS.items():
+            full_url = f"{base_url}/admin{path_suffix}?key={admin_key}"
+            table.add_row(name, full_url)
+
+        console.print(table)
+    else:
+        path = ADMIN_SECTIONS[section]
+        full_url = f"{base_url}/admin{path}?key={admin_key}"
+
+        console.print(f"\n[bold]Admin Dashboard URL[/bold] ({section})")
+        console.print(full_url)
+
+        if copy:
+            try:
+                subprocess.run(["pbcopy"], input=full_url.encode(), check=True)
+                console.print("\n[green]Copied to clipboard![/green]")
+            except Exception:
+                console.print("\n[yellow]Could not copy to clipboard[/yellow]")
 
 
 # Make the group the main entry point
