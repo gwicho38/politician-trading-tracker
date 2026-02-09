@@ -21,6 +21,7 @@ from sklearn.preprocessing import StandardScaler
 from supabase import Client
 
 from app.lib.database import get_supabase
+from app.models.training_config import TrainingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -28,23 +29,41 @@ logger = logging.getLogger(__name__)
 MODEL_STORAGE_PATH = os.environ.get("MODEL_STORAGE_PATH", "/tmp/models")
 MODEL_STORAGE_BUCKET = "ml-models"  # Supabase Storage bucket for persistent model storage
 
-# Feature configuration
+# Legacy 12-feature list (kept for backward compat with old models)
 FEATURE_NAMES = [
-    'politician_count',      # Number of unique politicians trading the ticker
-    'buy_sell_ratio',        # Buys / Sells ratio
-    'recent_activity_30d',   # Trades in last 30 days
-    'bipartisan',            # Both D and R trading (0 or 1)
-    'net_volume',            # Buy volume - sell volume
-    'volume_magnitude',      # Log of total volume
-    'party_alignment',       # Majority party agreement score
-    'committee_relevance',   # Committee-sector alignment score
-    'disclosure_delay',      # Days between trade and disclosure
-    'sentiment_score',       # LLM-derived news sentiment (-1 to 1)
-    'market_momentum',       # 20-day price momentum
-    'sector_performance',    # Sector ETF performance
+    'politician_count',
+    'buy_sell_ratio',
+    'recent_activity_30d',
+    'bipartisan',
+    'net_volume',
+    'volume_magnitude',
+    'party_alignment',
+    'committee_relevance',
+    'disclosure_delay',
+    'sentiment_score',
+    'market_momentum',
+    'sector_performance',
 ]
 
-# Signal labels
+# Default feature names for new models (config defaults: sector=on, market_regime=on, sentiment=off)
+DEFAULT_FEATURE_NAMES = [
+    'politician_count',
+    'buy_sell_ratio',
+    'recent_activity_30d',
+    'bipartisan',
+    'net_volume',
+    'volume_magnitude',
+    'party_alignment',
+    'disclosure_delay',
+    'market_momentum',
+    'committee_relevance',
+    'sector_performance',
+    'vix_level',
+    'market_return_20d',
+    'market_breadth',
+]
+
+# Signal labels for 5-class classification
 SIGNAL_LABELS = {
     -2: 'strong_sell',
     -1: 'sell',
@@ -52,6 +71,27 @@ SIGNAL_LABELS = {
     1: 'buy',
     2: 'strong_buy',
 }
+
+# Signal labels for 3-class classification
+SIGNAL_LABELS_3CLASS = {
+    -1: 'sell',
+    0: 'hold',
+    1: 'buy',
+}
+
+
+def get_feature_names(config: Optional[TrainingConfig] = None) -> list[str]:
+    """Get ordered feature names from config or defaults."""
+    if config:
+        return config.get_feature_names()
+    return DEFAULT_FEATURE_NAMES.copy()
+
+
+def get_signal_labels(num_classes: int = 5) -> Dict[str, str]:
+    """Get signal label mapping for the given class count."""
+    if num_classes == 3:
+        return SIGNAL_LABELS_3CLASS
+    return SIGNAL_LABELS
 
 
 def ensure_storage_bucket_exists(supabase: Client) -> bool:
@@ -166,9 +206,10 @@ class CongressSignalModel:
         """
         self.model = None
         self.scaler = StandardScaler()
-        self.feature_names = FEATURE_NAMES.copy()
+        self.feature_names = DEFAULT_FEATURE_NAMES.copy()
         self.model_version = "1.0.0"
         self.model_type = "xgboost"
+        self.num_classes = 5
         self.is_trained = False
         self.training_metrics = {}
 
@@ -179,34 +220,43 @@ class CongressSignalModel:
         """
         Extract feature vector from ticker aggregation data.
 
+        Data-driven: iterates self.feature_names so the vector matches
+        whatever features the model was trained with.
+
         Args:
             ticker_data: Dictionary with ticker aggregation fields
 
         Returns:
             Feature vector as numpy array
         """
+        # Default values for each known feature
+        defaults = {
+            'politician_count': 0,
+            'buy_sell_ratio': 1.0,
+            'recent_activity_30d': 0,
+            'bipartisan': 0,
+            'net_volume': 0,
+            'volume_magnitude': 0,
+            'party_alignment': 0.5,
+            'committee_relevance': 0.5,
+            'disclosure_delay': 30,
+            'sentiment_score': 0.0,
+            'market_momentum': 0.0,
+            'sector_performance': 0.0,
+            'vix_level': 0.5,
+            'market_return_20d': 0.0,
+            'market_breadth': 0.5,
+        }
+
         features = []
-
-        # Extract each feature with defaults
-        features.append(ticker_data.get('politician_count', 0))
-        features.append(ticker_data.get('buy_sell_ratio', 1.0))
-        features.append(ticker_data.get('recent_activity_30d', 0))
-        features.append(1 if ticker_data.get('bipartisan', False) else 0)
-        features.append(ticker_data.get('net_volume', 0))
-
-        # Volume magnitude (log scale)
-        total_volume = abs(ticker_data.get('net_volume', 0))
-        features.append(np.log1p(total_volume) if total_volume > 0 else 0)
-
-        # Political features (defaults if not available)
-        features.append(ticker_data.get('party_alignment', 0.5))
-        features.append(ticker_data.get('committee_relevance', 0.5))
-        features.append(ticker_data.get('disclosure_delay', 30))
-
-        # Sentiment and market features
-        features.append(ticker_data.get('sentiment_score', 0.0))
-        features.append(ticker_data.get('market_momentum', 0.0))
-        features.append(ticker_data.get('sector_performance', 0.0))
+        for name in self.feature_names:
+            if name == 'bipartisan':
+                features.append(1 if ticker_data.get('bipartisan', False) else 0)
+            elif name == 'volume_magnitude':
+                total_volume = abs(ticker_data.get('net_volume', 0))
+                features.append(np.log1p(total_volume) if total_volume > 0 else 0)
+            else:
+                features.append(ticker_data.get(name, defaults.get(name, 0.0)))
 
         return np.array(features, dtype=np.float32)
 
@@ -216,15 +266,17 @@ class CongressSignalModel:
         y: np.ndarray,
         validation_split: float = 0.2,
         hyperparams: Optional[Dict[str, Any]] = None,
+        config: Optional[TrainingConfig] = None,
     ) -> Dict[str, Any]:
         """
         Train the XGBoost model on labeled data.
 
         Args:
             X: Feature dataframe with columns matching feature_names
-            y: Labels array (-2 to 2 for signal types)
+            y: Labels array (signal labels)
             validation_split: Fraction of data for validation
             hyperparams: Optional hyperparameters override
+            config: Optional TrainingConfig for num_classes and feature names
 
         Returns:
             Dictionary with training metrics
@@ -236,7 +288,15 @@ class CongressSignalModel:
         except ImportError:
             raise ImportError("XGBoost not installed. Run: pip install xgboost")
 
-        logger.info(f"Training model on {len(X)} samples...")
+        # Apply config if provided
+        if config:
+            self.num_classes = config.num_classes
+            self.feature_names = config.get_feature_names()
+
+        # Label offset: 5-class uses [-2,2]->offset 2, 3-class uses [-1,1]->offset 1
+        label_offset = 2 if self.num_classes == 5 else 1
+
+        logger.info(f"Training {self.num_classes}-class model on {len(X)} samples, {len(self.feature_names)} features...")
 
         # Default hyperparameters
         default_params = {
@@ -246,13 +306,19 @@ class CongressSignalModel:
             'subsample': 0.8,
             'colsample_bytree': 0.8,
             'objective': 'multi:softmax',
-            'num_class': 5,
+            'num_class': self.num_classes,
             'random_state': 42,
             'n_jobs': -1,
         }
 
         if hyperparams:
             default_params.update(hyperparams)
+
+        # Config hyperparams override (but don't override XGBoost-specific params)
+        if config and config.hyperparams:
+            for k, v in config.hyperparams.items():
+                if k in ('n_estimators', 'max_depth', 'learning_rate'):
+                    default_params[k] = v
 
         # Split data
         X_train, X_val, y_train, y_val = train_test_split(
@@ -263,9 +329,9 @@ class CongressSignalModel:
         X_train_scaled = self.scaler.fit_transform(X_train)
         X_val_scaled = self.scaler.transform(X_val)
 
-        # Shift labels from [-2, 2] to [0, 4] for XGBoost
-        y_train_shifted = y_train + 2
-        y_val_shifted = y_val + 2
+        # Shift labels to [0, N) for XGBoost
+        y_train_shifted = y_train + label_offset
+        y_val_shifted = y_val + label_offset
 
         # Train model
         self.model = xgb.XGBClassifier(**default_params)
@@ -277,7 +343,7 @@ class CongressSignalModel:
 
         # Evaluate
         y_pred_shifted = self.model.predict(X_val_scaled)
-        y_pred = y_pred_shifted - 2  # Shift back
+        y_pred = y_pred_shifted - label_offset  # Shift back
 
         accuracy = accuracy_score(y_val, y_pred)
         f1 = f1_score(y_val, y_pred, average='weighted')
@@ -290,11 +356,12 @@ class CongressSignalModel:
             'f1_weighted': float(f1),
             'training_samples': len(X_train),
             'validation_samples': len(X_val),
+            'num_classes': self.num_classes,
             'classification_report': classification_report(y_val, y_pred, output_dict=True),
         }
 
         self.is_trained = True
-        logger.info(f"Model trained - Accuracy: {accuracy:.3f}, F1: {f1:.3f}")
+        logger.info(f"Model trained - Accuracy: {accuracy:.3f}, F1: {f1:.3f}, Classes: {self.num_classes}")
 
         return {
             'metrics': self.training_metrics,
@@ -311,7 +378,7 @@ class CongressSignalModel:
 
         Returns:
             Tuple of (prediction: int, confidence: float)
-            prediction is in range [-2, 2]
+            prediction range depends on num_classes: [-2,2] for 5-class, [-1,1] for 3-class
             confidence is probability of predicted class
         """
         if not self.is_trained or self.model is None:
@@ -325,10 +392,11 @@ class CongressSignalModel:
         features_scaled = self.scaler.transform(features)
 
         # Get prediction and probabilities
+        label_offset = 2 if self.num_classes == 5 else 1
         pred_shifted = self.model.predict(features_scaled)[0]
         probas = self.model.predict_proba(features_scaled)[0]
 
-        prediction = int(pred_shifted - 2)  # Shift from [0,4] to [-2,2]
+        prediction = int(pred_shifted - label_offset)
         confidence = float(probas[int(pred_shifted)])
 
         return prediction, confidence
@@ -350,10 +418,11 @@ class CongressSignalModel:
                 feature_vector = self.prepare_features(features_dict)
                 prediction, confidence = self.predict(feature_vector)
 
+                labels = get_signal_labels(self.num_classes)
                 results.append({
                     'ticker': features_dict.get('ticker', 'UNKNOWN'),
                     'prediction': prediction,
-                    'signal_type': SIGNAL_LABELS.get(prediction, 'hold'),
+                    'signal_type': labels.get(prediction, 'hold'),
                     'confidence': confidence,
                     'feature_hash': compute_feature_hash(features_dict),
                 })
@@ -376,6 +445,7 @@ class CongressSignalModel:
             'feature_names': self.feature_names,
             'model_version': self.model_version,
             'model_type': self.model_type,
+            'num_classes': self.num_classes,
             'training_metrics': self.training_metrics,
             'is_trained': self.is_trained,
             'saved_at': datetime.now(timezone.utc).isoformat(),
@@ -387,7 +457,7 @@ class CongressSignalModel:
         logger.info(f"Model saved to {path}")
 
     def load(self, path: str):
-        """Load model from disk."""
+        """Load model from disk. Backward compatible with old models missing num_classes."""
         with open(path, 'rb') as f:
             model_data = pickle.load(f)
 
@@ -396,10 +466,11 @@ class CongressSignalModel:
         self.feature_names = model_data['feature_names']
         self.model_version = model_data.get('model_version', '1.0.0')
         self.model_type = model_data.get('model_type', 'xgboost')
+        self.num_classes = model_data.get('num_classes', 5)  # default 5 for old models
         self.training_metrics = model_data.get('training_metrics', {})
         self.is_trained = model_data.get('is_trained', True)
 
-        logger.info(f"Model loaded from {path}")
+        logger.info(f"Model loaded from {path} (num_classes={self.num_classes})")
 
     def get_feature_importance(self) -> Dict[str, float]:
         """Get feature importance scores."""
