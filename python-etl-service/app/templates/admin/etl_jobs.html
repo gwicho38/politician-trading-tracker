@@ -13,11 +13,11 @@
     </div>
     <div class="bg-white rounded-lg shadow p-4 text-center">
         <div class="text-3xl font-bold text-blue-600">{{ stats.house_count | default(0) | int }}</div>
-        <div class="text-sm text-gray-500">House</div>
+        <div class="text-sm text-gray-500">House Members</div>
     </div>
     <div class="bg-white rounded-lg shadow p-4 text-center">
         <div class="text-3xl font-bold text-indigo-600">{{ stats.senate_count | default(0) | int }}</div>
-        <div class="text-sm text-gray-500">Senate</div>
+        <div class="text-sm text-gray-500">Senate Members</div>
     </div>
     <div class="bg-white rounded-lg shadow p-4 text-center">
         <div class="text-3xl font-bold text-green-600">{{ stats.recent_24h | default(0) | int }}</div>

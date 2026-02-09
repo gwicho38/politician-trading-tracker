@@ -674,7 +674,7 @@ class TestRunBioguideEnrichment:
                     await run_bioguide_enrichment("test-job")
 
         assert mock_job_status["status"] == "completed"
-        assert "No matches found" in mock_job_status["message"]
+        assert "0 updated" in mock_job_status["message"]
 
     @pytest.mark.asyncio
     async def test_updates_matched_politicians(self, mock_job_status, monkeypatch):
