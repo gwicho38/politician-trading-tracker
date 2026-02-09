@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import Response
 
 from app.routes import health, etl, enrichment, ml, quality, error_reports, dedup, signals, admin
 from app.routes import admin_sections
@@ -271,6 +272,12 @@ app.include_router(dedup.router, tags=["deduplication"])
 app.include_router(signals.router, prefix="/signals", tags=["signals"])
 app.include_router(admin.router, prefix="/admin", tags=["admin"])
 app.include_router(admin_sections.router, prefix="/admin", tags=["admin"])
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Return 204 No Content for favicon requests to avoid 401 errors in browser."""
+    return Response(status_code=204)
 
 
 @app.get("/")

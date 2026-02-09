@@ -10,9 +10,6 @@
         [hx-indicator] .htmx-indicator { display: none; }
         [hx-indicator].htmx-request .htmx-indicator { display: inline; }
         .htmx-request.htmx-indicator { display: inline; }
-        .nav-link { @apply block px-3 py-2 rounded text-sm transition-colors; }
-        .nav-link:hover { @apply bg-indigo-700; }
-        .nav-link.active { @apply bg-indigo-800 font-semibold; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -22,14 +19,14 @@
                 <div class="flex items-center space-x-6">
                     <a href="/admin/overview?key={{ api_key }}" class="text-lg font-bold hover:text-indigo-200">GovMarket Admin</a>
                     <div class="hidden md:flex items-center space-x-1">
-                        <a href="/admin/overview?key={{ api_key }}" class="nav-link {% if active_section == 'overview' %}active{% endif %}">Overview</a>
-                        <a href="/admin?key={{ api_key }}" class="nav-link {% if active_section == 'validation' %}active{% endif %}">Validation</a>
-                        <a href="/admin/etl?key={{ api_key }}" class="nav-link {% if active_section == 'etl' %}active{% endif %}">ETL Jobs</a>
-                        <a href="/admin/ml?key={{ api_key }}" class="nav-link {% if active_section == 'ml' %}active{% endif %}">ML Models</a>
-                        <a href="/admin/quality?key={{ api_key }}" class="nav-link {% if active_section == 'quality' %}active{% endif %}">Quality</a>
-                        <a href="/admin/enrichment?key={{ api_key }}" class="nav-link {% if active_section == 'enrichment' %}active{% endif %}">Enrichment</a>
-                        <a href="/admin/errors?key={{ api_key }}" class="nav-link {% if active_section == 'errors' %}active{% endif %}">Errors</a>
-                        <a href="/admin/audit-log?key={{ api_key }}" class="nav-link {% if active_section == 'audit' %}active{% endif %}">Audit Log</a>
+                        <a href="/admin/overview?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'overview' %}bg-indigo-800 font-semibold{% endif %}">Overview</a>
+                        <a href="/admin?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'validation' %}bg-indigo-800 font-semibold{% endif %}">Validation</a>
+                        <a href="/admin/etl?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'etl' %}bg-indigo-800 font-semibold{% endif %}">ETL Jobs</a>
+                        <a href="/admin/ml?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'ml' %}bg-indigo-800 font-semibold{% endif %}">ML Models</a>
+                        <a href="/admin/quality?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'quality' %}bg-indigo-800 font-semibold{% endif %}">Quality</a>
+                        <a href="/admin/enrichment?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'enrichment' %}bg-indigo-800 font-semibold{% endif %}">Enrichment</a>
+                        <a href="/admin/errors?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'errors' %}bg-indigo-800 font-semibold{% endif %}">Errors</a>
+                        <a href="/admin/audit-log?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'audit' %}bg-indigo-800 font-semibold{% endif %}">Audit Log</a>
                     </div>
                 </div>
                 <div class="flex items-center space-x-3">
@@ -45,14 +42,14 @@
             </div>
             <!-- Mobile nav -->
             <div class="md:hidden pb-3 flex flex-wrap gap-1">
-                <a href="/admin/overview?key={{ api_key }}" class="nav-link {% if active_section == 'overview' %}active{% endif %}">Overview</a>
-                <a href="/admin?key={{ api_key }}" class="nav-link {% if active_section == 'validation' %}active{% endif %}">Validation</a>
-                <a href="/admin/etl?key={{ api_key }}" class="nav-link {% if active_section == 'etl' %}active{% endif %}">ETL</a>
-                <a href="/admin/ml?key={{ api_key }}" class="nav-link {% if active_section == 'ml' %}active{% endif %}">ML</a>
-                <a href="/admin/quality?key={{ api_key }}" class="nav-link {% if active_section == 'quality' %}active{% endif %}">Quality</a>
-                <a href="/admin/enrichment?key={{ api_key }}" class="nav-link {% if active_section == 'enrichment' %}active{% endif %}">Enrichment</a>
-                <a href="/admin/errors?key={{ api_key }}" class="nav-link {% if active_section == 'errors' %}active{% endif %}">Errors</a>
-                <a href="/admin/audit-log?key={{ api_key }}" class="nav-link {% if active_section == 'audit' %}active{% endif %}">Audit</a>
+                <a href="/admin/overview?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'overview' %}bg-indigo-800 font-semibold{% endif %}">Overview</a>
+                <a href="/admin?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'validation' %}bg-indigo-800 font-semibold{% endif %}">Validation</a>
+                <a href="/admin/etl?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'etl' %}bg-indigo-800 font-semibold{% endif %}">ETL</a>
+                <a href="/admin/ml?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'ml' %}bg-indigo-800 font-semibold{% endif %}">ML</a>
+                <a href="/admin/quality?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'quality' %}bg-indigo-800 font-semibold{% endif %}">Quality</a>
+                <a href="/admin/enrichment?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'enrichment' %}bg-indigo-800 font-semibold{% endif %}">Enrichment</a>
+                <a href="/admin/errors?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'errors' %}bg-indigo-800 font-semibold{% endif %}">Errors</a>
+                <a href="/admin/audit-log?key={{ api_key }}" class="block px-3 py-2 rounded text-sm transition-colors hover:bg-indigo-700 {% if active_section == 'audit' %}bg-indigo-800 font-semibold{% endif %}">Audit</a>
             </div>
         </div>
     </nav>

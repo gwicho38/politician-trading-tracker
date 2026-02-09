@@ -48,6 +48,7 @@ PUBLIC_ENDPOINTS: Set[str] = {
     "/openapi.json",
     "/redoc",
     "/redoc/",
+    "/favicon.ico",
 }
 
 # Admin routes handle their own authentication via query param
