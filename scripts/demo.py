@@ -127,7 +127,7 @@ async def demonstrate_workflow_execution():
     sample_politicians = [
         {
             "full_name": "Nancy Pelosi",
-            "role": "us_house_representative",
+            "role": "Representative",
             "party": "Democratic",
             "state_or_country": "CA",
             "district": "5",

@@ -230,7 +230,7 @@ class PoliticianTradingCollector {
     const disclosures = []
 
     // Get or create a placeholder politician for Senate members
-    const politicianId = await this.getOrCreatePolitician("Senate Member (Placeholder)", "Senate", "Unknown")
+    const politicianId = await this.getOrCreatePolitician("Senate Member (Placeholder)", "Senator", "Unknown")
     if (!politicianId) {
       console.warn("Could not create Senate placeholder politician")
       return { source: "us_senate", disclosures_found: 0, disclosures: [] }

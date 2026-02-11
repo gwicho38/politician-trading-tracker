@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 
 from app.lib.database import get_supabase
+from app.services.politician_normalizer import PoliticianNormalizer
 
 router = APIRouter()
 
@@ -71,6 +72,17 @@ class FreshnessReport(BaseModel):
     sources: list
     overall_health: str
     last_updated: str
+
+
+class NormalizePoliticiansRequest(BaseModel):
+    """Request for politician normalization."""
+
+    dry_run: bool = Field(default=True, description="Preview changes without applying")
+    limit: int = Field(default=500, ge=1, le=5000)
+    steps: list = Field(
+        default=["roles", "names", "state_backfill"],
+        description="Which normalization steps to run",
+    )
 
 
 # ============================================================================
@@ -535,3 +547,55 @@ async def get_freshness_report():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate report: {e}")
+
+
+# ============================================================================
+# Politician Normalization
+# ============================================================================
+
+
+@router.post("/normalize-politicians")
+async def normalize_politicians(request: NormalizePoliticiansRequest):
+    """
+    Normalize politician data for consistency.
+
+    Runs selected normalization steps:
+    - roles: Map deprecated role values to canonical (Representative, Senator, MEP)
+    - names: Strip honorific prefixes and fix whitespace
+    - state_backfill: Fill empty state_or_country from district data
+
+    Use dry_run=true to preview changes without applying.
+    """
+    import time
+
+    start_time = time.time()
+    normalizer = PoliticianNormalizer()
+
+    results = {}
+    total_corrections = 0
+    total_errors = 0
+
+    step_methods = {
+        "roles": normalizer.normalize_roles,
+        "names": normalizer.standardize_names,
+        "state_backfill": normalizer.backfill_state_country,
+    }
+
+    for step in request.steps:
+        if step not in step_methods:
+            continue
+        result = step_methods[step](dry_run=request.dry_run, limit=request.limit)
+        results[step] = result
+        total_corrections += result.get("corrections", 0)
+        total_errors += result.get("errors", 0)
+
+    elapsed_ms = int((time.time() - start_time) * 1000)
+
+    return {
+        "dry_run": request.dry_run,
+        "steps_completed": list(results.keys()),
+        "total_corrections": total_corrections,
+        "total_errors": total_errors,
+        "results": results,
+        "duration_ms": elapsed_ms,
+    }
