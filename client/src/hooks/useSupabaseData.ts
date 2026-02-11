@@ -27,6 +27,8 @@ export interface Politician {
   total_trades: number;
   total_volume: number;
   is_active: boolean;
+  biography: string | null;
+  biography_updated_at: string | null;
 }
 
 // Trading disclosure from the trading_disclosures table (actual ETL data)
