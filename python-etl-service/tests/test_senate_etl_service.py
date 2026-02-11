@@ -5,6 +5,8 @@ Tests the core ETL functionality for US Senate financial disclosures:
 - Senator fetching from XML
 - Senator database operations
 - Transaction parsing from PDF rows
+- Extracted parsing functions (parse_ptr_page_html, _match_disclosures_to_senators)
+- Fallback orchestration (HTTP → Playwright)
 """
 
 import pytest
@@ -1275,14 +1277,17 @@ class TestRunSenateEtl:
         ]
 
         disclosures = [
-            {"politician_name": "John Smith", "source_url": "https://test.url/ptr/123/", "is_paper": False},
+            {"politician_name": "John Smith", "first_name": "John", "last_name": "Smith",
+             "source_url": "https://test.url/ptr/123/", "is_paper": False, "source": "us_senate"},
         ]
 
         with patch("app.services.senate_etl.get_supabase", return_value=MagicMock()):
             with patch("app.services.senate_etl.fetch_senators_from_xml", return_value=senators):
                 with patch("app.services.senate_etl.upsert_senator_to_db", return_value="senator-uuid"):
-                    with patch("app.services.senate_etl.fetch_senate_ptr_list_playwright", return_value=disclosures):
-                        with patch("app.services.senate_etl.process_disclosures_playwright", return_value=(5, 0)):
+                    with patch("app.services.senate_etl.search_ptrs_with_fallback",
+                              return_value=(disclosures, "http")):
+                        with patch("app.services.senate_etl.process_disclosures_with_fallback",
+                                  return_value=(5, 0)):
                             with patch("app.services.senate_etl.log_job_execution"):
                                 await run_senate_etl(mock_job_status, lookback_days=30)
 
@@ -1298,16 +1303,21 @@ class TestRunSenateEtl:
         senators = [{"first_name": "John", "last_name": "Smith", "full_name": "John Smith", "party": "D", "state": "NY", "bioguide_id": "S123"}]
 
         disclosures = [
-            {"politician_name": "John Smith", "source_url": "https://test.url/ptr/123/", "is_paper": False},
-            {"politician_name": "John Smith", "source_url": "https://test.url/paper/456/", "is_paper": True},
-            {"politician_name": "John Smith", "source_url": "https://test.url/ptr/789/", "is_paper": False},
+            {"politician_name": "John Smith", "first_name": "John", "last_name": "Smith",
+             "source_url": "https://test.url/ptr/123/", "is_paper": False, "source": "us_senate"},
+            {"politician_name": "John Smith", "first_name": "John", "last_name": "Smith",
+             "source_url": "https://test.url/paper/456/", "is_paper": True, "source": "us_senate"},
+            {"politician_name": "John Smith", "first_name": "John", "last_name": "Smith",
+             "source_url": "https://test.url/ptr/789/", "is_paper": False, "source": "us_senate"},
         ]
 
         with patch("app.services.senate_etl.get_supabase", return_value=MagicMock()):
             with patch("app.services.senate_etl.fetch_senators_from_xml", return_value=senators):
                 with patch("app.services.senate_etl.upsert_senator_to_db", return_value="senator-uuid"):
-                    with patch("app.services.senate_etl.fetch_senate_ptr_list_playwright", return_value=disclosures):
-                        with patch("app.services.senate_etl.process_disclosures_playwright", return_value=(3, 0)) as mock_process:
+                    with patch("app.services.senate_etl.search_ptrs_with_fallback",
+                              return_value=(disclosures, "playwright")):
+                        with patch("app.services.senate_etl.process_disclosures_with_fallback",
+                                  return_value=(3, 0)) as mock_process:
                             with patch("app.services.senate_etl.log_job_execution"):
                                 await run_senate_etl(mock_job_status, lookback_days=30)
 
@@ -1358,3 +1368,446 @@ class TestSenateETLConstants:
         assert callable(parse_value_range)
         assert callable(clean_asset_name)
         assert callable(is_header_row)
+
+
+# =============================================================================
+# parse_ptr_page_html Tests (extracted function)
+# =============================================================================
+
+class TestParsePtrPageHtml:
+    """Tests for the extracted parse_ptr_page_html function."""
+
+    def test_parses_transactions_from_html(self):
+        """parse_ptr_page_html parses transactions from HTML table."""
+        from app.services.senate_etl import parse_ptr_page_html
+
+        html = """
+        <html>
+        <h1>Periodic Transaction Report for 01/15/2024</h1>
+        <table class="table-striped">
+            <thead>
+                <tr>
+                    <th>#</th><th>Transaction Date</th><th>Owner</th>
+                    <th>Ticker</th><th>Asset Name</th><th>Asset Type</th>
+                    <th>Type</th><th>Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>1</td><td>01/10/2024</td><td>Self</td>
+                    <td>AAPL</td><td>Apple Inc</td><td>Stock</td>
+                    <td>Purchase</td><td>$1,001 - $15,000</td>
+                </tr>
+            </tbody>
+        </table>
+        </html>
+        """
+
+        transactions = parse_ptr_page_html(html, "https://test.url/ptr/123/")
+
+        assert len(transactions) == 1
+        assert transactions[0]["asset_name"] == "Apple Inc"
+        assert transactions[0]["asset_ticker"] == "AAPL"
+        assert transactions[0]["transaction_type"] == "purchase"
+
+    def test_returns_empty_for_no_table(self):
+        """parse_ptr_page_html returns empty list when no table."""
+        from app.services.senate_etl import parse_ptr_page_html
+
+        html = "<html><body><p>No table here</p></body></html>"
+        transactions = parse_ptr_page_html(html, "https://test.url/")
+
+        assert transactions == []
+
+    def test_extracts_filing_date_from_h1(self):
+        """parse_ptr_page_html extracts filing date from h1."""
+        from app.services.senate_etl import parse_ptr_page_html
+
+        html = """
+        <html>
+        <h1>Periodic Transaction Report for 02/20/2024</h1>
+        <table>
+            <tbody>
+                <tr>
+                    <td>1</td><td></td><td>Self</td><td>AAPL</td>
+                    <td>Apple</td><td>Stock</td><td>Purchase</td>
+                    <td>$1,001 - $15,000</td>
+                </tr>
+            </tbody>
+        </table>
+        </html>
+        """
+
+        transactions = parse_ptr_page_html(html)
+        assert len(transactions) == 1
+        assert "2024-02-20" in transactions[0]["notification_date"]
+
+    def test_parses_multiple_transactions(self):
+        """parse_ptr_page_html parses multiple table rows."""
+        from app.services.senate_etl import parse_ptr_page_html
+
+        html = """
+        <html>
+        <table>
+            <tbody>
+                <tr>
+                    <td>1</td><td>01/10/2024</td><td>Self</td><td>AAPL</td>
+                    <td>Apple Inc</td><td>Stock</td><td>Purchase</td>
+                    <td>$1,001 - $15,000</td>
+                </tr>
+                <tr>
+                    <td>2</td><td>01/12/2024</td><td>Self</td><td>MSFT</td>
+                    <td>Microsoft Corp</td><td>Stock</td><td>Sale (Full)</td>
+                    <td>$15,001 - $50,000</td>
+                </tr>
+            </tbody>
+        </table>
+        </html>
+        """
+
+        transactions = parse_ptr_page_html(html)
+        assert len(transactions) == 2
+        assert transactions[0]["transaction_type"] == "purchase"
+        assert transactions[1]["transaction_type"] == "sale"
+
+    def test_handles_malformed_html(self):
+        """parse_ptr_page_html handles malformed HTML gracefully."""
+        from app.services.senate_etl import parse_ptr_page_html
+
+        html = "<html><table><tr><td>incomplete"
+        transactions = parse_ptr_page_html(html)
+        assert transactions == []
+
+
+# =============================================================================
+# _match_disclosures_to_senators Tests
+# =============================================================================
+
+class TestMatchDisclosuresToSenators:
+    """Tests for the extracted _match_disclosures_to_senators function."""
+
+    @pytest.fixture
+    def senators(self):
+        return [
+            {"first_name": "John", "last_name": "Smith", "full_name": "John Smith", "politician_id": "uuid-1"},
+            {"first_name": "Jane", "last_name": "Doe", "full_name": "Jane Doe", "politician_id": "uuid-2"},
+            {"first_name": "Robert", "last_name": "Johnson", "full_name": "Robert Johnson", "politician_id": "uuid-3"},
+        ]
+
+    def test_matches_by_last_name(self, senators):
+        """_match_disclosures_to_senators matches by last name."""
+        from app.services.senate_etl import _match_disclosures_to_senators
+
+        disclosures = [
+            {"first_name": "John", "last_name": "Smith", "politician_name": "John Smith"},
+        ]
+
+        result = _match_disclosures_to_senators(disclosures, senators)
+
+        assert len(result) == 1
+        assert result[0]["politician_id"] == "uuid-1"
+
+    def test_matches_by_first_name_prefix(self, senators):
+        """_match_disclosures_to_senators uses first name prefix for disambiguation."""
+        from app.services.senate_etl import _match_disclosures_to_senators
+
+        # Add another senator with same last name
+        senators.append({
+            "first_name": "James", "last_name": "Smith",
+            "full_name": "James Smith", "politician_id": "uuid-4",
+        })
+
+        disclosures = [
+            {"first_name": "James", "last_name": "Smith", "politician_name": "James Smith"},
+        ]
+
+        result = _match_disclosures_to_senators(disclosures, senators)
+
+        assert result[0]["politician_id"] == "uuid-4"
+
+    def test_unmatched_disclosure_passes_through(self, senators):
+        """_match_disclosures_to_senators passes through unmatched disclosures."""
+        from app.services.senate_etl import _match_disclosures_to_senators
+
+        disclosures = [
+            {"first_name": "Unknown", "last_name": "Person", "politician_name": "Unknown Person"},
+        ]
+
+        result = _match_disclosures_to_senators(disclosures, senators)
+
+        assert len(result) == 1
+        # No politician_id set for unmatched
+        assert result[0].get("politician_id") is None
+
+    def test_empty_disclosures(self, senators):
+        """_match_disclosures_to_senators handles empty disclosure list."""
+        from app.services.senate_etl import _match_disclosures_to_senators
+
+        result = _match_disclosures_to_senators([], senators)
+        assert result == []
+
+    def test_falls_back_to_first_senator_with_same_last_name(self, senators):
+        """_match_disclosures_to_senators uses first senator when first name doesn't match."""
+        from app.services.senate_etl import _match_disclosures_to_senators
+
+        disclosures = [
+            {"first_name": "Zxyz", "last_name": "Smith", "politician_name": "Zxyz Smith"},
+        ]
+
+        result = _match_disclosures_to_senators(disclosures, senators)
+
+        # Should fall back to first Smith (John Smith, uuid-1)
+        assert result[0]["politician_id"] == "uuid-1"
+
+
+# =============================================================================
+# parse_datatables_record JSON API format Tests
+# =============================================================================
+
+class TestParseDatatablesRecordJSONFormat:
+    """Tests for parse_datatables_record with 5-element JSON API records."""
+
+    def test_parses_5_element_record(self):
+        """parse_datatables_record parses 5-element JSON API record."""
+        from app.services.senate_etl import parse_datatables_record
+
+        record = [
+            "John",
+            "Smith",
+            "Senator",
+            '<a href="/search/view/ptr/abc-123/">Periodic Transaction Report</a>',
+            "01/15/2024",
+        ]
+
+        result = parse_datatables_record(record)
+
+        assert result is not None
+        assert result["politician_name"] == "John Smith"
+        assert result["doc_id"] == "abc-123"
+        assert result["source"] == "us_senate"
+
+    def test_handles_single_quoted_href(self):
+        """parse_datatables_record handles single-quoted href attributes."""
+        from app.services.senate_etl import parse_datatables_record
+
+        record = [
+            "Jane",
+            "Doe",
+            "Senator",
+            "<a href='/search/view/ptr/def-456/'>Periodic Transaction Report</a>",
+            "02/20/2024",
+        ]
+
+        result = parse_datatables_record(record)
+
+        assert result is not None
+        assert result["doc_id"] == "def-456"
+
+    def test_detects_paper_filing(self):
+        """parse_datatables_record detects paper filings from URL."""
+        from app.services.senate_etl import parse_datatables_record
+
+        record = [
+            "John",
+            "Smith",
+            "Senator",
+            '<a href="/search/view/paper/abc-123/">Periodic Transaction Report</a>',
+            "01/15/2024",
+        ]
+
+        result = parse_datatables_record(record)
+
+        assert result is not None
+        assert result["is_paper"] is True
+
+    def test_includes_first_last_name(self):
+        """parse_datatables_record includes first_name and last_name."""
+        from app.services.senate_etl import parse_datatables_record
+
+        record = [
+            "John",
+            "Smith",
+            "Senator",
+            '<a href="/search/view/ptr/abc/">Periodic Transaction Report</a>',
+            "01/15/2024",
+        ]
+
+        result = parse_datatables_record(record)
+
+        assert result is not None
+        assert result["first_name"] == "John"
+        assert result["last_name"] == "Smith"
+
+    def test_works_without_senator_arg(self):
+        """parse_datatables_record works when senator is None."""
+        from app.services.senate_etl import parse_datatables_record
+
+        record = [
+            "John",
+            "Smith",
+            "Senator",
+            '<a href="/search/view/ptr/abc/">Periodic Transaction Report</a>',
+            "01/15/2024",
+        ]
+
+        result = parse_datatables_record(record, senator=None)
+
+        assert result is not None
+        assert result["politician_name"] == "John Smith"
+
+
+# =============================================================================
+# Fallback Orchestration Tests
+# =============================================================================
+
+class TestSearchPtrsWithFallback:
+    """Tests for search_ptrs_with_fallback."""
+
+    @pytest.mark.asyncio
+    async def test_returns_http_tier_on_success(self):
+        """search_ptrs_with_fallback returns 'http' tier on success."""
+        from app.services.senate_etl import search_ptrs_with_fallback
+
+        mock_disclosures = [{"politician_name": "Test", "source_url": "http://example.com"}]
+
+        with patch("app.services.senate_http_client.SenateEFDClient") as MockClient:
+            mock_instance = AsyncMock()
+            mock_instance.search_ptrs.return_value = mock_disclosures
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_instance)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            disclosures, tier = await search_ptrs_with_fallback(lookback_days=30)
+
+        assert tier == "http"
+        assert disclosures == mock_disclosures
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_playwright_on_block(self):
+        """search_ptrs_with_fallback falls back on EFDBlockedError."""
+        from app.services.senate_etl import search_ptrs_with_fallback
+        from app.services.senate_http_client import EFDBlockedError
+
+        pw_disclosures = [{"politician_name": "PW Test", "source_url": "http://example.com"}]
+
+        with patch("app.services.senate_http_client.SenateEFDClient") as MockClient:
+            MockClient.return_value.__aenter__ = AsyncMock(side_effect=EFDBlockedError("WAF block"))
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            with patch("app.services.senate_etl.search_all_ptr_disclosures_playwright",
+                       return_value=pw_disclosures):
+                disclosures, tier = await search_ptrs_with_fallback(lookback_days=30)
+
+        assert tier == "playwright"
+        assert disclosures == pw_disclosures
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_playwright_on_session_error(self):
+        """search_ptrs_with_fallback falls back on EFDSessionError."""
+        from app.services.senate_etl import search_ptrs_with_fallback
+        from app.services.senate_http_client import EFDSessionError
+
+        with patch("app.services.senate_http_client.SenateEFDClient") as MockClient:
+            MockClient.return_value.__aenter__ = AsyncMock(side_effect=EFDSessionError("No CSRF"))
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            with patch("app.services.senate_etl.search_all_ptr_disclosures_playwright",
+                       return_value=[]):
+                disclosures, tier = await search_ptrs_with_fallback(lookback_days=30)
+
+        assert tier == "playwright"
+
+
+class TestProcessDisclosuresWithFallback:
+    """Tests for process_disclosures_with_fallback."""
+
+    @pytest.mark.asyncio
+    async def test_uses_http_for_http_tier(self):
+        """process_disclosures_with_fallback uses HTTP when tier is 'http'."""
+        from app.services.senate_etl import process_disclosures_with_fallback
+
+        mock_supabase = MagicMock()
+
+        with patch("app.services.senate_etl.process_disclosures_http",
+                    return_value=(5, 0)) as mock_http:
+            result = await process_disclosures_with_fallback([], mock_supabase, "http")
+
+        assert result == (5, 0)
+        mock_http.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_uses_playwright_for_playwright_tier(self):
+        """process_disclosures_with_fallback uses Playwright when tier is 'playwright'."""
+        from app.services.senate_etl import process_disclosures_with_fallback
+
+        mock_supabase = MagicMock()
+
+        with patch("app.services.senate_etl.process_disclosures_playwright",
+                    return_value=(3, 1)) as mock_pw:
+            result = await process_disclosures_with_fallback([], mock_supabase, "playwright")
+
+        assert result == (3, 1)
+        mock_pw.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_falls_back_from_http_to_playwright(self):
+        """process_disclosures_with_fallback falls back from HTTP to Playwright on error."""
+        from app.services.senate_etl import process_disclosures_with_fallback
+
+        mock_supabase = MagicMock()
+
+        with patch("app.services.senate_etl.process_disclosures_http",
+                    side_effect=Exception("HTTP failed")):
+            with patch("app.services.senate_etl.process_disclosures_playwright",
+                       return_value=(2, 0)) as mock_pw:
+                result = await process_disclosures_with_fallback([], mock_supabase, "http")
+
+        assert result == (2, 0)
+        mock_pw.assert_awaited_once()
+
+
+# =============================================================================
+# Updated run_senate_etl Tests (with fallback)
+# =============================================================================
+
+class TestRunSenateEtlWithFallback:
+    """Tests for run_senate_etl with fallback orchestration."""
+
+    @pytest.fixture
+    def mock_job_status(self):
+        """Create mock job status."""
+        from app.services.senate_etl import JOB_STATUS
+        job_id = "test-fallback-123"
+        JOB_STATUS[job_id] = {
+            "status": "pending",
+            "message": "",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+        return job_id
+
+    @pytest.mark.asyncio
+    async def test_logs_discovery_tier_in_metadata(self, mock_job_status):
+        """run_senate_etl includes discovery_tier in job execution metadata."""
+        from app.services.senate_etl import run_senate_etl, JOB_STATUS
+
+        senators = [{"first_name": "John", "last_name": "Smith", "full_name": "John Smith",
+                     "party": "D", "state": "NY", "bioguide_id": "S123"}]
+        disclosures = [{"politician_name": "John Smith", "first_name": "John",
+                       "last_name": "Smith", "source_url": "https://test.url/ptr/123/",
+                       "is_paper": False, "source": "us_senate"}]
+
+        with patch("app.services.senate_etl.get_supabase", return_value=MagicMock()):
+            with patch("app.services.senate_etl.fetch_senators_from_xml", return_value=senators):
+                with patch("app.services.senate_etl.upsert_senator_to_db", return_value="senator-uuid"):
+                    with patch("app.services.senate_etl.search_ptrs_with_fallback",
+                              return_value=(disclosures, "http")):
+                        with patch("app.services.senate_etl.process_disclosures_with_fallback",
+                                  return_value=(5, 0)):
+                            with patch("app.services.senate_etl.log_job_execution") as mock_log:
+                                await run_senate_etl(mock_job_status, lookback_days=30)
+
+        assert JOB_STATUS[mock_job_status]["status"] == "completed"
+        assert "[http]" in JOB_STATUS[mock_job_status]["message"]
+
+        # Verify discovery_tier in metadata
+        log_call = mock_log.call_args
+        assert log_call.kwargs["metadata"]["discovery_tier"] == "http"
