@@ -493,6 +493,7 @@ async def search_all_ptr_disclosures_playwright(
                                     "source_url": href,
                                     "doc_id": doc_id,
                                     "is_paper": "/paper/" in (href or ""),
+                                    "source": "us_senate",
                                 })
 
                 # Check limit
@@ -751,12 +752,18 @@ async def process_disclosures_playwright(
     return total_transactions, errors
 
 
-def parse_datatables_record(record: List[Any], senator: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def parse_datatables_record(record: List[Any], senator: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """
     Parse a DataTables record from the EFD search results.
 
-    Record format: [first_name, last_name, office, report_type, date, link_html]
+    Supports two formats:
+    - 6-element: [first_name, last_name, office, report_type, date, link_html]
+    - 5-element (JSON API): [first_name, last_name, office, report_type_with_link, date]
+      where record[3] = '<a href="...">Periodic Transaction Report</a>'
     """
+    if senator is None:
+        senator = {}
+
     if len(record) < 5:
         return None
 
@@ -772,8 +779,9 @@ def parse_datatables_record(record: List[Any], senator: Dict[str, Any]) -> Optio
         if "Periodic" not in report_type:
             return None
 
-        # Parse link from HTML
-        link_match = re.search(r'href="([^"]+)"', link_html)
+        # Parse link from HTML — check link_html first, then report_type
+        # (JSON API embeds the link in the report_type field)
+        link_match = re.search(r"href=[\"']([^\"']+)[\"']", link_html or report_type)
         if not link_match:
             return None
 
@@ -781,24 +789,31 @@ def parse_datatables_record(record: List[Any], senator: Dict[str, Any]) -> Optio
         report_url = f"{SENATE_BASE_URL}{href}" if not href.startswith("http") else href
 
         # Extract UUID from URL like /search/view/ptr/83de647b-ddf0-49c3-bd56-8b32f23c0e78/
-        uuid_match = re.search(r'/ptr/([a-f0-9-]+)/', href)
+        uuid_match = re.search(r'/(?:ptr|paper)/([a-f0-9-]+)/', href)
         doc_id = uuid_match.group(1) if uuid_match else None
+
+        # Detect paper filings from URL
+        is_paper = "/paper/" in href
 
         # Parse filing date
         filing_date = None
         if filing_date_str:
             try:
-                filing_date = datetime.strptime(filing_date_str, "%m/%d/%Y").isoformat()
+                filing_date = datetime.strptime(filing_date_str.strip(), "%m/%d/%Y").isoformat()
             except ValueError:
                 pass
 
         return {
             "politician_name": full_name or senator.get("full_name"),
-            "politician_id": senator.get("politician_id"),  # If we have it
+            "first_name": first_name.strip() if first_name else "",
+            "last_name": last_name.strip() if last_name else "",
+            "politician_id": senator.get("politician_id"),
             "report_type": "PTR",
             "filing_date": filing_date,
             "source_url": report_url,
             "doc_id": doc_id,
+            "is_paper": is_paper,
+            "source": "us_senate",
         }
 
     except Exception as e:
@@ -806,27 +821,18 @@ def parse_datatables_record(record: List[Any], senator: Dict[str, Any]) -> Optio
         return None
 
 
-async def fetch_senate_ptr_list_playwright(
+def _match_disclosures_to_senators(
+    disclosures: List[Dict[str, Any]],
     senators: List[Dict[str, Any]],
-    lookback_days: int = 30,
-    limit: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Fetch list of Senate PTR filings using Playwright browser automation.
+    Match disclosure records to senators based on name.
 
-    Uses a single browser session to search for all PTRs, then matches
-    them to senators based on name.
-
-    Returns a combined list of all disclosures found.
+    Builds a last-name lookup, then matches each disclosure to the best
+    senator by first-name prefix. Reusable by both HTTP and Playwright paths.
     """
-    # Get all PTR disclosures in one batch search
-    all_disclosures = await search_all_ptr_disclosures_playwright(
-        lookback_days=lookback_days,
-        limit=limit,
-    )
-
     # Create a lookup for senators by last name
-    senator_lookup = {}
+    senator_lookup: Dict[str, List[Dict[str, Any]]] = {}
     for senator in senators:
         last_name = senator.get("last_name", "").upper()
         if last_name:
@@ -836,7 +842,7 @@ async def fetch_senate_ptr_list_playwright(
 
     # Match disclosures to senators
     matched_disclosures = []
-    for disclosure in all_disclosures:
+    for disclosure in disclosures:
         last_name = disclosure.get("last_name", "").upper()
         first_name = disclosure.get("first_name", "").upper()
 
@@ -860,12 +866,33 @@ async def fetch_senate_ptr_list_playwright(
     return matched_disclosures
 
 
-async def parse_ptr_page(
-    client: httpx.AsyncClient,
-    url: str,
+async def fetch_senate_ptr_list_playwright(
+    senators: List[Dict[str, Any]],
+    lookback_days: int = 30,
+    limit: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Parse a Senate PTR page to extract transactions.
+    Fetch list of Senate PTR filings using Playwright browser automation.
+
+    Uses a single browser session to search for all PTRs, then matches
+    them to senators based on name.
+
+    Returns a combined list of all disclosures found.
+    """
+    # Get all PTR disclosures in one batch search
+    all_disclosures = await search_all_ptr_disclosures_playwright(
+        lookback_days=lookback_days,
+        limit=limit,
+    )
+
+    return _match_disclosures_to_senators(all_disclosures, senators)
+
+
+def parse_ptr_page_html(html: str, url: str = "") -> List[Dict[str, Any]]:
+    """
+    Parse PTR page HTML to extract transactions.
+
+    Reusable by both the HTTP client path and the legacy httpx path.
 
     PTR pages have a table with columns:
     #, Transaction Date, Owner, Ticker, Asset Name, Asset Type, Type, Amount, Comment
@@ -873,18 +900,7 @@ async def parse_ptr_page(
     transactions = []
 
     try:
-        response = await client.get(
-            url,
-            headers={"User-Agent": USER_AGENT},
-            follow_redirects=True,
-            timeout=30.0,
-        )
-
-        if response.status_code != 200:
-            logger.warning(f"Failed to fetch PTR page {url}: {response.status_code}")
-            return []
-
-        soup = BeautifulSoup(response.text, "html.parser")
+        soup = BeautifulSoup(html, "html.parser")
 
         # Get filing date from h1
         h1 = soup.find("h1")
@@ -950,10 +966,10 @@ async def parse_ptr_page(
             if len(cells) < 6:
                 continue
 
-            def get_cell(key: str) -> str:
+            def get_cell(key: str, _cells=cells) -> str:
                 idx = col_map.get(key, -1)
-                if 0 <= idx < len(cells):
-                    return cells[idx].get_text(strip=True)
+                if 0 <= idx < len(_cells):
+                    return _cells[idx].get_text(strip=True)
                 return ""
 
             # Extract transaction data
@@ -1005,9 +1021,38 @@ async def parse_ptr_page(
         logger.debug(f"Parsed {len(transactions)} transactions from PTR page")
 
     except Exception as e:
-        logger.error(f"Error parsing PTR page {url}: {e}")
+        logger.error(f"Error parsing PTR page HTML {url}: {e}")
 
     return transactions
+
+
+async def parse_ptr_page(
+    client: httpx.AsyncClient,
+    url: str,
+) -> List[Dict[str, Any]]:
+    """
+    Fetch and parse a Senate PTR page to extract transactions.
+
+    Delegates HTML parsing to parse_ptr_page_html().
+    """
+    try:
+        response = await client.get(
+            url,
+            headers={"User-Agent": USER_AGENT},
+            follow_redirects=True,
+            timeout=30.0,
+        )
+
+        if response.status_code != 200:
+            logger.warning(f"Failed to fetch PTR page {url}: {response.status_code}")
+            return []
+
+        return parse_ptr_page_html(response.text, url)
+
+    except Exception as e:
+        logger.error(f"Error parsing PTR page {url}: {e}")
+
+    return []
 
 
 async def download_senate_pdf(
@@ -1098,6 +1143,131 @@ async def process_senate_disclosure(
 
 
 # =============================================================================
+# FALLBACK ORCHESTRATION (HTTP-first, Playwright fallback)
+# =============================================================================
+
+
+async def search_ptrs_with_fallback(
+    lookback_days: int = 30,
+    limit: Optional[int] = None,
+) -> Tuple[List[Dict[str, Any]], str]:
+    """
+    Search for PTR disclosures, trying HTTP first with Playwright fallback.
+
+    Returns (disclosures, tier) where tier is "http" or "playwright".
+    """
+    from app.services.senate_http_client import (
+        SenateEFDClient,
+        EFDSessionError,
+        EFDBlockedError,
+    )
+
+    # Tier 1: Try HTTP
+    try:
+        logger.info("[Tier 1 HTTP] Attempting HTTP search for PTR disclosures")
+        async with SenateEFDClient() as client:
+            disclosures = await client.search_ptrs(
+                lookback_days=lookback_days,
+                limit=limit,
+            )
+            logger.info(f"[Tier 1 HTTP] Found {len(disclosures)} disclosures via HTTP")
+            return disclosures, "http"
+
+    except (EFDSessionError, EFDBlockedError) as e:
+        logger.warning(f"[Tier 1 HTTP] Blocked, falling back to Playwright: {e}")
+    except Exception as e:
+        logger.warning(f"[Tier 1 HTTP] Unexpected error, falling back to Playwright: {e}")
+
+    # Tier 2: Playwright fallback
+    logger.info("[Tier 2 Playwright] Falling back to browser automation")
+    disclosures = await search_all_ptr_disclosures_playwright(
+        lookback_days=lookback_days,
+        limit=limit,
+    )
+    return disclosures, "playwright"
+
+
+async def process_disclosures_with_fallback(
+    disclosures: List[Dict[str, Any]],
+    supabase: Client,
+    tier: str,
+) -> Tuple[int, int]:
+    """
+    Process disclosures using the same tier that discovered them.
+
+    If HTTP fails mid-processing, falls back to Playwright for remaining.
+    """
+    if tier == "http":
+        try:
+            return await process_disclosures_http(disclosures, supabase)
+        except Exception as e:
+            logger.warning(f"[Tier 1 HTTP] Processing failed, falling back to Playwright: {e}")
+            return await process_disclosures_playwright(disclosures, supabase)
+    else:
+        return await process_disclosures_playwright(disclosures, supabase)
+
+
+async def process_disclosures_http(
+    disclosures: List[Dict[str, Any]],
+    supabase: Client,
+) -> Tuple[int, int]:
+    """
+    Process disclosures via the HTTP client with session cookies.
+
+    Uses SenateEFDClient to fetch PTR pages and parse_ptr_page_html() to parse.
+    """
+    from app.services.senate_http_client import SenateEFDClient, EFDBlockedError
+
+    total_transactions = 0
+    errors = 0
+
+    async with SenateEFDClient() as client:
+        for i, disclosure in enumerate(disclosures):
+            try:
+                if disclosure.get("is_paper"):
+                    continue
+
+                source_url = disclosure.get("source_url")
+                if not source_url:
+                    continue
+
+                transactions = await client.fetch_ptr_page(source_url)
+
+                if not transactions:
+                    continue
+
+                politician_id = disclosure.get("politician_id")
+                if not politician_id:
+                    politician_id = find_or_create_politician(
+                        supabase, name=disclosure.get("politician_name"), chamber="senate"
+                    )
+
+                if not politician_id:
+                    logger.warning(f"Could not find politician: {disclosure.get('politician_name')}")
+                    continue
+
+                for transaction in transactions:
+                    result = upload_transaction_to_supabase(
+                        supabase, politician_id, transaction, disclosure
+                    )
+                    if result:
+                        total_transactions += 1
+
+                # Brief delay to avoid hammering the server
+                await asyncio.sleep(0.3)
+
+            except EFDBlockedError:
+                # WAF blocked us mid-processing — re-raise to trigger Playwright fallback
+                logger.warning(f"[HTTP] WAF block during processing at disclosure {i}, falling back")
+                raise
+            except Exception as e:
+                errors += 1
+                logger.error(f"Error processing disclosure {i} via HTTP: {e}")
+
+    return total_transactions, errors
+
+
+# =============================================================================
 # MAIN ETL FUNCTION
 # =============================================================================
 
@@ -1109,13 +1279,14 @@ async def run_senate_etl(
     update_mode: bool = False,
 ) -> None:
     """
-    Run the Senate ETL pipeline using Playwright for anti-bot protection.
+    Run the Senate ETL pipeline with HTTP-first, Playwright-fallback strategy.
 
     Pipeline:
     1. Fetch current senators from Senate.gov XML feed
     2. Upsert senators to politicians table
-    3. Use Playwright to search EFD for all PTR disclosures
-    4. Parse PTR pages and upload transactions
+    3. Search EFD for PTR disclosures (HTTP first, Playwright fallback)
+    4. Match disclosures to senators
+    5. Process disclosures using same tier as discovery
 
     Args:
         job_id: Unique job identifier for status tracking
@@ -1129,6 +1300,7 @@ async def run_senate_etl(
     total_transactions = 0
     disclosures_processed = 0
     errors = 0
+    discovery_tier = "unknown"
 
     try:
         # Get Supabase client
@@ -1154,27 +1326,37 @@ async def run_senate_etl(
 
         logger.info(f"[Senate ETL] Upserted {len(senator_ids)} senators")
 
-        # Step 3: Fetch disclosures using Playwright (bypasses anti-bot protection)
-        JOB_STATUS[job_id]["message"] = "Searching EFD for disclosures (using browser)..."
+        # Step 3: Search for disclosures (HTTP first, Playwright fallback)
+        JOB_STATUS[job_id]["message"] = "Searching EFD for disclosures..."
 
-        disclosures = await fetch_senate_ptr_list_playwright(
-            senators=senators,
+        raw_disclosures, discovery_tier = await search_ptrs_with_fallback(
             lookback_days=lookback_days,
             limit=limit,
         )
+
+        logger.info(f"[Senate ETL] Discovery via [{discovery_tier}]: {len(raw_disclosures)} raw disclosures")
+
+        # Step 4: Match disclosures to senators
+        disclosures = _match_disclosures_to_senators(raw_disclosures, senators)
 
         # Filter to electronic PTRs only (paper filings are images)
         electronic_disclosures = [d for d in disclosures if not d.get("is_paper")]
         paper_count = len(disclosures) - len(electronic_disclosures)
 
         JOB_STATUS[job_id]["total"] = len(electronic_disclosures)
-        JOB_STATUS[job_id]["message"] = f"Processing {len(electronic_disclosures)} electronic disclosures ({paper_count} paper skipped)..."
+        JOB_STATUS[job_id]["message"] = (
+            f"Processing {len(electronic_disclosures)} electronic disclosures "
+            f"({paper_count} paper skipped) via [{discovery_tier}]..."
+        )
 
-        logger.info(f"[Senate ETL] Processing {len(electronic_disclosures)} electronic disclosures ({paper_count} paper skipped)")
+        logger.info(
+            f"[Senate ETL] Processing {len(electronic_disclosures)} electronic disclosures "
+            f"({paper_count} paper skipped) via [{discovery_tier}]"
+        )
 
-        # Step 4: Process disclosures using Playwright (PTR pages also need session)
-        total_transactions, errors = await process_disclosures_playwright(
-            electronic_disclosures, supabase
+        # Step 5: Process disclosures using same tier as discovery
+        total_transactions, errors = await process_disclosures_with_fallback(
+            electronic_disclosures, supabase, discovery_tier
         )
         disclosures_processed = len(electronic_disclosures) - errors
 
@@ -1182,14 +1364,14 @@ async def run_senate_etl(
         completed_at = datetime.now(timezone.utc)
         JOB_STATUS[job_id]["status"] = "completed"
         JOB_STATUS[job_id]["message"] = (
-            f"Completed: {len(senators)} senators, {disclosures_processed} disclosures, "
+            f"Completed [{discovery_tier}]: {len(senators)} senators, {disclosures_processed} disclosures, "
             f"{total_transactions} transactions, {errors} errors"
         )
         JOB_STATUS[job_id]["completed_at"] = completed_at.isoformat()
 
         logger.info(
-            f"[Senate ETL] Completed: {len(senators)} senators, {disclosures_processed} disclosures, "
-            f"{total_transactions} transactions, {errors} errors"
+            f"[Senate ETL] Completed [{discovery_tier}]: {len(senators)} senators, "
+            f"{disclosures_processed} disclosures, {total_transactions} transactions, {errors} errors"
         )
 
         # Log job execution to database
@@ -1206,6 +1388,7 @@ async def run_senate_etl(
                 "disclosures_processed": disclosures_processed,
                 "transactions_uploaded": total_transactions,
                 "errors": errors,
+                "discovery_tier": discovery_tier,
             },
         )
 
@@ -1231,7 +1414,11 @@ async def run_senate_etl(
                 started_at=datetime.fromisoformat(JOB_STATUS[job_id]["started_at"]),
                 completed_at=completed_at,
                 error_message=str(e),
-                metadata={"etl_job_id": job_id, "lookback_days": lookback_days},
+                metadata={
+                    "etl_job_id": job_id,
+                    "lookback_days": lookback_days,
+                    "discovery_tier": discovery_tier,
+                },
             )
         except Exception as log_error:
             logger.error(f"Failed to log job execution: {log_error}")
