@@ -180,7 +180,7 @@ function limitResults<T>(items: T[], limit: number): T[] {
 // Placeholder politician names
 const placeholderNames: Record<string, { name: string; role: string }> = {
   house: { name: 'House Member (Placeholder)', role: 'Representative' },
-  senate: { name: 'Senate Member (Placeholder)', role: 'Senate' },
+  senate: { name: 'Senate Member (Placeholder)', role: 'Senator' },
   quiver: { name: 'Congress Member (QuiverQuant)', role: 'Congress' },
   eu: { name: 'EU MEP (Placeholder)', role: 'MEP' },
   california: { name: 'California Official (Placeholder)', role: 'State Official' },
@@ -478,7 +478,7 @@ Deno.test("getPlaceholderName() - senate", () => {
   const placeholder = getPlaceholderName('senate');
 
   assertEquals(placeholder?.name, 'Senate Member (Placeholder)');
-  assertEquals(placeholder?.role, 'Senate');
+  assertEquals(placeholder?.role, 'Senator');
 });
 
 Deno.test("getPlaceholderName() - quiver", () => {

@@ -10,7 +10,6 @@ export function cn(...inputs: ClassValue[]) {
  * Converts snake_case, lowercase, and abbreviated values to proper display format.
  *
  * Examples:
- * - "us_house_representative" → "US House Representative"
  * - "house" → "House"
  * - "us_senate" → "US Senate"
  * - "Representative" → "Representative" (unchanged)
@@ -20,7 +19,6 @@ export function formatLabel(value: string | null | undefined): string {
 
   // Handle specific known values
   const labelMap: Record<string, string> = {
-    'us_house_representative': 'US House Representative',
     'us_house': 'US House',
     'us_senate': 'US Senate',
     'us_senate_senator': 'US Senate Senator',

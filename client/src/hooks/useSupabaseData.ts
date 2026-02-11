@@ -110,7 +110,7 @@ export const usePoliticians = (jurisdictionId?: string) => {
         // Map jurisdiction codes to role filters
         const jurisdictionMap: Record<string, string> = {
           'us_house': 'Representative',
-          'us_senate': 'Senate',
+          'us_senate': 'Senator',
           'eu_parliament': 'EU',
           'uk_parliament': 'UK',
         };
@@ -131,7 +131,7 @@ export const usePoliticians = (jurisdictionId?: string) => {
         state: p.state_or_country || p.district,
         party: p.party || 'Unknown',
         jurisdiction_id: p.role === 'Representative' ? 'us_house' :
-                         p.role === 'Senate' ? 'us_senate' : 'unknown',
+                         p.role === 'Senator' ? 'us_senate' : 'unknown',
       })) as Politician[];
     },
   });
@@ -188,7 +188,7 @@ export const useTrades = (limit = 10, jurisdictionId?: string) => {
             state: politician.state_or_country || politician.district,
             party: politician.party || 'Unknown',
             jurisdiction_id: politician.role === 'Representative' ? 'us_house' :
-                             politician.role === 'Senate' ? 'us_senate' : 'unknown',
+                             politician.role === 'Senator' ? 'us_senate' : 'unknown',
           } : undefined,
         };
       }) as Trade[];

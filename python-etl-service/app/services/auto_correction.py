@@ -33,6 +33,9 @@ class CorrectionType(str, Enum):
     VALUE_RANGE = "value_range"
     POLITICIAN_MATCH = "politician_match"
     AMOUNT_CLEANUP = "amount_cleanup"
+    ROLE_NORMALIZATION = "role_normalization"
+    NAME_STANDARDIZATION = "name_standardization"
+    STATE_BACKFILL = "state_backfill"
 
 
 @dataclass
