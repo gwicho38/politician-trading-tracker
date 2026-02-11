@@ -69,7 +69,7 @@ class PoliticianTradingCollector {
   // TODO: Review getOrCreatePolitician - gets or creates politician record and returns UUID
   // - Uses cache to minimize database lookups
   // - Parses name into first/last components
-  async getOrCreatePolitician(name: string, role: string = 'Unknown', party: string = 'Unknown'): Promise<string | null> {
+  async getOrCreatePolitician(name: string, role: string = 'Unknown', party: string | null = null): Promise<string | null> {
     // Check cache first
     const cacheKey = `${name}:${role}`
     if (this.politicianCache.has(cacheKey)) {
@@ -175,7 +175,7 @@ class PoliticianTradingCollector {
     const disclosures = []
 
     // Get or create a placeholder politician for House members
-    const politicianId = await this.getOrCreatePolitician("House Member (Placeholder)", "Representative", "Unknown")
+    const politicianId = await this.getOrCreatePolitician("House Member (Placeholder)", "Representative", null)
     if (!politicianId) {
       console.warn("Could not create House placeholder politician")
       return { source: "us_house", disclosures_found: 0, disclosures: [] }
@@ -230,7 +230,7 @@ class PoliticianTradingCollector {
     const disclosures = []
 
     // Get or create a placeholder politician for Senate members
-    const politicianId = await this.getOrCreatePolitician("Senate Member (Placeholder)", "Senator", "Unknown")
+    const politicianId = await this.getOrCreatePolitician("Senate Member (Placeholder)", "Senator", null)
     if (!politicianId) {
       console.warn("Could not create Senate placeholder politician")
       return { source: "us_senate", disclosures_found: 0, disclosures: [] }
@@ -284,7 +284,7 @@ class PoliticianTradingCollector {
     const disclosures = []
 
     // Get or create a placeholder politician
-    const politicianId = await this.getOrCreatePolitician("Congress Member (QuiverQuant)", "Congress", "Unknown")
+    const politicianId = await this.getOrCreatePolitician("Congress Member (QuiverQuant)", "Congress", null)
     if (!politicianId) {
       console.warn("Could not create QuiverQuant placeholder politician")
       return { source: "quiverquant", disclosures_found: 0, disclosures: [] }
@@ -336,7 +336,7 @@ class PoliticianTradingCollector {
     const disclosures = []
 
     // Get or create a placeholder politician for EU MEPs
-    const politicianId = await this.getOrCreatePolitician("EU MEP (Placeholder)", "MEP", "Unknown")
+    const politicianId = await this.getOrCreatePolitician("EU MEP (Placeholder)", "MEP", null)
     if (!politicianId) {
       console.warn("Could not create EU placeholder politician")
       return { source: "eu_parliament", disclosures_found: 0, disclosures: [] }
@@ -386,7 +386,7 @@ class PoliticianTradingCollector {
     const allDisclosures = []
 
     // Get or create a placeholder politician for CA officials
-    const politicianId = await this.getOrCreatePolitician("California Official (Placeholder)", "State Official", "Unknown")
+    const politicianId = await this.getOrCreatePolitician("California Official (Placeholder)", "State Official", null)
     if (!politicianId) {
       console.warn("Could not create CA placeholder politician")
       return { source: "california", disclosures_found: 0, disclosures: [] }
