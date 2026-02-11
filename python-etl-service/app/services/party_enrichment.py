@@ -140,7 +140,7 @@ class PartyEnrichmentJob:
         try:
             supabase = get_supabase()
 
-            # Fetch politicians with NULL party using pagination
+            # Fetch politicians with NULL or "Unknown" party using pagination
             # Supabase has a default limit of 1000 rows per request
             target_limit = self.limit or 5000  # Safety limit
             politicians = []
@@ -152,7 +152,7 @@ class PartyEnrichmentJob:
 
                 result = supabase.table("politicians").select(
                     "id, full_name, state, chamber"
-                ).is_("party", "null").range(offset, offset + fetch_count - 1).execute()
+                ).or_("party.is.null,party.eq.Unknown").range(offset, offset + fetch_count - 1).execute()
 
                 if not result.data:
                     break  # No more data

@@ -248,6 +248,8 @@ export const getPartyColor = (party: string): string => {
       return 'text-blue-400';
     case 'R':
       return 'text-red-400';
+    case 'I':
+      return 'text-yellow-400';
     default:
       return 'text-muted-foreground';
   }
@@ -259,6 +261,8 @@ export const getPartyBg = (party: string): string => {
       return 'bg-blue-500/20 border-blue-500/30';
     case 'R':
       return 'bg-red-500/20 border-red-500/30';
+    case 'I':
+      return 'bg-yellow-500/20 border-yellow-500/30';
     default:
       return 'bg-muted border-border';
   }

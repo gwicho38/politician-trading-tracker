@@ -276,7 +276,7 @@ class TestPartyEnrichmentJob:
             mock_client = MagicMock()
             mock_response = MagicMock()
             mock_response.data = []  # No politicians to process
-            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.return_value = mock_response
+            mock_client.table.return_value.select.return_value.or_.return_value.range.return_value.execute.return_value = mock_response
             mock_supabase.return_value = mock_client
 
             job = PartyEnrichmentJob("test-job")
@@ -295,7 +295,7 @@ class TestPartyEnrichmentJob:
             mock_client = MagicMock()
             mock_response = MagicMock()
             mock_response.data = []
-            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.return_value = mock_response
+            mock_client.table.return_value.select.return_value.or_.return_value.range.return_value.execute.return_value = mock_response
             mock_supabase.return_value = mock_client
 
             job = PartyEnrichmentJob("test-job")
@@ -388,7 +388,7 @@ class TestRunJobInBackground:
             mock_client = MagicMock()
             mock_response = MagicMock()
             mock_response.data = []
-            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.return_value = mock_response
+            mock_client.table.return_value.select.return_value.or_.return_value.range.return_value.execute.return_value = mock_response
             mock_supabase.return_value = mock_client
 
             job = PartyEnrichmentJob("test-job")
@@ -461,7 +461,7 @@ class TestJobPagination:
             mock_response2 = MagicMock()
             mock_response2.data = page2_data
 
-            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.side_effect = [
+            mock_client.table.return_value.select.return_value.or_.return_value.range.return_value.execute.side_effect = [
                 mock_response1, mock_response2
             ]
             mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
@@ -492,7 +492,7 @@ class TestJobPagination:
             mock_response = MagicMock()
             mock_response.data = page_data
 
-            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.return_value = mock_response
+            mock_client.table.return_value.select.return_value.or_.return_value.range.return_value.execute.return_value = mock_response
             mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
 
             mock_query.return_value = "D"
@@ -528,7 +528,7 @@ class TestProcessingLoop:
             mock_response = MagicMock()
             mock_response.data = [politician]
 
-            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.return_value = mock_response
+            mock_client.table.return_value.select.return_value.or_.return_value.range.return_value.execute.return_value = mock_response
             mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
 
             mock_query.return_value = "D"
@@ -557,7 +557,7 @@ class TestProcessingLoop:
             mock_response = MagicMock()
             mock_response.data = [politician]
 
-            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.return_value = mock_response
+            mock_client.table.return_value.select.return_value.or_.return_value.range.return_value.execute.return_value = mock_response
 
             mock_query.return_value = None  # Cannot determine party
 
@@ -584,7 +584,7 @@ class TestProcessingLoop:
             mock_response = MagicMock()
             mock_response.data = [politician]
 
-            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.return_value = mock_response
+            mock_client.table.return_value.select.return_value.or_.return_value.range.return_value.execute.return_value = mock_response
             mock_client.table.return_value.update.return_value.eq.return_value.execute.side_effect = Exception("Database error")
 
             mock_query.return_value = "D"
@@ -613,7 +613,7 @@ class TestProcessingLoop:
             mock_response = MagicMock()
             mock_response.data = politicians
 
-            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.return_value = mock_response
+            mock_client.table.return_value.select.return_value.or_.return_value.range.return_value.execute.return_value = mock_response
             mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
 
             mock_query.return_value = "D"
@@ -641,7 +641,7 @@ class TestProcessingLoop:
             mock_response = MagicMock()
             mock_response.data = politicians
 
-            mock_client.table.return_value.select.return_value.is_.return_value.range.return_value.execute.return_value = mock_response
+            mock_client.table.return_value.select.return_value.or_.return_value.range.return_value.execute.return_value = mock_response
             mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
 
             mock_query.return_value = "D"

@@ -122,7 +122,7 @@ class TestPreviewEnrichment:
             mock_sample_response.data = [{"id": "1", "full_name": "Test"}]
 
             # Chain mock for both queries
-            mock_client.table.return_value.select.return_value.is_.return_value.limit.return_value.execute.side_effect = [
+            mock_client.table.return_value.select.return_value.or_.return_value.limit.return_value.execute.side_effect = [
                 mock_count_response,
                 mock_sample_response
             ]
@@ -145,7 +145,7 @@ class TestPreviewEnrichment:
             ]
 
             # Chain mock for both queries
-            mock_client.table.return_value.select.return_value.is_.return_value.limit.return_value.execute.side_effect = [
+            mock_client.table.return_value.select.return_value.or_.return_value.limit.return_value.execute.side_effect = [
                 mock_count_response,
                 mock_sample_response
             ]

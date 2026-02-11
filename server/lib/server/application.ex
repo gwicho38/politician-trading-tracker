@@ -84,6 +84,8 @@ defmodule Server.Application do
       Server.Scheduler.Jobs.PartyEnrichmentJob,
       # BioGuide ID enrichment (Congress.gov API)
       Server.Scheduler.Jobs.BioguideEnrichmentJob,
+      # Biography generation (Ollama LLM)
+      Server.Scheduler.Jobs.BiographyEnrichmentJob,
       # ML model training jobs
       Server.Scheduler.Jobs.MlTrainingJob,
       Server.Scheduler.Jobs.BatchRetrainingJob,

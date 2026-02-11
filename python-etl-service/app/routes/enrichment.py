@@ -4,6 +4,7 @@ Enrichment API Routes
 Endpoints for triggering and monitoring enrichment jobs:
 - Party enrichment (Ollama)
 - Name enrichment (Ollama) - PREFERRED for placeholder names
+- Biography generation (Ollama + template fallback)
 - BioGuide enrichment (Congress.gov) - Fallback for name/party/state
 """
 
@@ -21,6 +22,11 @@ from app.services.name_enrichment import (
     create_name_job,
     get_name_job,
     run_name_job_in_background,
+)
+from app.services.biography_generator import (
+    create_bio_job,
+    get_bio_job,
+    run_bio_job_in_background,
 )
 
 router = APIRouter()
@@ -98,15 +104,15 @@ async def preview_enrichment():
 
     supabase = get_supabase()
 
-    # Get count
+    # Get count (NULL or "Unknown" party)
     count_result = supabase.table("politicians").select(
         "id", count="exact"
-    ).is_("party", "null").limit(0).execute()
+    ).or_("party.is.null,party.eq.Unknown").limit(0).execute()
 
     # Get sample
     sample_result = supabase.table("politicians").select(
-        "id, full_name, state, chamber"
-    ).is_("party", "null").limit(10).execute()
+        "id, full_name, state, chamber, party"
+    ).or_("party.is.null,party.eq.Unknown").limit(10).execute()
 
     return {
         "total_missing_party": count_result.count,
@@ -196,3 +202,48 @@ async def preview_name_enrichment():
         "sample": unique[:10],
         "note": "Run 'name/trigger' to replace these with proper names using Ollama"
     }
+
+
+# =============================================================================
+# Biography Generation Endpoints (Ollama + template fallback)
+# =============================================================================
+
+class BiographyTriggerRequest(BaseModel):
+    """Request body for triggering biography generation."""
+    limit: Optional[int] = None
+    force: bool = False  # If True, regenerate all bios (weekly refresh)
+
+
+@router.post("/biography/trigger", response_model=EnrichmentTriggerResponse)
+async def trigger_biography_generation(
+    request: BiographyTriggerRequest,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Trigger a biography generation job.
+
+    Generates biographies for politicians using Ollama LLM with template fallback.
+    Set force=True to regenerate all biographies (for weekly refresh).
+    """
+    job = create_bio_job(limit=request.limit, force=request.force)
+
+    background_tasks.add_task(run_bio_job_in_background, job)
+
+    mode = "force refresh" if request.force else "missing only"
+    return EnrichmentTriggerResponse(
+        job_id=job.job_id,
+        message=f"Biography generation job started ({mode}, limit: {request.limit or 'none'})",
+        status="started",
+    )
+
+
+@router.get("/biography/status/{job_id}", response_model=EnrichmentStatusResponse)
+async def get_biography_status(job_id: str):
+    """Get the status of a biography generation job."""
+    job = get_bio_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    state = job.to_dict()
+    return EnrichmentStatusResponse(**state)
