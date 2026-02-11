@@ -303,6 +303,56 @@ class TestSenateEFDClientSearch:
         assert len(disclosures) == 5
 
     @pytest.mark.asyncio
+    async def test_search_includes_date_params_when_provided(self):
+        """search_ptrs includes submitted_start_date/end_date in POST when provided."""
+        client = self._setup_client()
+
+        json_data = {
+            "result": "ok",
+            "data": [],
+            "recordsTotal": 0,
+        }
+
+        client._client.post = AsyncMock(
+            return_value=_mock_response(200, json_data=json_data)
+        )
+
+        await client.search_ptrs(
+            lookback_days=30,
+            start_date="01/01/2020",
+            end_date="12/31/2020",
+        )
+
+        # Verify POST data includes date params
+        post_call = client._client.post.call_args
+        post_data = post_call.kwargs.get("data", post_call[1].get("data", {}))
+        assert post_data["submitted_start_date"] == "01/01/2020"
+        assert post_data["submitted_end_date"] == "12/31/2020"
+
+    @pytest.mark.asyncio
+    async def test_search_omits_date_params_when_none(self):
+        """search_ptrs omits date params from POST body when not provided."""
+        client = self._setup_client()
+
+        json_data = {
+            "result": "ok",
+            "data": [],
+            "recordsTotal": 0,
+        }
+
+        client._client.post = AsyncMock(
+            return_value=_mock_response(200, json_data=json_data)
+        )
+
+        await client.search_ptrs(lookback_days=30)
+
+        # Verify POST data does NOT include date params
+        post_call = client._client.post.call_args
+        post_data = post_call.kwargs.get("data", post_call[1].get("data", {}))
+        assert "submitted_start_date" not in post_data
+        assert "submitted_end_date" not in post_data
+
+    @pytest.mark.asyncio
     async def test_search_handles_empty_results(self):
         """search_ptrs returns empty list for no results."""
         client = self._setup_client()

@@ -1717,6 +1717,61 @@ class TestSearchPtrsWithFallback:
         assert tier == "playwright"
 
 
+class TestSearchPtrsWithFallbackDateParams:
+    """Tests for date param pass-through in search_ptrs_with_fallback."""
+
+    @pytest.mark.asyncio
+    async def test_passes_date_params_to_http_client(self):
+        """search_ptrs_with_fallback passes start_date/end_date to HTTP client."""
+        from app.services.senate_etl import search_ptrs_with_fallback
+
+        mock_disclosures = [{"politician_name": "Test", "source_url": "http://example.com"}]
+
+        with patch("app.services.senate_http_client.SenateEFDClient") as MockClient:
+            mock_instance = AsyncMock()
+            mock_instance.search_ptrs.return_value = mock_disclosures
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_instance)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            await search_ptrs_with_fallback(
+                lookback_days=30,
+                start_date="01/01/2020",
+                end_date="12/31/2020",
+            )
+
+        mock_instance.search_ptrs.assert_awaited_once_with(
+            lookback_days=30,
+            limit=None,
+            start_date="01/01/2020",
+            end_date="12/31/2020",
+        )
+
+    @pytest.mark.asyncio
+    async def test_passes_date_params_to_playwright_fallback(self):
+        """search_ptrs_with_fallback passes date params to Playwright on fallback."""
+        from app.services.senate_etl import search_ptrs_with_fallback
+        from app.services.senate_http_client import EFDBlockedError
+
+        with patch("app.services.senate_http_client.SenateEFDClient") as MockClient:
+            MockClient.return_value.__aenter__ = AsyncMock(side_effect=EFDBlockedError("WAF"))
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            with patch("app.services.senate_etl.search_all_ptr_disclosures_playwright",
+                       new_callable=AsyncMock, return_value=[]) as mock_pw:
+                await search_ptrs_with_fallback(
+                    lookback_days=60,
+                    start_date="01/01/2019",
+                    end_date="12/31/2019",
+                )
+
+        mock_pw.assert_awaited_once_with(
+            lookback_days=60,
+            limit=None,
+            start_date="01/01/2019",
+            end_date="12/31/2019",
+        )
+
+
 class TestProcessDisclosuresWithFallback:
     """Tests for process_disclosures_with_fallback."""
 
