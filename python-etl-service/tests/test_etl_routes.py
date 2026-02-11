@@ -101,6 +101,37 @@ class TestListSources:
         source_ids = [s["source_id"] for s in data["sources"]]
         assert "senate" in source_ids
 
+    def test_list_sources_contains_quiverquant(self, client):
+        """GET /etl/sources contains quiverquant source."""
+        response = client.get("/etl/sources")
+        data = response.json()
+
+        source_ids = [s["source_id"] for s in data["sources"]]
+        assert "quiverquant" in source_ids
+
+    def test_list_sources_contains_eu_parliament(self, client):
+        """GET /etl/sources contains eu_parliament source."""
+        response = client.get("/etl/sources")
+        data = response.json()
+
+        source_ids = [s["source_id"] for s in data["sources"]]
+        assert "eu_parliament" in source_ids
+
+    def test_list_sources_contains_california(self, client):
+        """GET /etl/sources contains california source."""
+        response = client.get("/etl/sources")
+        data = response.json()
+
+        source_ids = [s["source_id"] for s in data["sources"]]
+        assert "california" in source_ids
+
+    def test_list_sources_has_five_sources(self, client):
+        """GET /etl/sources returns all 5 registered sources."""
+        response = client.get("/etl/sources")
+        data = response.json()
+
+        assert len(data["sources"]) == 5
+
 
 # =============================================================================
 # POST /etl/trigger Tests
@@ -116,9 +147,11 @@ class TestTriggerEtl:
         # Use raise_server_exceptions=False to avoid waiting for background tasks
         with patch("app.routes.etl.run_house_etl") as mock_house:
             with patch("app.routes.etl.run_senate_etl") as mock_senate:
-                mock_house.return_value = None
-                mock_senate.return_value = None
-                yield TestClient(app, raise_server_exceptions=False)
+                with patch("app.routes.etl._run_registry_service", new_callable=AsyncMock) as mock_registry:
+                    mock_house.return_value = None
+                    mock_senate.return_value = None
+                    mock_registry.return_value = None
+                    yield TestClient(app, raise_server_exceptions=False)
 
     def test_trigger_house_returns_200(self, client):
         """POST /etl/trigger for house returns 200."""
@@ -190,6 +223,35 @@ class TestTriggerEtl:
 
         assert response.status_code == 200
         assert "UPDATE MODE" in response.json()["message"]
+
+    def test_trigger_quiverquant_returns_200(self, client):
+        """POST /etl/trigger for quiverquant uses registry dispatch."""
+        response = client.post(
+            "/etl/trigger",
+            json={"source": "quiverquant", "lookback_days": 7}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "started"
+        assert "quiverquant" in data["message"]
+
+    def test_trigger_eu_parliament_returns_200(self, client):
+        """POST /etl/trigger for eu_parliament uses registry dispatch."""
+        response = client.post(
+            "/etl/trigger",
+            json={"source": "eu_parliament"}
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "started"
+
+    def test_trigger_california_returns_200(self, client):
+        """POST /etl/trigger for california uses registry dispatch."""
+        response = client.post(
+            "/etl/trigger",
+            json={"source": "california"}
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "started"
 
 
 # =============================================================================
