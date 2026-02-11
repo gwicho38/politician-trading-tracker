@@ -8,18 +8,20 @@ which created placeholder politicians with garbage data.
 Data Source: https://api.quiverquant.com/beta
 API Docs: QuiverQuant Congress Trading API
 
-Fields from API:
-- Representative: Politician name (e.g., "Nancy Pelosi")
+Fields from API (bulk/congresstrading endpoint):
+- Name: Politician name (e.g., "Nancy Pelosi")
 - BioGuideID: Congress.gov bioguide identifier
 - Ticker: Stock ticker symbol
-- Description: Asset description
-- Transaction: "Purchase" or "Sale (Full)" or "Sale (Partial)" or "Exchange"
-- Amount: Range string like "$1,001 - $15,000"
-- TransactionDate: ISO date string
-- ReportDate: Filing/disclosure date
-- House: "House" or "Senate" (chamber)
-- District: State/district code
-- Party: Political party
+- Description: Asset description (often null)
+- Transaction: "Purchase" or "Sale" or "Exchange"
+- Trade_Size_USD: Dollar amount as string (e.g., "1001.0")
+- Traded: Transaction date ISO string (e.g., "2026-01-30")
+- Filed: Filing/disclosure date (e.g., "2026-02-10")
+- Chamber: "Representatives" or "Senate"
+- District: State/district code (e.g., " VA05")
+- Party: Political party ("R", "D")
+- State: State abbreviation (often null)
+- excess_return: Calculated excess return (informational)
 """
 
 import logging
@@ -43,18 +45,47 @@ QUIVERQUANT_API_BASE = "https://api.quiverquant.com/beta"
 QUIVERQUANT_BULK_ENDPOINT = f"{QUIVERQUANT_API_BASE}/bulk/congresstrading"
 
 
-def _parse_qq_amount_range(amount_str: str) -> Dict[str, Optional[float]]:
+def _parse_qq_trade_size(trade_size: str) -> Dict[str, Optional[float]]:
     """
-    Parse QuiverQuant amount range string into min/max values.
+    Parse QuiverQuant Trade_Size_USD field into min/max values.
 
-    QuiverQuant uses standard disclosure ranges like "$1,001 - $15,000".
-    Falls back to the shared parse_value_range for standard patterns.
+    The API returns a single dollar amount string (e.g., "1001.0", "15001.0")
+    which represents the lower bound of the disclosure range bracket.
+    We map these to the standard STOCK Act disclosure ranges.
     """
-    if not amount_str:
+    if not trade_size:
         return {"value_low": None, "value_high": None}
 
-    # Use the shared parser which handles all standard disclosure ranges
-    return parse_value_range(amount_str)
+    try:
+        value = float(trade_size)
+    except (ValueError, TypeError):
+        # Fall back to range parser for any range-format strings
+        return parse_value_range(trade_size)
+
+    # Map QQ's single values to standard disclosure range brackets
+    # QQ uses the lower bound of each bracket
+    BRACKETS = [
+        (1001, 1001, 15000),
+        (15001, 15001, 50000),
+        (50001, 50001, 100000),
+        (100001, 100001, 250000),
+        (250001, 250001, 500000),
+        (500001, 500001, 1000000),
+        (1000001, 1000001, 5000000),
+        (5000001, 5000001, 25000000),
+        (25000001, 25000001, 50000000),
+    ]
+
+    for threshold, low, high in BRACKETS:
+        if value <= threshold:
+            return {"value_low": float(low), "value_high": float(high)}
+
+    # Above $25M bracket
+    if value > 25000000:
+        return {"value_low": 25000001.0, "value_high": 50000000.0}
+
+    # Fallback: use the value as both min and max
+    return {"value_low": value, "value_high": value}
 
 
 def _map_transaction_type(qq_type: str) -> str:
@@ -78,22 +109,28 @@ def _map_transaction_type(qq_type: str) -> str:
     return "unknown"
 
 
-def _map_chamber(qq_house: str) -> str:
-    """Map QuiverQuant 'House' field to chamber name."""
-    if not qq_house:
+def _map_chamber(qq_chamber: str) -> str:
+    """Map QuiverQuant 'Chamber' field to chamber name.
+
+    QQ uses "Representatives" or "Senate".
+    """
+    if not qq_chamber:
         return "house"
-    house_lower = qq_house.lower().strip()
-    if house_lower == "senate":
+    chamber_lower = qq_chamber.lower().strip()
+    if chamber_lower == "senate":
         return "senate"
     return "house"
 
 
-def _map_role(qq_house: str) -> str:
-    """Map QuiverQuant 'House' field to politician role."""
-    if not qq_house:
+def _map_role(qq_chamber: str) -> str:
+    """Map QuiverQuant 'Chamber' field to politician role.
+
+    QQ uses "Representatives" or "Senate".
+    """
+    if not qq_chamber:
         return "Representative"
-    house_lower = qq_house.lower().strip()
-    if house_lower == "senate":
+    chamber_lower = qq_chamber.lower().strip()
+    if chamber_lower == "senate":
         return "Senator"
     return "Representative"
 
@@ -177,7 +214,7 @@ class QuiverQuantETLService(BaseETLService):
         filtered = [
             record
             for record in data
-            if (record.get("TransactionDate") or "")[:10] >= cutoff_date
+            if (record.get("Traded") or "")[:10] >= cutoff_date
         ]
 
         self.logger.info(
@@ -194,23 +231,23 @@ class QuiverQuantETLService(BaseETLService):
         Parse a single QuiverQuant record into standardized disclosure format.
 
         Maps QQ API fields to our standard schema:
-        - Representative -> politician_name
+        - Name -> politician_name
         - Ticker -> asset_ticker
-        - Description -> asset_name
+        - Description -> asset_name (fallback to Ticker)
         - Transaction -> transaction_type
-        - Amount -> value_low/value_high
-        - TransactionDate -> transaction_date
-        - ReportDate -> disclosure_date
-        - House -> chamber, role
+        - Trade_Size_USD -> value_low/value_high
+        - Traded -> transaction_date
+        - Filed -> disclosure_date
+        - Chamber -> chamber, role
         """
-        representative = raw.get("Representative", "").strip()
-        if not representative:
+        name = (raw.get("Name") or "").strip()
+        if not name:
             return None
 
         # Asset identification
-        ticker = raw.get("Ticker", "").strip() or None
-        description = raw.get("Description", "").strip()
-        asset_name = description or raw.get("Ticker", "Unknown Asset")
+        ticker = (raw.get("Ticker") or "").strip() or None
+        description = (raw.get("Description") or "").strip()
+        asset_name = description or ticker or "Unknown Asset"
 
         if ticker and ticker in ("--", "N/A", ""):
             ticker = None
@@ -226,37 +263,49 @@ class QuiverQuantETLService(BaseETLService):
         # Transaction type mapping
         transaction_type = _map_transaction_type(raw.get("Transaction", ""))
 
-        # Amount range
-        amount_str = raw.get("Amount", "")
-        value_info = _parse_qq_amount_range(amount_str)
+        # Trade size (single USD value, not a range)
+        trade_size = raw.get("Trade_Size_USD", "")
+        value_info = _parse_qq_trade_size(str(trade_size) if trade_size else "")
 
         # Dates
-        transaction_date = raw.get("TransactionDate")
+        transaction_date = raw.get("Traded")
         if transaction_date:
-            transaction_date = transaction_date[:10]  # Just the date part
+            transaction_date = str(transaction_date)[:10]
 
-        disclosure_date = raw.get("ReportDate")
+        disclosure_date = raw.get("Filed")
         if disclosure_date:
-            disclosure_date = disclosure_date[:10]
+            disclosure_date = str(disclosure_date)[:10]
 
         # Chamber and role
-        qq_house = raw.get("House", "")
-        chamber = _map_chamber(qq_house)
-        role = _map_role(qq_house)
+        qq_chamber = raw.get("Chamber", "")
+        chamber = _map_chamber(qq_chamber)
+        role = _map_role(qq_chamber)
 
         # Politician details
-        # QQ provides name as "FirstName LastName" format
-        name_parts = representative.split(maxsplit=1)
+        # QQ provides name as "FirstName LastName" format (sometimes with prefix like "Mr.")
+        clean_name = name
+        for prefix in ("Mr. ", "Mrs. ", "Ms. ", "Dr. ", "Hon. ", "Sen. ", "Rep. "):
+            if clean_name.startswith(prefix):
+                clean_name = clean_name[len(prefix):]
+
+        name_parts = clean_name.split(maxsplit=1)
         first_name = name_parts[0] if name_parts else ""
-        last_name = name_parts[1] if len(name_parts) > 1 else representative
+        last_name = name_parts[1] if len(name_parts) > 1 else clean_name
+
+        # State: prefer State field, fall back to parsing District
+        state = raw.get("State") or None
+        if not state and raw.get("District"):
+            district_str = raw["District"].strip()
+            # District format is like "VA05" or " VA05"
+            state = district_str[:2] if len(district_str) >= 2 else None
 
         return {
-            "politician_name": representative,
+            "politician_name": clean_name,
             "first_name": first_name,
             "last_name": last_name,
             "bioguide_id": raw.get("BioGuideID"),
             "party": raw.get("Party"),
-            "state": raw.get("District", "").split("-")[0] if raw.get("District") else None,
+            "state": state,
             "chamber": chamber,
             "role": role,
             "asset_name": asset_name,

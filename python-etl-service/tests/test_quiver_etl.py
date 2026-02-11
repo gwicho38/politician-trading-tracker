@@ -5,7 +5,7 @@ Tests cover:
 - QuiverQuantETLService registration and attributes
 - API data fetching with auth
 - Date filtering by lookback_days
-- Field mapping (Representative, Ticker, Amount range, etc.)
+- Field mapping (Name, Ticker, Trade_Size_USD, etc.)
 - Transaction type mapping
 - Validation logic
 - Error handling for missing API key
@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.services.quiver_etl import (
     QuiverQuantETLService,
-    _parse_qq_amount_range,
+    _parse_qq_trade_size,
     _map_transaction_type,
     _map_chamber,
     _map_role,
@@ -30,19 +30,20 @@ from app.lib.registry import ETLRegistry
 # =============================================================================
 
 def _qq_record(**overrides):
-    """Create a sample QuiverQuant API record with reasonable defaults."""
+    """Create a sample QuiverQuant API record matching actual bulk API format."""
     base = {
-        "Representative": "Nancy Pelosi",
+        "Name": "Nancy Pelosi",
         "BioGuideID": "P000197",
         "Ticker": "AAPL",
         "Description": "Apple Inc.",
         "Transaction": "Purchase",
-        "Amount": "$1,001 - $15,000",
-        "TransactionDate": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        "ReportDate": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        "House": "House",
-        "District": "CA-11",
+        "Trade_Size_USD": "1001.0",
+        "Traded": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "Filed": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "Chamber": "Representatives",
+        "District": "CA11",
         "Party": "D",
+        "State": None,
     }
     base.update(overrides)
     return base
@@ -75,28 +76,40 @@ class TestQuiverQuantRegistration:
 # Amount Range Parsing Tests
 # =============================================================================
 
-class TestAmountRangeParsing:
-    """Tests for _parse_qq_amount_range helper."""
+class TestTradeSizeParsing:
+    """Tests for _parse_qq_trade_size helper (maps single USD values to brackets)."""
 
-    def test_standard_range(self):
-        result = _parse_qq_amount_range("$1,001 - $15,000")
-        assert result["value_low"] == 1001
-        assert result["value_high"] == 15000
+    def test_lowest_bracket(self):
+        result = _parse_qq_trade_size("1001.0")
+        assert result["value_low"] == 1001.0
+        assert result["value_high"] == 15000.0
 
-    def test_high_range(self):
-        result = _parse_qq_amount_range("$500,001 - $1,000,000")
-        assert result["value_low"] == 500001
-        assert result["value_high"] == 1000000
+    def test_mid_bracket(self):
+        result = _parse_qq_trade_size("15001.0")
+        assert result["value_low"] == 15001.0
+        assert result["value_high"] == 50000.0
+
+    def test_high_bracket(self):
+        result = _parse_qq_trade_size("500001.0")
+        assert result["value_low"] == 500001.0
+        assert result["value_high"] == 1000000.0
 
     def test_empty_string(self):
-        result = _parse_qq_amount_range("")
+        result = _parse_qq_trade_size("")
         assert result["value_low"] is None
         assert result["value_high"] is None
 
     def test_none_value(self):
-        result = _parse_qq_amount_range(None)
+        result = _parse_qq_trade_size(None)
         assert result["value_low"] is None
         assert result["value_high"] is None
+
+    def test_range_string_fallback(self):
+        """Falls back to parse_value_range for range-format strings."""
+        result = _parse_qq_trade_size("not-a-number")
+        # parse_value_range handles this gracefully
+        assert "value_low" in result
+        assert "value_high" in result
 
 
 # =============================================================================
@@ -187,8 +200,7 @@ class TestFetchDisclosures:
         service = QuiverQuantETLService()
         service.api_key = "test-api-key"
 
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        mock_data = [_qq_record(TransactionDate=today)]
+        mock_data = [_qq_record()]  # Uses today's date for Traded field
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -219,8 +231,8 @@ class TestFetchDisclosures:
         old_date = (datetime.now(timezone.utc) - timedelta(days=60)).strftime("%Y-%m-%d")
 
         mock_data = [
-            _qq_record(TransactionDate=today, Representative="Recent"),
-            _qq_record(TransactionDate=old_date, Representative="Old"),
+            _qq_record(Traded=today, Name="Recent Trader"),
+            _qq_record(Traded=old_date, Name="Old Trader"),
         ]
 
         mock_response = MagicMock()
@@ -237,7 +249,7 @@ class TestFetchDisclosures:
 
             result = await service.fetch_disclosures(lookback_days=30)
             assert len(result) == 1
-            assert result[0]["Representative"] == "Recent"
+            assert result[0]["Name"] == "Recent Trader"
 
     @pytest.mark.asyncio
     async def test_raises_on_401(self):
@@ -281,7 +293,7 @@ class TestParseDisclosure:
     @pytest.mark.asyncio
     async def test_maps_senate_role(self):
         service = QuiverQuantETLService()
-        raw = _qq_record(House="Senate")
+        raw = _qq_record(Chamber="Senate")
         result = await service.parse_disclosure(raw)
 
         assert result["chamber"] == "senate"
@@ -290,20 +302,20 @@ class TestParseDisclosure:
     @pytest.mark.asyncio
     async def test_maps_house_role(self):
         service = QuiverQuantETLService()
-        raw = _qq_record(House="House")
+        raw = _qq_record(Chamber="Representatives")
         result = await service.parse_disclosure(raw)
 
         assert result["chamber"] == "house"
         assert result["role"] == "Representative"
 
     @pytest.mark.asyncio
-    async def test_maps_amount_range(self):
+    async def test_maps_trade_size(self):
         service = QuiverQuantETLService()
-        raw = _qq_record(Amount="$15,001 - $50,000")
+        raw = _qq_record(Trade_Size_USD="15001.0")
         result = await service.parse_disclosure(raw)
 
-        assert result["value_low"] == 15001
-        assert result["value_high"] == 50000
+        assert result["value_low"] == 15001.0
+        assert result["value_high"] == 50000.0
 
     @pytest.mark.asyncio
     async def test_extracts_state_from_district(self):
@@ -316,16 +328,16 @@ class TestParseDisclosure:
     @pytest.mark.asyncio
     async def test_parses_name_parts(self):
         service = QuiverQuantETLService()
-        raw = _qq_record(Representative="John Smith Jr")
+        raw = _qq_record(Name="John Smith Jr")
         result = await service.parse_disclosure(raw)
 
         assert result["first_name"] == "John"
         assert result["last_name"] == "Smith Jr"
 
     @pytest.mark.asyncio
-    async def test_returns_none_for_empty_representative(self):
+    async def test_returns_none_for_empty_name(self):
         service = QuiverQuantETLService()
-        raw = _qq_record(Representative="")
+        raw = _qq_record(Name="")
         result = await service.parse_disclosure(raw)
 
         assert result is None
@@ -344,8 +356,8 @@ class TestParseDisclosure:
         """Dates should be truncated to YYYY-MM-DD format."""
         service = QuiverQuantETLService()
         raw = _qq_record(
-            TransactionDate="2025-01-15T00:00:00Z",
-            ReportDate="2025-01-20T12:30:00Z",
+            Traded="2025-01-15T00:00:00Z",
+            Filed="2025-01-20T12:30:00Z",
         )
         result = await service.parse_disclosure(raw)
 
