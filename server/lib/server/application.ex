@@ -99,6 +99,7 @@ defmodule Server.Application do
       # User feedback processing
       Server.Scheduler.Jobs.ErrorReportsJob,
       # Data cleanup
+      Server.Scheduler.Jobs.PoliticianNormalizationJob,
       Server.Scheduler.Jobs.PoliticianDedupJob,
       Server.Scheduler.Jobs.JobExecutionCleanupJob
     ]
