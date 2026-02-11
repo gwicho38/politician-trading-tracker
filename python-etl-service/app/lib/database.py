@@ -82,7 +82,7 @@ def upload_transaction_to_supabase(
             "disclosure_date": disclosure_date,
             "transaction_type": transaction.get("transaction_type") or "unknown",
             "asset_name": asset_name,
-            "asset_ticker": sanitize_string(transaction.get("asset_ticker")),
+            "asset_ticker": (sanitize_string(transaction.get("asset_ticker")) or "")[:20] or None,
             "asset_type": sanitize_string(
                 transaction.get("asset_type") or transaction.get("asset_type_code")
             ),
@@ -192,7 +192,7 @@ def prepare_transaction_for_batch(
         "disclosure_date": disclosure_date,
         "transaction_type": transaction.get("transaction_type") or "unknown",
         "asset_name": asset_name,
-        "asset_ticker": sanitize_string(transaction.get("asset_ticker")),
+        "asset_ticker": (sanitize_string(transaction.get("asset_ticker")) or "")[:20] or None,
         "asset_type": sanitize_string(
             transaction.get("asset_type") or transaction.get("asset_type_code")
         ),
