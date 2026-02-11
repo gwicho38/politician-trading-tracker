@@ -56,8 +56,53 @@ defmodule Server.Application do
   end
 
   # TODO: Review this function
+  # Config-driven ETL job definitions.
+  # Adding a new ETL source = one entry here + one Python BaseETLService class.
+  @etl_job_configs [
+    %{
+      job_id: "politician-trading-house",
+      job_name: "US House Disclosures (ETL)",
+      source: "house",
+      schedule: "0 */6 * * *",
+      params: %{year: :current_year, limit: 100}
+    },
+    %{
+      job_id: "politician-trading-senate",
+      job_name: "US Senate Disclosures (ETL)",
+      source: "senate",
+      schedule: "0 */6 * * *",
+      params: %{lookback_days: 30, limit: 100}
+    },
+    %{
+      job_id: "politician-trading-quiver",
+      job_name: "QuiverQuant Congress Trading",
+      source: "quiverquant",
+      schedule: "0 */6 * * *",
+      params: %{lookback_days: 30}
+    },
+    %{
+      job_id: "politician-trading-eu",
+      job_name: "EU Parliament Declarations",
+      source: "eu_parliament",
+      schedule: "0 2 * * 0",
+      params: %{}
+    },
+    %{
+      job_id: "politician-trading-california",
+      job_name: "California Financial Disclosures",
+      source: "california",
+      schedule: "0 2 * * 0",
+      params: %{}
+    }
+  ]
+
   defp register_jobs do
-    jobs = [
+    # Generate ETL job modules from config (replaces 5 individual modules)
+    etl_modules =
+      Server.Scheduler.Jobs.PoliticianTradingETLJob.create_all(@etl_job_configs)
+
+    # All other jobs (non-ETL) remain as individual modules
+    static_jobs = [
       # Core sync jobs
       Server.Scheduler.Jobs.SyncJob,
       Server.Scheduler.Jobs.SyncDataJob,
@@ -72,12 +117,6 @@ defmodule Server.Application do
       Server.Scheduler.Jobs.ReferencePortfolioExitCheckJob,
       Server.Scheduler.Jobs.ReferencePortfolioSyncJob,
       Server.Scheduler.Jobs.ReferencePortfolioDailyResetJob,
-      # Politician trading collection (split by source to avoid timeouts)
-      Server.Scheduler.Jobs.PoliticianTradingHouseJob,
-      Server.Scheduler.Jobs.PoliticianTradingSenateJob,
-      Server.Scheduler.Jobs.PoliticianTradingQuiverJob,
-      Server.Scheduler.Jobs.PoliticianTradingEuJob,
-      Server.Scheduler.Jobs.PoliticianTradingCaliforniaJob,
       # Data quality jobs
       Server.Scheduler.Jobs.TickerBackfillJob,
       # Party enrichment (Ollama LLM)
@@ -106,7 +145,9 @@ defmodule Server.Application do
       Server.Scheduler.Jobs.JobExecutionCleanupJob
     ]
 
-    Enum.each(jobs, fn job_module ->
+    all_jobs = etl_modules ++ static_jobs
+
+    Enum.each(all_jobs, fn job_module ->
       case Server.Scheduler.register_job(job_module) do
         {:ok, _} ->
           Logger.info("Registered job: #{job_module.job_name()}")

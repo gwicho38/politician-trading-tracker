@@ -16,7 +16,6 @@ from datetime import datetime, timezone
 from app.services.etl_services import (
     HouseETLService,
     SenateETLService,
-    init_services,
 )
 from app.lib.base_etl import ETLResult
 from app.lib.registry import ETLRegistry
@@ -354,21 +353,22 @@ class TestETLRegistry:
             ETLRegistry.create_instance("invalid_source")
 
 
-class TestInitServices:
-    """Tests for init_services function."""
+class TestAutoRegistration:
+    """Tests for auto-registration via module imports."""
 
-    def test_init_services_runs_without_error(self):
-        """Test init_services completes without error."""
-        # Should not raise any exceptions
-        init_services()
-
-    def test_services_registered_after_init(self):
-        """Test services are registered after init_services."""
-        init_services()
+    def test_all_sources_registered_on_import(self):
+        """All 5 ETL sources are registered after importing etl_services."""
         sources = ETLRegistry.list_sources()
-        assert len(sources) >= 2
         assert "house" in sources
         assert "senate" in sources
+        assert "quiverquant" in sources
+        assert "eu_parliament" in sources
+        assert "california" in sources
+
+    def test_five_sources_total(self):
+        """Exactly 5 ETL sources are registered."""
+        sources = ETLRegistry.list_sources()
+        assert len(sources) == 5
 
 
 class TestETLResultTracking:
