@@ -55,14 +55,22 @@ defmodule Server.Scheduler.Jobs.PoliticianTradingSenateJob do
         limit: 100
       })
 
+    headers = [
+      {"Content-Type", "application/json"},
+      {"Accept", "application/json"}
+    ]
+
+    headers =
+      case Application.get_env(:server, :api_key) do
+        nil -> headers
+        key -> [{"X-API-Key", key} | headers]
+      end
+
     request =
       Finch.build(
         :post,
         url,
-        [
-          {"Content-Type", "application/json"},
-          {"Accept", "application/json"}
-        ],
+        headers,
         body
       )
 
