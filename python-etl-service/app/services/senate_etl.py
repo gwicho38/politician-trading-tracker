@@ -349,6 +349,8 @@ def parse_transaction_from_row(row: List[str], disclosure: Dict[str, Any]) -> Op
 async def search_all_ptr_disclosures_playwright(
     lookback_days: int = 30,
     limit: Optional[int] = None,
+    start_date: Optional[str] = None,  # MM/DD/YYYY format
+    end_date: Optional[str] = None,    # MM/DD/YYYY format
 ) -> List[Dict[str, Any]]:
     """
     Search for all PTR disclosures using Playwright browser automation.
@@ -421,6 +423,12 @@ async def search_all_ptr_disclosures_playwright(
 
             # Check "Periodic Transactions" checkbox
             await page.locator("text=Periodic Transactions").click()
+
+            # Fill date range filters if provided
+            if start_date:
+                await page.fill("input[name='submitted_start_date']", start_date)
+            if end_date:
+                await page.fill("input[name='submitted_end_date']", end_date)
 
             # Click Search button
             await page.locator("button:has-text('Search Reports')").click()
@@ -870,6 +878,8 @@ async def fetch_senate_ptr_list_playwright(
     senators: List[Dict[str, Any]],
     lookback_days: int = 30,
     limit: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Fetch list of Senate PTR filings using Playwright browser automation.
@@ -883,6 +893,8 @@ async def fetch_senate_ptr_list_playwright(
     all_disclosures = await search_all_ptr_disclosures_playwright(
         lookback_days=lookback_days,
         limit=limit,
+        start_date=start_date,
+        end_date=end_date,
     )
 
     return _match_disclosures_to_senators(all_disclosures, senators)
@@ -1150,6 +1162,8 @@ async def process_senate_disclosure(
 async def search_ptrs_with_fallback(
     lookback_days: int = 30,
     limit: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], str]:
     """
     Search for PTR disclosures, trying HTTP first with Playwright fallback.
@@ -1169,6 +1183,8 @@ async def search_ptrs_with_fallback(
             disclosures = await client.search_ptrs(
                 lookback_days=lookback_days,
                 limit=limit,
+                start_date=start_date,
+                end_date=end_date,
             )
             logger.info(f"[Tier 1 HTTP] Found {len(disclosures)} disclosures via HTTP")
             return disclosures, "http"
@@ -1183,6 +1199,8 @@ async def search_ptrs_with_fallback(
     disclosures = await search_all_ptr_disclosures_playwright(
         lookback_days=lookback_days,
         limit=limit,
+        start_date=start_date,
+        end_date=end_date,
     )
     return disclosures, "playwright"
 
