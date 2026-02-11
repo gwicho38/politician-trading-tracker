@@ -819,6 +819,8 @@ export type Database = {
       politicians: {
         Row: {
           avatar_url: string | null
+          biography: string | null
+          biography_updated_at: string | null
           bioguide_id: string | null
           chamber: string | null
           created_at: string | null
@@ -844,6 +846,8 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          biography?: string | null
+          biography_updated_at?: string | null
           bioguide_id?: string | null
           chamber?: string | null
           created_at?: string | null
@@ -869,6 +873,8 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          biography?: string | null
+          biography_updated_at?: string | null
           bioguide_id?: string | null
           chamber?: string | null
           created_at?: string | null
