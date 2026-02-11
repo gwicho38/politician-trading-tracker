@@ -976,3 +976,130 @@ class TestValidateAndSanitizeAmounts:
         low, high = validate_and_sanitize_amounts(1001, None)
         assert low == 1001
         assert high is None
+
+
+# =============================================================================
+# Source Field Tests (database.py source + source_url fixes)
+# =============================================================================
+
+class TestSourceFieldHandling:
+    """Tests for dynamic source field and source_url fallback."""
+
+    @pytest.fixture
+    def mock_supabase_client(self):
+        """Create a mock Supabase client."""
+        client = MagicMock()
+        table_mock = MagicMock()
+        table_mock.insert.return_value.execute.return_value = MagicMock(
+            data=[{"id": "new-uuid"}]
+        )
+        client.table.return_value = table_mock
+        return client
+
+    def test_source_defaults_to_us_house(self, mock_supabase_client):
+        """upload_transaction_to_supabase() defaults source to 'us_house'."""
+        from app.lib.database import upload_transaction_to_supabase
+
+        transaction = {"asset_name": "Test Asset"}
+        disclosure = {"pdf_url": "https://example.com/doc.pdf", "filing_date": "2024-01-01"}
+
+        upload_transaction_to_supabase(
+            mock_supabase_client, "pol-uuid", transaction, disclosure
+        )
+
+        table_mock = mock_supabase_client.table.return_value
+        insert_data = table_mock.insert.call_args[0][0]
+        assert insert_data["raw_data"]["source"] == "us_house"
+
+    def test_source_uses_disclosure_source(self, mock_supabase_client):
+        """upload_transaction_to_supabase() uses disclosure source when provided."""
+        from app.lib.database import upload_transaction_to_supabase
+
+        transaction = {"asset_name": "Test Asset"}
+        disclosure = {
+            "source": "us_senate",
+            "source_url": "https://efdsearch.senate.gov/view/ptr/abc/",
+            "filing_date": "2024-01-01",
+        }
+
+        upload_transaction_to_supabase(
+            mock_supabase_client, "pol-uuid", transaction, disclosure
+        )
+
+        table_mock = mock_supabase_client.table.return_value
+        insert_data = table_mock.insert.call_args[0][0]
+        assert insert_data["raw_data"]["source"] == "us_senate"
+
+    def test_source_url_falls_back_to_source_url_key(self, mock_supabase_client):
+        """upload_transaction_to_supabase() falls back to source_url key when pdf_url missing."""
+        from app.lib.database import upload_transaction_to_supabase
+
+        transaction = {"asset_name": "Test Asset"}
+        disclosure = {
+            "source_url": "https://efdsearch.senate.gov/view/ptr/abc/",
+            "filing_date": "2024-01-01",
+        }
+
+        upload_transaction_to_supabase(
+            mock_supabase_client, "pol-uuid", transaction, disclosure
+        )
+
+        table_mock = mock_supabase_client.table.return_value
+        insert_data = table_mock.insert.call_args[0][0]
+        assert insert_data["source_url"] == "https://efdsearch.senate.gov/view/ptr/abc/"
+
+    def test_source_url_prefers_pdf_url(self, mock_supabase_client):
+        """upload_transaction_to_supabase() prefers pdf_url over source_url."""
+        from app.lib.database import upload_transaction_to_supabase
+
+        transaction = {"asset_name": "Test Asset"}
+        disclosure = {
+            "pdf_url": "https://example.com/doc.pdf",
+            "source_url": "https://example.com/other.html",
+            "filing_date": "2024-01-01",
+        }
+
+        upload_transaction_to_supabase(
+            mock_supabase_client, "pol-uuid", transaction, disclosure
+        )
+
+        table_mock = mock_supabase_client.table.return_value
+        insert_data = table_mock.insert.call_args[0][0]
+        assert insert_data["source_url"] == "https://example.com/doc.pdf"
+
+
+class TestPrepareTransactionSourceField:
+    """Tests for source field in prepare_transaction_for_batch()."""
+
+    def test_batch_source_defaults_to_us_house(self):
+        """prepare_transaction_for_batch() defaults source to 'us_house'."""
+        from app.lib.database import prepare_transaction_for_batch
+
+        transaction = {"asset_name": "Test Asset"}
+        disclosure = {"pdf_url": "https://example.com/doc.pdf", "filing_date": "2024-01-01"}
+
+        result = prepare_transaction_for_batch("pol-uuid", transaction, disclosure)
+
+        assert result["raw_data"]["source"] == "us_house"
+
+    def test_batch_source_uses_disclosure_source(self):
+        """prepare_transaction_for_batch() uses disclosure source when provided."""
+        from app.lib.database import prepare_transaction_for_batch
+
+        transaction = {"asset_name": "Test Asset"}
+        disclosure = {"source": "us_senate", "source_url": "https://test.url/", "filing_date": "2024-01-01"}
+
+        result = prepare_transaction_for_batch("pol-uuid", transaction, disclosure)
+
+        assert result["raw_data"]["source"] == "us_senate"
+
+    def test_batch_source_url_falls_back(self):
+        """prepare_transaction_for_batch() falls back to source_url key."""
+        from app.lib.database import prepare_transaction_for_batch
+
+        transaction = {"asset_name": "Test Asset"}
+        disclosure = {"source_url": "https://test.url/ptr/abc/", "filing_date": "2024-01-01"}
+
+        result = prepare_transaction_for_batch("pol-uuid", transaction, disclosure)
+
+        assert result["source_url"] == "https://test.url/ptr/abc/"
