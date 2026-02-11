@@ -72,6 +72,13 @@ const PARTY_OPTIONS = [
   { value: 'I', label: 'Independent' },
 ];
 
+// Chamber options
+const CHAMBER_OPTIONS = [
+  { value: '', label: 'All Chambers' },
+  { value: 'Representative', label: 'House' },
+  { value: 'Senator', label: 'Senate' },
+];
+
 // Sortable column configuration
 interface SortableColumn {
   field: SortField;
@@ -104,6 +111,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [transactionType, setTransactionType] = useState('');
   const [party, setParty] = useState('');
+  const [chamber, setChamber] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -155,6 +163,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
     searchQuery: debouncedSearch || undefined,
     transactionType: transactionType || undefined,
     party: party || undefined,
+    chamber: chamber || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     sortField,
@@ -166,7 +175,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
   const totalPages = Math.ceil(total / ROWS_PER_PAGE);
 
   // Check if any filters are active
-  const hasActiveFilters = debouncedSearch || transactionType || party || dateFrom || dateTo;
+  const hasActiveFilters = debouncedSearch || transactionType || party || chamber || dateFrom || dateTo;
 
   // Clear all filters
   const clearFilters = () => {
@@ -174,6 +183,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
     setDebouncedSearch('');
     setTransactionType('');
     setParty('');
+    setChamber('');
     setDateFrom('');
     setDateTo('');
     setPage(0);
@@ -336,6 +346,20 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                 </SelectContent>
               </Select>
 
+              {/* Chamber Filter */}
+              <Select value={chamber || 'all'} onValueChange={(v) => { setChamber(v === 'all' ? '' : v); setPage(0); }}>
+                <SelectTrigger className="w-[120px] sm:w-[140px] bg-background/50">
+                  <SelectValue placeholder="Chamber" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CHAMBER_OPTIONS.map((c) => (
+                    <SelectItem key={c.value} value={c.value || 'all'}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
               {/* Mobile Date Filter Button */}
               <Dialog open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
                 <DialogTrigger asChild>
@@ -474,6 +498,14 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                 <Badge variant="secondary" className="gap-1">
                   Party: {party}
                   <button onClick={() => { setParty(''); setPage(0); }} aria-label="Clear party filter">
+                    <X className="h-3 w-3" aria-hidden="true" />
+                  </button>
+                </Badge>
+              )}
+              {chamber && (
+                <Badge variant="secondary" className="gap-1">
+                  Chamber: {chamber === 'Representative' ? 'House' : 'Senate'}
+                  <button onClick={() => { setChamber(''); setPage(0); }} aria-label="Clear chamber filter">
                     <X className="h-3 w-3" aria-hidden="true" />
                   </button>
                 </Badge>

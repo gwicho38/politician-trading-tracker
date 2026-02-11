@@ -210,6 +210,7 @@ export const useTradingDisclosures = (options: {
   politicianId?: string;
   transactionType?: string;
   party?: string;
+  chamber?: string;
   searchQuery?: string;
   sortField?: SortField;
   sortDirection?: SortDirection;
@@ -223,6 +224,7 @@ export const useTradingDisclosures = (options: {
     politicianId,
     transactionType,
     party,
+    chamber,
     searchQuery,
     sortField = 'disclosure_date',
     sortDirection = 'desc',
@@ -231,10 +233,11 @@ export const useTradingDisclosures = (options: {
   } = options;
 
   return useQuery({
-    queryKey: ['tradingDisclosures', limit, offset, ticker, politicianId, transactionType, party, searchQuery, sortField, sortDirection, dateFrom, dateTo],
+    queryKey: ['tradingDisclosures', limit, offset, ticker, politicianId, transactionType, party, chamber, searchQuery, sortField, sortDirection, dateFrom, dateTo],
     queryFn: async () => {
-      // Use inner join when filtering by party to enable server-side filtering
-      const selectQuery = party
+      // Use inner join when filtering by party or chamber to enable server-side filtering
+      const needsInnerJoin = party || chamber;
+      const selectQuery = needsInnerJoin
         ? `*, politician:politicians!inner(*)`
         : `*, politician:politicians(*)`;
 
@@ -275,6 +278,10 @@ export const useTradingDisclosures = (options: {
       // Filter by party server-side using the inner join
       if (party) {
         query = query.eq('politician.party', party);
+      }
+      // Filter by chamber (role) server-side using the inner join
+      if (chamber) {
+        query = query.eq('politician.role', chamber);
       }
 
       const { data, error, count } = await query;
