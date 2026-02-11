@@ -222,27 +222,7 @@ class SenateETLService(BaseETLService):
         return result
 
 
-# Register any additional ETL services here
-# Example for future services:
-#
-# @ETLRegistry.register
-# class QuiverQuantETLService(BaseETLService):
-#     source_id = "quiverquant"
-#     source_name = "QuiverQuant"
-#     ...
-
-
-def init_services() -> None:
-    """
-    Initialize and register all ETL services.
-
-    This function is called on module import to ensure all services
-    are registered with the ETLRegistry.
-    """
-    # Services are auto-registered via @ETLRegistry.register decorator
-    # This function can be used for any additional initialization
-    pass
-
-
-# Auto-initialize on import
-init_services()
+# Import additional ETL services to trigger @ETLRegistry.register
+import app.services.quiver_etl  # noqa: F401 - QuiverQuant Congress Trading
+import app.services.eu_etl  # noqa: F401 - EU Parliament Declarations (stub)
+import app.services.california_etl  # noqa: F401 - California Disclosures (stub)

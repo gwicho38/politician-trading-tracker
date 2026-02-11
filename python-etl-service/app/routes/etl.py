@@ -96,6 +96,42 @@ async def list_sources():
     return SourcesResponse(sources=sources)
 
 
+async def _run_registry_service(source: str, job_id: str, **kwargs):
+    """
+    Run an ETL service via the registry and sync status to JOB_STATUS.
+
+    This bridges the BaseETLService's internal status tracking with the
+    shared JOB_STATUS dict that the /etl/status endpoint reads from.
+    Used for all sources except house and senate which manage JOB_STATUS directly.
+    """
+    service = ETLRegistry.create_instance(source)
+    try:
+        JOB_STATUS[job_id]["status"] = "running"
+        JOB_STATUS[job_id]["message"] = f"Starting {service.source_name} ETL..."
+
+        result = await service.run(job_id=job_id, **kwargs)
+
+        # Sync final status back to shared JOB_STATUS
+        JOB_STATUS[job_id]["status"] = "completed" if result.is_success else "failed"
+        JOB_STATUS[job_id]["progress"] = result.records_processed
+        JOB_STATUS[job_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
+
+        if result.is_success:
+            JOB_STATUS[job_id]["message"] = (
+                f"Completed: {result.records_inserted} inserted, "
+                f"{result.records_skipped} skipped, "
+                f"{result.records_failed} failed"
+            )
+        else:
+            JOB_STATUS[job_id]["message"] = f"Failed: {'; '.join(result.errors)}"
+
+    except Exception as e:
+        JOB_STATUS[job_id]["status"] = "failed"
+        JOB_STATUS[job_id]["message"] = f"ETL failed: {str(e)}"
+        JOB_STATUS[job_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
+        raise
+
+
 @router.post("/trigger", response_model=ETLTriggerResponse)
 async def trigger_etl(
     request: ETLTriggerRequest,
@@ -105,9 +141,6 @@ async def trigger_etl(
     Trigger an ETL job for a specific data source.
 
     Supported sources can be listed via GET /etl/sources.
-    Currently registered:
-    - house: US House of Representatives disclosures
-    - senate: US Senate disclosures
     """
     # Validate source using registry
     if not ETLRegistry.is_registered(request.source):
@@ -124,13 +157,15 @@ async def trigger_etl(
     JOB_STATUS[job_id] = {
         "status": "queued",
         "progress": 0,
-        "total": request.limit,  # Will be updated once we know total
+        "total": request.limit,
         "message": "Job queued",
         "started_at": datetime.now(timezone.utc).isoformat(),
         "completed_at": None,
     }
 
-    # Add ETL task to background based on source
+    # Dispatch based on source.
+    # House and Senate use legacy functions that manage JOB_STATUS directly.
+    # All other sources use the registry-driven pipeline via _run_registry_service.
     if request.source == "house":
         background_tasks.add_task(
             run_house_etl,
@@ -147,13 +182,27 @@ async def trigger_etl(
             limit=request.limit,
             update_mode=request.update_mode,
         )
+    else:
+        # Registry-driven dispatch for all other sources
+        params = {
+            "year": request.year,
+            "lookback_days": request.lookback_days,
+            "limit": request.limit,
+            "update_mode": request.update_mode,
+        }
+        background_tasks.add_task(
+            _run_registry_service,
+            source=request.source,
+            job_id=job_id,
+            **params,
+        )
 
     limit_msg = f"up to {request.limit}" if request.limit else "all"
     mode_msg = " (UPDATE MODE)" if request.update_mode else ""
     return ETLTriggerResponse(
         job_id=job_id,
         status="started",
-        message=f"ETL job started for {request.source} ({request.year}), processing {limit_msg} PDFs{mode_msg}",
+        message=f"ETL job started for {request.source}, processing {limit_msg} records{mode_msg}",
     )
 
 
