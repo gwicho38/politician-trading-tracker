@@ -204,9 +204,9 @@ def _fetch_trading_stats(supabase, politician_id: str) -> Dict[str, Any]:
     trades = result.data or []
     total_trades = len(trades)
 
-    # Calculate volume
+    # Calculate volume (handle None values from DB)
     total_volume = sum(
-        (t.get("amount_range_min", 0) + t.get("amount_range_max", 0)) / 2
+        ((t.get("amount_range_min") or 0) + (t.get("amount_range_max") or 0)) / 2
         for t in trades
     )
 
