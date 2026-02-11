@@ -131,6 +131,8 @@ class SenateEFDClient:
         self,
         lookback_days: int = 30,
         limit: Optional[int] = None,
+        start_date: Optional[str] = None,  # MM/DD/YYYY format
+        end_date: Optional[str] = None,    # MM/DD/YYYY format
     ) -> List[Dict[str, Any]]:
         """
         Search for PTR disclosures via the DataTables JSON API.
@@ -147,15 +149,21 @@ class SenateEFDClient:
             logger.info(f"[HTTP] Searching PTRs offset={start} length={page_length}")
 
             try:
+                post_data = {
+                    "start": str(start),
+                    "length": str(page_length),
+                    "report_type_id": "11",  # Periodic Transaction Reports
+                    "filer_type_id": "1",    # Senator
+                    "csrfmiddlewaretoken": self._csrf_token,
+                }
+                if start_date:
+                    post_data["submitted_start_date"] = start_date
+                if end_date:
+                    post_data["submitted_end_date"] = end_date
+
                 resp = await self._client.post(
                     f"{SENATE_BASE_URL}/search/report/data/",
-                    data={
-                        "start": str(start),
-                        "length": str(page_length),
-                        "report_type_id": "11",  # Periodic Transaction Reports
-                        "filer_type_id": "1",    # Senator
-                        "csrfmiddlewaretoken": self._csrf_token,
-                    },
+                    data=post_data,
                     headers={
                         "Referer": f"{SENATE_BASE_URL}/search/",
                         "Origin": SENATE_BASE_URL,

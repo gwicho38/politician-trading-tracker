@@ -29,6 +29,7 @@ from app.services.senate_etl import (
 )
 from app.services.ticker_backfill import run_ticker_backfill, run_transaction_type_backfill
 from app.services.bioguide_enrichment import run_bioguide_enrichment
+from app.services.senate_backfill import run_senate_backfill
 
 # New framework imports
 from app.lib import ETLRegistry
@@ -340,6 +341,74 @@ async def trigger_bioguide_enrichment(
         job_id=job_id,
         status="started",
         message=f"BioGuide enrichment job started, processing {limit_msg} politicians",
+    )
+
+
+# =============================================================================
+# Senate Historical Backfill
+# =============================================================================
+
+
+class SenateBackfillRequest(BaseModel):
+    """Request body for Senate PTR historical backfill."""
+    start_year: Optional[int] = None   # Default: 2012 (STOCK Act)
+    end_year: Optional[int] = None     # Default: 2026
+    limit: Optional[int] = None        # Max disclosures per year (testing)
+    skip_completed_years: bool = True   # Resume from where we left off
+
+
+@router.post("/backfill-senate", response_model=ETLTriggerResponse)
+async def trigger_senate_backfill(
+    request: SenateBackfillRequest,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Trigger Senate PTR historical backfill (2012-2026).
+
+    Iterates year-by-year using Playwright to backfill all historical
+    Periodic Transaction Reports from the Senate EFD system. Resumable:
+    re-running skips years that already completed successfully.
+
+    Only one backfill can run at a time (256MB RAM constraint on Fly.io).
+    """
+    # Concurrent-run guard: check for any running senate backfill
+    for existing_id, existing_status in JOB_STATUS.items():
+        if (
+            existing_status.get("_type") == "senate_backfill"
+            and existing_status.get("status") in ("queued", "running")
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Senate backfill already running (job_id={existing_id}). "
+                       "Only one backfill can run at a time due to RAM constraints.",
+            )
+
+    job_id = str(uuid.uuid4())
+
+    JOB_STATUS[job_id] = {
+        "_type": "senate_backfill",
+        "status": "queued",
+        "progress": 0,
+        "total": None,
+        "message": "Job queued",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": None,
+    }
+
+    background_tasks.add_task(
+        run_senate_backfill,
+        job_id=job_id,
+        start_year=request.start_year,
+        end_year=request.end_year,
+        limit=request.limit,
+        skip_completed=request.skip_completed_years,
+    )
+
+    year_range = f"{request.start_year or 2012}-{request.end_year or 2026}"
+    return ETLTriggerResponse(
+        job_id=job_id,
+        status="started",
+        message=f"Senate backfill started for {year_range}, skip_completed={request.skip_completed_years}",
     )
 
 
