@@ -213,8 +213,8 @@ describe('PoliticiansView', () => {
 
       render(<PoliticiansView />, { wrapper: createWrapper() });
 
-      expect(screen.getByText('D')).toBeInTheDocument();
-      expect(screen.getByText('R')).toBeInTheDocument();
+      expect(screen.getByText('Democrat')).toBeInTheDocument();
+      expect(screen.getByText('Republican')).toBeInTheDocument();
     });
 
     it('renders total volume formatted', () => {
