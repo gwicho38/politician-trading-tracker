@@ -38,7 +38,7 @@ from app.lib.parser import (
     clean_asset_name,
     is_header_row,
 )
-from app.lib.database import get_supabase, upload_transaction_to_supabase
+from app.lib.database import get_supabase, upload_transaction_to_supabase, refresh_materialized_views
 from app.lib.pdf_utils import extract_text_from_pdf, extract_tables_from_pdf
 from app.lib.politician import find_or_create_politician
 from app.lib.job_logger import log_job_execution, cleanup_old_executions
@@ -1409,6 +1409,9 @@ async def run_senate_etl(
                 "discovery_tier": discovery_tier,
             },
         )
+
+        # Refresh materialized views with new data
+        refresh_materialized_views(supabase)
 
         # Cleanup old records (1% chance per run)
         import random
