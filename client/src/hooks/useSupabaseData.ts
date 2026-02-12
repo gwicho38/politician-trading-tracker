@@ -265,7 +265,11 @@ export const useTradingDisclosures = (options: {
       }
 
       // Filter out entries without disclosed amounts (both min and max are null)
-      query = query.or('amount_range_min.not.is.null,amount_range_max.not.is.null');
+      // Skip this filter for EU Parliament — EU DPI declarations often have no amounts
+      const isEUChamber = chamber === 'MEP';
+      if (!isEUChamber) {
+        query = query.or('amount_range_min.not.is.null,amount_range_max.not.is.null');
+      }
 
       if (ticker) {
         query = query.ilike('asset_ticker', `%${ticker}%`);
