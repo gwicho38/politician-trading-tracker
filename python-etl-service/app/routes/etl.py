@@ -33,6 +33,7 @@ from app.services.senate_backfill import run_senate_backfill
 
 # New framework imports
 from app.lib import ETLRegistry
+from app.lib.database import refresh_materialized_views
 
 # Register services (import triggers registration)
 import app.services.etl_services  # noqa: F401
@@ -123,6 +124,7 @@ async def _run_registry_service(source: str, job_id: str, **kwargs):
                 f"{result.records_skipped} skipped, "
                 f"{result.records_failed} failed"
             )
+            refresh_materialized_views()
         else:
             JOB_STATUS[job_id]["message"] = f"Failed: {'; '.join(result.errors)}"
 
