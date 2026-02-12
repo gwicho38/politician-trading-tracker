@@ -16,6 +16,25 @@ def get_supabase() -> Optional[Client]:
         return None
     return create_client(supabase_url, supabase_key)
 
+def refresh_materialized_views(supabase_client: Optional[Client] = None) -> bool:
+    """Refresh materialized views after ETL data imports.
+
+    Calls the refresh_top_tickers() database function to update the
+    pre-computed top_tickers materialized view with fresh data.
+    """
+    try:
+        client = supabase_client or get_supabase()
+        if not client:
+            logger.warning("No Supabase client available for materialized view refresh")
+            return False
+        client.rpc("refresh_top_tickers").execute()
+        logger.info("Refreshed top_tickers materialized view")
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to refresh materialized views: {e}")
+        return False
+
+
 def upload_transaction_to_supabase(
     supabase_client: Client,
     politician_id: str,

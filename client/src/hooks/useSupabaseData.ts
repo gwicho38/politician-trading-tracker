@@ -253,7 +253,7 @@ export const useTradingDisclosures = (options: {
 
       let query = supabase
         .from('trading_disclosures')
-        .select(selectQuery, { count: 'exact' })
+        .select(selectQuery, { count: 'estimated' })
         .eq('status', 'active')
         .order(sortField, { ascending: sortDirection === 'asc' })
         .range(offset, offset + limit - 1);
