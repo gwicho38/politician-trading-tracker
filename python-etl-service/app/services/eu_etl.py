@@ -1,27 +1,80 @@
 """
-EU Parliament Financial Declarations ETL Service (Stub)
+EU Parliament Financial Declarations ETL Service
 
-Placeholder service for EU Parliament financial interest declarations.
-Registers properly in the ETL registry but returns empty results.
+Fetches MEP (Member of European Parliament) financial interest declarations
+and uploads them to the trading_disclosures table.
 
-EU Parliament declarations have a fundamentally different format from
-US congressional disclosures (financial interest declarations vs.
-periodic transaction reports). A full implementation would need to:
-1. Scrape the EU Parliament transparency register
-2. Parse multi-language PDF declarations
-3. Map EU financial categories to our standard schema
+EU declarations are NOT individual stock trades. They are periodic
+Declaration of Private Interests (DPI) forms with sections covering:
+  A - Previous occupations (3yr before office)
+  B - Remunerated outside activities (>5k EUR/yr)
+  C - Board memberships & outside activities
+  D - Shareholdings & financial interests
+  E - Third-party financial support
+  F - Other private interests
 
-This stub replaces the previous Supabase Edge Function that created
-placeholder politicians with garbage data.
+We map these as "holding" or "income" transaction types.
+
+Pipeline:
+  1. Fetch MEP list from XML endpoint
+  2. Upsert MEPs to politicians table (chamber="eu_parliament")
+  3. For each MEP, scrape declarations page for DPI PDF URLs
+  4. Download + parse PDFs with pdfplumber
+  5. Extract financial interests from sections B, C, D
+  6. Map to trading_disclosures schema and upload
 """
 
 import logging
+import re
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.lib.base_etl import BaseETLService, ETLResult
+from app.lib.database import get_supabase
+from app.lib.pdf_utils import extract_text_from_pdf
+from app.lib.politician import find_or_create_politician
 from app.lib.registry import ETLRegistry
+from app.services.eu_parliament_client import EUParliamentClient
 
 logger = logging.getLogger(__name__)
+
+# Section header patterns in DPI PDFs
+SECTION_PATTERN = re.compile(
+    r"^([A-F])\.\s*[-–—]?\s*(.+?)$",
+    re.MULTILINE,
+)
+
+# Map DPI sections to asset types
+SECTION_ASSET_TYPES: Dict[str, str] = {
+    "A": "Previous Occupation",
+    "B": "Outside Employment",
+    "C": "Board Membership",
+    "D": "Shareholding",
+    "E": "Third-Party Support",
+    "F": "Other Interest",
+}
+
+# Sections we extract financial interests from
+EXTRACTABLE_SECTIONS = {"B", "C", "D"}
+
+# Lines to skip during extraction
+SKIP_PATTERNS = [
+    re.compile(r"^\s*$"),
+    re.compile(r"^page\s+\d+", re.IGNORECASE),
+    re.compile(r"^declaration\s+of\s+", re.IGNORECASE),
+    re.compile(r"^private\s+interests", re.IGNORECASE),
+    re.compile(r"^member\s+of\s+the\s+european", re.IGNORECASE),
+    re.compile(r"^signature", re.IGNORECASE),
+    re.compile(r"^date\s*:", re.IGNORECASE),
+    re.compile(r"^name\s*:", re.IGNORECASE),
+    re.compile(r"^none\s*\.?\s*$", re.IGNORECASE),
+    re.compile(r"^n/?a\s*\.?\s*$", re.IGNORECASE),
+    re.compile(r"^not\s+applicable", re.IGNORECASE),
+    re.compile(r"^-+\s*$"),
+]
+
+# Batch size for MEP processing
+MEP_BATCH_SIZE = 50
 
 
 @ETLRegistry.register
@@ -29,24 +82,408 @@ class EUParliamentETLService(BaseETLService):
     """
     EU Parliament financial declarations ETL service.
 
-    Currently a stub that registers in the ETL registry and completes
-    gracefully without fetching data. This is preferable to the previous
-    edge function approach that created garbage placeholder data.
+    Fetches MEP DPI (Declaration of Private Interests) PDFs,
+    parses financial interest sections, and uploads to the
+    trading_disclosures table.
     """
 
     source_id = "eu_parliament"
     source_name = "EU Parliament Declarations"
 
     async def fetch_disclosures(self, **kwargs) -> List[Dict[str, Any]]:
-        """Return empty list - EU Parliament ETL is not yet implemented."""
+        """
+        Fetch EU Parliament financial interest declarations.
+
+        Kwargs:
+            limit_meps: Max number of MEPs to process (for testing)
+
+        Returns:
+            List of parsed financial interest records ready for upload.
+        """
+        limit_meps = kwargs.get("limit_meps")
+        all_records: List[Dict[str, Any]] = []
+
+        supabase = get_supabase()
+        if not supabase:
+            self.logger.error("Supabase client not available")
+            return []
+
+        async with EUParliamentClient() as client:
+            # Step 1: Fetch MEP list
+            self.logger.info("Fetching MEP list from EU Parliament XML...")
+            meps = await client.fetch_mep_list()
+            if not meps:
+                self.logger.warning("No MEPs fetched from XML endpoint")
+                return []
+
+            self.logger.info(f"Found {len(meps)} MEPs")
+
+            if limit_meps:
+                meps = meps[:limit_meps]
+                self.logger.info(f"Limited to {limit_meps} MEPs for processing")
+
+            # Step 2: Upsert MEPs and fetch their declarations
+            politician_cache: Dict[str, str] = {}
+
+            for i, mep in enumerate(meps):
+                mep_id = mep["mep_id"]
+                full_name = mep["full_name"]
+
+                if (i + 1) % 50 == 0:
+                    self.logger.info(
+                        f"Processing MEP {i + 1}/{len(meps)}: {full_name}"
+                    )
+
+                # Upsert politician
+                first_name, last_name = _split_mep_name(full_name)
+                politician_id = find_or_create_politician(
+                    supabase,
+                    name=full_name,
+                    first_name=first_name,
+                    last_name=last_name,
+                    chamber="eu_parliament",
+                    state=mep.get("country"),
+                )
+
+                if not politician_id:
+                    self.logger.warning(f"Failed to upsert MEP: {full_name}")
+                    continue
+
+                politician_cache[mep_id] = politician_id
+
+                # Step 3: Fetch declarations page
+                declarations = await client.fetch_declarations_page(
+                    mep_id, full_name
+                )
+
+                if not declarations:
+                    continue
+
+                # Step 4: Download and parse each DPI PDF
+                for decl in declarations:
+                    pdf_url = decl["pdf_url"]
+                    pdf_bytes = await client.download_pdf(pdf_url)
+                    if not pdf_bytes:
+                        continue
+
+                    # Parse PDF text
+                    text = extract_text_from_pdf(pdf_bytes)
+                    if not text:
+                        self.logger.debug(
+                            f"No text extracted from PDF: {pdf_url}"
+                        )
+                        continue
+
+                    # Extract financial interests
+                    interests = extract_financial_interests(text)
+
+                    declaration_date = decl.get("date") or datetime.now(
+                        timezone.utc
+                    ).strftime("%Y-%m-%d")
+
+                    for interest in interests:
+                        record = {
+                            "politician_name": full_name,
+                            "first_name": first_name,
+                            "last_name": last_name,
+                            "politician_id": politician_id,
+                            "chamber": "eu_parliament",
+                            "state": mep.get("country"),
+                            "asset_name": interest["entity"][:200],
+                            "asset_type": interest["asset_type"],
+                            "transaction_type": interest["transaction_type"],
+                            "transaction_date": declaration_date,
+                            "filing_date": declaration_date,
+                            "notification_date": declaration_date,
+                            "value_low": interest.get("value_low"),
+                            "value_high": interest.get("value_high"),
+                            "source": "eu_parliament",
+                            "source_url": pdf_url,
+                            "doc_id": f"DPI-{mep_id}-{declaration_date}",
+                            "raw_row": interest.get("raw_lines", []),
+                            "section": interest["section"],
+                        }
+                        all_records.append(record)
+
         self.logger.info(
-            "EU Parliament ETL is a stub - no disclosures fetched. "
-            "A full implementation requires parsing the EU transparency register."
+            f"Extracted {len(all_records)} financial interest records "
+            f"from {len(meps)} MEPs"
         )
-        return []
+        return all_records
 
     async def parse_disclosure(
         self, raw: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
-        """Pass-through parser for future implementation."""
-        return raw
+        """
+        Map a raw EU financial interest record to the standard schema.
+
+        The record is already mostly in the right shape from
+        fetch_disclosures(); this method normalizes it for
+        upload_disclosure().
+        """
+        asset_name = raw.get("asset_name", "")
+        if not asset_name or len(asset_name.strip()) < 2:
+            return None
+
+        return {
+            "politician_name": raw.get("politician_name"),
+            "first_name": raw.get("first_name"),
+            "last_name": raw.get("last_name"),
+            "chamber": "eu_parliament",
+            "state": raw.get("state"),
+            "asset_name": asset_name,
+            "asset_type": raw.get("asset_type", "Other Interest"),
+            "transaction_type": raw.get("transaction_type", "holding"),
+            "transaction_date": raw.get("transaction_date"),
+            "filing_date": raw.get("filing_date"),
+            "notification_date": raw.get("notification_date"),
+            "value_low": raw.get("value_low"),
+            "value_high": raw.get("value_high"),
+            "source_url": raw.get("source_url"),
+            "doc_id": raw.get("doc_id"),
+            "source": "eu_parliament",
+            "raw_row": raw.get("raw_row", []),
+        }
+
+
+# ---------------------------------------------------------------------------
+# PDF parsing helpers
+# ---------------------------------------------------------------------------
+
+
+def split_sections(text: str) -> Dict[str, str]:
+    """
+    Split DPI PDF text into sections A-F.
+
+    Returns a dict mapping section letter to section body text.
+    """
+    sections: Dict[str, str] = {}
+
+    # Find all section headers
+    matches = list(SECTION_PATTERN.finditer(text))
+
+    if not matches:
+        return sections
+
+    for i, match in enumerate(matches):
+        letter = match.group(1).upper()
+        start = match.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        body = text[start:end].strip()
+        sections[letter] = body
+
+    return sections
+
+
+def extract_financial_interests(text: str) -> List[Dict[str, Any]]:
+    """
+    Extract financial interest entries from DPI PDF text.
+
+    Focuses on sections B (outside employment), C (board memberships),
+    and D (shareholdings).
+
+    Returns:
+        List of dicts with keys: entity, section, asset_type,
+        transaction_type, value_low, value_high, raw_lines
+    """
+    sections = split_sections(text)
+    interests: List[Dict[str, Any]] = []
+
+    for section_letter in EXTRACTABLE_SECTIONS:
+        body = sections.get(section_letter)
+        if not body:
+            continue
+
+        asset_type = SECTION_ASSET_TYPES.get(section_letter, "Other Interest")
+        transaction_type = "income" if section_letter == "B" else "holding"
+
+        entries = _parse_section_entries(body, section_letter)
+
+        for entry in entries:
+            value_low, value_high = _extract_income_range(entry["text"])
+
+            interests.append(
+                {
+                    "entity": entry["entity"],
+                    "section": section_letter,
+                    "asset_type": asset_type,
+                    "transaction_type": transaction_type,
+                    "value_low": value_low,
+                    "value_high": value_high,
+                    "raw_lines": entry["raw_lines"],
+                }
+            )
+
+    return interests
+
+
+def _parse_section_entries(
+    body: str, section: str
+) -> List[Dict[str, Any]]:
+    """
+    Parse individual entries from a section body.
+
+    Entries are typically separated by:
+    - Numbered items (1., 2., etc.)
+    - Dash/bullet separators
+    - Double newlines (paragraph breaks)
+
+    Returns list of dicts with entity name and raw lines.
+    """
+    entries: List[Dict[str, Any]] = []
+    lines = body.split("\n")
+
+    # Filter out skip-pattern lines
+    meaningful_lines: List[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if any(p.match(stripped) for p in SKIP_PATTERNS):
+            continue
+        if stripped:
+            meaningful_lines.append(stripped)
+
+    if not meaningful_lines:
+        return entries
+
+    # Try numbered item splitting first
+    numbered_pattern = re.compile(r"^(\d+)\.\s+(.+)")
+    current_entry_lines: List[str] = []
+    current_entity: Optional[str] = None
+
+    for line in meaningful_lines:
+        num_match = numbered_pattern.match(line)
+        if num_match:
+            # Save previous entry
+            if current_entity:
+                entries.append(
+                    {
+                        "entity": current_entity,
+                        "text": " ".join(current_entry_lines),
+                        "raw_lines": current_entry_lines.copy(),
+                    }
+                )
+            current_entity = num_match.group(2).strip()
+            current_entry_lines = [line]
+        elif current_entity:
+            current_entry_lines.append(line)
+            # Append to entity if first continuation line adds context
+            if len(current_entry_lines) == 2:
+                current_entity = f"{current_entity} - {line}"
+        else:
+            # No numbered items yet — treat as a single entry
+            current_entity = line
+            current_entry_lines = [line]
+
+    # Don't forget the last entry
+    if current_entity:
+        entries.append(
+            {
+                "entity": current_entity,
+                "text": " ".join(current_entry_lines),
+                "raw_lines": current_entry_lines.copy(),
+            }
+        )
+
+    # If no numbered items were found, try splitting on double-newlines
+    # or treat the whole body as one entry
+    if not entries and meaningful_lines:
+        # Group by paragraph (consecutive non-empty lines)
+        full_text = " ".join(meaningful_lines)
+        entries.append(
+            {
+                "entity": meaningful_lines[0][:200],
+                "text": full_text,
+                "raw_lines": meaningful_lines,
+            }
+        )
+
+    return entries
+
+
+def _extract_income_range(text: str) -> tuple:
+    """
+    Try to extract income category from EU DPI text.
+
+    EU income categories for Section B:
+    - Category 1: EUR 1 - EUR 499
+    - Category 2: EUR 500 - EUR 999
+    - Category 3: EUR 1,000 - EUR 4,999
+    - Category 4: EUR 5,000 - EUR 9,999
+    - Category 5: EUR 10,000 or more
+
+    Returns:
+        (value_low, value_high) or (None, None)
+    """
+    text_lower = text.lower()
+
+    # Direct EUR range patterns
+    eur_range = re.search(
+        r"(?:eur|€)\s*([\d,.]+)\s*[-–—to]+\s*(?:eur|€)?\s*([\d,.]+)",
+        text_lower,
+    )
+    if eur_range:
+        try:
+            low = float(eur_range.group(1).replace(",", "").replace(".", ""))
+            high = float(eur_range.group(2).replace(",", "").replace(".", ""))
+            return (low, high)
+        except ValueError:
+            pass
+
+    # Category-based patterns
+    category_ranges = [
+        (r"category\s*1\b", 1, 499),
+        (r"category\s*2\b", 500, 999),
+        (r"category\s*3\b", 1000, 4999),
+        (r"category\s*4\b", 5000, 9999),
+        (r"category\s*5\b", 10000, None),
+    ]
+    for pattern, low, high in category_ranges:
+        if re.search(pattern, text_lower):
+            return (float(low), float(high) if high else None)
+
+    return (None, None)
+
+
+def _split_mep_name(full_name: str) -> tuple:
+    """
+    Split an MEP name into first and last name.
+
+    EU Parliament names are typically in 'FirstName LASTNAME' format
+    where the last name is in ALL CAPS.
+
+    Examples:
+        'Mika AALTOLA' -> ('Mika', 'AALTOLA')
+        'María Teresa GIMÉNEZ BARBAT' -> ('María Teresa', 'GIMÉNEZ BARBAT')
+        'Bas EICKHOUT' -> ('Bas', 'EICKHOUT')
+    """
+    if not full_name:
+        return ("", "")
+
+    parts = full_name.strip().split()
+    if len(parts) <= 1:
+        return (full_name, "")
+
+    # Find the boundary where uppercase-only words start
+    first_parts: List[str] = []
+    last_parts: List[str] = []
+    found_upper = False
+
+    for part in parts:
+        # A word is considered a "last name part" if it's all uppercase
+        # (ignoring accented chars and hyphens)
+        clean = re.sub(r"[^a-zA-ZÀ-ÿ]", "", part)
+        if clean and clean == clean.upper() and not found_upper and first_parts:
+            found_upper = True
+
+        if found_upper:
+            last_parts.append(part)
+        else:
+            first_parts.append(part)
+
+    if not first_parts:
+        first_parts = [parts[0]]
+        last_parts = parts[1:]
+    elif not last_parts:
+        last_parts = [first_parts.pop()] if len(first_parts) > 1 else [""]
+
+    return (" ".join(first_parts), " ".join(last_parts))
