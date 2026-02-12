@@ -12,6 +12,10 @@ defmodule ServerWeb.MlController do
 
   @etl_service_url "https://politician-trading-etl.fly.dev"
 
+  defp etl_api_key do
+    Application.get_env(:server, :api_key) || System.get_env("ETL_API_KEY") || ""
+  end
+
   # TODO: Review this function
   @doc """
   Get ML prediction for a ticker's features.
@@ -244,7 +248,7 @@ defmodule ServerWeb.MlController do
       Finch.build(
         :get,
         url,
-        [{"Accept", "application/json"}]
+        [{"Accept", "application/json"}, {"X-API-Key", etl_api_key()}]
       )
 
     case Finch.request(request, Server.Finch, receive_timeout: 30_000) do
@@ -277,7 +281,8 @@ defmodule ServerWeb.MlController do
         url,
         [
           {"Content-Type", "application/json"},
-          {"Accept", "application/json"}
+          {"Accept", "application/json"},
+          {"X-API-Key", etl_api_key()}
         ],
         body
       )
