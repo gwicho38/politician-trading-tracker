@@ -164,7 +164,7 @@ jobs:
     - name: Pull secrets via lsh
       env:
         LSH_SECRETS_KEY: ${{ secrets.LSH_SECRETS_KEY }}
-      run: lsh pull
+      run: lsh sync pull QmTCuo9F4hhJupvYyCARgTSS9TjU1svXtovU696tZPDtCZ
 
     - name: Install Flyctl
       uses: superfly/flyctl-actions/setup-flyctl@master
