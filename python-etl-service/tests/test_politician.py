@@ -596,3 +596,25 @@ class TestFindOrCreatePolitician:
         politician_data = insert_call[0][0]
 
         assert "district" not in politician_data or politician_data.get("district") is None
+
+    def test_eu_parliament_sets_state_or_country(self, mock_supabase_empty):
+        """find_or_create_politician() sets state_or_country for EU MEPs."""
+        from app.lib.politician import find_or_create_politician
+
+        find_or_create_politician(
+            mock_supabase_empty,
+            name="Mika AALTOLA",
+            first_name="Mika",
+            last_name="AALTOLA",
+            chamber="eu_parliament",
+            state="Finland",
+            party="EPP",
+        )
+
+        table_mock = mock_supabase_empty.table.return_value
+        insert_call = table_mock.insert.call_args
+        politician_data = insert_call[0][0]
+
+        assert politician_data["state_or_country"] == "Finland"
+        assert politician_data["role"] == "MEP"
+        assert politician_data["party"] == "EPP"

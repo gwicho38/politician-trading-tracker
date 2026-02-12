@@ -150,10 +150,13 @@ def find_or_create_politician(
         if bioguide_id:
             politician_data["bioguide_id"] = bioguide_id
 
-        # Add House-specific fields
+        # Add state_or_country for UI display
         if chamber == "house" and district:
             politician_data["state_or_country"] = state
             politician_data["district"] = district
+        elif chamber == "eu_parliament" and state:
+            # For EU MEPs, state holds the country name
+            politician_data["state_or_country"] = state
 
         response = supabase.table("politicians").insert(politician_data).execute()
 
