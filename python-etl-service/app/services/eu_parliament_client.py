@@ -22,6 +22,8 @@ from bs4 import BeautifulSoup
 logger = logging.getLogger(__name__)
 
 MEP_LIST_URL = "https://www.europarl.europa.eu/meps/en/full-list/xml"
+# Outgoing members from previous parliamentary term (8th term: 2014-2019)
+MEP_OUTGOING_URL = "https://www.europarl.europa.eu/meps/en/incoming-outgoing/outgoing/xml"
 MEP_DECLARATIONS_URL = (
     "https://www.europarl.europa.eu/meps/en/{mep_id}/{slug}/declarations"
 )
@@ -85,6 +87,27 @@ class EUParliamentClient:
             response.raise_for_status()
         except httpx.HTTPError as e:
             logger.error(f"Failed to fetch MEP list: {e}")
+            return []
+
+        return parse_mep_xml(response.text)
+
+    async def fetch_outgoing_meps(self) -> List[Dict[str, str]]:
+        """
+        Fetch outgoing/former MEPs from the EU Parliament XML endpoint.
+
+        This covers MEPs from the previous parliamentary term (2014-2019)
+        who are no longer serving, enabling backfilling of 2015+ data.
+
+        Returns:
+            List of dicts with same keys as fetch_mep_list.
+        """
+        assert self._client is not None, "Client not initialized (use async with)"
+
+        try:
+            response = await self._client.get(MEP_OUTGOING_URL)
+            response.raise_for_status()
+        except httpx.HTTPError as e:
+            logger.warning(f"Failed to fetch outgoing MEP list: {e}")
             return []
 
         return parse_mep_xml(response.text)

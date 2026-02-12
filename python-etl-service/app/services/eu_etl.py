@@ -96,11 +96,15 @@ class EUParliamentETLService(BaseETLService):
 
         Kwargs:
             limit_meps: Max number of MEPs to process (for testing)
+            include_former: Include outgoing/former MEPs for historical data (default: True)
+            year_start: Earliest year to include declarations from (default: 2015)
 
         Returns:
             List of parsed financial interest records ready for upload.
         """
         limit_meps = kwargs.get("limit_meps")
+        include_former = kwargs.get("include_former", True)
+        year_start = kwargs.get("year_start", 2015)
         all_records: List[Dict[str, Any]] = []
 
         supabase = get_supabase()
@@ -116,7 +120,21 @@ class EUParliamentETLService(BaseETLService):
                 self.logger.warning("No MEPs fetched from XML endpoint")
                 return []
 
-            self.logger.info(f"Found {len(meps)} MEPs")
+            self.logger.info(f"Found {len(meps)} current MEPs")
+
+            # Optionally fetch former MEPs for historical backfill (2015+)
+            if include_former:
+                self.logger.info("Fetching outgoing/former MEPs for historical data...")
+                former_meps = await client.fetch_outgoing_meps()
+                if former_meps:
+                    # Deduplicate by mep_id (some may have re-entered)
+                    existing_ids = {m["mep_id"] for m in meps}
+                    new_former = [m for m in former_meps if m["mep_id"] not in existing_ids]
+                    meps.extend(new_former)
+                    self.logger.info(
+                        f"Added {len(new_former)} former MEPs "
+                        f"(total: {len(meps)})"
+                    )
 
             if limit_meps:
                 meps = meps[:limit_meps]
@@ -143,6 +161,7 @@ class EUParliamentETLService(BaseETLService):
                     last_name=last_name,
                     chamber="eu_parliament",
                     state=mep.get("country"),
+                    party=mep.get("political_group") or None,
                 )
 
                 if not politician_id:
@@ -161,6 +180,16 @@ class EUParliamentETLService(BaseETLService):
 
                 # Step 4: Download and parse each DPI PDF
                 for decl in declarations:
+                    # Skip declarations before the start year
+                    decl_date = decl.get("date", "")
+                    if decl_date and year_start:
+                        try:
+                            decl_year = int(decl_date[:4])
+                            if decl_year < year_start:
+                                continue
+                        except (ValueError, IndexError):
+                            pass  # Can't parse year, include it
+
                     pdf_url = decl["pdf_url"]
                     pdf_bytes = await client.download_pdf(pdf_url)
                     if not pdf_bytes:

@@ -50,7 +50,7 @@ import { useTradingDisclosures, SortField, SortDirection, TradingDisclosure } fr
 import { ReportErrorModal } from '@/components/ReportErrorModal';
 import { PoliticianProfileModal } from '@/components/detail-modals/PoliticianProfileModal';
 import { getPartyColor, getPartyBg } from '@/lib/mockData';
-import { toParty } from '@/lib/typeGuards';
+import { toParty, getPartyLabel } from '@/lib/typeGuards';
 import type { Politician } from '@/hooks/useSupabaseData';
 
 const ROWS_PER_PAGE = 15;
@@ -70,13 +70,22 @@ const PARTY_OPTIONS = [
   { value: 'D', label: 'Democrat' },
   { value: 'R', label: 'Republican' },
   { value: 'I', label: 'Independent' },
+  { value: 'EPP', label: 'EPP' },
+  { value: 'S&D', label: 'S&D' },
+  { value: 'Renew', label: 'Renew' },
+  { value: 'Greens/EFA', label: 'Greens/EFA' },
+  { value: 'ECR', label: 'ECR' },
+  { value: 'ID', label: 'ID' },
+  { value: 'GUE/NGL', label: 'GUE/NGL' },
+  { value: 'NI', label: 'Non-Inscrit' },
 ];
 
-// Chamber options
+// Chamber options (value matches politician.role in the database)
 const CHAMBER_OPTIONS = [
   { value: '', label: 'All Chambers' },
   { value: 'Representative', label: 'House' },
   { value: 'Senator', label: 'Senate' },
+  { value: 'MEP', label: 'EU Parliament' },
 ];
 
 // Sortable column configuration
@@ -496,7 +505,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
               )}
               {party && (
                 <Badge variant="secondary" className="gap-1">
-                  Party: {party}
+                  Party: {PARTY_OPTIONS.find(p => p.value === party)?.label || party}
                   <button onClick={() => { setParty(''); setPage(0); }} aria-label="Clear party filter">
                     <X className="h-3 w-3" aria-hidden="true" />
                   </button>
@@ -504,7 +513,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
               )}
               {chamber && (
                 <Badge variant="secondary" className="gap-1">
-                  Chamber: {chamber === 'Representative' ? 'House' : 'Senate'}
+                  Chamber: {CHAMBER_OPTIONS.find(c => c.value === chamber)?.label || chamber}
                   <button onClick={() => { setChamber(''); setPage(0); }} aria-label="Clear chamber filter">
                     <X className="h-3 w-3" aria-hidden="true" />
                   </button>
@@ -611,7 +620,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                         getPartyColor(partyValue)
                       )}
                     >
-                      {partyValue}
+                      {getPartyLabel(partyValue)}
                     </Badge>
                   </div>
 
@@ -757,7 +766,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                             getPartyColor(partyValue)
                           )}
                         >
-                          {partyValue}
+                          {getPartyLabel(partyValue)}
                         </Badge>
                       </div>
                       <div className="text-xs text-muted-foreground">

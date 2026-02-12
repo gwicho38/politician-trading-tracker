@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { usePoliticianDetail, type Politician } from '@/hooks/useSupabaseData';
 import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
+import { toParty, getPartyLabel } from '@/lib/typeGuards';
 import { cn, formatChamber } from '@/lib/utils';
 
 interface PoliticianDetailModalProps {
@@ -42,7 +43,7 @@ export function PoliticianDetailModal({
                     getPartyColor(politician.party)
                   )}
                 >
-                  {politician.party}
+                  {getPartyLabel(toParty(politician.party))}
                 </Badge>
               </DialogTitle>
               <p className="text-sm text-muted-foreground mt-1">
