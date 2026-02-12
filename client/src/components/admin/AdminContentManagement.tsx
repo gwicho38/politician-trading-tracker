@@ -13,6 +13,7 @@ import type { Tables } from '@/integrations/supabase/types';
 import PoliticianForm from './PoliticianForm';
 import TradeForm from './TradeForm';
 import { formatCurrencyCompact, formatDate as formatDateUtil } from '@/lib/formatters';
+import { toParty, getPartyLabel } from '@/lib/typeGuards';
 import { formatChamber } from '@/lib/utils';
 import { logError } from '@/lib/logger';
 
@@ -235,7 +236,7 @@ const AdminContentManagement = () => {
                         <TableCell className="font-medium">{politician.name}</TableCell>
                         <TableCell>
                           <Badge variant={getPartyBadgeVariant(politician.party)}>
-                            {politician.party}
+                            {getPartyLabel(toParty(politician.party))}
                           </Badge>
                         </TableCell>
                         <TableCell>{formatChamber(politician.chamber)}</TableCell>

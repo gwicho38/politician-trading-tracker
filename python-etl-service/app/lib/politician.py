@@ -22,6 +22,7 @@ def find_or_create_politician(
     district: Optional[str] = None,
     bioguide_id: Optional[str] = None,
     disclosure: Optional[Dict[str, Any]] = None,
+    party: Optional[str] = None,
 ) -> Optional[str]:
     """Find existing politician or create a new one.
 
@@ -141,7 +142,7 @@ def find_or_create_politician(
             "last_name": last_name,
             "chamber": chamber,
             "role": role,
-            "party": None,
+            "party": party,
             "state": state,
         }
 

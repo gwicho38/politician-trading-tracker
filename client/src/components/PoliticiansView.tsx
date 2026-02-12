@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { toParty, getPartyLabel } from '@/lib/typeGuards';
 import { cn, formatChamber } from '@/lib/utils';
 import { PoliticianProfileModal } from '@/components/detail-modals';
 
@@ -31,6 +32,14 @@ const PARTY_FILTER_OPTIONS = [
   { value: 'D', label: 'Democrat' },
   { value: 'R', label: 'Republican' },
   { value: 'I', label: 'Independent' },
+  { value: 'EPP', label: 'EPP' },
+  { value: 'S&D', label: 'S&D' },
+  { value: 'Renew', label: 'Renew' },
+  { value: 'Greens/EFA', label: 'Greens/EFA' },
+  { value: 'ECR', label: 'ECR' },
+  { value: 'ID', label: 'ID' },
+  { value: 'GUE/NGL', label: 'GUE/NGL' },
+  { value: 'NI', label: 'Non-Inscrit' },
 ];
 
 // Sortable fields for politicians
@@ -296,7 +305,7 @@ const PoliticiansView = ({ initialPoliticianId, onPoliticianSelected }: Politici
                             getPartyColor(politician.party)
                           )}
                         >
-                          {politician.party}
+                          {getPartyLabel(toParty(politician.party))}
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground truncate sm:hidden">

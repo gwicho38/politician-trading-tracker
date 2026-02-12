@@ -12,7 +12,7 @@
 /**
  * Valid party codes used throughout the application.
  */
-export const VALID_PARTIES = ['D', 'R', 'I', 'Other'] as const;
+export const VALID_PARTIES = ['D', 'R', 'I', 'EPP', 'S&D', 'Renew', 'Greens/EFA', 'ECR', 'ID', 'GUE/NGL', 'NI', 'Other'] as const;
 export type Party = (typeof VALID_PARTIES)[number];
 
 /**
@@ -53,6 +53,48 @@ export function getPartyFullName(party: Party): string {
       return 'Republican';
     case 'I':
       return 'Independent';
+    case 'EPP':
+      return 'European People\'s Party';
+    case 'S&D':
+      return 'Socialists & Democrats';
+    case 'Renew':
+      return 'Renew Europe';
+    case 'Greens/EFA':
+      return 'Greens/EFA';
+    case 'ECR':
+      return 'European Conservatives';
+    case 'ID':
+      return 'Identity & Democracy';
+    case 'GUE/NGL':
+      return 'The Left';
+    case 'NI':
+      return 'Non-Inscrit';
+    default:
+      return 'Other';
+  }
+}
+
+/**
+ * Get a short display label for party badges.
+ * US parties get their full name; EU groups keep their abbreviation.
+ */
+export function getPartyLabel(party: Party): string {
+  switch (party) {
+    case 'D':
+      return 'Democrat';
+    case 'R':
+      return 'Republican';
+    case 'I':
+      return 'Independent';
+    case 'EPP':
+    case 'S&D':
+    case 'Renew':
+    case 'Greens/EFA':
+    case 'ECR':
+    case 'ID':
+    case 'GUE/NGL':
+    case 'NI':
+      return party;
     default:
       return 'Other';
   }
