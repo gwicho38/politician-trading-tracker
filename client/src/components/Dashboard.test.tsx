@@ -107,7 +107,7 @@ describe('Dashboard', () => {
       render(<Dashboard />, { wrapper: createWrapper() });
 
       expect(
-        screen.getByText('A free public resource tracking congressional stock trades and disclosures')
+        screen.getByText('A free public resource tracking politician stock trades and financial disclosures')
       ).toBeInTheDocument();
     });
   });

@@ -153,7 +153,7 @@ async def admin_etl(
         raise HTTPException(status_code=500, detail="Database not configured")
 
     # Get recent disclosures stats using server-side counting
-    stats = {"house_count": 0, "senate_count": 0, "total_count": 0, "recent_24h": 0}
+    stats = {"house_count": 0, "senate_count": 0, "eu_count": 0, "total_count": 0, "recent_24h": 0}
 
     # Total disclosures
     try:
@@ -168,6 +168,8 @@ async def admin_etl(
         stats["house_count"] = resp.count if resp.count is not None else 0
         resp = supabase.table("politicians").select("id", count="exact").eq("chamber", "senate").execute()
         stats["senate_count"] = resp.count if resp.count is not None else 0
+        resp = supabase.table("politicians").select("id", count="exact").eq("chamber", "eu_parliament").execute()
+        stats["eu_count"] = resp.count if resp.count is not None else 0
     except Exception as e:
         logger.error(f"Failed to get chamber counts: {e}")
 
@@ -231,6 +233,21 @@ async def api_trigger_etl(
             return HTMLResponse(
                 f'<div class="bg-green-100 text-green-800 p-3 rounded">'
                 f'Senate ETL started (30-day lookback). Job ID: <code class="text-xs">{job_id[:8]}...</code>'
+                f'</div>'
+            )
+        elif source == "eu_parliament":
+            from app.lib.registry import ETLRegistry
+            import uuid
+            job_id = str(uuid.uuid4())
+
+            async def _run_eu_etl(jid: str):
+                service = ETLRegistry.create_instance("eu_parliament")
+                await service.run(job_id=jid)
+
+            background_tasks.add_task(_run_eu_etl, job_id)
+            return HTMLResponse(
+                f'<div class="bg-green-100 text-green-800 p-3 rounded">'
+                f'EU Parliament ETL started (2015+ backfill). Job ID: <code class="text-xs">{job_id[:8]}...</code>'
                 f'</div>'
             )
         else:

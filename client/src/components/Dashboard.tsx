@@ -36,7 +36,7 @@ const Dashboard = ({ initialTickerSearch, onTickerSearchClear }: DashboardProps)
           Politician Stock Trading Tracker
         </h2>
         <p className="text-sm sm:text-base text-muted-foreground">
-          A free public resource tracking congressional stock trades and disclosures
+          A free public resource tracking politician stock trades and financial disclosures
         </p>
       </div>
 
@@ -71,7 +71,7 @@ const Dashboard = ({ initialTickerSearch, onTickerSearchClear }: DashboardProps)
             <StatsCard
               title="Active Politicians"
               value={(stats?.active_politicians || 0).toString()}
-              change="US Congress members"
+              change="Tracked politicians"
               changeType="neutral"
               icon={Users}
               delay={200}

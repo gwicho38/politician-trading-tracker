@@ -6,7 +6,7 @@
 <h2 class="text-2xl font-bold text-gray-800 mb-6">ETL Pipeline Management</h2>
 
 <!-- Stats -->
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+<div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
     <div class="bg-white rounded-lg shadow p-4 text-center">
         <div class="text-3xl font-bold text-gray-800">{{ stats.total_count | default(0) | int }}</div>
         <div class="text-sm text-gray-500">Total Disclosures</div>
@@ -20,6 +20,10 @@
         <div class="text-sm text-gray-500">Senate Members</div>
     </div>
     <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl font-bold text-yellow-600">{{ stats.eu_count | default(0) | int }}</div>
+        <div class="text-sm text-gray-500">EU MEPs</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
         <div class="text-3xl font-bold text-green-600">{{ stats.recent_24h | default(0) | int }}</div>
         <div class="text-sm text-gray-500">New (24h)</div>
     </div>
@@ -29,7 +33,7 @@
 <div class="bg-white rounded-lg shadow p-5 mb-6">
     <h3 class="font-semibold text-gray-700 mb-4">Trigger ETL Job</h3>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <!-- House ETL -->
         <div class="border rounded-lg p-4">
             <h4 class="font-medium text-gray-700 mb-3">House Disclosures</h4>
@@ -83,6 +87,20 @@
                 Run Senate ETL
             </button>
         </div>
+
+        <!-- EU Parliament ETL -->
+        <div class="border rounded-lg p-4">
+            <h4 class="font-medium text-gray-700 mb-3">EU Parliament Declarations</h4>
+            <p class="text-sm text-gray-500 mb-3">Fetch MEP financial interest declarations (DPI PDFs) from 2015 onwards.</p>
+            <button type="button" id="eu-etl-btn"
+                    hx-post="/admin/api/trigger-etl"
+                    hx-target="#etl-result"
+                    hx-indicator="#etl-loading"
+                    hx-confirm="Start EU Parliament ETL? This fetches ~1300 MEPs and may take a while."
+                    class="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700 text-sm">
+                Run EU Parliament ETL
+            </button>
+        </div>
     </div>
 
     <div class="mt-4 flex items-center gap-3">
@@ -121,6 +139,11 @@ document.addEventListener('DOMContentLoaded', function() {
         evt.detail.parameters['key'] = apiKey;
         evt.detail.parameters['source'] = 'senate';
         evt.detail.parameters['year'] = '2025';
+    });
+
+    document.getElementById('eu-etl-btn').addEventListener('htmx:configRequest', function(evt) {
+        evt.detail.parameters['key'] = apiKey;
+        evt.detail.parameters['source'] = 'eu_parliament';
     });
 });
 </script>

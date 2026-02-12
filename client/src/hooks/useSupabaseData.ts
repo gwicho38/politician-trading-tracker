@@ -81,6 +81,18 @@ export interface DashboardStats {
   recent_filings: number;
 }
 
+// Map DB role values back to jurisdiction codes
+function roleToJurisdiction(role: string | null | undefined): string {
+  const map: Record<string, string> = {
+    'Representative': 'us_house',
+    'Senator': 'us_senate',
+    'MEP': 'eu_parliament',
+    'UK': 'uk_parliament',
+    'State Legislator': 'california',
+  };
+  return (role && map[role]) || 'unknown';
+}
+
 // Fetch jurisdictions for sidebar
 export const useJurisdictions = () => {
   return useQuery({
@@ -109,12 +121,13 @@ export const usePoliticians = (jurisdictionId?: string) => {
         .order('total_volume', { ascending: false });
 
       if (jurisdictionId) {
-        // Map jurisdiction codes to role filters
+        // Map jurisdiction codes to role filters (must match politician.py chamber_role_map)
         const jurisdictionMap: Record<string, string> = {
           'us_house': 'Representative',
           'us_senate': 'Senator',
-          'eu_parliament': 'EU',
+          'eu_parliament': 'MEP',
           'uk_parliament': 'UK',
+          'california': 'State Legislator',
         };
         const role = jurisdictionMap[jurisdictionId];
         if (role) {
@@ -130,10 +143,9 @@ export const usePoliticians = (jurisdictionId?: string) => {
         ...p,
         name: p.full_name || `${p.first_name} ${p.last_name}`,
         chamber: p.role || 'Unknown',
-        state: p.state_or_country || p.district,
+        state: p.state_or_country || p.state || p.district,
         party: p.party || 'Unknown',
-        jurisdiction_id: p.role === 'Representative' ? 'us_house' :
-                         p.role === 'Senator' ? 'us_senate' : 'unknown',
+        jurisdiction_id: roleToJurisdiction(p.role),
       })) as Politician[];
     },
   });
@@ -187,10 +199,9 @@ export const useTrades = (limit = 10, jurisdictionId?: string) => {
             ...politician,
             name: politician.full_name || `${politician.first_name} ${politician.last_name}`,
             chamber: politician.role || 'Unknown',
-            state: politician.state_or_country || politician.district,
+            state: politician.state_or_country || politician.state || politician.district,
             party: politician.party || 'Unknown',
-            jurisdiction_id: politician.role === 'Representative' ? 'us_house' :
-                             politician.role === 'Senator' ? 'us_senate' : 'unknown',
+            jurisdiction_id: roleToJurisdiction(politician.role),
           } : undefined,
         };
       }) as Trade[];
