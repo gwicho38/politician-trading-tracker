@@ -156,6 +156,9 @@ jobs:
     - name: Install Flyctl
       uses: superfly/flyctl-actions/setup-flyctl@master
 
+    - name: Create fly symlink
+      run: ln -sf "$(which flyctl)" /usr/local/bin/fly
+
     - name: Deploy all services
       env:
         FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
