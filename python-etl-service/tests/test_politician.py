@@ -271,6 +271,53 @@ class TestFindOrCreatePolitician:
         politician_data = insert_call[0][0]
         assert politician_data["role"] == "Senator"
 
+    def test_sets_mep_role_for_eu_parliament(self, mock_supabase_empty):
+        """find_or_create_politician() sets role='MEP' for eu_parliament."""
+        from app.lib.politician import find_or_create_politician
+
+        find_or_create_politician(
+            mock_supabase_empty,
+            name="Mika AALTOLA",
+            chamber="eu_parliament",
+            state="Finland",
+        )
+
+        table_mock = mock_supabase_empty.table.return_value
+        insert_call = table_mock.insert.call_args
+        politician_data = insert_call[0][0]
+        assert politician_data["role"] == "MEP"
+        assert politician_data["chamber"] == "eu_parliament"
+
+    def test_sets_state_legislator_role_for_california(self, mock_supabase_empty):
+        """find_or_create_politician() sets role='State Legislator' for california."""
+        from app.lib.politician import find_or_create_politician
+
+        find_or_create_politician(
+            mock_supabase_empty,
+            name="Jane Doe",
+            chamber="california",
+        )
+
+        table_mock = mock_supabase_empty.table.return_value
+        insert_call = table_mock.insert.call_args
+        politician_data = insert_call[0][0]
+        assert politician_data["role"] == "State Legislator"
+
+    def test_unknown_chamber_defaults_to_representative(self, mock_supabase_empty):
+        """find_or_create_politician() defaults to 'Representative' for unknown chambers."""
+        from app.lib.politician import find_or_create_politician
+
+        find_or_create_politician(
+            mock_supabase_empty,
+            name="Jane Doe",
+            chamber="some_future_chamber",
+        )
+
+        table_mock = mock_supabase_empty.table.return_value
+        insert_call = table_mock.insert.call_args
+        politician_data = insert_call[0][0]
+        assert politician_data["role"] == "Representative"
+
     def test_sets_chamber_field(self, mock_supabase_empty):
         """find_or_create_politician() sets chamber field."""
         from app.lib.politician import find_or_create_politician

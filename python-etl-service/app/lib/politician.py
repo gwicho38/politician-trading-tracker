@@ -75,7 +75,13 @@ def find_or_create_politician(
         clean_name = clean_name.replace(prefix, "").strip()
 
     # Determine role based on chamber
-    role = "Senator" if chamber == "senate" else "Representative"
+    chamber_role_map = {
+        "senate": "Senator",
+        "house": "Representative",
+        "eu_parliament": "MEP",
+        "california": "State Legislator",
+    }
+    role = chamber_role_map.get(chamber, "Representative")
 
     # Priority 1: Try to find by bioguide_id (most reliable)
     if bioguide_id:

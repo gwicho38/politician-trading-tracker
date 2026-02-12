@@ -84,14 +84,14 @@ defmodule Server.Application do
       job_id: "politician-trading-eu",
       job_name: "EU Parliament Declarations",
       source: "eu_parliament",
-      schedule: "0 2 * * 0",
+      schedule: "0 */6 * * *",
       params: %{}
     },
     %{
       job_id: "politician-trading-california",
       job_name: "California Financial Disclosures",
       source: "california",
-      schedule: "0 2 * * 0",
+      schedule: "0 */6 * * *",
       params: %{}
     }
   ]

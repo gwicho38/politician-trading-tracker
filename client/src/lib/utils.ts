@@ -26,6 +26,9 @@ export function formatLabel(value: string | null | undefined): string {
     'senate': 'Senate',
     'unknown': 'Unknown',
     'mep': 'MEP',
+    'eu_parliament': 'EU Parliament',
+    'california': 'California',
+    'state legislator': 'State Legislator',
   };
 
   const lowerValue = value.toLowerCase();

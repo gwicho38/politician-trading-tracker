@@ -72,11 +72,12 @@ const PARTY_OPTIONS = [
   { value: 'I', label: 'Independent' },
 ];
 
-// Chamber options
+// Chamber options (value matches politician.role in the database)
 const CHAMBER_OPTIONS = [
   { value: '', label: 'All Chambers' },
   { value: 'Representative', label: 'House' },
   { value: 'Senator', label: 'Senate' },
+  { value: 'MEP', label: 'EU Parliament' },
 ];
 
 // Sortable column configuration
@@ -504,7 +505,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
               )}
               {chamber && (
                 <Badge variant="secondary" className="gap-1">
-                  Chamber: {chamber === 'Representative' ? 'House' : 'Senate'}
+                  Chamber: {CHAMBER_OPTIONS.find(c => c.value === chamber)?.label || chamber}
                   <button onClick={() => { setChamber(''); setPage(0); }} aria-label="Clear chamber filter">
                     <X className="h-3 w-3" aria-hidden="true" />
                   </button>

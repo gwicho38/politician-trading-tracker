@@ -1,12 +1,37 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Loader2, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Loader2, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, X, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { usePoliticians, type Politician } from '@/hooks/useSupabaseData';
 import { usePagination } from '@/hooks/usePagination';
 import { PaginationControls } from '@/components/PaginationControls';
 import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { cn, formatChamber } from '@/lib/utils';
 import { PoliticianProfileModal } from '@/components/detail-modals';
+
+// Chamber filter options (value matches politician.role in the database)
+const CHAMBER_FILTER_OPTIONS = [
+  { value: '', label: 'All Chambers' },
+  { value: 'Representative', label: 'House' },
+  { value: 'Senator', label: 'Senate' },
+  { value: 'MEP', label: 'EU Parliament' },
+];
+
+// Party filter options
+const PARTY_FILTER_OPTIONS = [
+  { value: '', label: 'All Parties' },
+  { value: 'D', label: 'Democrat' },
+  { value: 'R', label: 'Republican' },
+  { value: 'I', label: 'Independent' },
+];
 
 // Sortable fields for politicians
 type SortField = 'name' | 'party' | 'chamber' | 'state' | 'total_volume' | 'total_trades';
@@ -23,6 +48,9 @@ const PoliticiansView = ({ initialPoliticianId, onPoliticianSelected }: Politici
   const [selectedPolitician, setSelectedPolitician] = useState<Politician | null>(null);
   const [sortField, setSortField] = useState<SortField>('total_volume');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [chamberFilter, setChamberFilter] = useState('');
+  const [partyFilter, setPartyFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Handle column header click for sorting
   const handleSort = (field: SortField) => {
@@ -79,13 +107,31 @@ const PoliticiansView = ({ initialPoliticianId, onPoliticianSelected }: Politici
     });
   }, [politicians, sortField, sortDirection]);
 
-  // Update total items when politicians data changes
-  useEffect(() => {
-    if (sortedPoliticians) {
-      pagination.setTotalItems(sortedPoliticians.length);
+  // Apply filters to sorted politicians
+  const filteredPoliticians = useMemo(() => {
+    let result = sortedPoliticians;
+    if (chamberFilter) {
+      result = result.filter(p => p.role === chamberFilter);
     }
-  }, [sortedPoliticians]);
+    if (partyFilter) {
+      result = result.filter(p => p.party === partyFilter);
+    }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(p =>
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.state || '').toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [sortedPoliticians, chamberFilter, partyFilter, searchQuery]);
 
+  // Update total items when filtered data changes
+  useEffect(() => {
+    pagination.setTotalItems(filteredPoliticians.length);
+  }, [filteredPoliticians]);
+
+  const hasActiveFilters = chamberFilter || partyFilter || searchQuery;
 
   // Handle initial politician selection from search
   useEffect(() => {
@@ -98,16 +144,82 @@ const PoliticiansView = ({ initialPoliticianId, onPoliticianSelected }: Politici
     }
   }, [initialPoliticianId, politicians, onPoliticianSelected]);
 
-  // Get paginated politicians from sorted list
-  const paginatedPoliticians = sortedPoliticians.slice(pagination.startIndex, pagination.endIndex);
+  // Get paginated politicians from filtered list
+  const paginatedPoliticians = filteredPoliticians.slice(pagination.startIndex, pagination.endIndex);
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h2 className="text-2xl font-bold text-foreground">Politicians</h2>
-        <p className="text-muted-foreground">
-          All tracked politicians and their trading activity
-        </p>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <h2 className="text-2xl font-bold text-foreground">Politicians</h2>
+          <p className="text-muted-foreground">
+            All tracked politicians and their trading activity
+          </p>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name or state..."
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); pagination.setPage(1); }}
+              className="pl-9 bg-background/50"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => { setSearchQuery(''); pagination.setPage(1); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label="Clear search"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+
+          <Select value={chamberFilter || 'all'} onValueChange={(v) => { setChamberFilter(v === 'all' ? '' : v); pagination.setPage(1); }}>
+            <SelectTrigger className="w-[140px] bg-background/50">
+              <SelectValue placeholder="Chamber" />
+            </SelectTrigger>
+            <SelectContent>
+              {CHAMBER_FILTER_OPTIONS.map((c) => (
+                <SelectItem key={c.value} value={c.value || 'all'}>
+                  {c.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={partyFilter || 'all'} onValueChange={(v) => { setPartyFilter(v === 'all' ? '' : v); pagination.setPage(1); }}>
+            <SelectTrigger className="w-[130px] bg-background/50">
+              <SelectValue placeholder="Party" />
+            </SelectTrigger>
+            <SelectContent>
+              {PARTY_FILTER_OPTIONS.map((p) => (
+                <SelectItem key={p.value} value={p.value || 'all'}>
+                  {p.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setChamberFilter(''); setPartyFilter(''); setSearchQuery(''); pagination.setPage(1); }}
+              className="gap-1 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+              Clear
+            </Button>
+          )}
+
+          <span className="text-sm text-muted-foreground ml-auto">
+            {filteredPoliticians.length.toLocaleString()} {hasActiveFilters ? 'matching' : 'total'}
+          </span>
+        </div>
       </div>
 
       <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl">
