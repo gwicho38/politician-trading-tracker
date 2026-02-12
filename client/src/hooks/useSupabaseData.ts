@@ -117,7 +117,6 @@ export const usePoliticians = (jurisdictionId?: string) => {
       let query = supabase
         .from('politicians')
         .select('*')
-        .eq('is_active', true)
         .order('total_volume', { ascending: false });
 
       if (jurisdictionId) {
