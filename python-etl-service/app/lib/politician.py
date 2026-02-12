@@ -144,6 +144,7 @@ def find_or_create_politician(
             "role": role,
             "party": party,
             "state": state,
+            "is_active": True,
         }
 
         # Add bioguide_id if provided

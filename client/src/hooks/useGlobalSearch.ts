@@ -26,7 +26,6 @@ export const useGlobalSearch = (query: string) => {
       const { data: politicians } = await supabase
         .from('politicians')
         .select('id, first_name, last_name, full_name, party, role, total_trades')
-        .eq('is_active', true)
         .or(`full_name.ilike.%${searchTerm}%,first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%`)
         .order('total_trades', { ascending: false })
         .limit(5);

@@ -33,14 +33,12 @@ const createWrapper = () => {
     React.createElement(QueryClientProvider, { client: queryClient }, children);
 };
 
-// Helper to create politician mock chain: .select().eq().or().order().limit()
+// Helper to create politician mock chain: .select().or().order().limit()
 const createPoliticianMock = (data: unknown[]) => ({
   select: vi.fn().mockReturnValue({
-    eq: vi.fn().mockReturnValue({
-      or: vi.fn().mockReturnValue({
-        order: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue({ data, error: null }),
-        }),
+    or: vi.fn().mockReturnValue({
+      order: vi.fn().mockReturnValue({
+        limit: vi.fn().mockResolvedValue({ data, error: null }),
       }),
     }),
   }),
