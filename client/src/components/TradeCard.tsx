@@ -2,6 +2,7 @@ import { ArrowUpRight, ArrowDownRight, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { Trade, formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
+import { toParty, getPartyLabel } from '@/lib/typeGuards';
 
 interface TradeCardProps {
   trade: Trade;
@@ -40,7 +41,7 @@ const TradeCard = ({ trade, delay = 0 }: TradeCardProps) => {
                 variant="outline"
                 className={cn("text-xs px-1 sm:px-1.5 py-0 flex-shrink-0", getPartyBg(trade.party), getPartyColor(trade.party))}
               >
-                {trade.party}
+                {getPartyLabel(toParty(trade.party))}
               </Badge>
             </div>
 

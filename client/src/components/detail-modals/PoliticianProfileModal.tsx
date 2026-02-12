@@ -19,6 +19,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { usePoliticianDetail, type Politician } from '@/hooks/useSupabaseData';
 import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
+import { toParty, getPartyLabel } from '@/lib/typeGuards';
 import { cn, formatChamber } from '@/lib/utils';
 // Use public client to avoid auth blocking issues
 import { supabasePublic as supabase } from '@/integrations/supabase/client';
@@ -195,7 +196,7 @@ export function PoliticianProfileModal({
                     getPartyColor(politician.party)
                   )}
                 >
-                  {politician.party}
+                  {getPartyLabel(toParty(politician.party))}
                 </Badge>
               </DialogTitle>
               <p className="text-sm text-muted-foreground mt-1">

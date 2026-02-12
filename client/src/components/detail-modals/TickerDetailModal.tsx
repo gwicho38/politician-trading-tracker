@@ -8,6 +8,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useTickerDetail } from '@/hooks/useSupabaseData';
 import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
+import { toParty, getPartyLabel } from '@/lib/typeGuards';
 import { cn } from '@/lib/utils';
 
 interface TickerDetailModalProps {
@@ -108,7 +109,7 @@ export function TickerDetailModal({
                             getPartyColor(p.party)
                           )}
                         >
-                          {p.party}
+                          {getPartyLabel(toParty(p.party))}
                         </Badge>
                       </div>
                       <span className="text-sm text-muted-foreground">
@@ -159,7 +160,7 @@ export function TickerDetailModal({
                                 getPartyColor(trade.politician.party)
                               )}
                             >
-                              {trade.politician.party}
+                              {getPartyLabel(toParty(trade.politician.party))}
                             </Badge>
                           )}
                         </div>

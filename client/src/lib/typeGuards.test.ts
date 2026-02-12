@@ -91,11 +91,21 @@ describe('Party type guards', () => {
 
   describe('VALID_PARTIES constant', () => {
     it('contains all expected parties', () => {
+      // US parties
       expect(VALID_PARTIES).toContain('D');
       expect(VALID_PARTIES).toContain('R');
       expect(VALID_PARTIES).toContain('I');
       expect(VALID_PARTIES).toContain('Other');
-      expect(VALID_PARTIES.length).toBe(4);
+      // EU Parliament groups
+      expect(VALID_PARTIES).toContain('EPP');
+      expect(VALID_PARTIES).toContain('S&D');
+      expect(VALID_PARTIES).toContain('Renew');
+      expect(VALID_PARTIES).toContain('Greens/EFA');
+      expect(VALID_PARTIES).toContain('ECR');
+      expect(VALID_PARTIES).toContain('ID');
+      expect(VALID_PARTIES).toContain('GUE/NGL');
+      expect(VALID_PARTIES).toContain('NI');
+      expect(VALID_PARTIES.length).toBe(12);
     });
   });
 });

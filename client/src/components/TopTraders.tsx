@@ -5,7 +5,7 @@ import { usePoliticians, type Politician } from '@/hooks/useSupabaseData';
 import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
 import { cn, formatChamber } from '@/lib/utils';
 import { PoliticianDetailModal } from '@/components/detail-modals';
-import { toParty } from '@/lib/typeGuards';
+import { toParty, getPartyLabel } from '@/lib/typeGuards';
 
 const TopTraders = () => {
   const { data: politicians, isLoading, error } = usePoliticians();
@@ -68,7 +68,7 @@ const TopTraders = () => {
                           variant="outline"
                           className={cn("text-xs px-1 sm:px-1.5 py-0 flex-shrink-0", getPartyBg(party), getPartyColor(party))}
                         >
-                          {party}
+                          {getPartyLabel(party)}
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground truncate">

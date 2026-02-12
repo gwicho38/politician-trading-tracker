@@ -245,11 +245,24 @@ export const stats = {
 export const getPartyColor = (party: string): string => {
   switch (party) {
     case 'D':
+    case 'S&D':
       return 'text-blue-400';
     case 'R':
+    case 'ECR':
       return 'text-red-400';
     case 'I':
+    case 'Renew':
       return 'text-yellow-400';
+    case 'EPP':
+      return 'text-sky-400';
+    case 'Greens/EFA':
+      return 'text-green-400';
+    case 'ID':
+      return 'text-indigo-400';
+    case 'GUE/NGL':
+      return 'text-rose-400';
+    case 'NI':
+      return 'text-slate-400';
     default:
       return 'text-muted-foreground';
   }
@@ -258,11 +271,24 @@ export const getPartyColor = (party: string): string => {
 export const getPartyBg = (party: string): string => {
   switch (party) {
     case 'D':
+    case 'S&D':
       return 'bg-blue-500/20 border-blue-500/30';
     case 'R':
+    case 'ECR':
       return 'bg-red-500/20 border-red-500/30';
     case 'I':
+    case 'Renew':
       return 'bg-yellow-500/20 border-yellow-500/30';
+    case 'EPP':
+      return 'bg-sky-500/20 border-sky-500/30';
+    case 'Greens/EFA':
+      return 'bg-green-500/20 border-green-500/30';
+    case 'ID':
+      return 'bg-indigo-500/20 border-indigo-500/30';
+    case 'GUE/NGL':
+      return 'bg-rose-500/20 border-rose-500/30';
+    case 'NI':
+      return 'bg-slate-500/20 border-slate-500/30';
     default:
       return 'bg-muted border-border';
   }

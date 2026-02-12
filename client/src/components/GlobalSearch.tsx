@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useGlobalSearch, type SearchResult } from '@/hooks/useGlobalSearch';
 import { getPartyColor, getPartyBg } from '@/lib/mockData';
+import { toParty, getPartyLabel } from '@/lib/typeGuards';
 import { cn } from '@/lib/utils';
 
 interface GlobalSearchProps {
@@ -170,7 +171,7 @@ export function GlobalSearch({ onSelectPolitician, onSelectTicker, fullWidth, on
                             getPartyColor(result.meta.party)
                           )}
                         >
-                          {result.meta.party}
+                          {getPartyLabel(toParty(result.meta.party))}
                         </Badge>
                       )}
                     </div>

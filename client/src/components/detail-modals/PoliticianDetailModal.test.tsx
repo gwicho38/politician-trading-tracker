@@ -192,7 +192,7 @@ describe('PoliticianDetailModal', () => {
         { wrapper: createWrapper() }
       );
 
-      expect(screen.getByText('R')).toBeInTheDocument();
+      expect(screen.getByText('Republican')).toBeInTheDocument();
     });
 
     it('displays chamber and state', () => {

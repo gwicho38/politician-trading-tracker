@@ -8,6 +8,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useMonthDetail } from '@/hooks/useSupabaseData';
 import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
+import { toParty, getPartyLabel } from '@/lib/typeGuards';
 import { cn } from '@/lib/utils';
 
 interface MonthDetailModalProps {
@@ -140,7 +141,7 @@ export function MonthDetailModal({
                             getPartyColor(p.party)
                           )}
                         >
-                          {p.party}
+                          {getPartyLabel(toParty(p.party))}
                         </Badge>
                       </div>
                       <span className="text-sm text-muted-foreground">
