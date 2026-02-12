@@ -147,24 +147,11 @@ jobs:
     - name: Install mcli-framework
       run: uv tool install mcli-framework
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-
-    - name: Install lsh-framework
-      run: npm install -g lsh-framework
-
     - name: Setup IPFS
       run: mcli self ipfs setup
 
     - name: Pull mcli workflows from IPFS
       run: mcli sync pull QmYUmxVLrYm5Qfj4KfBzP5TQsevMGNXiZPN5nVtzm5Yqrg
-
-    - name: Pull secrets via lsh
-      env:
-        LSH_SECRETS_KEY: ${{ secrets.LSH_SECRETS_KEY }}
-      run: lsh sync pull QmTCuo9F4hhJupvYyCARgTSS9TjU1svXtovU696tZPDtCZ
 
     - name: Install Flyctl
       uses: superfly/flyctl-actions/setup-flyctl@master
