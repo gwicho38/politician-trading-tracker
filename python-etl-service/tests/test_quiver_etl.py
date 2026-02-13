@@ -364,6 +364,15 @@ class TestParseDisclosure:
         assert result["transaction_date"] == "2025-01-15"
         assert result["disclosure_date"] == "2025-01-20"
 
+    @pytest.mark.asyncio
+    async def test_source_url_is_none(self):
+        """QQ is for validation only — source_url should be None (primary sources provide PDF links)."""
+        service = QuiverQuantETLService()
+        raw = _qq_record(Chamber="Representatives")
+        result = await service.parse_disclosure(raw)
+
+        assert result["source_url"] is None
+
 
 # =============================================================================
 # validate_disclosure() Tests
