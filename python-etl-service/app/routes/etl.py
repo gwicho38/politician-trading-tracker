@@ -107,6 +107,13 @@ async def _run_registry_service(source: str, job_id: str, **kwargs):
     Used for all sources except house and senate which manage JOB_STATUS directly.
     """
     service = ETLRegistry.create_instance(source)
+
+    # EU ETL uses limit for MEP count (entity-level), not record count.
+    # Map it to limit_meps and clear record-level limit so the base
+    # doesn't truncate the returned records.
+    if source == "eu_parliament" and kwargs.get("limit"):
+        kwargs["limit_meps"] = kwargs.pop("limit")
+
     try:
         JOB_STATUS[job_id]["status"] = "running"
         JOB_STATUS[job_id]["message"] = f"Starting {service.source_name} ETL..."
