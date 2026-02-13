@@ -1646,6 +1646,52 @@ def senate_trigger(lookback: int, limit: int | None, wait: bool):
         raise SystemExit(1)
 
 
+@etl.command(name="eu-trigger")
+@click.option("--limit", "-l", type=int, default=None, help="Limit number of MEPs to process (for testing)")
+@click.option("--wait", "-w", is_flag=True, help="Wait for job to complete")
+def eu_trigger(limit: int | None, wait: bool):
+    """
+    Trigger EU Parliament ETL job.
+
+    Fetches MEP financial interest declarations (DPI PDFs) from the
+    EU Parliament website, parses them, and uploads to Supabase.
+
+    Examples:
+        mcli run etl eu-trigger                    # Process all MEPs
+        mcli run etl eu-trigger --limit 10         # Test with 10 MEPs
+        mcli run etl eu-trigger --limit 5 -w       # Test and wait for completion
+    """
+    limit_msg = f" (limit: {limit} MEPs)" if limit else " (all MEPs)"
+    click.echo(f"Triggering EU Parliament ETL{limit_msg}...")
+
+    payload = {"source": "eu_parliament"}
+    if limit:
+        payload["limit"] = limit
+
+    try:
+        response = httpx.post(
+            f"{ETL_SERVICE_URL}/etl/trigger",
+            json=payload,
+            timeout=30.0
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        job_id = data["job_id"]
+        click.echo(f"Job started: {job_id}")
+        click.echo(f"Message: {data['message']}")
+
+        if wait:
+            click.echo("\nWaiting for completion...")
+            _wait_for_job(job_id)
+        else:
+            click.echo(f"\nTo check status: mcli run etl status {job_id}")
+
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
 @etl.command(name="dedup")
 @click.option("--dry-run", "-d", is_flag=True, help="Preview without making changes")
 @click.option("--limit", "-l", type=int, default=50, help="Maximum groups to process")
