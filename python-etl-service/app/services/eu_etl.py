@@ -147,10 +147,9 @@ class EUParliamentETLService(BaseETLService):
                 mep_id = mep["mep_id"]
                 full_name = mep["full_name"]
 
-                if (i + 1) % 50 == 0:
-                    self.logger.info(
-                        f"Processing MEP {i + 1}/{len(meps)}: {full_name}"
-                    )
+                self.logger.info(
+                    f"Processing MEP {i + 1}/{len(meps)}: {full_name}"
+                )
 
                 # Upsert politician
                 first_name, last_name = _split_mep_name(full_name)

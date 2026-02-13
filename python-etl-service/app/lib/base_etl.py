@@ -357,8 +357,13 @@ class BaseETLService(ABC):
             await self.on_start(job_id, **kwargs)
 
             # Fetch raw disclosures
+            # Forward limit to fetch_disclosures so sources can optimise
+            # their fetch phase (e.g. EU ETL limits MEPs before scraping).
             self.update_job_status(job_id, message="Fetching disclosures...")
-            raw_disclosures = await self.fetch_disclosures(**kwargs)
+            fetch_kwargs = {**kwargs}
+            if limit is not None:
+                fetch_kwargs.setdefault("limit", limit)
+            raw_disclosures = await self.fetch_disclosures(**fetch_kwargs)
 
             if not raw_disclosures:
                 result.add_warning("No disclosures fetched from source")
