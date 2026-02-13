@@ -102,7 +102,7 @@ class EUParliamentETLService(BaseETLService):
         Returns:
             List of parsed financial interest records ready for upload.
         """
-        limit_meps = kwargs.get("limit_meps")
+        limit_meps = kwargs.get("limit_meps") or kwargs.get("limit")
         include_former = kwargs.get("include_former", True)
         year_start = kwargs.get("year_start", 2015)
         all_records: List[Dict[str, Any]] = []

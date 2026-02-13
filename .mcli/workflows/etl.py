@@ -34,10 +34,32 @@ def load_env():
                     os.environ.setdefault(key.strip(), value)
 
 
+def _etl_headers() -> dict:
+    """Get auth headers for ETL service API calls."""
+    api_key = os.environ.get("ETL_API_KEY", "")
+    if api_key:
+        return {"X-API-Key": api_key}
+    return {}
+
+
+def _etl_post(path: str, **kwargs) -> httpx.Response:
+    """POST to ETL service with auth headers."""
+    kwargs.setdefault("timeout", 30.0)
+    headers = {**_etl_headers(), **kwargs.pop("headers", {})}
+    return httpx.post(f"{ETL_SERVICE_URL}{path}", headers=headers, **kwargs)
+
+
+def _etl_get(path: str, **kwargs) -> httpx.Response:
+    """GET from ETL service with auth headers."""
+    kwargs.setdefault("timeout", 30.0)
+    headers = {**_etl_headers(), **kwargs.pop("headers", {})}
+    return httpx.get(f"{ETL_SERVICE_URL}{path}", headers=headers, **kwargs)
+
+
 @click.group(name="etl")
 def etl():
     """ETL commands for data ingestion."""
-    pass
+    load_env()
 
 
 @etl.command(name="trigger")
@@ -62,11 +84,7 @@ def trigger(year: int, limit: int | None, wait: bool, update: bool):
         payload["limit"] = limit
 
     try:
-        response = httpx.post(
-            f"{ETL_SERVICE_URL}/etl/trigger",
-            json=payload,
-            timeout=30.0
-        )
+        response = _etl_post("/etl/trigger", json=payload)
         response.raise_for_status()
         data = response.json()
 
@@ -103,10 +121,7 @@ def status(job_id: str, watch: bool):
 def _show_status(job_id: str) -> dict:
     """Show status of a job and return the status data."""
     try:
-        response = httpx.get(
-            f"{ETL_SERVICE_URL}/etl/status/{job_id}",
-            timeout=10.0
-        )
+        response = _etl_get(f"/etl/status/{job_id}", timeout=10.0)
         response.raise_for_status()
         data = response.json()
 
@@ -177,11 +192,7 @@ def ingest_range(start_year: int, end_year: int, limit: int | None, sequential: 
             payload["limit"] = limit
 
         try:
-            response = httpx.post(
-                f"{ETL_SERVICE_URL}/etl/trigger",
-                json=payload,
-                timeout=30.0
-            )
+            response = _etl_post("/etl/trigger", json=payload)
             response.raise_for_status()
             data = response.json()
 
@@ -228,11 +239,7 @@ def update(year: int, limit: int | None, wait: bool):
         payload["limit"] = limit
 
     try:
-        response = httpx.post(
-            f"{ETL_SERVICE_URL}/etl/trigger",
-            json=payload,
-            timeout=30.0
-        )
+        response = _etl_post("/etl/trigger", json=payload)
         response.raise_for_status()
         data = response.json()
 
@@ -309,7 +316,7 @@ def check_years(start: int, end: int):
 def health():
     """Check ETL service health."""
     try:
-        response = httpx.get(f"{ETL_SERVICE_URL}/health", timeout=10.0)
+        response = _etl_get("/health", timeout=10.0)
         response.raise_for_status()
         data = response.json()
         click.echo(f"ETL Service: {data.get('status', 'unknown')}")
@@ -342,11 +349,7 @@ def ingest(url: str, name: str | None, dry_run: bool, verbose: bool):
         payload["politician_name"] = name
 
     try:
-        response = httpx.post(
-            f"{ETL_SERVICE_URL}/etl/ingest-url",
-            json=payload,
-            timeout=60.0
-        )
+        response = _etl_post("/etl/ingest-url", json=payload, timeout=60.0)
         response.raise_for_status()
         data = response.json()
 
@@ -421,11 +424,7 @@ def enrich_parties(limit: int | None, wait: bool):
         payload["limit"] = limit
 
     try:
-        response = httpx.post(
-            f"{ETL_SERVICE_URL}/enrichment/trigger",
-            json=payload,
-            timeout=30.0
-        )
+        response = _etl_post("/enrichment/trigger", json=payload)
         response.raise_for_status()
         data = response.json()
 
@@ -462,10 +461,7 @@ def enrich_status(job_id: str, watch: bool):
 def _show_enrichment_status(job_id: str) -> dict:
     """Show status of an enrichment job and return the status data."""
     try:
-        response = httpx.get(
-            f"{ETL_SERVICE_URL}/enrichment/status/{job_id}",
-            timeout=10.0
-        )
+        response = _etl_get(f"/enrichment/status/{job_id}", timeout=10.0)
         response.raise_for_status()
         data = response.json()
 
@@ -519,10 +515,7 @@ def enrich_preview():
     Shows count and sample of politicians with missing party data.
     """
     try:
-        response = httpx.get(
-            f"{ETL_SERVICE_URL}/enrichment/preview",
-            timeout=10.0
-        )
+        response = _etl_get("/enrichment/preview", timeout=10.0)
         response.raise_for_status()
         data = response.json()
 
@@ -571,11 +564,7 @@ def enrich_names(limit: int | None, wait: bool):
         payload["limit"] = limit
 
     try:
-        response = httpx.post(
-            f"{ETL_SERVICE_URL}/enrichment/name/trigger",
-            json=payload,
-            timeout=30.0
-        )
+        response = _etl_post("/enrichment/name/trigger", json=payload)
         response.raise_for_status()
         data = response.json()
 
@@ -612,10 +601,7 @@ def enrich_names_status(job_id: str, watch: bool):
 def _show_name_enrichment_status(job_id: str) -> dict:
     """Show status of a name enrichment job and return the status data."""
     try:
-        response = httpx.get(
-            f"{ETL_SERVICE_URL}/enrichment/name/status/{job_id}",
-            timeout=10.0
-        )
+        response = _etl_get(f"/enrichment/name/status/{job_id}", timeout=10.0)
         response.raise_for_status()
         data = response.json()
 
@@ -670,10 +656,7 @@ def enrich_names_preview():
     would be updated by the name enrichment job.
     """
     try:
-        response = httpx.get(
-            f"{ETL_SERVICE_URL}/enrichment/name/preview",
-            timeout=10.0
-        )
+        response = _etl_get("/enrichment/name/preview", timeout=10.0)
         response.raise_for_status()
         data = response.json()
 
@@ -1046,10 +1029,7 @@ def suggestions_review():
     click.echo("Fetching suggestions needing review...")
 
     try:
-        response = httpx.get(
-            f"{ETL_SERVICE_URL}/error-reports/needs-review",
-            timeout=30.0
-        )
+        response = _etl_get("/error-reports/needs-review")
         response.raise_for_status()
         data = response.json()
 
@@ -1117,15 +1097,14 @@ def suggestion_apply(report_id: str, field: str, new_value: str, old_value: str 
         pass
 
     try:
-        response = httpx.post(
-            f"{ETL_SERVICE_URL}/error-reports/force-apply",
+        response = _etl_post(
+            "/error-reports/force-apply",
             json={
                 "report_id": report_id,
                 "corrections": [
                     {"field": field, "new_value": parsed_value, "old_value": old_value}
                 ]
             },
-            timeout=30.0
         )
         response.raise_for_status()
         data = response.json()
@@ -1162,14 +1141,14 @@ def suggestion_reanalyze(report_id: str, threshold: float, dry_run: bool):
     click.echo(f"Reanalyzing with {threshold*100:.0f}% threshold ({mode})...")
 
     try:
-        response = httpx.post(
-            f"{ETL_SERVICE_URL}/error-reports/reanalyze",
+        response = _etl_post(
+            "/error-reports/reanalyze",
             json={
                 "report_id": report_id,
                 "confidence_threshold": threshold,
                 "dry_run": dry_run
             },
-            timeout=120.0
+            timeout=120.0,
         )
         response.raise_for_status()
         data = response.json()
@@ -1225,10 +1204,10 @@ def suggestion_generate(report_id: str, model: str):
     click.echo(f"Generating suggestions for report {report_id[:8]}... using {model}")
 
     try:
-        response = httpx.post(
-            f"{ETL_SERVICE_URL}/error-reports/generate-suggestion",
+        response = _etl_post(
+            "/error-reports/generate-suggestion",
             json={"report_id": report_id, "model": model},
-            timeout=120.0
+            timeout=120.0,
         )
         response.raise_for_status()
         data = response.json()
@@ -1369,10 +1348,7 @@ def dedup_preview(limit: int):
     click.echo("Scanning for duplicate politicians...")
 
     try:
-        response = httpx.get(
-            f"{ETL_SERVICE_URL}/dedup/preview?limit={limit}",
-            timeout=30.0
-        )
+        response = _etl_get(f"/dedup/preview?limit={limit}")
         response.raise_for_status()
         data = response.json()
 
@@ -1563,11 +1539,7 @@ def list_senators(refresh: bool):
     click.echo("Fetching senators...")
 
     try:
-        response = httpx.get(
-            f"{ETL_SERVICE_URL}/etl/senators",
-            params={"refresh": refresh},
-            timeout=60.0
-        )
+        response = _etl_get("/etl/senators", params={"refresh": refresh}, timeout=60.0)
         response.raise_for_status()
         data = response.json()
 
@@ -1623,11 +1595,7 @@ def senate_trigger(lookback: int, limit: int | None, wait: bool):
         payload["limit"] = limit
 
     try:
-        response = httpx.post(
-            f"{ETL_SERVICE_URL}/etl/trigger",
-            json=payload,
-            timeout=30.0
-        )
+        response = _etl_post("/etl/trigger", json=payload)
         response.raise_for_status()
         data = response.json()
 
@@ -1669,11 +1637,7 @@ def eu_trigger(limit: int | None, wait: bool):
         payload["limit"] = limit
 
     try:
-        response = httpx.post(
-            f"{ETL_SERVICE_URL}/etl/trigger",
-            json=payload,
-            timeout=30.0
-        )
+        response = _etl_post("/etl/trigger", json=payload)
         response.raise_for_status()
         data = response.json()
 
@@ -1713,10 +1677,10 @@ def dedup(dry_run: bool, limit: int):
     click.echo(f"Processing duplicate politicians ({mode})...")
 
     try:
-        response = httpx.post(
-            f"{ETL_SERVICE_URL}/dedup/process",
+        response = _etl_post(
+            "/dedup/process",
             json={"limit": limit, "dry_run": dry_run},
-            timeout=120.0
+            timeout=120.0,
         )
         response.raise_for_status()
         data = response.json()
