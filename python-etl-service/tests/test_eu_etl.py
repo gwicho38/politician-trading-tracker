@@ -947,7 +947,7 @@ Real estate holdings
     def test_very_long_entity_name_truncated(self):
         """Entity names should be capped at 200 chars in records."""
         long_name = "A" * 300
-        text = f"D. Shareholdings\n\n{long_name}"
+        text = f"D. Shareholdings\n\n1. {long_name}"
         interests = extract_financial_interests(text)
         # The entity from _parse_section_entries may be long, but
         # the ETL service truncates in fetch_disclosures

@@ -39,8 +39,9 @@ from app.services.eu_parliament_client import EUParliamentClient
 logger = logging.getLogger(__name__)
 
 # Section header patterns in DPI PDFs
+# Real PDF format uses "(A) " parenthesized letters; also handle "A. " period format
 SECTION_PATTERN = re.compile(
-    r"^([A-F])\.\s*[-–—]?\s*(.+?)$",
+    r"^\(?([A-G])\)?[.\s]+[-–—\"']*\s*(.+?)$",
     re.MULTILINE,
 )
 
@@ -67,10 +68,49 @@ SKIP_PATTERNS = [
     re.compile(r"^signature", re.IGNORECASE),
     re.compile(r"^date\s*:", re.IGNORECASE),
     re.compile(r"^name\s*:", re.IGNORECASE),
-    re.compile(r"^none\s*\.?\s*$", re.IGNORECASE),
+    re.compile(r"^none\b", re.IGNORECASE),
     re.compile(r"^n/?a\s*\.?\s*$", re.IGNORECASE),
     re.compile(r"^not\s+applicable", re.IGNORECASE),
     re.compile(r"^-+\s*$"),
+    # DPI PDF boilerplate: section description text and column headers
+    re.compile(r"pursuant\s+to\s+article", re.IGNORECASE),
+    re.compile(r"code\s+of\s+conduct", re.IGNORECASE),
+    re.compile(r"generated\s+income", re.IGNORECASE),
+    re.compile(r"^income\s+amount", re.IGNORECASE),
+    re.compile(r"^nature\s+of\s+the\b", re.IGNORECASE),
+    re.compile(r"^periodicity\s*$", re.IGNORECASE),
+    re.compile(r"benefit\s+\(if\s+it", re.IGNORECASE),
+    re.compile(r"generate\s+income\)", re.IGNORECASE),
+    re.compile(r"field\s+and\s+nature\s+of\s+the\s+activity", re.IGNORECASE),
+    re.compile(r"^occupation\s+or\s+membership", re.IGNORECASE),
+    re.compile(r"^membership\s+or\s+activity", re.IGNORECASE),
+    re.compile(r"^holding\s+or\s+partnership", re.IGNORECASE),
+    re.compile(r"policy\s+implications", re.IGNORECASE),
+    re.compile(r"significant\s+influence", re.IGNORECASE),
+    re.compile(r"remunerated\s+activity", re.IGNORECASE),
+    re.compile(r"governmental\s+organisations", re.IGNORECASE),
+    re.compile(r"associations\s+or\s+other\s+bodies", re.IGNORECASE),
+    re.compile(r"outside\s+activit", re.IGNORECASE),
+    re.compile(r"exceeds\s+eur\s+5", re.IGNORECASE),
+    re.compile(r"financial\s+or\s+in\s+terms\s+of", re.IGNORECASE),
+    re.compile(r"political\s+activities\s+by\s+third", re.IGNORECASE),
+    re.compile(r"identity\s+of\s+the\s+third\s+party", re.IGNORECASE),
+    re.compile(r"unofficial\s+grouping", re.IGNORECASE),
+    re.compile(r"^\(\*?\)\s*$"),
+    re.compile(r"^EN\s*$"),
+    re.compile(r"^with\s+the\s+parliament", re.IGNORECASE),
+    re.compile(r"boards\s+or\s+committees\s+of\s+companies", re.IGNORECASE),
+    re.compile(r"previous\s+mandate\s+as\s+mep", re.IGNORECASE),
+    re.compile(r"specification\s+of\s+the\s+income", re.IGNORECASE),
+    re.compile(r"calendar\s+year", re.IGNORECASE),
+    re.compile(r"^including\s+the\s+name", re.IGNORECASE),
+    re.compile(r"total\s+remuneration\s+of\s+all", re.IGNORECASE),
+    re.compile(r"influence\s+over\s+the\s+affairs", re.IGNORECASE),
+    re.compile(r"direct\s+or\s+indirect\s+private", re.IGNORECASE),
+    re.compile(r"^to\s+above\s*:?\s*$", re.IGNORECASE),
+    re.compile(r"additional\s+information\s+i\s+wish", re.IGNORECASE),
+    re.compile(r"^holding\s+which\s+gives", re.IGNORECASE),
+    re.compile(r"^with\s+potential\s+public", re.IGNORECASE),
 ]
 
 # Batch size for MEP processing
@@ -175,7 +215,12 @@ class EUParliamentETLService(BaseETLService):
                 )
 
                 if not declarations:
+                    self.logger.info(f"No declarations found for MEP {full_name}")
                     continue
+
+                self.logger.info(
+                    f"Found {len(declarations)} declarations for {full_name}"
+                )
 
                 # Step 4: Download and parse each DPI PDF
                 for decl in declarations:
@@ -185,25 +230,33 @@ class EUParliamentETLService(BaseETLService):
                         try:
                             decl_year = int(decl_date[:4])
                             if decl_year < year_start:
+                                self.logger.info(
+                                    f"Skipping {decl_date} declaration (before {year_start})"
+                                )
                                 continue
                         except (ValueError, IndexError):
                             pass  # Can't parse year, include it
 
                     pdf_url = decl["pdf_url"]
+                    self.logger.info(f"Downloading PDF: {pdf_url}")
                     pdf_bytes = await client.download_pdf(pdf_url)
                     if not pdf_bytes:
+                        self.logger.warning(f"Failed to download PDF: {pdf_url}")
                         continue
 
                     # Parse PDF text
                     text = extract_text_from_pdf(pdf_bytes)
                     if not text:
-                        self.logger.debug(
+                        self.logger.warning(
                             f"No text extracted from PDF: {pdf_url}"
                         )
                         continue
 
                     # Extract financial interests
                     interests = extract_financial_interests(text)
+                    self.logger.info(
+                        f"Extracted {len(interests)} interests from {pdf_url}"
+                    )
 
                     declaration_date = decl.get("date") or datetime.now(
                         timezone.utc
@@ -295,6 +348,9 @@ def split_sections(text: str) -> Dict[str, str]:
 
     for i, match in enumerate(matches):
         letter = match.group(1).upper()
+        # First match for each section wins (avoids spurious footer matches)
+        if letter in sections:
+            continue
         start = match.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         body = text[start:end].strip()
@@ -365,7 +421,7 @@ def _parse_section_entries(
     meaningful_lines: List[str] = []
     for line in lines:
         stripped = line.strip()
-        if any(p.match(stripped) for p in SKIP_PATTERNS):
+        if any(p.search(stripped) for p in SKIP_PATTERNS):
             continue
         if stripped:
             meaningful_lines.append(stripped)
@@ -377,12 +433,14 @@ def _parse_section_entries(
     numbered_pattern = re.compile(r"^(\d+)\.\s+(.+)")
     current_entry_lines: List[str] = []
     current_entity: Optional[str] = None
+    found_numbered = False
 
     for line in meaningful_lines:
         num_match = numbered_pattern.match(line)
         if num_match:
-            # Save previous entry
-            if current_entity:
+            found_numbered = True
+            # Save previous entry (only if it was also a numbered item)
+            if current_entity and found_numbered:
                 entries.append(
                     {
                         "entity": current_entity,
@@ -392,18 +450,15 @@ def _parse_section_entries(
                 )
             current_entity = num_match.group(2).strip()
             current_entry_lines = [line]
-        elif current_entity:
+        elif current_entity and found_numbered:
+            # Continuation line after a numbered item
             current_entry_lines.append(line)
-            # Append to entity if first continuation line adds context
             if len(current_entry_lines) == 2:
                 current_entity = f"{current_entity} - {line}"
-        else:
-            # No numbered items yet — treat as a single entry
-            current_entity = line
-            current_entry_lines = [line]
+        # Lines before first numbered item are description text — skip them
 
     # Don't forget the last entry
-    if current_entity:
+    if current_entity and found_numbered:
         entries.append(
             {
                 "entity": current_entity,
@@ -412,17 +467,18 @@ def _parse_section_entries(
             }
         )
 
-    # If no numbered items were found, try splitting on double-newlines
-    # or treat the whole body as one entry
+    # If no numbered items were found, try treating meaningful lines
+    # as individual entries (for sections without numbered lists)
     if not entries and meaningful_lines:
-        # Group by paragraph (consecutive non-empty lines)
-        full_text = " ".join(meaningful_lines)
-        entries.append(
-            {
-                "entity": meaningful_lines[0][:200],
-                "text": full_text,
-                "raw_lines": meaningful_lines,
-            }
+        # Only include lines that look like actual entity names (short, no colons)
+        for line in meaningful_lines:
+            if len(line) < 150 and ":" not in line:
+                entries.append(
+                    {
+                        "entity": line[:200],
+                        "text": line,
+                        "raw_lines": [line],
+                    }
         )
 
     return entries
