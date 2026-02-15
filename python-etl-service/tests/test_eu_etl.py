@@ -437,15 +437,41 @@ class TestExtractFinancialInterests:
         text = "A. Previous occupations\n\nProfessor\n\nE. Support\n\nNone."
         assert extract_financial_interests(text) == []
 
-    def test_non_numbered_entries(self):
+    def test_non_numbered_entries_rejected(self):
+        """Non-numbered content is not extracted — prevents multilingual boilerplate leaking."""
         interests = extract_financial_interests(SAMPLE_DPI_TEXT_NO_NUMBERED)
-        assert len(interests) > 0
+        assert len(interests) == 0
 
-    def test_non_numbered_section_d(self):
+    def test_non_numbered_section_d_rejected(self):
+        """Section D without numbered items produces no entries."""
         interests = extract_financial_interests(SAMPLE_DPI_TEXT_NO_NUMBERED)
         d_interests = [i for i in interests if i["section"] == "D"]
-        assert len(d_interests) > 0
-        assert any("Acme" in i["entity"] for i in d_interests)
+        assert len(d_interests) == 0
+
+    def test_spanish_boilerplate_rejected(self):
+        """Spanish DPI boilerplate text should produce zero entries."""
+        spanish_dpi = """Declaración de intereses económicos
+
+A. Actividades profesionales anteriores
+
+Ninguno
+
+B. Actividades remuneradas junto al mandato
+
+Ninguno Importe de los Naturaleza del Periodicidad
+ingresos percibidos beneficio
+
+C. Pertenencia a consejos de administración
+
+Pertenencia o actividad Ingresos generados u otros beneficio
+
+D. Participaciones y otros intereses financieros
+
+ES
+implicaciones políticas
+"""
+        interests = extract_financial_interests(spanish_dpi)
+        assert len(interests) == 0
 
 
 # ===========================================================================
@@ -495,11 +521,11 @@ class TestParseSectionEntries:
         entries = _parse_section_entries(body, "B")
         assert len(entries[0]["raw_lines"]) >= 1
 
-    def test_un_numbered_single_entry(self):
+    def test_un_numbered_single_entry_rejected(self):
+        """Non-numbered single entry is not extracted — only numbered items are valid."""
         body = "Some Company - Consultant Role"
         entries = _parse_section_entries(body, "B")
-        assert len(entries) == 1
-        assert "Some Company" in entries[0]["entity"]
+        assert len(entries) == 0
 
 
 # ===========================================================================
@@ -629,6 +655,14 @@ class TestParseDisclosure:
         service = EUParliamentETLService()
         result = await service.parse_disclosure({"asset_name": "X"})
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_skips_country_code_asset_name(self):
+        """Country codes like 'ES' or 'FR' should be rejected (< 5 chars)."""
+        service = EUParliamentETLService()
+        assert await service.parse_disclosure({"asset_name": "ES"}) is None
+        assert await service.parse_disclosure({"asset_name": "EUR"}) is None
+        assert await service.parse_disclosure({"asset_name": "AAPL"}) is None
 
     @pytest.mark.asyncio
     async def test_skips_missing_asset_name(self):
