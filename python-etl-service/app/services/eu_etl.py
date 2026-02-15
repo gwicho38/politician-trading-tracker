@@ -303,7 +303,7 @@ class EUParliamentETLService(BaseETLService):
         upload_disclosure().
         """
         asset_name = raw.get("asset_name", "")
-        if not asset_name or len(asset_name.strip()) < 2:
+        if not asset_name or len(asset_name.strip()) < 5:
             return None
 
         return {
@@ -465,20 +465,6 @@ def _parse_section_entries(
                 "text": " ".join(current_entry_lines),
                 "raw_lines": current_entry_lines.copy(),
             }
-        )
-
-    # If no numbered items were found, try treating meaningful lines
-    # as individual entries (for sections without numbered lists)
-    if not entries and meaningful_lines:
-        # Only include lines that look like actual entity names (short, no colons)
-        for line in meaningful_lines:
-            if len(line) < 150 and ":" not in line:
-                entries.append(
-                    {
-                        "entity": line[:200],
-                        "text": line,
-                        "raw_lines": [line],
-                    }
         )
 
     return entries
