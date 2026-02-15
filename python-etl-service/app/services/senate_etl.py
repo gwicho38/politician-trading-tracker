@@ -729,7 +729,8 @@ async def process_disclosures_playwright(
                     politician_id = disclosure.get("politician_id")
                     if not politician_id:
                         politician_id = find_or_create_politician(
-                            supabase, name=disclosure.get("politician_name"), chamber="senate"
+                            supabase, name=disclosure.get("politician_name"), chamber="senate",
+                            party=disclosure.get("party"),
                         )
 
                     if not politician_id:
@@ -867,6 +868,7 @@ def _match_disclosures_to_senators(
 
             disclosure["politician_id"] = best_match.get("politician_id")
             disclosure["politician_name"] = best_match.get("full_name")
+            disclosure["party"] = best_match.get("party")
 
         matched_disclosures.append(disclosure)
 
@@ -1135,7 +1137,8 @@ async def process_senate_disclosure(
     politician_id = disclosure.get("politician_id")
     if not politician_id:
         politician_id = find_or_create_politician(
-            supabase, name=disclosure.get("politician_name"), chamber="senate"
+            supabase, name=disclosure.get("politician_name"), chamber="senate",
+            party=disclosure.get("party"),
         )
 
     if not politician_id:
@@ -1257,7 +1260,8 @@ async def process_disclosures_http(
                 politician_id = disclosure.get("politician_id")
                 if not politician_id:
                     politician_id = find_or_create_politician(
-                        supabase, name=disclosure.get("politician_name"), chamber="senate"
+                        supabase, name=disclosure.get("politician_name"), chamber="senate",
+                        party=disclosure.get("party"),
                     )
 
                 if not politician_id:

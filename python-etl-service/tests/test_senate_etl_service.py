@@ -1198,7 +1198,7 @@ class TestProcessSenateDisclosure:
                     with patch("app.services.senate_etl.upload_transaction_to_supabase", return_value=True):
                         result = await process_senate_disclosure(mock_client, mock_supabase, disclosure)
 
-        mock_find.assert_called_once_with(mock_supabase, name="John Smith", chamber="senate")
+        mock_find.assert_called_once_with(mock_supabase, name="John Smith", chamber="senate", party=None)
         assert result == 1
 
     @pytest.mark.asyncio
@@ -1489,9 +1489,9 @@ class TestMatchDisclosuresToSenators:
     @pytest.fixture
     def senators(self):
         return [
-            {"first_name": "John", "last_name": "Smith", "full_name": "John Smith", "politician_id": "uuid-1"},
-            {"first_name": "Jane", "last_name": "Doe", "full_name": "Jane Doe", "politician_id": "uuid-2"},
-            {"first_name": "Robert", "last_name": "Johnson", "full_name": "Robert Johnson", "politician_id": "uuid-3"},
+            {"first_name": "John", "last_name": "Smith", "full_name": "John Smith", "politician_id": "uuid-1", "party": "R"},
+            {"first_name": "Jane", "last_name": "Doe", "full_name": "Jane Doe", "politician_id": "uuid-2", "party": "D"},
+            {"first_name": "Robert", "last_name": "Johnson", "full_name": "Robert Johnson", "politician_id": "uuid-3", "party": "I"},
         ]
 
     def test_matches_by_last_name(self, senators):
@@ -1506,6 +1506,21 @@ class TestMatchDisclosuresToSenators:
 
         assert len(result) == 1
         assert result[0]["politician_id"] == "uuid-1"
+        assert result[0]["party"] == "R"
+
+    def test_propagates_party_from_matched_senator(self, senators):
+        """_match_disclosures_to_senators copies party from the matched senator record."""
+        from app.services.senate_etl import _match_disclosures_to_senators
+
+        disclosures = [
+            {"first_name": "Jane", "last_name": "Doe", "politician_name": "Jane Doe"},
+            {"first_name": "Robert", "last_name": "Johnson", "politician_name": "Robert Johnson"},
+        ]
+
+        result = _match_disclosures_to_senators(disclosures, senators)
+
+        assert result[0]["party"] == "D"
+        assert result[1]["party"] == "I"
 
     def test_matches_by_first_name_prefix(self, senators):
         """_match_disclosures_to_senators uses first name prefix for disambiguation."""
@@ -1514,7 +1529,7 @@ class TestMatchDisclosuresToSenators:
         # Add another senator with same last name
         senators.append({
             "first_name": "James", "last_name": "Smith",
-            "full_name": "James Smith", "politician_id": "uuid-4",
+            "full_name": "James Smith", "politician_id": "uuid-4", "party": "D",
         })
 
         disclosures = [
@@ -1538,6 +1553,7 @@ class TestMatchDisclosuresToSenators:
         assert len(result) == 1
         # No politician_id set for unmatched
         assert result[0].get("politician_id") is None
+        assert result[0].get("party") is None
 
     def test_empty_disclosures(self, senators):
         """_match_disclosures_to_senators handles empty disclosure list."""
