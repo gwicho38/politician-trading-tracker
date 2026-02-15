@@ -89,40 +89,67 @@ def find_or_create_politician(
         try:
             response = (
                 supabase.table("politicians")
-                .select("id")
+                .select("id, party, name")
                 .eq("bioguide_id", bioguide_id)
                 .limit(1)
                 .execute()
             )
             if response.data and len(response.data) > 0:
-                logger.debug(f"Found existing politician by bioguide_id: {bioguide_id}")
-                return response.data[0]["id"]
+                existing = response.data[0]
+                politician_id = existing["id"]
+                # Enrich existing record if we have new data
+                updates = {}
+                if not existing.get("party") and party:
+                    updates["party"] = party
+                if not existing.get("name") and clean_name:
+                    updates["name"] = clean_name
+                if updates:
+                    supabase.table("politicians").update(updates).eq(
+                        "id", politician_id
+                    ).execute()
+                    logger.info(
+                        f"Enriched politician {bioguide_id} with {list(updates.keys())}"
+                    )
+                return politician_id
         except Exception as e:
             logger.debug(f"Error finding politician by bioguide_id: {e}")
 
-    # Priority 2: Try to find by name
+    # Priority 2: Try to find by name (multiple strategies)
     try:
-        if first_name and last_name and chamber == "house":
-            # House: match on first_name, last_name, and role
+        if first_name and last_name and chamber in ("house", "senate"):
+            # Try exact match on last_name + role first (most common case)
             response = (
                 supabase.table("politicians")
-                .select("id")
-                .match({"first_name": first_name, "last_name": last_name, "role": role})
+                .select("id, party")
+                .ilike("last_name", last_name)
+                .ilike("first_name", f"{first_name.split()[0]}%")
+                .eq("role", role)
+                .limit(1)
                 .execute()
             )
         else:
-            # Senate or name-only: fuzzy match on name
+            response = None
+
+        # Fallback: fuzzy match on name or full_name
+        if not response or not response.data:
             response = (
                 supabase.table("politicians")
-                .select("id")
-                .ilike("name", f"%{clean_name}%")
+                .select("id, party")
+                .or_(f"name.ilike.%{clean_name}%,full_name.ilike.%{clean_name}%")
+                .eq("role", role)
                 .limit(1)
                 .execute()
             )
 
         if response.data and len(response.data) > 0:
+            existing = response.data[0]
+            # Enrich party if missing
+            if not existing.get("party") and party:
+                supabase.table("politicians").update({"party": party}).eq(
+                    "id", existing["id"]
+                ).execute()
             logger.debug(f"Found existing politician: {name}")
-            return response.data[0]["id"]
+            return existing["id"]
 
     except Exception as e:
         logger.debug(f"Error finding politician: {e}")
