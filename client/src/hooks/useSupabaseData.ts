@@ -290,8 +290,9 @@ export const useTradingDisclosures = (options: {
         query = query.lte('disclosure_date', dateTo);
       }
       // Filter by party server-side using the inner join
+      // Use double-quoting for PostgREST to handle special chars in party names (e.g. "S&D", "Greens/EFA")
       if (party) {
-        query = query.eq('politician.party', party);
+        query = query.filter('politician.party', 'eq', `"${party}"`);
       }
       // Filter by chamber (role) server-side using the inner join
       if (chamber) {
