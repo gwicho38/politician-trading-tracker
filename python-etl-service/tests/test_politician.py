@@ -22,18 +22,26 @@ class TestFindOrCreatePolitician:
         client = MagicMock()
         table_mock = MagicMock()
 
-        # No politician found
-        table_mock.select.return_value.match.return_value.execute.return_value = MagicMock(
-            data=[]
-        )
-        table_mock.select.return_value.ilike.return_value.limit.return_value.execute.return_value = MagicMock(
-            data=[]
-        )
+        # Make chained query methods return a chainable mock that resolves to empty
+        empty_result = MagicMock(data=[])
+        chain_mock = MagicMock()
+        chain_mock.execute.return_value = empty_result
+        # Each chained call returns the same chainable mock
+        chain_mock.ilike.return_value = chain_mock
+        chain_mock.eq.return_value = chain_mock
+        chain_mock.or_.return_value = chain_mock
+        chain_mock.limit.return_value = chain_mock
+        chain_mock.match.return_value = chain_mock
+
+        table_mock.select.return_value = chain_mock
 
         # Insert succeeds
         table_mock.insert.return_value.execute.return_value = MagicMock(
             data=[{"id": "new-uuid-123"}]
         )
+
+        # Update succeeds (for party enrichment)
+        table_mock.update.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
 
         client.table.return_value = table_mock
         return client
@@ -44,13 +52,20 @@ class TestFindOrCreatePolitician:
         client = MagicMock()
         table_mock = MagicMock()
 
-        # Politician found
-        table_mock.select.return_value.match.return_value.execute.return_value = MagicMock(
-            data=[{"id": "existing-uuid-456"}]
-        )
-        table_mock.select.return_value.ilike.return_value.limit.return_value.execute.return_value = MagicMock(
-            data=[{"id": "existing-uuid-456"}]
-        )
+        # Make chained query methods return a chainable mock with a found politician
+        found_result = MagicMock(data=[{"id": "existing-uuid-456", "party": "D", "name": "Test"}])
+        chain_mock = MagicMock()
+        chain_mock.execute.return_value = found_result
+        chain_mock.ilike.return_value = chain_mock
+        chain_mock.eq.return_value = chain_mock
+        chain_mock.or_.return_value = chain_mock
+        chain_mock.limit.return_value = chain_mock
+        chain_mock.match.return_value = chain_mock
+
+        table_mock.select.return_value = chain_mock
+
+        # Update succeeds (for party enrichment)
+        table_mock.update.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
 
         client.table.return_value = table_mock
         return client
@@ -480,12 +495,9 @@ class TestFindOrCreatePolitician:
         from app.lib.politician import find_or_create_politician
 
         table_mock = mock_supabase_empty.table.return_value
-        table_mock.select.return_value.match.return_value.execute.side_effect = Exception(
-            "DB error"
-        )
-        table_mock.select.return_value.ilike.return_value.limit.return_value.execute.side_effect = Exception(
-            "DB error"
-        )
+        # Make the chainable mock's execute raise an exception
+        chain_mock = table_mock.select.return_value
+        chain_mock.execute.side_effect = Exception("DB error")
 
         # Should still attempt to create
         result = find_or_create_politician(
