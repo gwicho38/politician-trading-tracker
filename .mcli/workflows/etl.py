@@ -1617,7 +1617,8 @@ def senate_trigger(lookback: int, limit: int | None, wait: bool):
 @etl.command(name="eu-trigger")
 @click.option("--limit", "-l", type=int, default=None, help="Limit number of MEPs to process (for testing)")
 @click.option("--wait", "-w", is_flag=True, help="Wait for job to complete")
-def eu_trigger(limit: int | None, wait: bool):
+@click.option("--update", "-u", is_flag=True, help="Update mode: upsert existing records instead of skipping duplicates")
+def eu_trigger(limit: int | None, wait: bool, update: bool):
     """
     Trigger EU Parliament ETL job.
 
@@ -1628,13 +1629,17 @@ def eu_trigger(limit: int | None, wait: bool):
         mcli run etl eu-trigger                    # Process all MEPs
         mcli run etl eu-trigger --limit 10         # Test with 10 MEPs
         mcli run etl eu-trigger --limit 5 -w       # Test and wait for completion
+        mcli run etl eu-trigger -u -w              # Re-process all, updating existing records
     """
     limit_msg = f" (limit: {limit} MEPs)" if limit else " (all MEPs)"
-    click.echo(f"Triggering EU Parliament ETL{limit_msg}...")
+    update_msg = " [UPDATE MODE]" if update else ""
+    click.echo(f"Triggering EU Parliament ETL{limit_msg}{update_msg}...")
 
     payload = {"source": "eu_parliament"}
     if limit:
         payload["limit"] = limit
+    if update:
+        payload["update_mode"] = True
 
     try:
         response = _etl_post("/etl/trigger", json=payload)
