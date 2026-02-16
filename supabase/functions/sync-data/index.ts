@@ -865,9 +865,9 @@ async function calculateDashboardStats(supabaseClient: any, requestId: string) {
 // POLITICIAN PARTY LOOKUP VIA OLLAMA
 // =============================================================================
 
-const OLLAMA_API_URL = 'https://ollama.lefv.io/api/generate'
-const OLLAMA_API_KEY = 'REDACTED'
-const OLLAMA_MODEL = 'llama3.1:8b'
+const OLLAMA_API_URL = `${Deno.env.get('OLLAMA_API_BASE') || 'https://ollama.lefv.info'}/api/generate`
+const OLLAMA_API_KEY = Deno.env.get('OLLAMA_API_KEY') || ''
+const OLLAMA_MODEL = Deno.env.get('OLLAMA_MODEL') || 'qwen3:8b'
 
 // Well-known politician party mappings (for speed - avoids API calls)
 const KNOWN_PARTIES: Record<string, string> = {
