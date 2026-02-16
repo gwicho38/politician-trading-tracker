@@ -868,6 +868,83 @@ class TestRunIntegration:
         assert result.records_processed == 0
         assert result.is_success
 
+    @pytest.mark.asyncio
+    async def test_run_incremental_upload_per_mep(self):
+        """run() should upload records after each MEP, not buffer all."""
+        service = EUParliamentETLService()
+        mock_supabase = MagicMock()
+
+        meps = [
+            {"mep_id": "1", "full_name": "Alice TEST", "country": "DE",
+             "political_group": "EPP", "national_party": "CDU"},
+            {"mep_id": "2", "full_name": "Bob TEST", "country": "FR",
+             "political_group": "S&D", "national_party": "PS"},
+        ]
+
+        declarations = [
+            {"pdf_url": "https://example.com/dpi.pdf",
+             "label": "Original", "date": "2024-07-16",
+             "revision": 0, "mep_id": "1"}
+        ]
+
+        mock_client = AsyncMock(spec=EUParliamentClient)
+        mock_client.fetch_mep_list = AsyncMock(return_value=meps)
+        mock_client.fetch_declarations_page = AsyncMock(return_value=declarations)
+        mock_client.download_pdf = AsyncMock(return_value=b"pdf bytes")
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        upload_calls = []
+
+        async def mock_upload(disclosure, update_mode=False):
+            upload_calls.append(disclosure["asset_name"])
+            return "disc-uuid"
+
+        with patch("app.services.eu_etl.get_supabase", return_value=mock_supabase), \
+             patch("app.services.eu_etl.EUParliamentClient", return_value=mock_client), \
+             patch("app.services.eu_etl.find_or_create_politician", return_value="pol-uuid"), \
+             patch("app.services.eu_etl.extract_text_from_pdf", return_value=SAMPLE_DPI_TEXT):
+            service.upload_disclosure = mock_upload
+            result = await service.run(job_id="test-incremental", update_mode=True)
+
+        # Both MEPs should have been processed
+        assert result.records_processed > 0
+        assert result.records_updated > 0
+        # Upload was called (not buffered)
+        assert len(upload_calls) == result.records_updated
+
+    @pytest.mark.asyncio
+    async def test_run_update_mode_counts_updated(self):
+        """run() with update_mode=True should count records_updated."""
+        service = EUParliamentETLService()
+        mock_supabase = MagicMock()
+
+        meps = [{"mep_id": "1", "full_name": "Test MEP", "country": "DE",
+                  "political_group": "EPP", "national_party": "CDU"}]
+        declarations = [{"pdf_url": "https://example.com/dpi.pdf",
+                         "label": "Original", "date": "2024-01-01",
+                         "revision": 0, "mep_id": "1"}]
+
+        mock_client = AsyncMock(spec=EUParliamentClient)
+        mock_client.fetch_mep_list = AsyncMock(return_value=meps)
+        mock_client.fetch_declarations_page = AsyncMock(return_value=declarations)
+        mock_client.download_pdf = AsyncMock(return_value=b"pdf bytes")
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_upload(disclosure, update_mode=False):
+            return "disc-uuid"
+
+        with patch("app.services.eu_etl.get_supabase", return_value=mock_supabase), \
+             patch("app.services.eu_etl.EUParliamentClient", return_value=mock_client), \
+             patch("app.services.eu_etl.find_or_create_politician", return_value="pol-uuid"), \
+             patch("app.services.eu_etl.extract_text_from_pdf", return_value=SAMPLE_DPI_TEXT):
+            service.upload_disclosure = mock_upload
+            result = await service.run(job_id="test-update", update_mode=True)
+
+        assert result.records_updated > 0
+        assert result.records_inserted == 0
+
 
 # ===========================================================================
 # Client Class Tests

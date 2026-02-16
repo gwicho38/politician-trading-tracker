@@ -29,7 +29,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from app.lib.base_etl import BaseETLService, ETLResult
+from app.lib.base_etl import BaseETLService, ETLResult, JobStatus
 from app.lib.database import get_supabase
 from app.lib.pdf_utils import extract_text_from_pdf
 from app.lib.politician import find_or_create_politician
@@ -170,9 +170,10 @@ class EUParliamentETLService(BaseETLService):
 
         Returns:
             List of parsed financial interest records ready for upload.
+
+        Note: This method buffers all records in memory. For production use,
+        prefer the overridden run() method which uploads incrementally per-MEP.
         """
-        limit_meps = kwargs.get("limit_meps") or kwargs.get("limit")
-        include_former = kwargs.get("include_former", True)
         year_start = kwargs.get("year_start", 2015)
         all_records: List[Dict[str, Any]] = []
 
@@ -182,144 +183,296 @@ class EUParliamentETLService(BaseETLService):
             return []
 
         async with EUParliamentClient() as client:
-            # Step 1: Fetch MEP list
-            self.logger.info("Fetching MEP list from EU Parliament XML...")
-            meps = await client.fetch_mep_list()
+            meps = await self._prepare_mep_list(client, **kwargs)
             if not meps:
-                self.logger.warning("No MEPs fetched from XML endpoint")
                 return []
 
-            self.logger.info(f"Found {len(meps)} current MEPs")
-
-            # Optionally fetch former MEPs for historical backfill (2015+)
-            if include_former:
-                self.logger.info("Fetching outgoing/former MEPs for historical data...")
-                former_meps = await client.fetch_outgoing_meps()
-                if former_meps:
-                    # Deduplicate by mep_id (some may have re-entered)
-                    existing_ids = {m["mep_id"] for m in meps}
-                    new_former = [m for m in former_meps if m["mep_id"] not in existing_ids]
-                    meps.extend(new_former)
-                    self.logger.info(
-                        f"Added {len(new_former)} former MEPs "
-                        f"(total: {len(meps)})"
-                    )
-
-            if limit_meps:
-                meps = meps[:limit_meps]
-                self.logger.info(f"Limited to {limit_meps} MEPs for processing")
-
-            # Step 2: Upsert MEPs and fetch their declarations
-            politician_cache: Dict[str, str] = {}
-
             for i, mep in enumerate(meps):
-                mep_id = mep["mep_id"]
-                full_name = mep["full_name"]
-
                 self.logger.info(
-                    f"Processing MEP {i + 1}/{len(meps)}: {full_name}"
+                    f"Processing MEP {i + 1}/{len(meps)}: {mep['full_name']}"
                 )
-
-                # Upsert politician
-                first_name, last_name = _split_mep_name(full_name)
-                politician_id = find_or_create_politician(
-                    supabase,
-                    name=full_name,
-                    first_name=first_name,
-                    last_name=last_name,
-                    chamber="eu_parliament",
-                    state=mep.get("country"),
-                    party=mep.get("political_group") or None,
+                records = await self._fetch_mep_records(
+                    client, supabase, mep, year_start
                 )
-
-                if not politician_id:
-                    self.logger.warning(f"Failed to upsert MEP: {full_name}")
-                    continue
-
-                politician_cache[mep_id] = politician_id
-
-                # Step 3: Fetch declarations page
-                declarations = await client.fetch_declarations_page(
-                    mep_id, full_name
-                )
-
-                if not declarations:
-                    self.logger.info(f"No declarations found for MEP {full_name}")
-                    continue
-
-                self.logger.info(
-                    f"Found {len(declarations)} declarations for {full_name}"
-                )
-
-                # Step 4: Download and parse each DPI PDF
-                for decl in declarations:
-                    # Skip declarations before the start year
-                    decl_date = decl.get("date", "")
-                    if decl_date and year_start:
-                        try:
-                            decl_year = int(decl_date[:4])
-                            if decl_year < year_start:
-                                self.logger.info(
-                                    f"Skipping {decl_date} declaration (before {year_start})"
-                                )
-                                continue
-                        except (ValueError, IndexError):
-                            pass  # Can't parse year, include it
-
-                    pdf_url = decl["pdf_url"]
-                    self.logger.info(f"Downloading PDF: {pdf_url}")
-                    pdf_bytes = await client.download_pdf(pdf_url)
-                    if not pdf_bytes:
-                        self.logger.warning(f"Failed to download PDF: {pdf_url}")
-                        continue
-
-                    # Parse PDF text
-                    text = extract_text_from_pdf(pdf_bytes)
-                    if not text:
-                        self.logger.warning(
-                            f"No text extracted from PDF: {pdf_url}"
-                        )
-                        continue
-
-                    # Extract financial interests
-                    interests = extract_financial_interests(text)
-                    self.logger.info(
-                        f"Extracted {len(interests)} interests from {pdf_url}"
-                    )
-
-                    declaration_date = decl.get("date") or datetime.now(
-                        timezone.utc
-                    ).strftime("%Y-%m-%d")
-
-                    for interest in interests:
-                        record = {
-                            "politician_name": full_name,
-                            "first_name": first_name,
-                            "last_name": last_name,
-                            "politician_id": politician_id,
-                            "chamber": "eu_parliament",
-                            "state": mep.get("country"),
-                            "asset_name": interest["entity"][:200],
-                            "asset_type": interest["asset_type"],
-                            "transaction_type": interest["transaction_type"],
-                            "transaction_date": declaration_date,
-                            "filing_date": declaration_date,
-                            "notification_date": declaration_date,
-                            "value_low": interest.get("value_low"),
-                            "value_high": interest.get("value_high"),
-                            "source": "eu_parliament",
-                            "source_url": pdf_url,
-                            "doc_id": f"DPI-{mep_id}-{declaration_date}",
-                            "raw_row": interest.get("raw_lines", []),
-                            "section": interest["section"],
-                        }
-                        all_records.append(record)
+                all_records.extend(records)
 
         self.logger.info(
             f"Extracted {len(all_records)} financial interest records "
             f"from {len(meps)} MEPs"
         )
         return all_records
+
+    async def _prepare_mep_list(
+        self, client: EUParliamentClient, **kwargs
+    ) -> List[Dict[str, Any]]:
+        """Fetch and prepare the deduplicated MEP list."""
+        limit_meps = kwargs.get("limit_meps") or kwargs.get("limit")
+        include_former = kwargs.get("include_former", True)
+
+        self.logger.info("Fetching MEP list from EU Parliament XML...")
+        meps = await client.fetch_mep_list()
+        if not meps:
+            self.logger.warning("No MEPs fetched from XML endpoint")
+            return []
+
+        self.logger.info(f"Found {len(meps)} current MEPs")
+
+        if include_former:
+            self.logger.info("Fetching outgoing/former MEPs for historical data...")
+            former_meps = await client.fetch_outgoing_meps()
+            if former_meps:
+                existing_ids = {m["mep_id"] for m in meps}
+                new_former = [m for m in former_meps if m["mep_id"] not in existing_ids]
+                meps.extend(new_former)
+                self.logger.info(
+                    f"Added {len(new_former)} former MEPs (total: {len(meps)})"
+                )
+
+        if limit_meps:
+            meps = meps[:limit_meps]
+            self.logger.info(f"Limited to {limit_meps} MEPs for processing")
+
+        return meps
+
+    async def _fetch_mep_records(
+        self,
+        client: EUParliamentClient,
+        supabase,
+        mep: Dict[str, Any],
+        year_start: int = 2015,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch and parse all financial interest records for a single MEP.
+
+        Downloads DPI PDFs, extracts financial interests, and returns
+        records ready for upload. Does NOT upload to database.
+        """
+        records: List[Dict[str, Any]] = []
+        mep_id = mep["mep_id"]
+        full_name = mep["full_name"]
+
+        first_name, last_name = _split_mep_name(full_name)
+        politician_id = find_or_create_politician(
+            supabase,
+            name=full_name,
+            first_name=first_name,
+            last_name=last_name,
+            chamber="eu_parliament",
+            state=mep.get("country"),
+            party=mep.get("political_group") or None,
+        )
+
+        if not politician_id:
+            self.logger.warning(f"Failed to upsert MEP: {full_name}")
+            return records
+
+        declarations = await client.fetch_declarations_page(mep_id, full_name)
+        if not declarations:
+            self.logger.info(f"No declarations found for MEP {full_name}")
+            return records
+
+        self.logger.info(
+            f"Found {len(declarations)} declarations for {full_name}"
+        )
+
+        for decl in declarations:
+            decl_date = decl.get("date", "")
+            if decl_date and year_start:
+                try:
+                    if int(decl_date[:4]) < year_start:
+                        self.logger.info(
+                            f"Skipping {decl_date} declaration (before {year_start})"
+                        )
+                        continue
+                except (ValueError, IndexError):
+                    pass
+
+            pdf_url = decl["pdf_url"]
+            self.logger.info(f"Downloading PDF: {pdf_url}")
+            pdf_bytes = await client.download_pdf(pdf_url)
+            if not pdf_bytes:
+                self.logger.warning(f"Failed to download PDF: {pdf_url}")
+                continue
+
+            text = extract_text_from_pdf(pdf_bytes)
+            if not text:
+                self.logger.warning(f"No text extracted from PDF: {pdf_url}")
+                continue
+
+            interests = extract_financial_interests(text)
+            self.logger.info(
+                f"Extracted {len(interests)} interests from {pdf_url}"
+            )
+
+            declaration_date = decl.get("date") or datetime.now(
+                timezone.utc
+            ).strftime("%Y-%m-%d")
+
+            for interest in interests:
+                records.append({
+                    "politician_name": full_name,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "politician_id": politician_id,
+                    "chamber": "eu_parliament",
+                    "state": mep.get("country"),
+                    "asset_name": interest["entity"][:200],
+                    "asset_type": interest["asset_type"],
+                    "transaction_type": interest["transaction_type"],
+                    "transaction_date": declaration_date,
+                    "filing_date": declaration_date,
+                    "notification_date": declaration_date,
+                    "value_low": interest.get("value_low"),
+                    "value_high": interest.get("value_high"),
+                    "source": "eu_parliament",
+                    "source_url": pdf_url,
+                    "doc_id": f"DPI-{mep_id}-{declaration_date}",
+                    "raw_row": interest.get("raw_lines", []),
+                    "section": interest["section"],
+                })
+
+        return records
+
+    async def run(
+        self,
+        job_id: str,
+        limit: Optional[int] = None,
+        update_mode: bool = False,
+        **kwargs,
+    ) -> ETLResult:
+        """
+        Execute EU Parliament ETL with incremental per-MEP uploads.
+
+        Overrides BaseETLService.run() to upload each MEP's records
+        immediately after extraction. This ensures partial progress
+        survives process restarts (Fly.io machine cycling) instead of
+        losing ~60 minutes of work when all 736 MEPs are buffered.
+        """
+        result = ETLResult(started_at=datetime.now(timezone.utc))
+        self._job_status[job_id] = JobStatus(
+            status="running",
+            started_at=datetime.now(timezone.utc).isoformat(),
+            message=f"Starting {self.source_name} ETL...",
+        )
+
+        try:
+            await self.on_start(job_id, **kwargs)
+
+            year_start = kwargs.get("year_start", 2015)
+
+            supabase = get_supabase()
+            if not supabase:
+                result.add_error("Supabase client not available")
+                result.completed_at = datetime.now(timezone.utc)
+                self._job_status[job_id].status = "failed"
+                self._job_status[job_id].message = "Supabase client not available"
+                return result
+
+            async with EUParliamentClient() as client:
+                # Map run(limit=N) to limit_meps for EU ETL
+                if limit and not kwargs.get("limit_meps"):
+                    kwargs["limit_meps"] = limit
+
+                self.update_job_status(job_id, message="Fetching MEP list...")
+                meps = await self._prepare_mep_list(client, **kwargs)
+
+                if not meps:
+                    result.add_warning("No MEPs fetched from source")
+                    self.update_job_status(
+                        job_id, status="completed",
+                        message="No MEPs to process",
+                    )
+                    result.completed_at = datetime.now(timezone.utc)
+                    return result
+
+                total_meps = len(meps)
+                self.update_job_status(job_id, total=total_meps)
+                self.logger.info(
+                    f"Processing {total_meps} MEPs with incremental upload"
+                )
+
+                for i, mep in enumerate(meps):
+                    mep_name = mep["full_name"]
+                    self.update_job_status(
+                        job_id, progress=i + 1,
+                        message=(
+                            f"MEP {i + 1}/{total_meps}: {mep_name} "
+                            f"({result.records_inserted + result.records_updated} uploaded)"
+                        ),
+                    )
+
+                    try:
+                        records = await self._fetch_mep_records(
+                            client, supabase, mep, year_start
+                        )
+                    except Exception as e:
+                        result.records_failed += 1
+                        result.add_error(
+                            f"Failed to fetch MEP {mep_name}: {e}"
+                        )
+                        continue
+
+                    # Upload this MEP's records immediately
+                    for record in records:
+                        result.records_processed += 1
+                        try:
+                            parsed = await self.parse_disclosure(record)
+                            if not parsed:
+                                result.records_skipped += 1
+                                continue
+
+                            if not await self.validate_disclosure(parsed):
+                                result.records_skipped += 1
+                                continue
+
+                            disclosure_id = await self.upload_disclosure(
+                                parsed, update_mode=update_mode
+                            )
+
+                            if disclosure_id:
+                                if update_mode:
+                                    result.records_updated += 1
+                                else:
+                                    result.records_inserted += 1
+                            else:
+                                result.records_skipped += 1
+
+                        except Exception as e:
+                            result.records_failed += 1
+                            result.add_error(f"Failed to upload: {e}")
+
+                    if records:
+                        self.logger.info(
+                            f"MEP {i + 1}/{total_meps} {mep_name}: "
+                            f"uploaded {len(records)} records "
+                            f"(total: {result.records_inserted + result.records_updated})"
+                        )
+
+            # Complete
+            result.completed_at = datetime.now(timezone.utc)
+            self._job_status[job_id].status = "completed"
+            self._job_status[job_id].completed_at = (
+                datetime.now(timezone.utc).isoformat()
+            )
+            self._job_status[job_id].result = result
+            self._job_status[job_id].message = (
+                f"Completed: {result.records_inserted} inserted, "
+                f"{result.records_updated} updated, "
+                f"{result.records_failed} failed"
+            )
+            await self.on_complete(job_id, result)
+
+        except Exception as e:
+            result.add_error(f"ETL job failed: {e}")
+            result.completed_at = datetime.now(timezone.utc)
+            self._job_status[job_id].status = "failed"
+            self._job_status[job_id].completed_at = (
+                datetime.now(timezone.utc).isoformat()
+            )
+            self._job_status[job_id].message = f"Failed: {e}"
+            self.logger.exception(f"ETL job {job_id} failed")
+
+        return result
 
     async def parse_disclosure(
         self, raw: Dict[str, Any]
