@@ -38,11 +38,19 @@ def generate_fallback_bio(politician: Dict[str, Any], stats: Dict[str, Any]) -> 
     role = politician.get("role", "")
     state = politician.get("state_or_country") or politician.get("state", "")
 
-    party_full = {
-        "D": "Democratic",
-        "R": "Republican",
-        "I": "Independent",
-    }.get(party or "", party or "Unknown party")
+    # Look up party display name from parties table
+    party_full = party or "Unknown party"
+    try:
+        from app.lib.database import get_supabase
+        sb = get_supabase()
+        party_row = sb.table("parties").select("name").eq("code", party).limit(1).execute()
+        if party_row.data:
+            party_full = party_row.data[0]["name"]
+    except Exception:
+        # Fallback to simple D/R/I map if DB unavailable
+        party_full = {"D": "Democratic", "R": "Republican", "I": "Independent"}.get(
+            party or "", party or "Unknown party"
+        )
 
     if "rep" in (role or "").lower():
         chamber_full = "Representative"
