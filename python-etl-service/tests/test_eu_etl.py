@@ -20,7 +20,9 @@ from app.services.eu_etl import (
     extract_financial_interests,
     split_sections,
     _extract_income_range,
+    _parse_eur_number,
     _parse_section_entries,
+    _clean_entity_name,
     _split_mep_name,
     SECTION_ASSET_TYPES,
     EXTRACTABLE_SECTIONS,
@@ -1003,3 +1005,237 @@ Additional details about first company
         entries = _parse_section_entries(body, "B")
         assert len(entries) == 1
         assert "Real Entry" in entries[0]["entity"]
+
+
+# ===========================================================================
+# EUR Number Parsing
+# ===========================================================================
+
+
+class TestParseEurNumber:
+
+    def test_simple_integer(self):
+        assert _parse_eur_number("2500") == 2500.0
+
+    def test_comma_thousands(self):
+        assert _parse_eur_number("2,500") == 2500.0
+
+    def test_period_thousands_european(self):
+        assert _parse_eur_number("2.500") == 2500.0
+
+    def test_space_thousands_french(self):
+        assert _parse_eur_number("2 500") == 2500.0
+
+    def test_comma_decimal(self):
+        assert _parse_eur_number("1,5") == 1.5
+
+    def test_period_decimal(self):
+        assert _parse_eur_number("2.5") == 2.5
+
+    def test_mixed_european(self):
+        # 2.500,00 = 2500.00 in European format
+        assert _parse_eur_number("2.500,00") == 2500.0
+
+    def test_mixed_english(self):
+        # 2,500.00 = 2500.00 in English format
+        assert _parse_eur_number("2,500.00") == 2500.0
+
+    def test_empty_string(self):
+        assert _parse_eur_number("") is None
+
+    def test_whitespace_only(self):
+        assert _parse_eur_number("   ") is None
+
+    def test_large_number(self):
+        assert _parse_eur_number("100000") == 100000.0
+
+    def test_invalid_returns_none(self):
+        assert _parse_eur_number("abc") is None
+
+
+# ===========================================================================
+# Income Range - Single Amount Patterns
+# ===========================================================================
+
+
+class TestExtractIncomeRangeSingleAmounts:
+
+    def test_number_before_eur(self):
+        """Dutch/French/German format: '2500 EUR'"""
+        low, high = _extract_income_range("2500 EUR per maand")
+        assert low == 2500.0
+        assert high == 2500.0
+
+    def test_number_before_eur_with_spaces(self):
+        """French format: '2 500 EUR'"""
+        low, high = _extract_income_range("2 500 EUR par mois")
+        assert low == 2500.0
+        assert high == 2500.0
+
+    def test_number_before_euro_symbol(self):
+        low, high = _extract_income_range("600€")
+        assert low == 600.0
+        assert high == 600.0
+
+    def test_eur_before_number_single(self):
+        """'EUR 2500' as a single amount (no range)"""
+        low, high = _extract_income_range("EUR 2500 monthly")
+        assert low == 2500.0
+        assert high == 2500.0
+
+    def test_euro_symbol_before_number_single(self):
+        low, high = _extract_income_range("€600 per month")
+        assert low == 600.0
+        assert high == 600.0
+
+    def test_number_with_comma_before_eur(self):
+        low, high = _extract_income_range("5,000 EUR per year")
+        assert low == 5000.0
+        assert high == 5000.0
+
+    def test_number_with_period_before_eur(self):
+        """European thousands separator"""
+        low, high = _extract_income_range("5.000 EUR pro Monat")
+        assert low == 5000.0
+        assert high == 5000.0
+
+    def test_range_still_works(self):
+        """Ensure range extraction wasn't broken"""
+        low, high = _extract_income_range("EUR 1,000 - EUR 4,999")
+        assert low == 1000.0
+        assert high == 4999.0
+
+    def test_categories_still_work(self):
+        """Ensure category extraction wasn't broken"""
+        assert _extract_income_range("Category 2") == (500.0, 999.0)
+        assert _extract_income_range("Category 4") == (5000.0, 9999.0)
+
+
+# ===========================================================================
+# Entity Name Cleanup
+# ===========================================================================
+
+
+class TestCleanEntityName:
+
+    def test_strips_number_eur_suffix(self):
+        assert _clean_entity_name("NBX 2500 EUR per maand") == "NBX"
+
+    def test_strips_eur_number_suffix(self):
+        assert _clean_entity_name("Uhasselt EUR 600") == "Uhasselt"
+
+    def test_strips_euro_symbol(self):
+        assert _clean_entity_name("Company €5000 monthly") == "Company monthly"
+
+    def test_strips_trailing_x_marker(self):
+        """'X' at end of entity = no-income marker in DPI table columns"""
+        assert _clean_entity_name("Board of Directors Corp X") == "Board of Directors Corp"
+
+    def test_preserves_x_in_name(self):
+        """'X' mid-name should not be stripped"""
+        result = _clean_entity_name("NBX Holdings")
+        assert "NBX" in result
+
+    def test_no_amount_unchanged(self):
+        assert _clean_entity_name("Simple Company Name") == "Simple Company Name"
+
+    def test_empty_returns_original(self):
+        # If cleanup produces empty string, return original
+        assert _clean_entity_name("600 EUR") == "600 EUR"
+
+    def test_collapses_whitespace(self):
+        result = _clean_entity_name("Company   Name    Here")
+        assert result == "Company Name Here"
+
+    def test_strips_trailing_dash(self):
+        result = _clean_entity_name("Company Name -")
+        assert result == "Company Name"
+
+
+# ===========================================================================
+# Dutch DPI Format Integration
+# ===========================================================================
+
+
+DUTCH_DPI_TEXT = """
+(A) "Overeenkomstig artikel 4, lid 2, punt a), van de gedragscode doe ik opgave:"
+
+1. lid van het Europees Parlement publieke informatie per maand
+2. Professor Economie 600 EUR per maand
+
+(B) "Overeenkomstig artikel 4, lid 2, punt b), van de gedragscode doe ik opgave:"
+
+Gebied en aard van de activiteit
+Bedrag inkomsten Aard van het Periodiciteit
+voordeel
+1. Technologie Lid raad van bestuur - NBX 2500 EUR per maand
+2. Professor Economie - Uhasselt 600 EUR per maand
+
+(C) "Overeenkomstig artikel 4, lid 2, punt c), van de gedragscode doe ik opgave:"
+
+Deelname of werkzaamheid Gegenereerde inkomsten
+Geen Bedrag inkomsten Periodiciteit
+1. Lid raad van bestuur N-VA vzw X
+2. Bestuurder Refleco X
+
+(D) "Overeenkomstig artikel 4, lid 2, punt d), van de gedragscode doe ik opgave:"
+
+1. Lid raad van bestuur NBX 2500 EUR per maand
+
+(E) Steun van derden
+
+Geen.
+
+(F) Overige belangen
+
+NL
+"""
+
+
+class TestDutchDPIFormat:
+
+    def test_sections_split_correctly(self):
+        sections = split_sections(DUTCH_DPI_TEXT)
+        assert "B" in sections
+        assert "C" in sections
+        assert "D" in sections
+
+    def test_section_b_amounts_extracted(self):
+        interests = extract_financial_interests(DUTCH_DPI_TEXT)
+        b_interests = [i for i in interests if i["section"] == "B"]
+        # At least one should have an EUR amount
+        amounts = [(i["value_low"], i["value_high"]) for i in b_interests]
+        assert any(low is not None for low, _ in amounts)
+
+    def test_nbx_2500_eur_extracted(self):
+        interests = extract_financial_interests(DUTCH_DPI_TEXT)
+        nbx = [i for i in interests if "NBX" in i["entity"]]
+        assert len(nbx) > 0
+        assert any(i["value_low"] == 2500.0 for i in nbx)
+
+    def test_600_eur_extracted(self):
+        interests = extract_financial_interests(DUTCH_DPI_TEXT)
+        prof = [i for i in interests if "Professor" in i["entity"] or "Uhasselt" in i["entity"]]
+        assert len(prof) > 0
+        assert any(i["value_low"] == 600.0 for i in prof)
+
+    def test_section_c_no_amounts(self):
+        """Section C entries with 'X' marker should have no amounts."""
+        interests = extract_financial_interests(DUTCH_DPI_TEXT)
+        c_interests = [i for i in interests if i["section"] == "C"]
+        for i in c_interests:
+            assert i["value_low"] is None
+            assert i["value_high"] is None
+
+    def test_entity_names_cleaned(self):
+        """Entity names should not contain EUR amounts."""
+        interests = extract_financial_interests(DUTCH_DPI_TEXT)
+        for i in interests:
+            assert "2500 EUR" not in i["entity"]
+            assert "600 EUR" not in i["entity"]
+
+    def test_nl_language_code_filtered(self):
+        """'NL' language code should not appear as an entity."""
+        interests = extract_financial_interests(DUTCH_DPI_TEXT)
+        entities = [i["entity"] for i in interests]
+        assert all(e.strip() != "NL" for e in entities)
