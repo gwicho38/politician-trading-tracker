@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { TrendingUp, TrendingDown, Wallet, ExternalLink, Loader2, Users } from 'lucide-react';
 import {
   Dialog,
@@ -7,9 +8,10 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { useTickerDetail } from '@/hooks/useSupabaseData';
-import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
-import { toParty, getPartyLabel } from '@/lib/typeGuards';
+import { formatCurrency } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
+import { useParties } from '@/hooks/useParties';
+import { buildPartyMap, getPartyLabel, partyColorStyle, partyBadgeStyle } from '@/lib/partyUtils';
 
 interface TickerDetailModalProps {
   ticker: string | null;
@@ -23,6 +25,8 @@ export function TickerDetailModal({
   onOpenChange,
 }: TickerDetailModalProps) {
   const { data: detail, isLoading } = useTickerDetail(ticker);
+  const { data: parties = [] } = useParties();
+  const partyMap = useMemo(() => buildPartyMap(parties), [parties]);
 
   if (!ticker) return null;
 
@@ -103,13 +107,10 @@ export function TickerDetailModal({
                         <span className="font-medium">{p.name}</span>
                         <Badge
                           variant="outline"
-                          className={cn(
-                            'text-xs',
-                            getPartyBg(p.party),
-                            getPartyColor(p.party)
-                          )}
+                          className="text-xs"
+                          style={{...partyBadgeStyle(partyMap, p.party), ...partyColorStyle(partyMap, p.party)}}
                         >
-                          {getPartyLabel(toParty(p.party))}
+                          {getPartyLabel(partyMap, p.party)}
                         </Badge>
                       </div>
                       <span className="text-sm text-muted-foreground">
@@ -154,13 +155,10 @@ export function TickerDetailModal({
                           {trade.politician?.party && (
                             <Badge
                               variant="outline"
-                              className={cn(
-                                'text-xs ml-2',
-                                getPartyBg(trade.politician.party),
-                                getPartyColor(trade.politician.party)
-                              )}
+                              className="text-xs ml-2"
+                              style={{...partyBadgeStyle(partyMap, trade.politician.party), ...partyColorStyle(partyMap, trade.politician.party)}}
                             >
-                              {getPartyLabel(toParty(trade.politician.party))}
+                              {getPartyLabel(partyMap, trade.politician.party)}
                             </Badge>
                           )}
                         </div>
