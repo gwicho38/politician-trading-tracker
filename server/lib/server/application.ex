@@ -74,13 +74,6 @@ defmodule Server.Application do
       params: %{lookback_days: 30, limit: 100}
     },
     %{
-      job_id: "politician-trading-quiver",
-      job_name: "QuiverQuant Congress Trading",
-      source: "quiverquant",
-      schedule: "0 */6 * * *",
-      params: %{lookback_days: 30}
-    },
-    %{
       job_id: "politician-trading-eu",
       job_name: "EU Parliament Declarations",
       source: "eu_parliament",
