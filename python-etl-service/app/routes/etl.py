@@ -114,6 +114,22 @@ async def _run_registry_service(source: str, job_id: str, **kwargs):
     if source == "eu_parliament" and kwargs.get("limit"):
         kwargs["limit_meps"] = kwargs.pop("limit")
 
+    # Hook into the service's status updates to sync progress to JOB_STATUS
+    original_update = service.update_job_status
+
+    def _synced_update(jid, **kw):
+        original_update(jid, **kw)
+        internal = service.get_job_status(jid)
+        if internal:
+            if internal.progress is not None:
+                JOB_STATUS[job_id]["progress"] = internal.progress
+            if internal.total is not None:
+                JOB_STATUS[job_id]["total"] = internal.total
+            if internal.message:
+                JOB_STATUS[job_id]["message"] = internal.message
+
+    service.update_job_status = _synced_update
+
     try:
         JOB_STATUS[job_id]["status"] = "running"
         JOB_STATUS[job_id]["message"] = f"Starting {service.source_name} ETL..."
@@ -128,6 +144,7 @@ async def _run_registry_service(source: str, job_id: str, **kwargs):
         if result.is_success:
             JOB_STATUS[job_id]["message"] = (
                 f"Completed: {result.records_inserted} inserted, "
+                f"{result.records_updated} updated, "
                 f"{result.records_skipped} skipped, "
                 f"{result.records_failed} failed"
             )
