@@ -1,14 +1,17 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ArrowUpRight, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { usePoliticians, type Politician } from '@/hooks/useSupabaseData';
-import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
-import { cn, formatChamber } from '@/lib/utils';
+import { formatCurrency } from '@/lib/mockData';
+import { formatChamber } from '@/lib/utils';
 import { PoliticianDetailModal } from '@/components/detail-modals';
-import { toParty, getPartyLabel } from '@/lib/typeGuards';
+import { useParties } from '@/hooks/useParties';
+import { buildPartyMap, getPartyLabel, partyColorStyle, partyBadgeStyle } from '@/lib/partyUtils';
 
 const TopTraders = () => {
   const { data: politicians, isLoading, error } = usePoliticians();
+  const { data: parties = [] } = useParties();
+  const partyMap = useMemo(() => buildPartyMap(parties), [parties]);
   const [selectedPolitician, setSelectedPolitician] = useState<Politician | null>(null);
 
   const sortedPoliticians = politicians?.slice(0, 5) || [];
@@ -46,14 +49,14 @@ const TopTraders = () => {
             </p>
           ) : (
             sortedPoliticians.map((politician, index) => {
-              const party = toParty(politician.party);
+              const party = politician.party || 'Unknown';
               return (
                 <button
                   key={politician.id}
                   type="button"
                   onClick={() => setSelectedPolitician(politician)}
                   className="group w-full flex items-center justify-between rounded-lg p-2 sm:p-3 transition-all duration-200 hover:bg-secondary/50 cursor-pointer gap-2 text-left"
-                  aria-label={`View details for ${politician.name}, ${party} party, ${formatChamber(politician.chamber)}, ${formatCurrency(politician.total_volume ?? 0)} total volume, ${politician.total_trades ?? 0} trades`}
+                  aria-label={`View details for ${politician.name}, ${getPartyLabel(partyMap, party)} party, ${formatChamber(politician.chamber)}, ${formatCurrency(politician.total_volume ?? 0)} total volume, ${politician.total_trades ?? 0} trades`}
                 >
                   <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                     <div className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-secondary font-mono text-xs sm:text-sm font-bold text-muted-foreground flex-shrink-0" aria-hidden="true">
@@ -66,9 +69,10 @@ const TopTraders = () => {
                         </span>
                         <Badge
                           variant="outline"
-                          className={cn("text-xs px-1 sm:px-1.5 py-0 flex-shrink-0", getPartyBg(party), getPartyColor(party))}
+                          className="text-xs px-1 sm:px-1.5 py-0 flex-shrink-0"
+                          style={{...partyBadgeStyle(partyMap, party), ...partyColorStyle(partyMap, party)}}
                         >
-                          {getPartyLabel(party)}
+                          {getPartyLabel(partyMap, party)}
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground truncate">
