@@ -54,6 +54,118 @@ MAX_RETRIES: int = 5  # Maximum retries per request
 BACKOFF_MULTIPLIER: float = 2.0  # Exponential backoff multiplier
 RATE_LIMIT_CODES: Set[int] = {429, 503, 502, 504}  # HTTP codes that trigger backoff
 
+# Free legislator dataset (no API key required)
+LEGISLATORS_URL: str = "https://theunitedstates.io/congress-legislators/legislators-current.json"
+
+
+async def fetch_member_party_map(client: httpx.AsyncClient) -> Dict[str, str]:
+    """Fetch party affiliations from @unitedstates legislators dataset.
+
+    Returns a mapping of (last_name_lower, first_name_lower) and
+    (last_name_lower, state) to party code ('D', 'R', 'I').
+    Used to enrich House disclosures that don't include party info.
+    """
+    try:
+        resp = await client.get(LEGISLATORS_URL, timeout=30.0)
+        if resp.status_code != 200:
+            logger.warning(f"Failed to fetch legislators data: HTTP {resp.status_code}")
+            return {}
+
+        legislators = resp.json()
+        party_map: Dict[str, str] = {}
+        party_codes = {"Democrat": "D", "Republican": "R", "Independent": "I"}
+
+        for legislator in legislators:
+            name = legislator.get("name", {})
+            last = name.get("last", "").lower().strip()
+            first = name.get("first", "").lower().strip()
+            terms = legislator.get("terms", [])
+            if not terms or not last:
+                continue
+
+            current_term = terms[-1]
+            party_raw = current_term.get("party", "")
+            party_code = party_codes.get(party_raw, "")
+            if not party_code:
+                continue
+
+            state = current_term.get("state", "").upper()
+            # Index by (last, first) and (last, state) for flexible matching
+            party_map[f"{last}|{first}"] = party_code
+            if state:
+                party_map[f"{last}|{state}"] = party_code
+                party_map[f"{last}|{first}|{state}"] = party_code
+
+        logger.info(f"Fetched party data for {len(legislators)} legislators")
+        return party_map
+    except Exception as e:
+        logger.warning(f"Error fetching party data: {e}")
+        return {}
+
+
+def resolve_party(party_map: Dict[str, str], disclosure: Dict[str, Any]) -> Optional[str]:
+    """Resolve party for a House disclosure using the pre-fetched party map."""
+    if not party_map:
+        return None
+
+    last = disclosure.get("last_name", "").strip().lower()
+    first = disclosure.get("first_name", "").strip().lower()
+    state_district = disclosure.get("state_district", "")
+    state = state_district[:2].upper() if len(state_district) >= 2 else ""
+
+    # Try most specific match first, then fall back
+    return (
+        party_map.get(f"{last}|{first}|{state}")
+        or party_map.get(f"{last}|{first}")
+        or party_map.get(f"{last}|{state}")
+    )
+
+
+def _backfill_null_parties(supabase: Client, party_map: Dict[str, str]) -> int:
+    """Backfill party for existing politicians with NULL party using the party map.
+
+    Queries all politicians with NULL party and role='Representative',
+    then matches them against the party map by name.
+    """
+    try:
+        response = (
+            supabase.table("politicians")
+            .select("id, first_name, last_name, state_or_country, state")
+            .is_("party", "null")
+            .eq("role", "Representative")
+            .execute()
+        )
+
+        if not response.data:
+            return 0
+
+        updated = 0
+        for politician in response.data:
+            last = (politician.get("last_name") or "").strip().lower()
+            first = (politician.get("first_name") or "").strip().lower()
+            state = (
+                (politician.get("state") or politician.get("state_or_country") or "")
+                .strip()
+                .upper()[:2]
+            )
+
+            party = (
+                party_map.get(f"{last}|{first}|{state}")
+                or party_map.get(f"{last}|{first}")
+                or party_map.get(f"{last}|{state}")
+            )
+
+            if party:
+                supabase.table("politicians").update({"party": party}).eq(
+                    "id", politician["id"]
+                ).execute()
+                updated += 1
+
+        return updated
+    except Exception as e:
+        logger.warning(f"Error backfilling parties: {e}")
+        return 0
+
 
 class RateLimiter:
     """Adaptive rate limiter with exponential backoff."""
@@ -630,6 +742,12 @@ async def run_house_etl(
             timeout=60.0, headers={"User-Agent": USER_AGENT}
         ) as client:
 
+            # Step 0: Pre-fetch party affiliations for enrichment
+            # House disclosure PDFs don't include party data, so we resolve it
+            # from the free @unitedstates legislators dataset
+            JOB_STATUS[job_id]["message"] = "Fetching party affiliations..."
+            party_map = await fetch_member_party_map(client)
+
             # Step 1: Download ZIP index
             JOB_STATUS[job_id]["message"] = f"Downloading {year} disclosure index..."
             zip_url = HouseDisclosureScraper.get_zip_url(year)
@@ -672,6 +790,12 @@ async def run_house_etl(
                 JOB_STATUS[job_id][
                     "message"
                 ] = f"Processing {disclosure['politician_name']} ({i+1}/{len(to_process)})"
+
+                # Resolve party from pre-fetched mapping
+                if "party" not in disclosure:
+                    resolved_party = resolve_party(party_map, disclosure)
+                    if resolved_party:
+                        disclosure["party"] = resolved_party
 
                 # Fetch PDF
                 pdf_bytes = await HouseDisclosureScraper.fetch_pdf(
@@ -777,6 +901,12 @@ async def run_house_etl(
 
             # Refresh materialized views with new data
             refresh_materialized_views(supabase_client)
+
+            # Backfill party for existing politicians with NULL party
+            if party_map:
+                backfill_count = _backfill_null_parties(supabase_client, party_map)
+                if backfill_count > 0:
+                    logger.info(f"Backfilled party for {backfill_count} politicians")
 
             # Cleanup old records (1% chance per run)
             import random
