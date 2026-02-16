@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   // Party
-  VALID_PARTIES,
   isParty,
   toParty,
   getPartyFullName,
@@ -40,72 +39,51 @@ describe('Party type guards', () => {
       expect(isParty('D')).toBe(true);
       expect(isParty('R')).toBe(true);
       expect(isParty('I')).toBe(true);
-      expect(isParty('Other')).toBe(true);
+      expect(isParty('EPP')).toBe(true);
+      expect(isParty('PfE')).toBe(true);
+      expect(isParty('AnyString')).toBe(true);
     });
 
-    it('returns false for invalid parties', () => {
-      expect(isParty('Democrat')).toBe(false);
-      expect(isParty('Republican')).toBe(false);
+    it('returns false for invalid values', () => {
       expect(isParty('')).toBe(false);
+      expect(isParty('  ')).toBe(false);
       expect(isParty(null)).toBe(false);
       expect(isParty(undefined)).toBe(false);
       expect(isParty(123)).toBe(false);
       expect(isParty({})).toBe(false);
     });
-
-    it('is case-sensitive', () => {
-      expect(isParty('d')).toBe(false);
-      expect(isParty('r')).toBe(false);
-      expect(isParty('other')).toBe(false);
-    });
   });
 
   describe('toParty', () => {
-    it('returns the party if valid', () => {
+    it('returns the value if valid', () => {
       expect(toParty('D')).toBe('D');
       expect(toParty('R')).toBe('R');
-      expect(toParty('I')).toBe('I');
-      expect(toParty('Other')).toBe('Other');
+      expect(toParty('PfE')).toBe('PfE');
+      expect(toParty('AnyParty')).toBe('AnyParty');
     });
 
     it('returns fallback for invalid values', () => {
-      expect(toParty('invalid')).toBe('Other');
-      expect(toParty(null)).toBe('Other');
-      expect(toParty(undefined)).toBe('Other');
+      expect(toParty('')).toBe('Unknown');
+      expect(toParty(null)).toBe('Unknown');
+      expect(toParty(undefined)).toBe('Unknown');
     });
 
     it('respects custom fallback', () => {
-      expect(toParty('invalid', 'D')).toBe('D');
+      expect(toParty('', 'D')).toBe('D');
       expect(toParty(null, 'R')).toBe('R');
     });
   });
 
   describe('getPartyFullName', () => {
-    it('returns full names for all parties', () => {
+    it('returns full names for known parties', () => {
       expect(getPartyFullName('D')).toBe('Democratic');
       expect(getPartyFullName('R')).toBe('Republican');
       expect(getPartyFullName('I')).toBe('Independent');
-      expect(getPartyFullName('Other')).toBe('Other');
     });
-  });
 
-  describe('VALID_PARTIES constant', () => {
-    it('contains all expected parties', () => {
-      // US parties
-      expect(VALID_PARTIES).toContain('D');
-      expect(VALID_PARTIES).toContain('R');
-      expect(VALID_PARTIES).toContain('I');
-      expect(VALID_PARTIES).toContain('Other');
-      // EU Parliament groups
-      expect(VALID_PARTIES).toContain('EPP');
-      expect(VALID_PARTIES).toContain('S&D');
-      expect(VALID_PARTIES).toContain('Renew');
-      expect(VALID_PARTIES).toContain('Greens/EFA');
-      expect(VALID_PARTIES).toContain('ECR');
-      expect(VALID_PARTIES).toContain('ID');
-      expect(VALID_PARTIES).toContain('GUE/NGL');
-      expect(VALID_PARTIES).toContain('NI');
-      expect(VALID_PARTIES.length).toBe(12);
+    it('returns input for unknown parties', () => {
+      expect(getPartyFullName('PfE')).toBe('PfE');
+      expect(getPartyFullName('EPP')).toBe('EPP');
     });
   });
 });

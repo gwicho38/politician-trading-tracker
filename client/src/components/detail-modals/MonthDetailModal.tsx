@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { TrendingUp, TrendingDown, Wallet, ExternalLink, Loader2, Calendar, Users, BarChart3 } from 'lucide-react';
 import {
   Dialog,
@@ -7,9 +8,10 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { useMonthDetail } from '@/hooks/useSupabaseData';
-import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
-import { toParty, getPartyLabel } from '@/lib/typeGuards';
+import { formatCurrency } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
+import { useParties } from '@/hooks/useParties';
+import { buildPartyMap, getPartyLabel, partyColorStyle, partyBadgeStyle } from '@/lib/partyUtils';
 
 interface MonthDetailModalProps {
   month: number | null;
@@ -25,6 +27,8 @@ export function MonthDetailModal({
   onOpenChange,
 }: MonthDetailModalProps) {
   const { data: detail, isLoading } = useMonthDetail(month, year);
+  const { data: parties = [] } = useParties();
+  const partyMap = useMemo(() => buildPartyMap(parties), [parties]);
 
   if (!month || !year) return null;
 
@@ -135,13 +139,10 @@ export function MonthDetailModal({
                         <span className="font-medium">{p.name}</span>
                         <Badge
                           variant="outline"
-                          className={cn(
-                            'text-xs',
-                            getPartyBg(p.party),
-                            getPartyColor(p.party)
-                          )}
+                          className="text-xs"
+                          style={{...partyBadgeStyle(partyMap, p.party), ...partyColorStyle(partyMap, p.party)}}
                         >
-                          {getPartyLabel(toParty(p.party))}
+                          {getPartyLabel(partyMap, p.party)}
                         </Badge>
                       </div>
                       <span className="text-sm text-muted-foreground">

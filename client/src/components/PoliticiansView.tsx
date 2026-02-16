@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { usePoliticians, type Politician } from '@/hooks/useSupabaseData';
 import { usePagination } from '@/hooks/usePagination';
 import { PaginationControls } from '@/components/PaginationControls';
-import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
+import { formatCurrency } from '@/lib/mockData';
 import {
   Select,
   SelectContent,
@@ -14,9 +14,10 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { toParty, getPartyLabel } from '@/lib/typeGuards';
 import { cn, formatChamber } from '@/lib/utils';
 import { PoliticianProfileModal } from '@/components/detail-modals';
+import { useParties } from '@/hooks/useParties';
+import { buildPartyMap, getPartyLabel, partyColorStyle, partyBadgeStyle, buildPartyFilterOptions } from '@/lib/partyUtils';
 
 // Chamber filter options (value matches politician.role in the database)
 const CHAMBER_FILTER_OPTIONS = [
@@ -26,21 +27,7 @@ const CHAMBER_FILTER_OPTIONS = [
   { value: 'MEP', label: 'EU Parliament' },
 ];
 
-// Party filter options
-const PARTY_FILTER_OPTIONS = [
-  { value: '', label: 'All Parties' },
-  { value: 'D', label: 'Democrat' },
-  { value: 'R', label: 'Republican' },
-  { value: 'I', label: 'Independent' },
-  { value: 'EPP', label: 'EPP' },
-  { value: 'S&D', label: 'S&D' },
-  { value: 'Renew', label: 'Renew' },
-  { value: 'Greens/EFA', label: 'Greens/EFA' },
-  { value: 'ECR', label: 'ECR' },
-  { value: 'ID', label: 'ID' },
-  { value: 'GUE/NGL', label: 'GUE/NGL' },
-  { value: 'NI', label: 'Non-Inscrit' },
-];
+// Party filter options are now built dynamically from the parties table via useParties()
 
 // Sortable fields for politicians
 type SortField = 'name' | 'party' | 'chamber' | 'state' | 'total_volume' | 'total_trades';
@@ -53,6 +40,9 @@ interface PoliticiansViewProps {
 
 const PoliticiansView = ({ initialPoliticianId, onPoliticianSelected }: PoliticiansViewProps) => {
   const { data: politicians, isLoading, error } = usePoliticians();
+  const { data: parties = [] } = useParties();
+  const partyMap = useMemo(() => buildPartyMap(parties), [parties]);
+  const PARTY_FILTER_OPTIONS = useMemo(() => buildPartyFilterOptions(parties), [parties]);
   const pagination = usePagination();
   const [selectedPolitician, setSelectedPolitician] = useState<Politician | null>(null);
   const [sortField, setSortField] = useState<SortField>('total_volume');
@@ -299,13 +289,10 @@ const PoliticiansView = ({ initialPoliticianId, onPoliticianSelected }: Politici
                         </span>
                         <Badge
                           variant="outline"
-                          className={cn(
-                            "text-xs px-1.5 py-0 flex-shrink-0",
-                            getPartyBg(politician.party),
-                            getPartyColor(politician.party)
-                          )}
+                          className="text-xs px-1.5 py-0 flex-shrink-0"
+                          style={{...partyBadgeStyle(partyMap, politician.party), ...partyColorStyle(partyMap, politician.party)}}
                         >
-                          {getPartyLabel(toParty(politician.party))}
+                          {getPartyLabel(partyMap, politician.party)}
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground truncate sm:hidden">

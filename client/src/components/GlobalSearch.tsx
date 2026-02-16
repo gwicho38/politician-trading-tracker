@@ -1,12 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, User, TrendingUp, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useGlobalSearch, type SearchResult } from '@/hooks/useGlobalSearch';
-import { getPartyColor, getPartyBg } from '@/lib/mockData';
-import { toParty, getPartyLabel } from '@/lib/typeGuards';
 import { cn } from '@/lib/utils';
+import { useParties } from '@/hooks/useParties';
+import { buildPartyMap, getPartyLabel, partyColorStyle, partyBadgeStyle } from '@/lib/partyUtils';
 
 interface GlobalSearchProps {
   onSelectPolitician?: (id: string) => void;
@@ -26,6 +26,8 @@ export function GlobalSearch({ onSelectPolitician, onSelectTicker, fullWidth, on
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { data: results, isLoading } = useGlobalSearch(query);
+  const { data: parties = [] } = useParties();
+  const partyMap = useMemo(() => buildPartyMap(parties), [parties]);
 
   // Reset selection when results change
   useEffect(() => {
@@ -165,13 +167,10 @@ export function GlobalSearch({ onSelectPolitician, onSelectTicker, fullWidth, on
                       {result.type === 'politician' && result.meta?.party && (
                         <Badge
                           variant="outline"
-                          className={cn(
-                            'text-xs px-1.5 py-0',
-                            getPartyBg(result.meta.party),
-                            getPartyColor(result.meta.party)
-                          )}
+                          className="text-xs px-1.5 py-0"
+                          style={{...partyBadgeStyle(partyMap, result.meta.party), ...partyColorStyle(partyMap, result.meta.party)}}
                         >
-                          {getPartyLabel(toParty(result.meta.party))}
+                          {getPartyLabel(partyMap, result.meta.party)}
                         </Badge>
                       )}
                     </div>

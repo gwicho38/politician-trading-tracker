@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -18,12 +18,13 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { usePoliticianDetail, type Politician } from '@/hooks/useSupabaseData';
-import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
-import { toParty, getPartyLabel } from '@/lib/typeGuards';
+import { formatCurrency } from '@/lib/mockData';
 import { cn, formatChamber } from '@/lib/utils';
 // Use public client to avoid auth blocking issues
 import { supabasePublic as supabase } from '@/integrations/supabase/client';
 import { logError } from '@/lib/logger';
+import { useParties } from '@/hooks/useParties';
+import { buildPartyMap, getPartyLabel, getPartyName, partyColorStyle, partyBadgeStyle } from '@/lib/partyUtils';
 
 // Timeout for profile generation (15 seconds)
 const PROFILE_FETCH_TIMEOUT = 15000;
@@ -47,6 +48,8 @@ export function PoliticianProfileModal({
   onOpenChange,
 }: PoliticianProfileModalProps) {
   const { data: detail, isLoading: detailLoading } = usePoliticianDetail(politician?.id ?? null);
+  const { data: parties = [] } = useParties();
+  const partyMap = useMemo(() => buildPartyMap(parties), [parties]);
   const [profileBio, setProfileBio] = useState<ProfileBio>({
     bio: '',
     source: 'fallback',
@@ -157,13 +160,12 @@ export function PoliticianProfileModal({
   }, [open]);
 
   const generateClientFallbackBio = (pol: Politician, det: typeof detail): string => {
-    const partyFull = pol.party === 'D' ? 'Democratic' :
-                      pol.party === 'R' ? 'Republican' :
-                      pol.party || 'Independent';
+    const partyFull = getPartyName(partyMap, pol.party) || 'Independent';
 
     const chamberFull = pol.chamber?.toLowerCase().includes('rep') ? 'Representative' :
                         pol.chamber?.toLowerCase().includes('sen') ? 'Senator' :
-                        pol.chamber || 'Member of Congress';
+                        pol.role?.toLowerCase() === 'mep' ? 'Member of the European Parliament' :
+                        'Member of Congress';
 
     const tickersList = det?.topTickers?.slice(0, 3).map(t => t.ticker).join(', ');
     const tickersNote = tickersList ? ` Their most frequently traded securities include ${tickersList}.` : '';
@@ -190,13 +192,10 @@ export function PoliticianProfileModal({
                 {politician.name}
                 <Badge
                   variant="outline"
-                  className={cn(
-                    'text-xs',
-                    getPartyBg(politician.party),
-                    getPartyColor(politician.party)
-                  )}
+                  className="text-xs"
+                  style={{...partyBadgeStyle(partyMap, politician.party), ...partyColorStyle(partyMap, politician.party)}}
                 >
-                  {getPartyLabel(toParty(politician.party))}
+                  {getPartyLabel(partyMap, politician.party)}
                 </Badge>
               </DialogTitle>
               <p className="text-sm text-muted-foreground mt-1">

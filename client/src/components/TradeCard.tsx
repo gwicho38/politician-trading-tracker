@@ -1,8 +1,10 @@
+import { useMemo } from 'react';
 import { ArrowUpRight, ArrowDownRight, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { Trade, formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
-import { toParty, getPartyLabel } from '@/lib/typeGuards';
+import { Trade, formatCurrency } from '@/lib/mockData';
+import { useParties } from '@/hooks/useParties';
+import { buildPartyMap, getPartyLabel, partyColorStyle, partyBadgeStyle } from '@/lib/partyUtils';
 
 interface TradeCardProps {
   trade: Trade;
@@ -10,6 +12,8 @@ interface TradeCardProps {
 }
 
 const TradeCard = ({ trade, delay = 0 }: TradeCardProps) => {
+  const { data: parties = [] } = useParties();
+  const partyMap = useMemo(() => buildPartyMap(parties), [parties]);
   const isBuy = trade.type === 'buy';
 
   return (
@@ -39,9 +43,10 @@ const TradeCard = ({ trade, delay = 0 }: TradeCardProps) => {
               </span>
               <Badge
                 variant="outline"
-                className={cn("text-xs px-1 sm:px-1.5 py-0 flex-shrink-0", getPartyBg(trade.party), getPartyColor(trade.party))}
+                className="text-xs px-1 sm:px-1.5 py-0 flex-shrink-0"
+                style={{...partyBadgeStyle(partyMap, trade.party), ...partyColorStyle(partyMap, trade.party)}}
               >
-                {getPartyLabel(toParty(trade.party))}
+                {getPartyLabel(partyMap, trade.party)}
               </Badge>
             </div>
 

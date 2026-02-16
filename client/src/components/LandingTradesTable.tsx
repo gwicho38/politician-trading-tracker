@@ -49,8 +49,8 @@ import { logError } from '@/lib/logger';
 import { useTradingDisclosures, SortField, SortDirection, TradingDisclosure } from '@/hooks/useSupabaseData';
 import { ReportErrorModal } from '@/components/ReportErrorModal';
 import { PoliticianProfileModal } from '@/components/detail-modals/PoliticianProfileModal';
-import { getPartyColor, getPartyBg } from '@/lib/mockData';
-import { toParty, getPartyLabel } from '@/lib/typeGuards';
+import { useParties } from '@/hooks/useParties';
+import { buildPartyMap, getPartyLabel, partyColorStyle, partyBadgeStyle, buildPartyFilterOptions } from '@/lib/partyUtils';
 import type { Politician } from '@/hooks/useSupabaseData';
 
 const ROWS_PER_PAGE = 15;
@@ -64,21 +64,7 @@ const TRANSACTION_TYPES = [
   { value: 'holding', label: 'Holding' },
 ];
 
-// Party options
-const PARTY_OPTIONS = [
-  { value: '', label: 'All Parties' },
-  { value: 'D', label: 'Democrat' },
-  { value: 'R', label: 'Republican' },
-  { value: 'I', label: 'Independent' },
-  { value: 'EPP', label: 'EPP' },
-  { value: 'S&D', label: 'S&D' },
-  { value: 'Renew', label: 'Renew' },
-  { value: 'Greens/EFA', label: 'Greens/EFA' },
-  { value: 'ECR', label: 'ECR' },
-  { value: 'ID', label: 'ID' },
-  { value: 'GUE/NGL', label: 'GUE/NGL' },
-  { value: 'NI', label: 'Non-Inscrit' },
-];
+// Party options are now built dynamically from the parties table via useParties()
 
 // Chamber options (value matches politician.role in the database)
 const CHAMBER_OPTIONS = [
@@ -108,6 +94,11 @@ interface LandingTradesTableProps {
 }
 
 const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTradesTableProps = {}) => {
+  // Dynamic party data
+  const { data: parties = [] } = useParties();
+  const partyMap = useMemo(() => buildPartyMap(parties), [parties]);
+  const PARTY_OPTIONS = useMemo(() => buildPartyFilterOptions(parties), [parties]);
+
   // Pagination
   const [page, setPage] = useState(0);
 
@@ -505,7 +496,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
               )}
               {party && (
                 <Badge variant="secondary" className="gap-1">
-                  Party: {PARTY_OPTIONS.find(p => p.value === party)?.label || party}
+                  Party: {getPartyLabel(partyMap, party)}
                   <button onClick={() => { setParty(''); setPage(0); }} aria-label="Clear party filter">
                     <X className="h-3 w-3" aria-hidden="true" />
                   </button>
@@ -568,7 +559,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
           <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 p-3 sm:p-4">
             {disclosures.map((disclosure) => {
               const politician = disclosure.politician;
-              const partyValue = toParty(politician?.party);
+              const partyValue = politician?.party || 'Unknown';
               const isBuy = disclosure.transaction_type === 'purchase';
               const isSell = disclosure.transaction_type === 'sale';
 
@@ -614,13 +605,10 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                     )}
                     <Badge
                       variant="outline"
-                      className={cn(
-                        "text-[9px] px-1 py-0",
-                        getPartyBg(partyValue),
-                        getPartyColor(partyValue)
-                      )}
+                      className="text-[9px] px-1 py-0"
+                      style={{...partyBadgeStyle(partyMap, partyValue), ...partyColorStyle(partyMap, partyValue)}}
                     >
-                      {getPartyLabel(partyValue)}
+                      {getPartyLabel(partyMap, partyValue)}
                     </Badge>
                   </div>
 
@@ -742,7 +730,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
             ) : (
               disclosures.map((disclosure) => {
                 const politician = disclosure.politician;
-                const partyValue = toParty(politician?.party);
+                const partyValue = politician?.party || 'Unknown';
 
                 return (
                   <TableRow key={disclosure.id} className="group">
@@ -760,13 +748,10 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                         </button>
                         <Badge
                           variant="outline"
-                          className={cn(
-                            "text-xs px-1.5 py-0",
-                            getPartyBg(partyValue),
-                            getPartyColor(partyValue)
-                          )}
+                          className="text-xs px-1.5 py-0"
+                          style={{...partyBadgeStyle(partyMap, partyValue), ...partyColorStyle(partyMap, partyValue)}}
                         >
-                          {getPartyLabel(partyValue)}
+                          {getPartyLabel(partyMap, partyValue)}
                         </Badge>
                       </div>
                       <div className="text-xs text-muted-foreground">

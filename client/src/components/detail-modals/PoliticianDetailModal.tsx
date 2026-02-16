@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { TrendingUp, TrendingDown, Wallet, ExternalLink, Loader2 } from 'lucide-react';
 import {
   Dialog,
@@ -8,9 +9,10 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { usePoliticianDetail, type Politician } from '@/hooks/useSupabaseData';
-import { formatCurrency, getPartyColor, getPartyBg } from '@/lib/mockData';
-import { toParty, getPartyLabel } from '@/lib/typeGuards';
+import { formatCurrency } from '@/lib/mockData';
 import { cn, formatChamber } from '@/lib/utils';
+import { useParties } from '@/hooks/useParties';
+import { buildPartyMap, getPartyLabel, partyColorStyle, partyBadgeStyle } from '@/lib/partyUtils';
 
 interface PoliticianDetailModalProps {
   politician: Politician | null;
@@ -24,6 +26,8 @@ export function PoliticianDetailModal({
   onOpenChange,
 }: PoliticianDetailModalProps) {
   const { data: detail, isLoading } = usePoliticianDetail(politician?.id ?? null);
+  const { data: parties = [] } = useParties();
+  const partyMap = useMemo(() => buildPartyMap(parties), [parties]);
 
   if (!politician) return null;
 
@@ -37,13 +41,10 @@ export function PoliticianDetailModal({
                 {politician.name}
                 <Badge
                   variant="outline"
-                  className={cn(
-                    'text-xs',
-                    getPartyBg(politician.party),
-                    getPartyColor(politician.party)
-                  )}
+                  className="text-xs"
+                  style={{...partyBadgeStyle(partyMap, politician.party), ...partyColorStyle(partyMap, politician.party)}}
                 >
-                  {getPartyLabel(toParty(politician.party))}
+                  {getPartyLabel(partyMap, politician.party)}
                 </Badge>
               </DialogTitle>
               <p className="text-sm text-muted-foreground mt-1">
