@@ -242,54 +242,33 @@ export const stats = {
 // formatCurrency is now re-exported from './formatters' at the top of the file
 // The original implementation has been consolidated into lib/formatters.ts
 
+/**
+ * @deprecated Use partyUtils.getPartyColor with useParties() instead.
+ * Kept during migration — returns a Tailwind class for legacy callers.
+ */
 export const getPartyColor = (party: string): string => {
-  switch (party) {
-    case 'D':
-    case 'S&D':
-      return 'text-blue-400';
-    case 'R':
-    case 'ECR':
-      return 'text-red-400';
-    case 'I':
-    case 'Renew':
-      return 'text-yellow-400';
-    case 'EPP':
-      return 'text-sky-400';
-    case 'Greens/EFA':
-      return 'text-green-400';
-    case 'ID':
-      return 'text-indigo-400';
-    case 'GUE/NGL':
-      return 'text-rose-400';
-    case 'NI':
-      return 'text-slate-400';
-    default:
-      return 'text-muted-foreground';
-  }
+  const map: Record<string, string> = {
+    D: 'text-blue-400', 'S&D': 'text-blue-400',
+    R: 'text-red-400', ECR: 'text-red-400',
+    I: 'text-yellow-400', Renew: 'text-yellow-400',
+    EPP: 'text-sky-400', 'Greens/EFA': 'text-green-400',
+    ID: 'text-indigo-400', 'GUE/NGL': 'text-rose-400',
+    NI: 'text-slate-400',
+  };
+  return map[party] || 'text-muted-foreground';
 };
 
+/**
+ * @deprecated Use partyUtils.partyBadgeStyle with useParties() instead.
+ */
 export const getPartyBg = (party: string): string => {
-  switch (party) {
-    case 'D':
-    case 'S&D':
-      return 'bg-blue-500/20 border-blue-500/30';
-    case 'R':
-    case 'ECR':
-      return 'bg-red-500/20 border-red-500/30';
-    case 'I':
-    case 'Renew':
-      return 'bg-yellow-500/20 border-yellow-500/30';
-    case 'EPP':
-      return 'bg-sky-500/20 border-sky-500/30';
-    case 'Greens/EFA':
-      return 'bg-green-500/20 border-green-500/30';
-    case 'ID':
-      return 'bg-indigo-500/20 border-indigo-500/30';
-    case 'GUE/NGL':
-      return 'bg-rose-500/20 border-rose-500/30';
-    case 'NI':
-      return 'bg-slate-500/20 border-slate-500/30';
-    default:
-      return 'bg-muted border-border';
-  }
+  const map: Record<string, string> = {
+    D: 'bg-blue-500/20 border-blue-500/30', 'S&D': 'bg-blue-500/20 border-blue-500/30',
+    R: 'bg-red-500/20 border-red-500/30', ECR: 'bg-red-500/20 border-red-500/30',
+    I: 'bg-yellow-500/20 border-yellow-500/30', Renew: 'bg-yellow-500/20 border-yellow-500/30',
+    EPP: 'bg-sky-500/20 border-sky-500/30', 'Greens/EFA': 'bg-green-500/20 border-green-500/30',
+    ID: 'bg-indigo-500/20 border-indigo-500/30', 'GUE/NGL': 'bg-rose-500/20 border-rose-500/30',
+    NI: 'bg-slate-500/20 border-slate-500/30',
+  };
+  return map[party] || 'bg-muted border-border';
 };

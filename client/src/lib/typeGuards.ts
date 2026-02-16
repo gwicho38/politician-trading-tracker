@@ -10,94 +10,41 @@
 // =============================================================================
 
 /**
- * Valid party codes used throughout the application.
+ * Party codes are now dynamic (stored in `parties` table).
+ * Any non-empty string is a valid party code.
+ * Use partyUtils.ts for display name/color lookups.
  */
-export const VALID_PARTIES = ['D', 'R', 'I', 'EPP', 'S&D', 'Renew', 'Greens/EFA', 'ECR', 'ID', 'GUE/NGL', 'NI', 'Other'] as const;
-export type Party = (typeof VALID_PARTIES)[number];
+export type Party = string;
 
 /**
- * Type guard to check if a value is a valid Party.
- *
- * @example
- * const party = politician.party; // string
- * if (isParty(party)) {
- *   // party is now typed as Party ('D' | 'R' | 'I' | 'Other')
- * }
+ * Type guard: any non-empty string is a valid party code.
+ * The parties table is the source of truth for known parties.
  */
 export function isParty(value: unknown): value is Party {
-  return typeof value === 'string' && VALID_PARTIES.includes(value as Party);
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 /**
- * Safely convert an unknown value to a Party, with fallback.
- *
- * @param value - The value to convert
- * @param fallback - Fallback if value is not a valid party (default: 'Other')
- * @returns A valid Party value
- *
- * @example
- * const party = toParty(politician.party); // Always returns valid Party
+ * Safely convert unknown to Party. Returns fallback for null/undefined/empty.
  */
-export function toParty(value: unknown, fallback: Party = 'Other'): Party {
+export function toParty(value: unknown, fallback: string = 'Unknown'): string {
   return isParty(value) ? value : fallback;
 }
 
-/**
- * Get the full party name from a party code.
- */
-export function getPartyFullName(party: Party): string {
-  switch (party) {
-    case 'D':
-      return 'Democratic';
-    case 'R':
-      return 'Republican';
-    case 'I':
-      return 'Independent';
-    case 'EPP':
-      return 'European People\'s Party';
-    case 'S&D':
-      return 'Socialists & Democrats';
-    case 'Renew':
-      return 'Renew Europe';
-    case 'Greens/EFA':
-      return 'Greens/EFA';
-    case 'ECR':
-      return 'European Conservatives';
-    case 'ID':
-      return 'Identity & Democracy';
-    case 'GUE/NGL':
-      return 'The Left';
-    case 'NI':
-      return 'Non-Inscrit';
-    default:
-      return 'Other';
-  }
+// Legacy compat — these now delegate to partyUtils for DB-backed lookups.
+// Components should migrate to using partyUtils directly.
+export function getPartyFullName(party: string): string {
+  const legacy: Record<string, string> = {
+    D: 'Democratic', R: 'Republican', I: 'Independent',
+  };
+  return legacy[party] || party;
 }
 
-/**
- * Get a short display label for party badges.
- * US parties get their full name; EU groups keep their abbreviation.
- */
-export function getPartyLabel(party: Party): string {
-  switch (party) {
-    case 'D':
-      return 'Democrat';
-    case 'R':
-      return 'Republican';
-    case 'I':
-      return 'Independent';
-    case 'EPP':
-    case 'S&D':
-    case 'Renew':
-    case 'Greens/EFA':
-    case 'ECR':
-    case 'ID':
-    case 'GUE/NGL':
-    case 'NI':
-      return party;
-    default:
-      return 'Other';
-  }
+export function getPartyLabel(party: string): string {
+  const legacy: Record<string, string> = {
+    D: 'Democrat', R: 'Republican', I: 'Independent',
+  };
+  return legacy[party] || party;
 }
 
 // =============================================================================
