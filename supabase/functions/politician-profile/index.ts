@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'supabase';
 import { corsHeaders } from '../_shared/cors.ts';
 
 interface PoliticianData {
@@ -9,6 +10,24 @@ interface PoliticianData {
   totalTrades: number;
   totalVolume: number;
   topTickers?: string[];
+}
+
+async function getPartyName(partyCode: string): Promise<string> {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    if (!supabaseUrl || !supabaseKey) {
+      // Fallback if no Supabase credentials
+      const fallback: Record<string, string> = { D: "Democratic", R: "Republican", I: "Independent" };
+      return fallback[partyCode] || partyCode || "Independent";
+    }
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { data } = await supabase.from("parties").select("name").eq("code", partyCode).single();
+    return data?.name || partyCode || "Independent";
+  } catch {
+    const fallback: Record<string, string> = { D: "Democratic", R: "Republican", I: "Independent" };
+    return fallback[partyCode] || partyCode || "Independent";
+  }
 }
 
 // TODO: Review serve handler - handles politician profile bio generation requests
@@ -31,6 +50,8 @@ serve(async (req) => {
       );
     }
 
+    const partyName = await getPartyName(politician.party);
+
     const ollamaApiKey = Deno.env.get("OLLAMA_API_KEY");
     const ollamaBaseUrl = Deno.env.get("OLLAMA_API_BASE") || "https://ollama.lefv.info";
 
@@ -38,7 +59,7 @@ serve(async (req) => {
       // Return fallback profile if no API key
       return new Response(
         JSON.stringify({
-          bio: generateFallbackBio(politician),
+          bio: generateFallbackBio(politician, partyName),
           source: "fallback",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -46,7 +67,7 @@ serve(async (req) => {
     }
 
     // Build prompt for ollama
-    const prompt = buildPrompt(politician);
+    const prompt = buildPrompt(politician, partyName);
 
     try {
       const response = await fetch(`${ollamaBaseUrl}/api/generate`, {
@@ -70,7 +91,7 @@ serve(async (req) => {
         console.error("Ollama API error:", response.status, await response.text());
         return new Response(
           JSON.stringify({
-            bio: generateFallbackBio(politician),
+            bio: generateFallbackBio(politician, partyName),
             source: "fallback",
             reason: "ollama_error",
           }),
@@ -83,7 +104,7 @@ serve(async (req) => {
 
       return new Response(
         JSON.stringify({
-          bio: cleanedBio || generateFallbackBio(politician),
+          bio: cleanedBio || generateFallbackBio(politician, partyName),
           source: cleanedBio ? "ollama" : "fallback",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -92,7 +113,7 @@ serve(async (req) => {
       console.error("Ollama connection error:", ollamaError);
       return new Response(
         JSON.stringify({
-          bio: generateFallbackBio(politician),
+          bio: generateFallbackBio(politician, partyName),
           source: "fallback",
           reason: "connection_error",
         }),
@@ -111,12 +132,17 @@ serve(async (req) => {
 // TODO: Review buildPrompt - constructs LLM prompt for biography generation
 // - Formats politician data into structured prompt
 // - Includes trading statistics and top securities
-function buildPrompt(politician: PoliticianData): string {
+function buildPrompt(politician: PoliticianData, partyName: string): string {
   const tickersList = politician.topTickers?.slice(0, 5).join(", ") || "various securities";
+
+  const chamberDisplay = politician.chamber?.toLowerCase().includes("rep") ? "Representative" :
+                         politician.chamber?.toLowerCase().includes("sen") ? "Senator" :
+                         politician.chamber?.toLowerCase() === "mep" || politician.chamber?.toLowerCase().includes("eu") ? "Member of the European Parliament" :
+                         politician.chamber || "Member of Congress";
 
   return `Write a 2-3 sentence professional biography. Start directly with the person's name - do not include any preamble, introduction, or "Here is..." text.
 
-Subject: ${politician.name}, a ${politician.party} ${politician.chamber} from ${politician.state}.
+Subject: ${politician.name}, a ${partyName} ${chamberDisplay} from ${politician.state}.
 Trading data: ${politician.totalTrades} disclosed trades, approximately $${formatVolume(politician.totalVolume)} in volume. Top securities: ${tickersList}.
 
 Requirements:
@@ -127,21 +153,18 @@ Requirements:
 }
 
 // TODO: Review generateFallbackBio - creates template-based biography when LLM unavailable
-// - Expands party abbreviations to full names
+// - Uses resolved party name from parties table
 // - Formats chamber type and trading statistics
-function generateFallbackBio(politician: PoliticianData): string {
-  const partyFull = politician.party === "D" ? "Democratic" :
-                    politician.party === "R" ? "Republican" :
-                    politician.party || "Independent";
-
+function generateFallbackBio(politician: PoliticianData, partyName: string): string {
   const chamberFull = politician.chamber?.toLowerCase().includes("rep") ? "Representative" :
                       politician.chamber?.toLowerCase().includes("sen") ? "Senator" :
+                      politician.chamber?.toLowerCase() === "mep" || politician.chamber?.toLowerCase().includes("eu") ? "Member of the European Parliament" :
                       politician.chamber || "Member of Congress";
 
   const tickersList = politician.topTickers?.slice(0, 3).join(", ");
   const tickersNote = tickersList ? ` Their most frequently traded securities include ${tickersList}.` : "";
 
-  return `${politician.name} is a ${partyFull} ${chamberFull} from ${politician.state || "the United States"}. According to public financial disclosure filings, they have reported ${politician.totalTrades} trades with an estimated trading volume of $${formatVolume(politician.totalVolume)}.${tickersNote}`;
+  return `${politician.name} is a ${partyName} ${chamberFull} from ${politician.state || "the United States"}. According to public financial disclosure filings, they have reported ${politician.totalTrades} trades with an estimated trading volume of $${formatVolume(politician.totalVolume)}.${tickersNote}`;
 }
 
 // TODO: Review formatVolume - formats dollar amounts with K/M/B suffixes
