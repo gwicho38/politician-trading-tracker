@@ -62,6 +62,9 @@ def find_or_create_politician(
         # Check if disclosure has bioguide_id
         if not bioguide_id:
             bioguide_id = disclosure.get("bioguide_id")
+        # Use party from disclosure if not already provided
+        if not party:
+            party = disclosure.get("party")
 
     # Build full name if not provided
     if not name and (first_name or last_name):
