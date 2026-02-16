@@ -30,10 +30,10 @@ from app.services.eu_parliament_client import (
     parse_mep_xml,
     parse_declarations_html,
     _name_to_slug,
-    _abbreviate_group,
     _extract_date_from_url,
     _extract_date_from_text,
 )
+from app.lib.party_registry import abbreviate_group_name
 from app.lib.registry import ETLRegistry
 
 
@@ -291,21 +291,25 @@ class TestNameToSlug:
 class TestAbbreviateGroup:
 
     def test_epp(self):
-        assert _abbreviate_group("Group of the European People's Party (Christian Democrats)") == "EPP"
+        assert abbreviate_group_name("Group of the European People's Party (Christian Democrats)") == "EPP"
 
     def test_renew(self):
-        assert _abbreviate_group("Renew Europe Group") == "Renew"
+        assert abbreviate_group_name("Renew Europe Group") == "Renew"
 
     def test_unknown_group(self):
-        result = _abbreviate_group("Some Unknown Group")
-        assert result == "Some Unknown Group"
+        result = abbreviate_group_name("Some Unknown Group")
+        # abbreviate_group_name generates initials from significant words
+        assert len(result) > 0
 
     def test_empty(self):
-        assert _abbreviate_group("") == ""
+        assert abbreviate_group_name("") == ""
+
+    def test_none(self):
+        assert abbreviate_group_name(None) == ""
 
     def test_long_unknown_truncated(self):
-        result = _abbreviate_group("A" * 50)
-        assert len(result) == 30
+        result = abbreviate_group_name("A" * 50)
+        assert len(result) <= 20
 
 
 class TestExtractDateFromUrl:

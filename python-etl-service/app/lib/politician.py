@@ -9,6 +9,8 @@ from typing import Any, Dict, Optional
 
 from supabase import Client
 
+from app.lib.party_registry import ensure_party_exists
+
 logger = logging.getLogger(__name__)
 
 
@@ -164,6 +166,11 @@ def find_or_create_politician(
             name_parts = clean_name.split()
             first_name = name_parts[0] if name_parts else clean_name
             last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
+
+        # Register party in parties table (auto-creates if unknown)
+        if party:
+            jurisdiction = "EU" if chamber == "eu_parliament" else "US"
+            ensure_party_exists(supabase, party, jurisdiction=jurisdiction)
 
         politician_data = {
             "name": clean_name,
