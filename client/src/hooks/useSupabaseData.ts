@@ -245,8 +245,29 @@ export const useTradingDisclosures = (options: {
   return useQuery({
     queryKey: ['tradingDisclosures', limit, offset, ticker, politicianId, transactionType, party, chamber, searchQuery, sortField, sortDirection, dateFrom, dateTo],
     queryFn: async () => {
-      // Use inner join when filtering by party or chamber to enable server-side filtering
-      const needsInnerJoin = party || chamber;
+      // When filtering by chamber or party, pre-query politician IDs to avoid
+      // PostgREST inner join timeout. The inner join approach forces PostgreSQL
+      // to scan all disclosures (126K+ rows) checking each row's join — which
+      // times out when the filter matches zero/few politicians (e.g. MEP).
+      let politicianIds: string[] | null = null;
+      if (chamber || party) {
+        let pQuery = supabase.from('politicians').select('id');
+        if (chamber) pQuery = pQuery.eq('role', chamber);
+        if (party) pQuery = pQuery.eq('party', party);
+
+        const { data: pData } = await pQuery;
+        politicianIds = (pData || []).map((p: { id: string }) => p.id);
+
+        // Short-circuit: no matching politicians means no matching disclosures
+        if (politicianIds.length === 0) {
+          return { disclosures: [], total: 0 };
+        }
+      }
+
+      // Use IN clause for small politician sets (fast, avoids inner join timeout).
+      // Fall back to inner join for large sets where IN clause URL would be too long.
+      const useInClause = politicianIds && politicianIds.length <= 150;
+      const needsInnerJoin = (party || chamber) && !useInClause;
       const selectQuery = needsInnerJoin
         ? `*, politician:politicians!inner(*)`
         : `*, politician:politicians(*)`;
@@ -257,6 +278,11 @@ export const useTradingDisclosures = (options: {
         .eq('status', 'active')
         .order(sortField, { ascending: sortDirection === 'asc' })
         .range(offset, offset + limit - 1);
+
+      // Apply pre-queried politician IDs filter (replaces inner join filter)
+      if (useInClause) {
+        query = query.in('politician_id', politicianIds!);
+      }
 
       // Filter out unknown transaction types by default (unless explicitly filtering by type)
       if (!transactionType) {
@@ -289,13 +315,13 @@ export const useTradingDisclosures = (options: {
       if (dateTo) {
         query = query.lte('disclosure_date', dateTo);
       }
-      // Filter by party server-side using the inner join
+      // Filter by party server-side using the inner join (only when IN clause not used)
       // Use double-quoting for PostgREST to handle special chars in party names (e.g. "S&D", "Greens/EFA")
-      if (party) {
+      if (party && !useInClause) {
         query = query.filter('politician.party', 'eq', `"${party}"`);
       }
-      // Filter by chamber (role) server-side using the inner join
-      if (chamber) {
+      // Filter by chamber (role) server-side using the inner join (only when IN clause not used)
+      if (chamber && !useInClause) {
         query = query.eq('politician.role', chamber);
       }
 
