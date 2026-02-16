@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -6,6 +6,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { TrendingUp, DollarSign, Users, FileText, Activity } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
 import { logError } from '@/lib/logger';
+import { useParties } from '@/hooks/useParties';
+import { buildPartyMap, getPartyColor } from '@/lib/partyUtils';
 
 type DashboardStats = Tables<'dashboard_stats'>;
 type ChartData = Tables<'chart_data'>;
@@ -16,6 +18,8 @@ const AdminAnalytics = () => {
   const [partyBreakdown, setPartyBreakdown] = useState<{ name: string; value: number }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+  const { data: parties = [] } = useParties();
+  const partyMap = useMemo(() => buildPartyMap(parties), [parties]);
 
   useEffect(() => {
     const fetchAnalytics = async () => {
@@ -66,20 +70,6 @@ const AdminAnalytics = () => {
       notation: 'compact',
       maximumFractionDigits: 1,
     }).format(value);
-  };
-
-  const PARTY_COLORS = {
-    Democrat: 'hsl(220, 80%, 55%)',
-    Republican: 'hsl(0, 72%, 51%)',
-    Independent: 'hsl(45, 90%, 50%)',
-    Unknown: 'hsl(220, 10%, 50%)',
-  };
-
-  const getPartyColor = (party: string) => {
-    if (party.toLowerCase().includes('democrat')) return PARTY_COLORS.Democrat;
-    if (party.toLowerCase().includes('republican')) return PARTY_COLORS.Republican;
-    if (party.toLowerCase().includes('independent')) return PARTY_COLORS.Independent;
-    return PARTY_COLORS.Unknown;
   };
 
   if (isLoading) {
@@ -223,7 +213,7 @@ const AdminAnalytics = () => {
                     label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                   >
                     {partyBreakdown.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={getPartyColor(entry.name)} />
+                      <Cell key={`cell-${index}`} fill={getPartyColor(partyMap, entry.name)} />
                     ))}
                   </Pie>
                   <Tooltip

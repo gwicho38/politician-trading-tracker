@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { usePagination } from '@/hooks/usePagination';
 import { PaginationControls } from '@/components/PaginationControls';
@@ -13,9 +13,10 @@ import type { Tables } from '@/integrations/supabase/types';
 import PoliticianForm from './PoliticianForm';
 import TradeForm from './TradeForm';
 import { formatCurrencyCompact, formatDate as formatDateUtil } from '@/lib/formatters';
-import { toParty, getPartyLabel } from '@/lib/typeGuards';
 import { formatChamber } from '@/lib/utils';
 import { logError } from '@/lib/logger';
+import { useParties } from '@/hooks/useParties';
+import { buildPartyMap, getPartyLabel, partyColorStyle, partyBadgeStyle } from '@/lib/partyUtils';
 
 type Politician = Tables<'politicians'>;
 type Trade = Tables<'trades'>;
@@ -34,6 +35,8 @@ const AdminContentManagement = () => {
   const [editingPolitician, setEditingPolitician] = useState<Politician | null>(null);
   const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
   const { toast } = useToast();
+  const { data: partiesData = [] } = useParties();
+  const partyMap = useMemo(() => buildPartyMap(partiesData), [partiesData]);
 
   // Separate pagination for each tab
   const politiciansPagination = usePagination();
@@ -124,12 +127,6 @@ const AdminContentManagement = () => {
   // formatCurrencyCompact and formatDateUtil are imported from '@/lib/formatters'
   const formatCurrency = formatCurrencyCompact;
   const formatDate = (dateString: string) => formatDateUtil(dateString);
-
-  const getPartyBadgeVariant = (party: string) => {
-    if (party.toLowerCase().includes('democrat')) return 'default';
-    if (party.toLowerCase().includes('republican')) return 'destructive';
-    return 'secondary';
-  };
 
   const openEditPolitician = (politician: Politician) => {
     setEditingPolitician(politician);
@@ -235,8 +232,11 @@ const AdminContentManagement = () => {
                       <TableRow key={politician.id}>
                         <TableCell className="font-medium">{politician.name}</TableCell>
                         <TableCell>
-                          <Badge variant={getPartyBadgeVariant(politician.party)}>
-                            {getPartyLabel(toParty(politician.party))}
+                          <Badge
+                            variant="outline"
+                            style={{...partyBadgeStyle(partyMap, politician.party), ...partyColorStyle(partyMap, politician.party)}}
+                          >
+                            {getPartyLabel(partyMap, politician.party)}
                           </Badge>
                         </TableCell>
                         <TableCell>{formatChamber(politician.chamber)}</TableCell>
