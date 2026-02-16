@@ -55,9 +55,38 @@ vi.mock('@/hooks/usePagination', () => ({
 // Mock mockData
 vi.mock('@/lib/mockData', () => ({
   formatCurrency: (value: number | undefined) => value ? `$${value.toLocaleString()}` : '$0',
-  getPartyColor: (party: string) => party === 'D' ? 'text-blue-600' : party === 'R' ? 'text-red-600' : 'text-gray-600',
-  getPartyBg: (party: string) => party === 'D' ? 'bg-blue-100' : party === 'R' ? 'bg-red-100' : 'bg-gray-100',
 }));
+
+// Mock useParties hook
+vi.mock('@/hooks/useParties', () => ({
+  useParties: () => ({ data: [
+    { id: '1', code: 'D', name: 'Democratic', short_name: 'Democrat', jurisdiction: 'US', color: '#3B82F6' },
+    { id: '2', code: 'R', name: 'Republican', short_name: 'Republican', jurisdiction: 'US', color: '#EF4444' },
+    { id: '3', code: 'I', name: 'Independent', short_name: 'Independent', jurisdiction: 'US', color: '#EAB308' },
+  ] }),
+}));
+
+// Mock partyUtils
+vi.mock('@/lib/partyUtils', () => {
+  const buildPartyMap = (parties: { code: string; short_name: string; color: string }[]) => {
+    return new Map(parties.map(p => [p.code, p]));
+  };
+  return {
+    buildPartyMap,
+    getPartyLabel: (_map: Map<string, { short_name: string }>, code: string) => {
+      const labels: Record<string, string> = { D: 'Democrat', R: 'Republican', I: 'Independent' };
+      return labels[code] || code;
+    },
+    partyColorStyle: () => ({ color: '#3B82F6' }),
+    partyBadgeStyle: () => ({ backgroundColor: '#3B82F633', borderColor: '#3B82F64D' }),
+    buildPartyFilterOptions: () => [
+      { value: '', label: 'All Parties' },
+      { value: 'D', label: 'Democrat' },
+      { value: 'R', label: 'Republican' },
+      { value: 'I', label: 'Independent' },
+    ],
+  };
+});
 
 import PoliticiansView from './PoliticiansView';
 

@@ -54,7 +54,6 @@ vi.mock('@/hooks/usePagination', () => ({
 
 // Mock type guards (they're already tested separately)
 vi.mock('@/lib/typeGuards', () => ({
-  toParty: (value: unknown) => value || 'Other',
   toDisplayTransactionType: (value: unknown) => {
     if (value === 'purchase') return 'buy';
     if (value === 'sale') return 'sell';

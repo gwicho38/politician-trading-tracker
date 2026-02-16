@@ -19,6 +19,8 @@ from xml.etree import ElementTree
 import httpx
 from bs4 import BeautifulSoup
 
+from app.lib.party_registry import abbreviate_group_name
+
 logger = logging.getLogger(__name__)
 
 MEP_LIST_URL = "https://www.europarl.europa.eu/meps/en/full-list/xml"
@@ -245,7 +247,7 @@ def parse_mep_xml(xml_text: str) -> List[Dict[str, str]]:
                 "mep_id": mep_id,
                 "full_name": full_name,
                 "country": (country_el.text or "").strip() if country_el is not None else "",
-                "political_group": _abbreviate_group(
+                "political_group": abbreviate_group_name(
                     (group_el.text or "").strip() if group_el is not None else ""
                 ),
                 "national_party": (
@@ -332,23 +334,6 @@ def _name_to_slug(name: str) -> str:
     slug = re.sub(r"\s+", "+", slug)
     return slug
 
-
-def _abbreviate_group(full_name: str) -> str:
-    """Abbreviate EU Parliament political group names."""
-    abbreviations = {
-        "Group of the European People's Party": "EPP",
-        "Group of the Progressive Alliance": "S&D",
-        "Renew Europe Group": "Renew",
-        "Group of the Greens": "Greens/EFA",
-        "European Conservatives and Reformists": "ECR",
-        "Identity and Democracy": "ID",
-        "The Left group": "GUE/NGL",
-        "Non-attached Members": "NI",
-    }
-    for pattern, abbrev in abbreviations.items():
-        if pattern.lower() in full_name.lower():
-            return abbrev
-    return full_name[:30] if full_name else ""
 
 
 def _extract_date_from_url(url: str) -> Optional[str]:
