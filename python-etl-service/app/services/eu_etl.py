@@ -97,7 +97,7 @@ SKIP_PATTERNS = [
     re.compile(r"identity\s+of\s+the\s+third\s+party", re.IGNORECASE),
     re.compile(r"unofficial\s+grouping", re.IGNORECASE),
     re.compile(r"^\(\*?\)\s*$"),
-    re.compile(r"^EN\s*$"),
+    re.compile(r"^(?:EN|NL|FR|DE|ES|IT|PT|PL|RO|HU|EL|CS|DA|SV|FI|SK|BG|HR|LT|LV|ET|SL|GA|MT)\s*$"),
     re.compile(r"^with\s+the\s+parliament", re.IGNORECASE),
     re.compile(r"boards\s+or\s+committees\s+of\s+companies", re.IGNORECASE),
     re.compile(r"previous\s+mandate\s+as\s+mep", re.IGNORECASE),
@@ -111,6 +111,35 @@ SKIP_PATTERNS = [
     re.compile(r"additional\s+information\s+i\s+wish", re.IGNORECASE),
     re.compile(r"^holding\s+which\s+gives", re.IGNORECASE),
     re.compile(r"^with\s+potential\s+public", re.IGNORECASE),
+    # Dutch boilerplate
+    re.compile(r"overeenkomstig\s+artikel", re.IGNORECASE),
+    re.compile(r"gedragscode", re.IGNORECASE),
+    re.compile(r"^geen\s*$", re.IGNORECASE),
+    re.compile(r"^bedrag\s+inkomsten", re.IGNORECASE),
+    re.compile(r"^aard\s+van\s+het", re.IGNORECASE),
+    re.compile(r"^periodiciteit\s*$", re.IGNORECASE),
+    re.compile(r"gegenereerde\s+inkomsten", re.IGNORECASE),
+    re.compile(r"^gebied\s+en\s+aard", re.IGNORECASE),
+    re.compile(r"^deelname\s+of\s+werkzaamheid", re.IGNORECASE),
+    re.compile(r"^deelname\s+in\s+een", re.IGNORECASE),
+    re.compile(r"^deelname\s+met", re.IGNORECASE),
+    re.compile(r"^onderneming", re.IGNORECASE),
+    re.compile(r"^voordeel\s*\(", re.IGNORECASE),
+    re.compile(r"^zie\s+hierboven", re.IGNORECASE),
+    # French boilerplate
+    re.compile(r"^montant\s+des\s+revenus", re.IGNORECASE),
+    re.compile(r"^nature\s+de\s+l", re.IGNORECASE),
+    re.compile(r"^périodicité", re.IGNORECASE),
+    re.compile(r"^néant\s*$", re.IGNORECASE),
+    re.compile(r"^aucun\s*$", re.IGNORECASE),
+    re.compile(r"^domaine\s+et\s+nature", re.IGNORECASE),
+    re.compile(r"^voir\s+ci-dessus", re.IGNORECASE),
+    # German boilerplate
+    re.compile(r"^betrag\s+der\s+einkünfte", re.IGNORECASE),
+    re.compile(r"^art\s+des\s+vorteils", re.IGNORECASE),
+    re.compile(r"^regelmäßigkeit", re.IGNORECASE),
+    re.compile(r"^keine\s*$", re.IGNORECASE),
+    re.compile(r"^siehe\s+oben", re.IGNORECASE),
 ]
 
 # Batch size for MEP processing
@@ -385,10 +414,11 @@ def extract_financial_interests(text: str) -> List[Dict[str, Any]]:
 
         for entry in entries:
             value_low, value_high = _extract_income_range(entry["text"])
+            entity = _clean_entity_name(entry["entity"])
 
             interests.append(
                 {
-                    "entity": entry["entity"],
+                    "entity": entity,
                     "section": section_letter,
                     "asset_type": asset_type,
                     "transaction_type": transaction_type,
@@ -472,32 +502,51 @@ def _parse_section_entries(
 
 def _extract_income_range(text: str) -> tuple:
     """
-    Try to extract income category from EU DPI text.
+    Try to extract income/amount from EU DPI text.
 
-    EU income categories for Section B:
-    - Category 1: EUR 1 - EUR 499
-    - Category 2: EUR 500 - EUR 999
-    - Category 3: EUR 1,000 - EUR 4,999
-    - Category 4: EUR 5,000 - EUR 9,999
-    - Category 5: EUR 10,000 or more
+    Handles multiple formats found across 24 EU languages:
+    - EUR ranges: "EUR 5,000 - EUR 9,999"
+    - Single amounts (EUR before): "EUR 2,500" or "€2500"
+    - Single amounts (EUR after): "2500 EUR" or "2 500 EUR" (common in Dutch/French/German PDFs)
+    - EU income categories: "Category 1" through "Category 5"
 
     Returns:
         (value_low, value_high) or (None, None)
     """
     text_lower = text.lower()
 
-    # Direct EUR range patterns
+    # Direct EUR range patterns (two amounts separated by dash)
     eur_range = re.search(
-        r"(?:eur|€)\s*([\d,.]+)\s*[-–—to]+\s*(?:eur|€)?\s*([\d,.]+)",
+        r"(?:eur|€)\s*([\d,.\s]+?)\s*[-–—]+\s*(?:eur|€)?\s*([\d,.\s]+?)(?:\s|$|[a-z])",
         text_lower,
     )
     if eur_range:
         try:
-            low = float(eur_range.group(1).replace(",", "").replace(".", ""))
-            high = float(eur_range.group(2).replace(",", "").replace(".", ""))
-            return (low, high)
+            low = _parse_eur_number(eur_range.group(1))
+            high = _parse_eur_number(eur_range.group(2))
+            if low is not None and high is not None:
+                return (low, high)
         except ValueError:
             pass
+
+    # Single amount: "NUMBER EUR" format (e.g. "2500 EUR", "2 500 EUR")
+    num_before_eur = re.search(
+        r"([\d][\d,.\s]*)\s*(?:eur|€)", text_lower
+    )
+    if num_before_eur:
+        val = _parse_eur_number(num_before_eur.group(1))
+        if val is not None and val > 0:
+            return (val, val)
+
+    # Single amount: "EUR NUMBER" or "€NUMBER" format (e.g. "EUR 2500", "€2,500")
+    eur_before_num = re.search(
+        r"(?:eur|€)\s*([\d][\d,.\s]*?)(?:\s*(?:per|par|pro|/|$)|\s+[a-z]|$)",
+        text_lower,
+    )
+    if eur_before_num:
+        val = _parse_eur_number(eur_before_num.group(1))
+        if val is not None and val > 0:
+            return (val, val)
 
     # Category-based patterns
     category_ranges = [
@@ -512,6 +561,78 @@ def _extract_income_range(text: str) -> tuple:
             return (float(low), float(high) if high else None)
 
     return (None, None)
+
+
+def _parse_eur_number(s: str) -> Optional[float]:
+    """
+    Parse a European-format number string to float.
+
+    Handles: "2500", "2,500", "2.500", "2 500", "5,000.00"
+    """
+    cleaned = s.strip().replace(" ", "")
+    if not cleaned:
+        return None
+    # If both , and . present, the last one is the decimal separator
+    if "," in cleaned and "." in cleaned:
+        if cleaned.rindex(",") > cleaned.rindex("."):
+            # comma is decimal: 2.500,00
+            cleaned = cleaned.replace(".", "").replace(",", ".")
+        else:
+            # period is decimal: 2,500.00
+            cleaned = cleaned.replace(",", "")
+    elif "," in cleaned:
+        # Could be decimal (1,5) or thousands (1,000)
+        parts = cleaned.split(",")
+        if len(parts) == 2 and len(parts[1]) == 3:
+            # Thousands separator: 2,500
+            cleaned = cleaned.replace(",", "")
+        else:
+            # Decimal separator: 1,5
+            cleaned = cleaned.replace(",", ".")
+    elif "." in cleaned:
+        parts = cleaned.split(".")
+        if len(parts) == 2 and len(parts[1]) == 3 and len(parts[0]) >= 1:
+            # Thousands separator (European style): 2.500
+            cleaned = cleaned.replace(".", "")
+        # else: decimal separator (English style): 2.5
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+# Pattern to strip EUR amounts and periodicity from entity names
+_EUR_AMOUNT_PATTERN = re.compile(
+    r"\s*[\d][\d,.\s]*\s*(?:eur|€)(?:\s+(?:per|par|pro)\s+\w+)?\s*",
+    re.IGNORECASE,
+)
+_EUR_PREFIX_PATTERN = re.compile(
+    r"\s*(?:eur|€)\s*[\d][\d,.\s]*(?:\s+(?:per|par|pro)\s+\w+)?\s*",
+    re.IGNORECASE,
+)
+
+
+def _clean_entity_name(entity: str) -> str:
+    """
+    Remove EUR amount text from entity names.
+
+    pdfplumber merges table columns, so amounts like "2500 EUR per maand"
+    end up appended to entity names. Strip them out.
+
+    Examples:
+        "NBX 2500 EUR per maand" -> "NBX"
+        "Uhasselt EUR 600" -> "Uhasselt"
+        "Company X" -> "Company X"  (no amount, unchanged)
+    """
+    cleaned = _EUR_AMOUNT_PATTERN.sub(" ", entity)
+    cleaned = _EUR_PREFIX_PATTERN.sub(" ", cleaned)
+    # Also strip "X" markers (no-income indicator in DPI tables)
+    cleaned = re.sub(r"\s+X\s*$", "", cleaned)
+    # Collapse whitespace
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    # Strip trailing separators
+    cleaned = cleaned.rstrip("- ")
+    return cleaned if cleaned else entity
 
 
 def _split_mep_name(full_name: str) -> tuple:
