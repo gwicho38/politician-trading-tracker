@@ -1661,6 +1661,53 @@ def eu_trigger(limit: int | None, wait: bool, update: bool):
         raise SystemExit(1)
 
 
+@etl.command(name="uk-trigger")
+@click.option("--limit", "-l", type=int, default=None, help="Limit number of MPs to process (for testing)")
+@click.option("--wait", "-w", is_flag=True, help="Wait for job to complete")
+@click.option("--update", "-u", is_flag=True, help="Update mode: upsert existing records instead of skipping duplicates")
+def uk_trigger(limit: int | None, wait: bool, update: bool):
+    """
+    Trigger UK Parliament ETL job.
+
+    Fetches MP financial interest declarations from the UK Parliament
+    Register of Interests API and uploads to Supabase.
+
+    Examples:
+        mcli run etl uk-trigger                    # Process all MPs
+        mcli run etl uk-trigger --limit 10         # Test with 10 MPs
+        mcli run etl uk-trigger --limit 5 -w       # Test and wait for completion
+        mcli run etl uk-trigger -u -w              # Re-process all, updating existing records
+    """
+    limit_msg = f" (limit: {limit} MPs)" if limit else " (all MPs)"
+    update_msg = " [UPDATE MODE]" if update else ""
+    click.echo(f"Triggering UK Parliament ETL{limit_msg}{update_msg}...")
+
+    payload = {"source": "uk_parliament"}
+    if limit:
+        payload["limit"] = limit
+    if update:
+        payload["update_mode"] = True
+
+    try:
+        response = _etl_post("/etl/trigger", json=payload)
+        response.raise_for_status()
+        data = response.json()
+
+        job_id = data["job_id"]
+        click.echo(f"Job started: {job_id}")
+        click.echo(f"Message: {data['message']}")
+
+        if wait:
+            click.echo("\nWaiting for completion...")
+            _wait_for_job(job_id)
+        else:
+            click.echo(f"\nTo check status: mcli run etl status {job_id}")
+
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
 @etl.command(name="dedup")
 @click.option("--dry-run", "-d", is_flag=True, help="Preview without making changes")
 @click.option("--limit", "-l", type=int, default=50, help="Maximum groups to process")
