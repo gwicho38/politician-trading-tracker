@@ -60,87 +60,83 @@ SAMPLE_MEMBERS_RESPONSE = {
 SAMPLE_INTERESTS_RESPONSE = {
     "items": [
         {
-            "value": {
-                "id": 14465,
-                "summary": "Writing articles - Associated Newspapers Ltd",
-                "registrationDate": "2026-02-02",
-                "publishedDate": "2026-02-10",
-                "updatedDates": [],
-                "category": {
-                    "id": 12,
-                    "name": "Employment and earnings",
-                    "number": "1",
+            "id": 14465,
+            "summary": "Writing articles - Associated Newspapers Ltd",
+            "registrationDate": "2026-02-02",
+            "publishedDate": "2026-02-10",
+            "updatedDates": [],
+            "category": {
+                "id": 12,
+                "name": "Employment and earnings",
+                "number": "1",
+            },
+            "member": {
+                "id": 4514,
+                "nameDisplayAs": "Keir Starmer",
+                "party": "Labour",
+                "memberFrom": "Holborn and St Pancras",
+            },
+            "fields": [
+                {"name": "JobTitle", "value": "Writing articles"},
+                {
+                    "name": "PayerName",
+                    "value": "Associated Newspapers Ltd",
                 },
-                "member": {
-                    "id": 4514,
-                    "nameDisplayAs": "Keir Starmer",
-                    "party": "Labour",
-                    "memberFrom": "Holborn and St Pancras",
-                },
-                "fields": [
-                    {"name": "JobTitle", "value": "Writing articles"},
-                    {
-                        "name": "PayerName",
-                        "value": "Associated Newspapers Ltd",
-                    },
-                ],
-                "childInterests": [
-                    {
-                        "id": 14466,
-                        "summary": "Payment of GBP 850",
-                        "registrationDate": "2026-02-02",
-                        "publishedDate": "2026-02-10",
-                        "fields": [
-                            {"name": "ReceivedDate", "value": "2026-01-29"},
-                            {
-                                "name": "Value",
-                                "value": "850.00",
-                                "typeInfo": {"currencyCode": "GBP"},
-                            },
-                            {"name": "HoursWorked", "value": "4.00"},
-                            {"name": "PaymentType", "value": "Monetary"},
-                        ],
-                        "rectified": False,
-                    }
-                ],
-                "rectified": False,
-            }
+            ],
+            "childInterests": [
+                {
+                    "id": 14466,
+                    "summary": "Payment of GBP 850",
+                    "registrationDate": "2026-02-02",
+                    "publishedDate": "2026-02-10",
+                    "fields": [
+                        {"name": "ReceivedDate", "value": "2026-01-29"},
+                        {
+                            "name": "Value",
+                            "value": "850.00",
+                            "typeInfo": {"currencyCode": "GBP"},
+                        },
+                        {"name": "HoursWorked", "value": "4.00"},
+                        {"name": "PaymentType", "value": "Monetary"},
+                    ],
+                    "rectified": False,
+                }
+            ],
+            "rectified": False,
         },
         {
-            "value": {
-                "id": 5000,
-                "summary": "Acme Holdings Ltd - Software and Technology",
-                "registrationDate": "2025-08-01",
-                "publishedDate": "2025-08-15",
-                "updatedDates": [],
-                "category": {
-                    "id": 8,
-                    "name": "Shareholdings",
-                    "number": "7",
+            "id": 5000,
+            "summary": "Acme Holdings Ltd - Software and Technology",
+            "registrationDate": "2025-08-01",
+            "publishedDate": "2025-08-15",
+            "updatedDates": [],
+            "category": {
+                "id": 8,
+                "name": "Shareholdings",
+                "number": "7",
+            },
+            "member": {
+                "id": 4514,
+                "nameDisplayAs": "Keir Starmer",
+                "party": "Labour",
+                "memberFrom": "Holborn and St Pancras",
+            },
+            "fields": [
+                {
+                    "name": "OrganisationName",
+                    "value": "Acme Holdings Ltd",
                 },
-                "member": {
-                    "id": 4514,
-                    "nameDisplayAs": "Keir Starmer",
-                    "party": "Labour",
-                    "memberFrom": "Holborn and St Pancras",
+                {
+                    "name": "OrganisationDescription",
+                    "value": "Software and Technology",
                 },
-                "fields": [
-                    {
-                        "name": "OrganisationName",
-                        "value": "Acme Holdings Ltd",
-                    },
-                    {
-                        "name": "OrganisationDescription",
-                        "value": "Software and Technology",
-                    },
-                    {
-                        "name": "ShareholdingThreshold",
-                        "value": "(i) over 15% of issued share capital",
-                    },
-                ],
-                "childInterests": [],
-                "rectified": False,
-            }
+                {
+                    "name": "ShareholdingThreshold",
+                    "value": "(i) over 15% of issued share capital",
+                },
+            ],
+            "childInterests": [],
+            "rectified": False,
         },
     ],
     "totalResults": 2,
@@ -489,39 +485,39 @@ class TestParseInterest:
 
     def test_parent_interest_without_children_produces_one_record(self):
         """Shareholding (no children) produces exactly one record."""
-        interest = SAMPLE_INTERESTS_RESPONSE["items"][1]["value"]
+        interest = SAMPLE_INTERESTS_RESPONSE["items"][1]
         records = self.service._parse_interest(interest, self.mp)
         assert len(records) == 1
 
     def test_parent_with_children_produces_child_records(self):
         """Employment with 1 child payment produces 1 child record."""
-        interest = SAMPLE_INTERESTS_RESPONSE["items"][0]["value"]
+        interest = SAMPLE_INTERESTS_RESPONSE["items"][0]
         records = self.service._parse_interest(interest, self.mp)
         assert len(records) == 1  # 1 child interest
 
     def test_shareholding_maps_to_holding(self):
-        interest = SAMPLE_INTERESTS_RESPONSE["items"][1]["value"]
+        interest = SAMPLE_INTERESTS_RESPONSE["items"][1]
         records = self.service._parse_interest(interest, self.mp)
         assert records[0]["transaction_type"] == "holding"
 
     def test_employment_child_maps_to_income(self):
-        interest = SAMPLE_INTERESTS_RESPONSE["items"][0]["value"]
+        interest = SAMPLE_INTERESTS_RESPONSE["items"][0]
         records = self.service._parse_interest(interest, self.mp)
         assert records[0]["transaction_type"] == "income"
 
     def test_extracts_asset_name_from_summary(self):
-        interest = SAMPLE_INTERESTS_RESPONSE["items"][1]["value"]
+        interest = SAMPLE_INTERESTS_RESPONSE["items"][1]
         records = self.service._parse_interest(interest, self.mp)
         assert "Acme Holdings Ltd" in records[0]["asset_name"]
 
     def test_extracts_gbp_amount_from_child(self):
-        interest = SAMPLE_INTERESTS_RESPONSE["items"][0]["value"]
+        interest = SAMPLE_INTERESTS_RESPONSE["items"][0]
         records = self.service._parse_interest(interest, self.mp)
         assert records[0]["value_low"] == 850.0
         assert records[0]["value_high"] == 850.0
 
     def test_sets_politician_fields(self):
-        interest = SAMPLE_INTERESTS_RESPONSE["items"][1]["value"]
+        interest = SAMPLE_INTERESTS_RESPONSE["items"][1]
         records = self.service._parse_interest(interest, self.mp)
         r = records[0]
         assert r["politician_name"] == "Keir Starmer"
@@ -533,21 +529,21 @@ class TestParseInterest:
         assert r["district"] == "Holborn and St Pancras"
 
     def test_sets_source_fields(self):
-        interest = SAMPLE_INTERESTS_RESPONSE["items"][1]["value"]
+        interest = SAMPLE_INTERESTS_RESPONSE["items"][1]
         records = self.service._parse_interest(interest, self.mp)
         r = records[0]
         assert r["source"] == "uk_parliament"
         assert r["doc_id"] == "5000"
 
     def test_sets_dates(self):
-        interest = SAMPLE_INTERESTS_RESPONSE["items"][1]["value"]
+        interest = SAMPLE_INTERESTS_RESPONSE["items"][1]
         records = self.service._parse_interest(interest, self.mp)
         r = records[0]
         assert r["filing_date"] == "2025-08-01"
         assert r["transaction_date"] == "2025-08-01"
 
     def test_child_uses_received_date(self):
-        interest = SAMPLE_INTERESTS_RESPONSE["items"][0]["value"]
+        interest = SAMPLE_INTERESTS_RESPONSE["items"][0]
         records = self.service._parse_interest(interest, self.mp)
         assert records[0]["transaction_date"] == "2026-01-29"
 
@@ -565,7 +561,7 @@ class TestParseInterest:
         assert len(records[0]["asset_name"]) <= 200
 
     def test_stores_bioguide_id(self):
-        interest = SAMPLE_INTERESTS_RESPONSE["items"][1]["value"]
+        interest = SAMPLE_INTERESTS_RESPONSE["items"][1]
         records = self.service._parse_interest(interest, self.mp)
         assert records[0]["bioguide_id"] == "4514"
 
@@ -583,12 +579,12 @@ class TestParseInterest:
         assert records[0]["transaction_type"] == "other"
 
     def test_child_doc_id_uses_child_id(self):
-        interest = SAMPLE_INTERESTS_RESPONSE["items"][0]["value"]
+        interest = SAMPLE_INTERESTS_RESPONSE["items"][0]
         records = self.service._parse_interest(interest, self.mp)
         assert records[0]["doc_id"] == "14466"
 
     def test_child_raw_data_includes_parent_id(self):
-        interest = SAMPLE_INTERESTS_RESPONSE["items"][0]["value"]
+        interest = SAMPLE_INTERESTS_RESPONSE["items"][0]
         records = self.service._parse_interest(interest, self.mp)
         assert records[0]["raw_data"]["parent_interest_id"] == 14465
 
@@ -779,8 +775,8 @@ class TestRunIncremental:
             },
         ]
 
-        interests_mp1 = [SAMPLE_INTERESTS_RESPONSE["items"][1]["value"]]
-        interests_mp2 = [SAMPLE_INTERESTS_RESPONSE["items"][0]["value"]]
+        interests_mp1 = [SAMPLE_INTERESTS_RESPONSE["items"][1]]
+        interests_mp2 = [SAMPLE_INTERESTS_RESPONSE["items"][0]]
 
         with (
             patch.object(
@@ -968,7 +964,7 @@ class TestRunIncremental:
                 service,
                 "_fetch_mp_interests",
                 new_callable=AsyncMock,
-                return_value=[SAMPLE_INTERESTS_RESPONSE["items"][1]["value"]],
+                return_value=[SAMPLE_INTERESTS_RESPONSE["items"][1]],
             ),
             patch.object(service, "on_start", new_callable=AsyncMock),
             patch.object(service, "on_complete", new_callable=AsyncMock),

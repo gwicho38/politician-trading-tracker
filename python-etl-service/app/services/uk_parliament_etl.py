@@ -206,8 +206,8 @@ class UKParliamentETLService(BaseETLService):
 
                 items = data.get("items", [])
                 for item in items:
-                    interest = item.get("value", {})
-                    interests.append(interest)
+                    # Interests API returns items directly (no "value" wrapper)
+                    interests.append(item)
 
                 total = data.get("totalResults", 0)
                 skip += len(items)
