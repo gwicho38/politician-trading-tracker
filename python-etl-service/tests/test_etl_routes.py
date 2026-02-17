@@ -125,12 +125,12 @@ class TestListSources:
         source_ids = [s["source_id"] for s in data["sources"]]
         assert "california" in source_ids
 
-    def test_list_sources_has_five_sources(self, client):
-        """GET /etl/sources returns all 5 registered sources."""
+    def test_list_sources_has_six_sources(self, client):
+        """GET /etl/sources returns all 6 registered sources."""
         response = client.get("/etl/sources")
         data = response.json()
 
-        assert len(data["sources"]) == 5
+        assert len(data["sources"]) == 6
 
 
 # =============================================================================

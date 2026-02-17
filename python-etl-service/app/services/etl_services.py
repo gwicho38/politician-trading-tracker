@@ -226,3 +226,4 @@ class SenateETLService(BaseETLService):
 import app.services.quiver_etl  # noqa: F401 - QuiverQuant Congress Trading
 import app.services.eu_etl  # noqa: F401 - EU Parliament Declarations (stub)
 import app.services.california_etl  # noqa: F401 - California Disclosures (stub)
+import app.services.uk_parliament_etl  # noqa: F401 - UK Parliament Interests
