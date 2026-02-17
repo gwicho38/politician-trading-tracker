@@ -66,12 +66,12 @@ const TRANSACTION_TYPES = [
 
 // Party options are now built dynamically from the parties table via useParties()
 
-// Chamber options (value matches politician.role in the database)
-const CHAMBER_OPTIONS = [
-  { value: '', label: 'All Chambers' },
-  { value: 'Representative', label: 'House' },
-  { value: 'Senator', label: 'Senate' },
-  { value: 'MEP', label: 'EU Parliament' },
+// Jurisdiction options for filtering by country
+const JURISDICTION_OPTIONS = [
+  { value: '', label: 'All Jurisdictions' },
+  { value: 'us', label: 'US' },
+  { value: 'uk', label: 'UK' },
+  { value: 'eu', label: 'EU' },
 ];
 
 // Sortable column configuration
@@ -111,7 +111,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [transactionType, setTransactionType] = useState('');
   const [party, setParty] = useState('');
-  const [chamber, setChamber] = useState('');
+  const [jurisdiction, setJurisdiction] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -163,7 +163,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
     searchQuery: debouncedSearch || undefined,
     transactionType: transactionType || undefined,
     party: party || undefined,
-    chamber: chamber || undefined,
+    jurisdiction: jurisdiction || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     sortField,
@@ -175,7 +175,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
   const totalPages = Math.ceil(total / ROWS_PER_PAGE);
 
   // Check if any filters are active
-  const hasActiveFilters = debouncedSearch || transactionType || party || chamber || dateFrom || dateTo;
+  const hasActiveFilters = debouncedSearch || transactionType || party || jurisdiction || dateFrom || dateTo;
 
   // Clear all filters
   const clearFilters = () => {
@@ -183,7 +183,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
     setDebouncedSearch('');
     setTransactionType('');
     setParty('');
-    setChamber('');
+    setJurisdiction('');
     setDateFrom('');
     setDateTo('');
     setPage(0);
@@ -346,15 +346,15 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                 </SelectContent>
               </Select>
 
-              {/* Chamber Filter */}
-              <Select value={chamber || 'all'} onValueChange={(v) => { setChamber(v === 'all' ? '' : v); setPage(0); }}>
-                <SelectTrigger className="w-[120px] sm:w-[140px] bg-background/50">
-                  <SelectValue placeholder="Chamber" />
+              {/* Jurisdiction Filter */}
+              <Select value={jurisdiction || 'all'} onValueChange={(v) => { setJurisdiction(v === 'all' ? '' : v); setPage(0); }}>
+                <SelectTrigger className="w-[130px] sm:w-[155px] bg-background/50">
+                  <SelectValue placeholder="Jurisdiction" />
                 </SelectTrigger>
                 <SelectContent>
-                  {CHAMBER_OPTIONS.map((c) => (
-                    <SelectItem key={c.value} value={c.value || 'all'}>
-                      {c.label}
+                  {JURISDICTION_OPTIONS.map((j) => (
+                    <SelectItem key={j.value} value={j.value || 'all'}>
+                      {j.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -502,10 +502,10 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
                   </button>
                 </Badge>
               )}
-              {chamber && (
+              {jurisdiction && (
                 <Badge variant="secondary" className="gap-1">
-                  Chamber: {CHAMBER_OPTIONS.find(c => c.value === chamber)?.label || chamber}
-                  <button onClick={() => { setChamber(''); setPage(0); }} aria-label="Clear chamber filter">
+                  Jurisdiction: {JURISDICTION_OPTIONS.find(j => j.value === jurisdiction)?.label || jurisdiction}
+                  <button onClick={() => { setJurisdiction(''); setPage(0); }} aria-label="Clear jurisdiction filter">
                     <X className="h-3 w-3" aria-hidden="true" />
                   </button>
                 </Badge>

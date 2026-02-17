@@ -212,6 +212,13 @@ export const useTrades = (limit = 10, jurisdictionId?: string) => {
 export type SortField = 'disclosure_date' | 'transaction_date' | 'amount_range_max' | 'asset_ticker' | 'transaction_type';
 export type SortDirection = 'asc' | 'desc';
 
+// Map jurisdiction code to politician role(s)
+const JURISDICTION_ROLES: Record<string, string[]> = {
+  'us': ['Representative', 'Senator'],
+  'uk': ['Member of Parliament'],
+  'eu': ['MEP'],
+};
+
 // Fetch trading disclosures with search/filter/sort support
 export const useTradingDisclosures = (options: {
   limit?: number;
@@ -221,6 +228,7 @@ export const useTradingDisclosures = (options: {
   transactionType?: string;
   party?: string;
   chamber?: string;
+  jurisdiction?: string;
   searchQuery?: string;
   sortField?: SortField;
   sortDirection?: SortDirection;
@@ -235,6 +243,7 @@ export const useTradingDisclosures = (options: {
     transactionType,
     party,
     chamber,
+    jurisdiction,
     searchQuery,
     sortField = 'disclosure_date',
     sortDirection = 'desc',
@@ -243,16 +252,23 @@ export const useTradingDisclosures = (options: {
   } = options;
 
   return useQuery({
-    queryKey: ['tradingDisclosures', limit, offset, ticker, politicianId, transactionType, party, chamber, searchQuery, sortField, sortDirection, dateFrom, dateTo],
+    queryKey: ['tradingDisclosures', limit, offset, ticker, politicianId, transactionType, party, chamber, jurisdiction, searchQuery, sortField, sortDirection, dateFrom, dateTo],
     queryFn: async () => {
-      // When filtering by chamber or party, pre-query politician IDs to avoid
+      // Resolve jurisdiction to role(s) for filtering
+      const effectiveRoles = jurisdiction ? JURISDICTION_ROLES[jurisdiction] || [] : (chamber ? [chamber] : []);
+
+      // When filtering by role or party, pre-query politician IDs to avoid
       // PostgREST inner join timeout. The inner join approach forces PostgreSQL
       // to scan all disclosures (126K+ rows) checking each row's join — which
       // times out when the filter matches zero/few politicians (e.g. MEP).
       let politicianIds: string[] | null = null;
-      if (chamber || party) {
+      if (effectiveRoles.length > 0 || party) {
         let pQuery = supabase.from('politicians').select('id');
-        if (chamber) pQuery = pQuery.eq('role', chamber);
+        if (effectiveRoles.length === 1) {
+          pQuery = pQuery.eq('role', effectiveRoles[0]);
+        } else if (effectiveRoles.length > 1) {
+          pQuery = pQuery.in('role', effectiveRoles);
+        }
         if (party) pQuery = pQuery.eq('party', party);
 
         const { data: pData } = await pQuery;
@@ -267,7 +283,7 @@ export const useTradingDisclosures = (options: {
       // Use IN clause for small politician sets (fast, avoids inner join timeout).
       // Fall back to inner join for large sets where IN clause URL would be too long.
       const useInClause = politicianIds && politicianIds.length <= 150;
-      const needsInnerJoin = (party || chamber) && !useInClause;
+      const needsInnerJoin = (party || effectiveRoles.length > 0) && !useInClause;
       const selectQuery = needsInnerJoin
         ? `*, politician:politicians!inner(*)`
         : `*, politician:politicians(*)`;
@@ -290,9 +306,9 @@ export const useTradingDisclosures = (options: {
       }
 
       // Filter out entries without disclosed amounts (both min and max are null)
-      // Skip this filter for EU Parliament — EU DPI declarations often have no amounts
-      const isEUChamber = chamber === 'MEP';
-      if (!isEUChamber) {
+      // Skip this filter for EU/UK — their declarations often have no amounts
+      const skipAmountFilter = jurisdiction === 'eu' || jurisdiction === 'uk' || chamber === 'MEP' || chamber === 'Member of Parliament';
+      if (!skipAmountFilter) {
         query = query.or('amount_range_min.not.is.null,amount_range_max.not.is.null');
       }
 
@@ -320,9 +336,13 @@ export const useTradingDisclosures = (options: {
       if (party && !useInClause) {
         query = query.filter('politician.party', 'eq', `"${party}"`);
       }
-      // Filter by chamber (role) server-side using the inner join (only when IN clause not used)
-      if (chamber && !useInClause) {
-        query = query.eq('politician.role', chamber);
+      // Filter by role server-side using the inner join (only when IN clause not used)
+      if (effectiveRoles.length > 0 && !useInClause) {
+        if (effectiveRoles.length === 1) {
+          query = query.eq('politician.role', effectiveRoles[0]);
+        } else {
+          query = query.in('politician.role', effectiveRoles);
+        }
       }
 
       const { data, error, count } = await query;
