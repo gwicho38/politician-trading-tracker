@@ -571,3 +571,171 @@ export function withError(statusCode: number, message: string): (route: Route) =
     });
   };
 }
+
+// ============================================================================
+// Party Mock Data & Helpers
+// ============================================================================
+
+export interface Party {
+  id: string;
+  code: string;
+  name: string;
+  short_name: string | null;
+  jurisdiction: string;
+  color: string;
+}
+
+export function mockParty(overrides?: Partial<Party>): Party {
+  return {
+    id: `party-${Date.now()}`,
+    code: 'D',
+    name: 'Democratic Party',
+    short_name: 'D',
+    jurisdiction: 'us',
+    color: '#0000FF',
+    ...overrides,
+  };
+}
+
+/**
+ * Setup parties REST API mock
+ */
+export async function setupPartiesMock(page: Page, parties?: Party[]) {
+  const data = parties ?? [
+    mockParty({ id: 'p-1', code: 'D', name: 'Democratic Party', short_name: 'D', jurisdiction: 'us', color: '#0000FF' }),
+    mockParty({ id: 'p-2', code: 'R', name: 'Republican Party', short_name: 'R', jurisdiction: 'us', color: '#FF0000' }),
+    mockParty({ id: 'p-3', code: 'I', name: 'Independent', short_name: 'I', jurisdiction: 'us', color: '#808080' }),
+  ];
+
+  await page.route('**/rest/v1/parties**', (route) =>
+    route.fulfill({ status: 200, json: data })
+  );
+}
+
+// ============================================================================
+// Showcase / Strategy Mock Data & Helpers
+// ============================================================================
+
+export interface ShowcaseStrategy {
+  id: string;
+  name: string;
+  description: string;
+  user_id: string | null;
+  is_public: boolean;
+  likes_count: number;
+  user_has_liked: boolean;
+  weights: Record<string, number>;
+  created_at: string;
+  profiles: { display_name: string } | null;
+}
+
+export function mockShowcaseStrategy(overrides?: Partial<ShowcaseStrategy>): ShowcaseStrategy {
+  return {
+    id: `strat-${Date.now()}`,
+    name: 'Test Strategy',
+    description: 'A test strategy',
+    user_id: 'user-1',
+    is_public: true,
+    likes_count: 10,
+    user_has_liked: false,
+    weights: { baseConfidence: 0.7, bipartisanBonus: 0.3 },
+    created_at: new Date().toISOString(),
+    profiles: { display_name: 'TestUser' },
+    ...overrides,
+  };
+}
+
+/**
+ * Setup showcase RPC mock (get_public_strategies)
+ */
+export async function setupShowcaseMocks(page: Page, strategies?: ShowcaseStrategy[]) {
+  const data = strategies ?? [
+    mockShowcaseStrategy({ id: 's-1', name: 'Conservative Growth', likes_count: 42 }),
+    mockShowcaseStrategy({ id: 's-2', name: 'Momentum Chaser', likes_count: 28, user_has_liked: true }),
+  ];
+
+  await page.route('**/rest/v1/rpc/get_public_strategies**', (route) =>
+    route.fulfill({ status: 200, json: data })
+  );
+
+  // Mock strategy_likes for like/unlike mutations
+  await page.route('**/rest/v1/strategy_likes**', (route) =>
+    route.fulfill({ status: 200, json: {} })
+  );
+}
+
+// ============================================================================
+// Admin Role RPC Helper
+// ============================================================================
+
+/**
+ * Setup admin role check via has_role RPC (the actual endpoint useAdmin calls)
+ */
+export async function setupAdminRoleMock(page: Page, isAdmin: boolean) {
+  await page.route('**/rest/v1/rpc/has_role**', (route) =>
+    route.fulfill({ status: 200, json: isAdmin })
+  );
+}
+
+// ============================================================================
+// Wallet Auth Edge Function Helpers
+// ============================================================================
+
+export interface WalletAuthMockOptions {
+  nonceMessage?: string;
+  nonceError?: string;
+  verifyToken?: string;
+  verifyIsNewUser?: boolean;
+  verifyUserId?: string;
+  verifyError?: string;
+}
+
+/**
+ * Setup wallet-auth edge function mocks (nonce + verify)
+ */
+export async function setupWalletAuthMocks(page: Page, options: WalletAuthMockOptions = {}) {
+  const {
+    nonceMessage = 'Sign this message to authenticate: nonce-abc123',
+    nonceError,
+    verifyToken = 'magic-link-token-xyz',
+    verifyIsNewUser = false,
+    verifyUserId = 'wallet-user-1',
+    verifyError,
+  } = options;
+
+  await page.route('**/functions/v1/wallet-auth**', async (route) => {
+    const url = route.request().url();
+
+    if (url.includes('action=nonce')) {
+      if (nonceError) {
+        return route.fulfill({
+          status: 400,
+          json: { error: nonceError },
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        json: { message: nonceMessage },
+      });
+    }
+
+    if (url.includes('action=verify')) {
+      if (verifyError) {
+        return route.fulfill({
+          status: 400,
+          json: { error: verifyError },
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        json: {
+          token: verifyToken,
+          isNewUser: verifyIsNewUser,
+          userId: verifyUserId,
+        },
+      });
+    }
+
+    return route.fulfill({ status: 200, json: {} });
+  });
+}
