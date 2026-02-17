@@ -357,18 +357,19 @@ class TestAutoRegistration:
     """Tests for auto-registration via module imports."""
 
     def test_all_sources_registered_on_import(self):
-        """All 5 ETL sources are registered after importing etl_services."""
+        """All 6 ETL sources are registered after importing etl_services."""
         sources = ETLRegistry.list_sources()
         assert "house" in sources
         assert "senate" in sources
         assert "quiverquant" in sources
         assert "eu_parliament" in sources
         assert "california" in sources
+        assert "uk_parliament" in sources
 
-    def test_five_sources_total(self):
-        """Exactly 5 ETL sources are registered."""
+    def test_six_sources_total(self):
+        """Exactly 6 ETL sources are registered."""
         sources = ETLRegistry.list_sources()
-        assert len(sources) == 5
+        assert len(sources) == 6
 
 
 class TestETLResultTracking:

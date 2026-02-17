@@ -85,6 +85,7 @@ def find_or_create_politician(
         "senate": "Senator",
         "house": "Representative",
         "eu_parliament": "MEP",
+        "uk_parliament": "Member of Parliament",
         "california": "State Legislator",
     }
     role = chamber_role_map.get(chamber, "Representative")
@@ -169,7 +170,8 @@ def find_or_create_politician(
 
         # Register party in parties table (auto-creates if unknown)
         if party:
-            jurisdiction = "EU" if chamber == "eu_parliament" else "US"
+            jurisdiction_map = {"eu_parliament": "EU", "uk_parliament": "UK"}
+            jurisdiction = jurisdiction_map.get(chamber, "US")
             ensure_party_exists(supabase, party, jurisdiction=jurisdiction)
 
         politician_data = {
@@ -192,9 +194,10 @@ def find_or_create_politician(
         if chamber == "house" and district:
             politician_data["state_or_country"] = state
             politician_data["district"] = district
-        elif chamber == "eu_parliament" and state:
-            # For EU MEPs, state holds the country name
+        elif chamber in ("eu_parliament", "uk_parliament") and state:
             politician_data["state_or_country"] = state
+            if district:
+                politician_data["district"] = district
 
         response = supabase.table("politicians").insert(politician_data).execute()
 
