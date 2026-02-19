@@ -175,6 +175,25 @@ class FeaturePipeline:
 
         return features_df, labels_array
 
+    @staticmethod
+    def _compute_outcome_weight(
+        base_weight: float,
+        confidence: float,
+        return_pct: float,
+    ) -> float:
+        """Compute per-sample weight for an outcome record.
+
+        Weight = base_weight * confidence * log(1 + |return_pct|)
+
+        High-confidence trades with large returns teach the model the most.
+        Low-confidence breakevens teach the least (but still more than market data).
+        """
+        import math
+        conf = max(0.0, min(1.0, confidence or 0.5))
+        magnitude = math.log1p(abs(return_pct or 0.0))
+        # Floor at 0.5 * base_weight so even low-signal outcomes outweigh market data
+        return max(0.5 * base_weight, base_weight * conf * max(magnitude, 0.1))
+
     async def prepare_outcome_training_data(
         self,
         config: Optional["TrainingConfig"] = None,
@@ -182,7 +201,8 @@ class FeaturePipeline:
         """Prepare training data blending outcome-labeled and market-labeled records.
 
         Returns (features_df, labels, sample_weights) where sample_weights
-        gives outcome records higher weight than yfinance-derived records.
+        are per-sample: outcome records get confidence * magnitude weighting,
+        market records get 1.0.
         """
         from app.models.training_config import TrainingConfig as _TrainingConfig
 
@@ -197,6 +217,7 @@ class FeaturePipeline:
 
         outcome_features_list = []
         outcome_labels = []
+        outcome_weights = []
         for rec in outcome_records:
             features = rec.get("features", {})
             if not features or not all(name in features for name in feature_names):
@@ -219,6 +240,12 @@ class FeaturePipeline:
                 label = 0
             outcome_labels.append(label)
 
+            # Per-sample weight: confidence * return magnitude
+            confidence = rec.get("signal_confidence", 0.5)
+            outcome_weights.append(
+                self._compute_outcome_weight(outcome_weight, confidence, return_pct)
+            )
+
         # --- Market-labeled data from yfinance forward returns ---
         market_features_df, market_labels = await self.prepare_training_data(
             lookback_days=config.lookback_days, config=config,
@@ -233,7 +260,7 @@ class FeaturePipeline:
             outcome_df = pd.DataFrame(outcome_features_list)
             all_features.append(outcome_df)
             all_labels.extend(outcome_labels)
-            all_weights.extend([outcome_weight] * len(outcome_labels))
+            all_weights.extend(outcome_weights)
 
         if len(market_features_df) > 0:
             all_features.append(market_features_df)

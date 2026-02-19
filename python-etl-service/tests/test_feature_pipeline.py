@@ -1785,8 +1785,8 @@ class TestPrepareOutcomeTrainingData:
                 assert len(features_df) == 2
                 assert len(labels) == 2
                 assert len(weights) == 2
-                # All outcome weights should be 3.0
-                assert all(w == 3.0 for w in weights)
+                # All outcome weights should be > 1.0 (confidence * magnitude scaled)
+                assert all(w > 1.0 for w in weights)
 
     @pytest.mark.asyncio
     async def test_market_only_data(self, pipeline):
@@ -1833,10 +1833,10 @@ class TestPrepareOutcomeTrainingData:
                 assert len(features_df) == 3
                 assert len(labels) == 3
                 assert len(weights) == 3
-                # First weight is outcome_weight (2.5), rest are 1.0
-                assert weights[0] == 2.5
-                assert weights[1] == 1.0
-                assert weights[2] == 1.0
+                # First weight is per-sample (confidence=0.8 * log(1+6) * base=2.5)
+                assert weights[0] > 1.0  # outcome weight > market weight
+                assert weights[1] == 1.0  # market
+                assert weights[2] == 1.0  # market
 
     @pytest.mark.asyncio
     async def test_win_outcome_produces_positive_label(self, pipeline):
@@ -1987,6 +1987,46 @@ class TestPrepareOutcomeTrainingData:
                 assert labels[0] == 1   # win -> buy (3-class max positive is 1)
                 assert labels[1] == -1  # loss -> sell (3-class max negative is -1)
                 assert labels[2] == 0   # breakeven -> hold
+
+
+class TestComputeOutcomeWeight:
+    """Tests for FeaturePipeline._compute_outcome_weight() — per-sample weighting."""
+
+    def test_high_confidence_large_return(self):
+        """High confidence + big return → large weight."""
+        w = FeaturePipeline._compute_outcome_weight(base_weight=2.0, confidence=0.95, return_pct=10.0)
+        # 2.0 * 0.95 * log(1+10) = 2.0 * 0.95 * 2.397 ≈ 4.55
+        assert w > 4.0
+
+    def test_low_confidence_small_return(self):
+        """Low confidence + tiny return → floored at 0.5 * base_weight."""
+        w = FeaturePipeline._compute_outcome_weight(base_weight=2.0, confidence=0.1, return_pct=0.01)
+        # 2.0 * 0.1 * log(1+0.01) ≈ 0.002 → floored to 1.0 (0.5 * 2.0)
+        assert w == 1.0
+
+    def test_breakeven_moderate_confidence(self):
+        """Breakeven (0% return) still gets a meaningful weight."""
+        w = FeaturePipeline._compute_outcome_weight(base_weight=2.0, confidence=0.7, return_pct=0.0)
+        # magnitude = log(1+0) = 0, max(0, 0.1) = 0.1, so 2.0 * 0.7 * 0.1 = 0.14 → floored to 1.0
+        assert w == 1.0  # floor
+
+    def test_none_confidence_defaults_to_0_5(self):
+        """None confidence treated as 0.5."""
+        w = FeaturePipeline._compute_outcome_weight(base_weight=2.0, confidence=None, return_pct=5.0)
+        expected_approx = 2.0 * 0.5 * max(1.7917, 0.1)  # log(1+5) ≈ 1.79
+        assert abs(w - expected_approx) < 0.1
+
+    def test_weight_scales_with_base_weight(self):
+        """Higher base_weight → higher output weight."""
+        w1 = FeaturePipeline._compute_outcome_weight(base_weight=1.0, confidence=0.8, return_pct=5.0)
+        w2 = FeaturePipeline._compute_outcome_weight(base_weight=3.0, confidence=0.8, return_pct=5.0)
+        assert w2 > w1
+
+    def test_negative_return_uses_absolute(self):
+        """Negative return_pct treated same as positive (absolute value)."""
+        w_pos = FeaturePipeline._compute_outcome_weight(base_weight=2.0, confidence=0.8, return_pct=5.0)
+        w_neg = FeaturePipeline._compute_outcome_weight(base_weight=2.0, confidence=0.8, return_pct=-5.0)
+        assert w_pos == w_neg
 
 
 class TestTrainingJobRunOutcomeWiring:
