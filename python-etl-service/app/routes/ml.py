@@ -101,6 +101,8 @@ class TrainRequest(BaseModel):
         default="api",
         description="Source that triggered the training: api, scheduler, batch_retraining, manual"
     )
+    use_outcomes: bool = Field(default=False, description="Use signal_outcomes for training labels")
+    outcome_weight: float = Field(default=2.0, ge=0.1, le=10.0, description="Weight multiplier for outcome-labeled data")
 
 
 class ModelInfo(BaseModel):
@@ -326,6 +328,8 @@ async def trigger_training(
             enable_sentiment=request.enable_sentiment,
         ),
         triggered_by=request.triggered_by,
+        use_outcomes=request.use_outcomes,
+        outcome_weight=request.outcome_weight,
     )
 
     job = create_training_job(config=config)

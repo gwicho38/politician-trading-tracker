@@ -267,6 +267,7 @@ class CongressSignalModel:
         validation_split: float = 0.2,
         hyperparams: Optional[Dict[str, Any]] = None,
         config: Optional[TrainingConfig] = None,
+        sample_weights: Optional[np.ndarray] = None,
     ) -> Dict[str, Any]:
         """
         Train the XGBoost model on labeled data.
@@ -277,6 +278,7 @@ class CongressSignalModel:
             validation_split: Fraction of data for validation
             hyperparams: Optional hyperparameters override
             config: Optional TrainingConfig for num_classes and feature names
+            sample_weights: Optional per-sample weights (e.g. from outcome training)
 
         Returns:
             Dictionary with training metrics
@@ -320,10 +322,17 @@ class CongressSignalModel:
                 if k in ('n_estimators', 'max_depth', 'learning_rate'):
                     default_params[k] = v
 
-        # Split data
-        X_train, X_val, y_train, y_val = train_test_split(
-            X, y, test_size=validation_split, random_state=42, stratify=y
-        )
+        # Split data (include sample_weights if provided)
+        if sample_weights is not None:
+            X_train, X_val, y_train, y_val, w_train, w_val = train_test_split(
+                X, y, sample_weights, test_size=validation_split, random_state=42, stratify=y
+            )
+            train_weights = w_train
+        else:
+            X_train, X_val, y_train, y_val = train_test_split(
+                X, y, test_size=validation_split, random_state=42, stratify=y
+            )
+            train_weights = None
 
         # Scale features
         X_train_scaled = self.scaler.fit_transform(X_train)
@@ -337,6 +346,7 @@ class CongressSignalModel:
         self.model = xgb.XGBClassifier(**default_params)
         self.model.fit(
             X_train_scaled, y_train_shifted,
+            sample_weight=train_weights,
             eval_set=[(X_val_scaled, y_val_shifted)],
             verbose=False,
         )

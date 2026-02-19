@@ -306,9 +306,11 @@ export const useTradingDisclosures = (options: {
       }
 
       // Filter out entries without disclosed amounts (both min and max are null)
-      // Skip this filter for EU/UK — their declarations often have no amounts
-      const skipAmountFilter = jurisdiction === 'eu' || jurisdiction === 'uk' || chamber === 'MEP' || chamber === 'Member of Parliament';
-      if (!skipAmountFilter) {
+      // Skip when: no jurisdiction selected (All Jurisdictions), or EU/UK selected
+      // EU/UK declarations often have no monetary amounts (positions, memberships)
+      const isUSOnly = jurisdiction === 'us';
+      const isUSChamber = chamber === 'Representative' || chamber === 'Senator';
+      if (isUSOnly || isUSChamber) {
         query = query.or('amount_range_min.not.is.null,amount_range_max.not.is.null');
       }
 

@@ -248,6 +248,8 @@ class TestTrainingConfigSerialization:
             "features",
             "hyperparams",
             "triggered_by",
+            "use_outcomes",
+            "outcome_weight",
             "feature_names",
         }
         assert set(d.keys()) == expected_keys
@@ -306,6 +308,8 @@ class TestTrainingConfigSerialization:
             ),
             hyperparams={"n_estimators": 200, "max_depth": 8},
             triggered_by="scheduler",
+            use_outcomes=True,
+            outcome_weight=3.5,
         )
         d = original.to_hyperparameters_dict()
         reconstructed = TrainingConfig.from_hyperparameters_dict(d)
@@ -320,6 +324,8 @@ class TestTrainingConfigSerialization:
         assert reconstructed.features.enable_market_regime == original.features.enable_market_regime
         assert reconstructed.hyperparams == original.hyperparams
         assert reconstructed.triggered_by == original.triggered_by
+        assert reconstructed.use_outcomes == original.use_outcomes
+        assert reconstructed.outcome_weight == original.outcome_weight
 
     def test_round_trip_feature_names_match(self):
         original = TrainingConfig(
@@ -342,6 +348,55 @@ class TestTrainingConfigSerialization:
         assert config.features.enable_sentiment is False
         assert config.features.enable_sector is True
         assert config.features.enable_market_regime is True
+
+
+class TestOutcomeFields:
+    """Test use_outcomes and outcome_weight fields."""
+
+    def test_use_outcomes_default_false(self):
+        config = TrainingConfig()
+        assert config.use_outcomes is False
+
+    def test_outcome_weight_default_2(self):
+        config = TrainingConfig()
+        assert config.outcome_weight == 2.0
+
+    def test_outcome_weight_validation_below_minimum(self):
+        with pytest.raises(ValidationError):
+            TrainingConfig(outcome_weight=0.05)
+
+    def test_outcome_weight_validation_above_maximum(self):
+        with pytest.raises(ValidationError):
+            TrainingConfig(outcome_weight=10.1)
+
+    def test_outcome_weight_at_lower_boundary(self):
+        config = TrainingConfig(outcome_weight=0.1)
+        assert config.outcome_weight == 0.1
+
+    def test_outcome_weight_at_upper_boundary(self):
+        config = TrainingConfig(outcome_weight=10.0)
+        assert config.outcome_weight == 10.0
+
+    def test_use_outcomes_roundtrip_serialization(self):
+        original = TrainingConfig(use_outcomes=True, outcome_weight=5.0)
+        d = original.to_hyperparameters_dict()
+        assert d["use_outcomes"] is True
+        assert d["outcome_weight"] == 5.0
+        reconstructed = TrainingConfig.from_hyperparameters_dict(d)
+        assert reconstructed.use_outcomes is True
+        assert reconstructed.outcome_weight == 5.0
+
+    def test_from_hyperparameters_dict_missing_outcome_fields(self):
+        """Backward compat: old dicts without outcome fields use defaults."""
+        data = {
+            "lookback_days": 365,
+            "model_type": "xgboost",
+            "prediction_window_days": 7,
+            "num_classes": 5,
+        }
+        config = TrainingConfig.from_hyperparameters_dict(data)
+        assert config.use_outcomes is False
+        assert config.outcome_weight == 2.0
 
 
 class TestFeatureToggles:

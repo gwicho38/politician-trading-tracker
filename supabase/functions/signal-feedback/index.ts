@@ -563,6 +563,62 @@ async function handleEvaluateModel(supabaseClient: any, requestId: string, param
 
   log.info('Model evaluation complete', { requestId, winRate, avgReturn, sharpeRatio })
 
+  // Auto-adjust ML blend weight based on ML vs heuristic win rate comparison
+  let weightAdjustment: any = null
+  try {
+    const mlEnhancedOutcomes = outcomes.filter((o: any) => o.ml_enhanced)
+    const heuristicOutcomes = outcomes.filter((o: any) => !o.ml_enhanced)
+
+    const mlWinRate = mlEnhancedOutcomes.length > 0
+      ? mlEnhancedOutcomes.filter((o: any) => o.outcome === 'win').length / mlEnhancedOutcomes.length
+      : winRate
+    const heuristicWinRate = heuristicOutcomes.length > 0
+      ? heuristicOutcomes.filter((o: any) => o.outcome === 'win').length / heuristicOutcomes.length
+      : 0.5
+
+    const { data: currentConfig } = await supabaseClient
+      .from('reference_portfolio_config')
+      .select('id, ml_blend_weight')
+      .limit(1)
+      .maybeSingle()
+
+    if (currentConfig?.ml_blend_weight != null) {
+      let newWeight = currentConfig.ml_blend_weight
+      const winRateDiff = mlWinRate - heuristicWinRate
+
+      if (winRateDiff > 0.05) {
+        newWeight = Math.min(newWeight + 0.1, 0.7)
+      } else if (winRateDiff < -0.05) {
+        newWeight = Math.max(newWeight - 0.1, 0.1)
+      }
+
+      if (newWeight !== currentConfig.ml_blend_weight) {
+        await supabaseClient
+          .from('reference_portfolio_config')
+          .update({ ml_blend_weight: newWeight })
+          .eq('id', currentConfig.id)
+
+        await supabaseClient.from('feature_importance_history').insert({
+          analysis_date: new Date().toISOString().split('T')[0],
+          analysis_window_days: windowDays,
+          feature_name: '_ml_blend_weight',
+          correlation_with_return: winRateDiff,
+          median_value: newWeight,
+          avg_return_when_high: mlWinRate,
+          avg_return_when_low: heuristicWinRate,
+          lift_pct: winRateDiff,
+          sample_size_total: outcomes.length,
+          feature_useful: winRateDiff > 0,
+        })
+
+        log.info('ML blend weight adjusted', { requestId, oldWeight: currentConfig.ml_blend_weight, newWeight, winRateDiff })
+        weightAdjustment = { oldWeight: currentConfig.ml_blend_weight, newWeight, winRateDiff }
+      }
+    }
+  } catch (weightError: any) {
+    log.error('Failed to adjust ML blend weight', weightError, { requestId })
+  }
+
   return new Response(
     JSON.stringify({
       success: true,
@@ -574,7 +630,8 @@ async function handleEvaluateModel(supabaseClient: any, requestId: string, param
         highConfidenceCount: highConfidence.length,
         lowConfidenceCount: lowConfidence.length,
         mlEnhancedCount: outcomes.filter((o: any) => o.ml_enhanced).length
-      }
+      },
+      weightAdjustment,
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   )
