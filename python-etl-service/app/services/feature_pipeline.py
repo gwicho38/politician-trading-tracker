@@ -175,6 +175,77 @@ class FeaturePipeline:
 
         return features_df, labels_array
 
+    async def prepare_outcome_training_data(
+        self,
+        config: Optional["TrainingConfig"] = None,
+    ) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:
+        """Prepare training data blending outcome-labeled and market-labeled records.
+
+        Returns (features_df, labels, sample_weights) where sample_weights
+        gives outcome records higher weight than yfinance-derived records.
+        """
+        from app.models.training_config import TrainingConfig as _TrainingConfig
+
+        if config is None:
+            config = _TrainingConfig(use_outcomes=True)
+
+        feature_names = config.get_feature_names()
+        outcome_weight = config.outcome_weight
+
+        # --- Outcome-labeled data from closed trades ---
+        outcome_records = await self._fetch_outcome_data(window_days=config.lookback_days)
+
+        outcome_features_list = []
+        outcome_labels = []
+        for rec in outcome_records:
+            features = rec.get("features", {})
+            if not features or not all(name in features for name in feature_names):
+                continue
+
+            feature_vec = {name: float(features.get(name, 0.0)) for name in feature_names}
+            outcome_features_list.append(feature_vec)
+
+            outcome = rec["outcome"]
+            return_pct = rec.get("return_pct", 0.0)
+            if outcome == "win":
+                label = generate_label(abs(return_pct) / 100.0, config.num_classes, config.thresholds)
+                if label <= 0:
+                    label = 1
+            elif outcome == "loss":
+                label = generate_label(-abs(return_pct) / 100.0, config.num_classes, config.thresholds)
+                if label >= 0:
+                    label = -1
+            else:
+                label = 0
+            outcome_labels.append(label)
+
+        # --- Market-labeled data from yfinance forward returns ---
+        market_features_df, market_labels = await self.prepare_training_data(
+            lookback_days=config.lookback_days, config=config,
+        )
+
+        # --- Blend both sources ---
+        all_features = []
+        all_labels = []
+        all_weights = []
+
+        if outcome_features_list:
+            outcome_df = pd.DataFrame(outcome_features_list)
+            all_features.append(outcome_df)
+            all_labels.extend(outcome_labels)
+            all_weights.extend([outcome_weight] * len(outcome_labels))
+
+        if len(market_features_df) > 0:
+            all_features.append(market_features_df)
+            all_labels.extend(market_labels.tolist())
+            all_weights.extend([1.0] * len(market_labels))
+
+        if not all_features:
+            return pd.DataFrame(), np.array([]), np.array([])
+
+        combined_df = pd.concat(all_features, ignore_index=True)
+        return combined_df, np.array(all_labels), np.array(all_weights)
+
     async def _fetch_disclosures(
         self,
         lookback_days: int,
@@ -209,6 +280,24 @@ class FeaturePipeline:
                 break
 
         return all_disclosures
+
+    async def _fetch_outcome_data(self, window_days: int = 90) -> list:
+        """Fetch closed trade outcomes from signal_outcomes for training labels."""
+        if not self.supabase:
+            return []
+
+        cutoff = (datetime.now() - timedelta(days=window_days)).strftime("%Y-%m-%d")
+
+        result = (
+            self.supabase.table("signal_outcomes")
+            .select("ticker, signal_type, signal_confidence, outcome, return_pct, "
+                    "entry_price, exit_price, holding_days, features, signal_date")
+            .in_("outcome", ["win", "loss", "breakeven"])
+            .gte("signal_date", cutoff)
+            .execute()
+        )
+
+        return result.data or []
 
     def _aggregate_by_week(
         self,
