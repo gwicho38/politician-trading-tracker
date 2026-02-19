@@ -91,10 +91,10 @@ interface TradingSignal {
 
 // TODO: Review - Retrieves Alpaca API credentials from environment variables
 // Returns null if credentials are not configured, otherwise returns apiKey, secretKey, baseUrl, and dataUrl
-function getAlpacaCredentials(): { apiKey: string; secretKey: string; baseUrl: string; dataUrl: string } | null {
+function getAlpacaCredentials(tradingMode: string = 'paper'): { apiKey: string; secretKey: string; baseUrl: string; dataUrl: string } | null {
   const apiKey = Deno.env.get('ALPACA_API_KEY')
   const secretKey = Deno.env.get('ALPACA_SECRET_KEY')
-  const paper = Deno.env.get('ALPACA_PAPER') === 'true'
+  const paper = tradingMode === 'paper'
   const baseUrl = Deno.env.get('ALPACA_BASE_URL') || (paper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets')
   // Market data API is separate from trading API
   const dataUrl = 'https://data.alpaca.markets'
@@ -795,8 +795,8 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
 
     log.info('Processing signals', { requestId, count: queuedSignals.length })
 
-    // Get Alpaca credentials
-    const credentials = getAlpacaCredentials()
+    // Get Alpaca credentials using trading mode from config
+    const credentials = getAlpacaCredentials(config.trading_mode || 'paper')
     if (!credentials) {
       log.error('No Alpaca credentials configured', null, { requestId })
       return new Response(
@@ -813,6 +813,7 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
 
     const existingTickers = new Set((existingPositions || []).map((p: any) => p.ticker.toUpperCase()))
     const positionsByTicker = new Map((existingPositions || []).map((p: any) => [p.ticker.toUpperCase(), p]))
+    const openPositionCount = existingPositions?.length || 0
 
     let executed = 0
     let skipped = 0
@@ -837,6 +838,13 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
       // Check confidence threshold for all signals
       if (signal.confidence_score < config.min_confidence_threshold) {
         await updateQueueStatus(supabaseClient, queued.id, 'skipped', 'Below confidence threshold')
+        skipped++
+        continue
+      }
+
+      // Risk check: don't enter new positions with low confidence when portfolio is crowded
+      if (isBuySignal && signal.confidence_score < 0.70 && openPositionCount >= 15) {
+        await updateQueueStatus(supabaseClient, queued.id, 'skipped', 'Low confidence with high position count')
         skipped++
         continue
       }
@@ -1247,10 +1255,10 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
   try {
     log.info('Updating positions', { requestId })
 
-    // Get config for initial_capital
+    // Get config for initial_capital and trading_mode
     const { data: config } = await supabaseClient
       .from('reference_portfolio_config')
-      .select('initial_capital')
+      .select('initial_capital, trading_mode')
       .single()
 
     const initialCapital = config?.initial_capital || 100000
@@ -1305,7 +1313,7 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
     const dbPositionsValue = totalPositionsValue // Save for fallback
 
     // Try to update from Alpaca if credentials available
-    const credentials = getAlpacaCredentials()
+    const credentials = getAlpacaCredentials(config?.trading_mode || 'paper')
     let alpacaSyncSuccess = false
     let alpacaEquity: number | null = null
     let alpacaCash: number | null = null

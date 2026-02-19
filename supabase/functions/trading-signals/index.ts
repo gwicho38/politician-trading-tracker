@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { corsHeaders } from '../_shared/cors.ts'
 
 // Reference portfolio configuration
-const REFERENCE_PORTFOLIO_MIN_CONFIDENCE = 0.70
+const REFERENCE_PORTFOLIO_MIN_CONFIDENCE = 0.75
 const REFERENCE_PORTFOLIO_SIGNAL_TYPES = ['buy', 'strong_buy', 'sell', 'strong_sell']
 
 // TODO: Review queueSignalsForReferencePortfolio - queues high-confidence signals for automated portfolio
@@ -1050,7 +1050,7 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
   const handlerStartTime = Date.now()
   try {
     const body = await req.json().catch(() => ({}))
-    const { lookbackDays = 90, minConfidence = 0.60, clearOld = true, useML = ML_ENABLED } = body
+    const { lookbackDays = 90, minConfidence = 0.65, clearOld = true, useML = ML_ENABLED } = body
 
     log.info('Regenerating signals (service-level) - handler started', {
       requestId,
@@ -1331,11 +1331,19 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
       mlFeaturesCount: mlFeaturesList.length
     })
 
+    // Read dynamic ML blend weight from config
+    const { data: blendConfig } = await supabaseClient
+      .from('reference_portfolio_config')
+      .select('ml_blend_weight')
+      .limit(1)
+      .maybeSingle()
+    const mlBlendWeight = blendConfig?.ml_blend_weight ?? ML_BLEND_WEIGHT
+
     // Single batch ML prediction call (instead of N sequential calls)
     let mlPredictionCount = 0
     let mlEnhancedCount = 0
     if (useML && mlFeaturesList.length > 0) {
-      log.info('Starting batch ML prediction for regenerate', { requestId, tickerCount: mlFeaturesList.length })
+      log.info('Starting batch ML prediction for regenerate', { requestId, tickerCount: mlFeaturesList.length, mlBlendWeight })
       const mlPredictions = await getBatchMlPredictions(mlFeaturesList)
       mlPredictionCount = mlPredictions.size
       log.info('ML predictions received for regenerate', { requestId, count: mlPredictionCount })
@@ -1348,7 +1356,8 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
             data.heuristicType,
             data.heuristicConfidence,
             mlResult.prediction,
-            mlResult.confidence
+            mlResult.confidence,
+            mlBlendWeight
           )
           data.signal.signal_type = blended.signalType
           data.signal.confidence_score = Math.round(blended.confidence * 100) / 100
@@ -2084,7 +2093,8 @@ function blendSignals(
   heuristicType: string,
   heuristicConfidence: number,
   mlPrediction: number | null,
-  mlConfidence: number | null
+  mlConfidence: number | null,
+  blendWeight: number = ML_BLEND_WEIGHT
 ): { signalType: string; confidence: number; mlEnhanced: boolean } {
   if (mlPrediction === null || mlConfidence === null) {
     return { signalType: heuristicType, confidence: heuristicConfidence, mlEnhanced: false }
@@ -2092,8 +2102,22 @@ function blendSignals(
 
   const heuristicNumeric = SIGNAL_TYPE_MAP[heuristicType] ?? 0
 
-  // Calculate blended confidence
-  const blendedConfidence = heuristicConfidence * (1 - ML_BLEND_WEIGHT) + mlConfidence * ML_BLEND_WEIGHT
+  // Direction disagreement filter: if one says buy and other says sell, heavily penalize
+  const heuristicIsBuy = heuristicNumeric > 0
+  const heuristicIsSell = heuristicNumeric < 0
+  const mlIsBuy = mlPrediction > 0
+  const mlIsSell = mlPrediction < 0
+
+  if ((heuristicIsBuy && mlIsSell) || (heuristicIsSell && mlIsBuy)) {
+    return {
+      signalType: heuristicType,
+      confidence: Math.min(heuristicConfidence, mlConfidence) * 0.5,
+      mlEnhanced: true,
+    }
+  }
+
+  // Calculate blended confidence using dynamic weight
+  const blendedConfidence = heuristicConfidence * (1 - blendWeight) + mlConfidence * blendWeight
 
   // If signals agree, boost confidence
   if (heuristicNumeric === mlPrediction) {
@@ -2104,7 +2128,7 @@ function blendSignals(
     }
   }
 
-  // If signals disagree, use heuristic but reduce confidence
+  // If signals partially disagree (same direction, different strength), use heuristic but reduce confidence
   return {
     signalType: heuristicType,
     confidence: blendedConfidence * 0.85,
@@ -2462,10 +2486,18 @@ async function handlePreviewSignals(supabaseClient: any, req: Request, requestId
       }
     }
 
+    // Read dynamic ML blend weight from config
+    const { data: genBlendConfig } = await supabaseClient
+      .from('reference_portfolio_config')
+      .select('ml_blend_weight')
+      .limit(1)
+      .maybeSingle()
+    const genMlBlendWeight = genBlendConfig?.ml_blend_weight ?? ML_BLEND_WEIGHT
+
     // Single batch ML prediction call (instead of N sequential calls)
     let mlPredictionCount = 0
     if (useML && mlFeaturesList.length > 0) {
-      log.info('Starting batch ML prediction', { tickerCount: mlFeaturesList.length })
+      log.info('Starting batch ML prediction', { tickerCount: mlFeaturesList.length, mlBlendWeight: genMlBlendWeight })
       const mlPredictions = await getBatchMlPredictions(mlFeaturesList)
       mlPredictionCount = mlPredictions.size
       log.info('ML predictions received', { count: mlPredictionCount })
@@ -2478,7 +2510,8 @@ async function handlePreviewSignals(supabaseClient: any, req: Request, requestId
             data.heuristicType,
             data.heuristicConfidence,
             mlResult.prediction,
-            mlResult.confidence
+            mlResult.confidence,
+            genMlBlendWeight
           )
           data.signal.signal_type = blended.signalType
           data.signal.confidence_score = Math.round(blended.confidence * 100) / 100

@@ -1589,3 +1589,614 @@ class TestModuleConstants:
         """Test OLLAMA_MODEL has expected default."""
         from app.services.feature_pipeline import OLLAMA_MODEL
         assert OLLAMA_MODEL is not None
+
+
+class TestFetchOutcomeData:
+    """Tests for FeaturePipeline._fetch_outcome_data method."""
+
+    @pytest.fixture
+    def pipeline(self):
+        """Create pipeline with mocked Supabase."""
+        with patch("app.services.feature_pipeline.get_supabase") as mock_get_supabase:
+            mock_client = MagicMock()
+            mock_get_supabase.return_value = mock_client
+            return FeaturePipeline()
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_no_supabase(self):
+        """Test returns empty list when self.supabase is None/falsy."""
+        with patch("app.services.feature_pipeline.get_supabase") as mock_get_supabase:
+            mock_get_supabase.return_value = None
+            pipeline = FeaturePipeline()
+            pipeline.supabase = None
+
+            result = await pipeline._fetch_outcome_data()
+
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_no_data(self, pipeline):
+        """Test returns empty list when query returns no results."""
+        mock_table = MagicMock()
+        pipeline.supabase.table.return_value = mock_table
+        mock_table.select.return_value = mock_table
+        mock_table.in_.return_value = mock_table
+        mock_table.gte.return_value = mock_table
+        mock_table.execute.return_value = MagicMock(data=[])
+
+        result = await pipeline._fetch_outcome_data()
+
+        assert result == []
+        pipeline.supabase.table.assert_called_once_with("signal_outcomes")
+
+    @pytest.mark.asyncio
+    async def test_returns_outcome_data(self, pipeline):
+        """Test returns list of outcome records from signal_outcomes table."""
+        sample_data = [
+            {
+                "ticker": "AAPL",
+                "signal_type": "congressional_trade",
+                "signal_confidence": 0.85,
+                "outcome": "win",
+                "return_pct": 5.2,
+                "entry_price": 150.0,
+                "exit_price": 157.8,
+                "holding_days": 14,
+                "features": {"politician_count": 3, "buy_sell_ratio": 2.0},
+                "signal_date": "2026-01-15",
+            },
+            {
+                "ticker": "MSFT",
+                "signal_type": "congressional_trade",
+                "signal_confidence": 0.70,
+                "outcome": "loss",
+                "return_pct": -3.1,
+                "entry_price": 400.0,
+                "exit_price": 387.6,
+                "holding_days": 7,
+                "features": {"politician_count": 2, "buy_sell_ratio": 1.5},
+                "signal_date": "2026-01-20",
+            },
+        ]
+
+        mock_table = MagicMock()
+        pipeline.supabase.table.return_value = mock_table
+        mock_table.select.return_value = mock_table
+        mock_table.in_.return_value = mock_table
+        mock_table.gte.return_value = mock_table
+        mock_table.execute.return_value = MagicMock(data=sample_data)
+
+        result = await pipeline._fetch_outcome_data()
+
+        assert len(result) == 2
+        assert result[0]["ticker"] == "AAPL"
+        assert result[1]["outcome"] == "loss"
+
+    @pytest.mark.asyncio
+    async def test_filters_by_outcome_types(self, pipeline):
+        """Test that query filters to win/loss/breakeven outcomes."""
+        mock_table = MagicMock()
+        pipeline.supabase.table.return_value = mock_table
+        mock_table.select.return_value = mock_table
+        mock_table.in_.return_value = mock_table
+        mock_table.gte.return_value = mock_table
+        mock_table.execute.return_value = MagicMock(data=[])
+
+        await pipeline._fetch_outcome_data()
+
+        # Verify in_ was called with outcome filter
+        mock_table.in_.assert_called_once_with("outcome", ["win", "loss", "breakeven"])
+
+    @pytest.mark.asyncio
+    async def test_uses_window_days_for_cutoff(self, pipeline):
+        """Test that window_days parameter controls the date cutoff."""
+        mock_table = MagicMock()
+        pipeline.supabase.table.return_value = mock_table
+        mock_table.select.return_value = mock_table
+        mock_table.in_.return_value = mock_table
+        mock_table.gte.return_value = mock_table
+        mock_table.execute.return_value = MagicMock(data=[])
+
+        await pipeline._fetch_outcome_data(window_days=30)
+
+        # Verify gte was called with a date string (the cutoff)
+        mock_table.gte.assert_called_once()
+        args = mock_table.gte.call_args
+        assert args[0][0] == "signal_date"
+        # The cutoff should be a date string
+        cutoff_str = args[0][1]
+        assert len(cutoff_str) == 10  # YYYY-MM-DD format
+
+    @pytest.mark.asyncio
+    async def test_handles_none_data_response(self, pipeline):
+        """Test returns empty list when result.data is None."""
+        mock_table = MagicMock()
+        pipeline.supabase.table.return_value = mock_table
+        mock_table.select.return_value = mock_table
+        mock_table.in_.return_value = mock_table
+        mock_table.gte.return_value = mock_table
+        mock_table.execute.return_value = MagicMock(data=None)
+
+        result = await pipeline._fetch_outcome_data()
+
+        assert result == []
+
+
+class TestPrepareOutcomeTrainingData:
+    """Tests for FeaturePipeline.prepare_outcome_training_data method."""
+
+    @pytest.fixture
+    def pipeline(self):
+        """Create pipeline with mocked Supabase."""
+        with patch("app.services.feature_pipeline.get_supabase") as mock_get_supabase:
+            mock_get_supabase.return_value = MagicMock()
+            return FeaturePipeline()
+
+    def _make_outcome_record(self, ticker, outcome, return_pct, features=None):
+        """Helper to create an outcome record with all required feature names."""
+        default_config = TrainingConfig(use_outcomes=True)
+        feature_names = default_config.get_feature_names()
+        if features is None:
+            features = {name: float(i) for i, name in enumerate(feature_names)}
+        return {
+            "ticker": ticker,
+            "signal_type": "congressional_trade",
+            "signal_confidence": 0.8,
+            "outcome": outcome,
+            "return_pct": return_pct,
+            "entry_price": 100.0,
+            "exit_price": 100.0 + return_pct,
+            "holding_days": 7,
+            "features": features,
+            "signal_date": "2026-01-15",
+        }
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_no_data(self, pipeline):
+        """Test returns empty arrays when no outcome or market data exists."""
+        with patch.object(pipeline, '_fetch_outcome_data', new_callable=AsyncMock) as mock_outcome:
+            with patch.object(pipeline, 'prepare_training_data', new_callable=AsyncMock) as mock_market:
+                mock_outcome.return_value = []
+                mock_market.return_value = (pd.DataFrame(), np.array([]))
+
+                features_df, labels, weights = await pipeline.prepare_outcome_training_data()
+
+                assert len(features_df) == 0
+                assert len(labels) == 0
+                assert len(weights) == 0
+
+    @pytest.mark.asyncio
+    async def test_outcome_only_data(self, pipeline):
+        """Test with only outcome data and no market data."""
+        outcome_records = [
+            self._make_outcome_record("AAPL", "win", 5.0),
+            self._make_outcome_record("MSFT", "loss", -3.0),
+        ]
+
+        config = TrainingConfig(use_outcomes=True, outcome_weight=3.0)
+
+        with patch.object(pipeline, '_fetch_outcome_data', new_callable=AsyncMock) as mock_outcome:
+            with patch.object(pipeline, 'prepare_training_data', new_callable=AsyncMock) as mock_market:
+                mock_outcome.return_value = outcome_records
+                mock_market.return_value = (pd.DataFrame(), np.array([]))
+
+                features_df, labels, weights = await pipeline.prepare_outcome_training_data(config=config)
+
+                assert len(features_df) == 2
+                assert len(labels) == 2
+                assert len(weights) == 2
+                # All outcome weights should be > 1.0 (confidence * magnitude scaled)
+                assert all(w > 1.0 for w in weights)
+
+    @pytest.mark.asyncio
+    async def test_market_only_data(self, pipeline):
+        """Test with only market data and no outcome data."""
+        config = TrainingConfig(use_outcomes=True)
+        feature_names = config.get_feature_names()
+
+        market_df = pd.DataFrame({name: [1.0, 2.0, 3.0] for name in feature_names})
+        market_labels = np.array([1, 0, -1])
+
+        with patch.object(pipeline, '_fetch_outcome_data', new_callable=AsyncMock) as mock_outcome:
+            with patch.object(pipeline, 'prepare_training_data', new_callable=AsyncMock) as mock_market:
+                mock_outcome.return_value = []
+                mock_market.return_value = (market_df, market_labels)
+
+                features_df, labels, weights = await pipeline.prepare_outcome_training_data(config=config)
+
+                assert len(features_df) == 3
+                assert len(labels) == 3
+                # All market weights should be 1.0
+                assert all(w == 1.0 for w in weights)
+
+    @pytest.mark.asyncio
+    async def test_blended_data_with_correct_weights(self, pipeline):
+        """Test blending outcome and market data produces correct sample weights."""
+        config = TrainingConfig(use_outcomes=True, outcome_weight=2.5)
+        feature_names = config.get_feature_names()
+
+        outcome_records = [
+            self._make_outcome_record("AAPL", "win", 6.0),
+        ]
+
+        market_df = pd.DataFrame({name: [1.0, 2.0] for name in feature_names})
+        market_labels = np.array([0, 1])
+
+        with patch.object(pipeline, '_fetch_outcome_data', new_callable=AsyncMock) as mock_outcome:
+            with patch.object(pipeline, 'prepare_training_data', new_callable=AsyncMock) as mock_market:
+                mock_outcome.return_value = outcome_records
+                mock_market.return_value = (market_df, market_labels)
+
+                features_df, labels, weights = await pipeline.prepare_outcome_training_data(config=config)
+
+                # 1 outcome + 2 market = 3 total
+                assert len(features_df) == 3
+                assert len(labels) == 3
+                assert len(weights) == 3
+                # First weight is per-sample (confidence=0.8 * log(1+6) * base=2.5)
+                assert weights[0] > 1.0  # outcome weight > market weight
+                assert weights[1] == 1.0  # market
+                assert weights[2] == 1.0  # market
+
+    @pytest.mark.asyncio
+    async def test_win_outcome_produces_positive_label(self, pipeline):
+        """Test that 'win' outcome always produces a positive label (>= 1)."""
+        outcome_records = [
+            self._make_outcome_record("AAPL", "win", 6.0),   # 6% return -> strong_buy(2) in 5-class
+            self._make_outcome_record("MSFT", "win", 0.5),   # 0.5% return -> would be hold(0), but win forces >= 1
+        ]
+
+        with patch.object(pipeline, '_fetch_outcome_data', new_callable=AsyncMock) as mock_outcome:
+            with patch.object(pipeline, 'prepare_training_data', new_callable=AsyncMock) as mock_market:
+                mock_outcome.return_value = outcome_records
+                mock_market.return_value = (pd.DataFrame(), np.array([]))
+
+                features_df, labels, weights = await pipeline.prepare_outcome_training_data()
+
+                assert len(labels) == 2
+                # Both win outcomes must have positive labels
+                assert labels[0] >= 1  # 6% return -> 2 (strong_buy)
+                assert labels[1] >= 1  # 0.5% return -> forced to 1 (buy)
+
+    @pytest.mark.asyncio
+    async def test_loss_outcome_produces_negative_label(self, pipeline):
+        """Test that 'loss' outcome always produces a negative label (<= -1)."""
+        outcome_records = [
+            self._make_outcome_record("AAPL", "loss", -6.0),  # -6% -> strong_sell(-2)
+            self._make_outcome_record("MSFT", "loss", -0.5),  # -0.5% -> would be hold(0), but loss forces <= -1
+        ]
+
+        with patch.object(pipeline, '_fetch_outcome_data', new_callable=AsyncMock) as mock_outcome:
+            with patch.object(pipeline, 'prepare_training_data', new_callable=AsyncMock) as mock_market:
+                mock_outcome.return_value = outcome_records
+                mock_market.return_value = (pd.DataFrame(), np.array([]))
+
+                features_df, labels, weights = await pipeline.prepare_outcome_training_data()
+
+                assert len(labels) == 2
+                # Both loss outcomes must have negative labels
+                assert labels[0] <= -1  # -6% return -> -2 (strong_sell)
+                assert labels[1] <= -1  # -0.5% return -> forced to -1 (sell)
+
+    @pytest.mark.asyncio
+    async def test_breakeven_outcome_produces_zero_label(self, pipeline):
+        """Test that 'breakeven' outcome produces label 0."""
+        outcome_records = [
+            self._make_outcome_record("AAPL", "breakeven", 0.0),
+        ]
+
+        with patch.object(pipeline, '_fetch_outcome_data', new_callable=AsyncMock) as mock_outcome:
+            with patch.object(pipeline, 'prepare_training_data', new_callable=AsyncMock) as mock_market:
+                mock_outcome.return_value = outcome_records
+                mock_market.return_value = (pd.DataFrame(), np.array([]))
+
+                features_df, labels, weights = await pipeline.prepare_outcome_training_data()
+
+                assert len(labels) == 1
+                assert labels[0] == 0
+
+    @pytest.mark.asyncio
+    async def test_skips_records_with_missing_features(self, pipeline):
+        """Test that outcome records with incomplete features are filtered out."""
+        config = TrainingConfig(use_outcomes=True)
+        feature_names = config.get_feature_names()
+
+        # Record with only some features (missing many required ones)
+        incomplete_record = {
+            "ticker": "AAPL",
+            "outcome": "win",
+            "return_pct": 5.0,
+            "features": {"politician_count": 3.0},  # Missing most required features
+            "signal_date": "2026-01-15",
+        }
+        # Record with all features
+        complete_record = self._make_outcome_record("MSFT", "win", 4.0)
+
+        with patch.object(pipeline, '_fetch_outcome_data', new_callable=AsyncMock) as mock_outcome:
+            with patch.object(pipeline, 'prepare_training_data', new_callable=AsyncMock) as mock_market:
+                mock_outcome.return_value = [incomplete_record, complete_record]
+                mock_market.return_value = (pd.DataFrame(), np.array([]))
+
+                features_df, labels, weights = await pipeline.prepare_outcome_training_data(config=config)
+
+                # Only the complete record should be included
+                assert len(features_df) == 1
+                assert len(labels) == 1
+
+    @pytest.mark.asyncio
+    async def test_skips_records_with_empty_features(self, pipeline):
+        """Test that outcome records with empty/None features dict are filtered out."""
+        complete_record = self._make_outcome_record("AAPL", "win", 4.0)
+        empty_features_record = {
+            "ticker": "MSFT",
+            "outcome": "loss",
+            "return_pct": -2.0,
+            "features": {},
+            "signal_date": "2026-01-15",
+        }
+        none_features_record = {
+            "ticker": "GOOG",
+            "outcome": "breakeven",
+            "return_pct": 0.0,
+            "features": None,
+            "signal_date": "2026-01-15",
+        }
+
+        with patch.object(pipeline, '_fetch_outcome_data', new_callable=AsyncMock) as mock_outcome:
+            with patch.object(pipeline, 'prepare_training_data', new_callable=AsyncMock) as mock_market:
+                mock_outcome.return_value = [complete_record, empty_features_record, none_features_record]
+                mock_market.return_value = (pd.DataFrame(), np.array([]))
+
+                features_df, labels, weights = await pipeline.prepare_outcome_training_data()
+
+                # Only the complete record should survive
+                assert len(features_df) == 1
+
+    @pytest.mark.asyncio
+    async def test_uses_default_config_with_outcomes_enabled(self, pipeline):
+        """Test that default config has use_outcomes=True when none provided."""
+        with patch.object(pipeline, '_fetch_outcome_data', new_callable=AsyncMock) as mock_outcome:
+            with patch.object(pipeline, 'prepare_training_data', new_callable=AsyncMock) as mock_market:
+                mock_outcome.return_value = []
+                mock_market.return_value = (pd.DataFrame(), np.array([]))
+
+                await pipeline.prepare_outcome_training_data()
+
+                # _fetch_outcome_data should be called with the config's lookback_days (365 default)
+                mock_outcome.assert_called_once_with(window_days=365)
+
+    @pytest.mark.asyncio
+    async def test_3class_mode_labels(self, pipeline):
+        """Test label generation in 3-class mode for outcome records."""
+        config = TrainingConfig(use_outcomes=True, num_classes=3)
+
+        outcome_records = [
+            self._make_outcome_record("AAPL", "win", 6.0),
+            self._make_outcome_record("MSFT", "loss", -6.0),
+            self._make_outcome_record("GOOG", "breakeven", 0.0),
+        ]
+
+        with patch.object(pipeline, '_fetch_outcome_data', new_callable=AsyncMock) as mock_outcome:
+            with patch.object(pipeline, 'prepare_training_data', new_callable=AsyncMock) as mock_market:
+                mock_outcome.return_value = outcome_records
+                mock_market.return_value = (pd.DataFrame(), np.array([]))
+
+                features_df, labels, weights = await pipeline.prepare_outcome_training_data(config=config)
+
+                assert len(labels) == 3
+                assert labels[0] == 1   # win -> buy (3-class max positive is 1)
+                assert labels[1] == -1  # loss -> sell (3-class max negative is -1)
+                assert labels[2] == 0   # breakeven -> hold
+
+
+class TestComputeOutcomeWeight:
+    """Tests for FeaturePipeline._compute_outcome_weight() — per-sample weighting."""
+
+    def test_high_confidence_large_return(self):
+        """High confidence + big return → large weight."""
+        w = FeaturePipeline._compute_outcome_weight(base_weight=2.0, confidence=0.95, return_pct=10.0)
+        # 2.0 * 0.95 * log(1+10) = 2.0 * 0.95 * 2.397 ≈ 4.55
+        assert w > 4.0
+
+    def test_low_confidence_small_return(self):
+        """Low confidence + tiny return → floored at 0.5 * base_weight."""
+        w = FeaturePipeline._compute_outcome_weight(base_weight=2.0, confidence=0.1, return_pct=0.01)
+        # 2.0 * 0.1 * log(1+0.01) ≈ 0.002 → floored to 1.0 (0.5 * 2.0)
+        assert w == 1.0
+
+    def test_breakeven_moderate_confidence(self):
+        """Breakeven (0% return) still gets a meaningful weight."""
+        w = FeaturePipeline._compute_outcome_weight(base_weight=2.0, confidence=0.7, return_pct=0.0)
+        # magnitude = log(1+0) = 0, max(0, 0.1) = 0.1, so 2.0 * 0.7 * 0.1 = 0.14 → floored to 1.0
+        assert w == 1.0  # floor
+
+    def test_none_confidence_defaults_to_0_5(self):
+        """None confidence treated as 0.5."""
+        w = FeaturePipeline._compute_outcome_weight(base_weight=2.0, confidence=None, return_pct=5.0)
+        expected_approx = 2.0 * 0.5 * max(1.7917, 0.1)  # log(1+5) ≈ 1.79
+        assert abs(w - expected_approx) < 0.1
+
+    def test_weight_scales_with_base_weight(self):
+        """Higher base_weight → higher output weight."""
+        w1 = FeaturePipeline._compute_outcome_weight(base_weight=1.0, confidence=0.8, return_pct=5.0)
+        w2 = FeaturePipeline._compute_outcome_weight(base_weight=3.0, confidence=0.8, return_pct=5.0)
+        assert w2 > w1
+
+    def test_negative_return_uses_absolute(self):
+        """Negative return_pct treated same as positive (absolute value)."""
+        w_pos = FeaturePipeline._compute_outcome_weight(base_weight=2.0, confidence=0.8, return_pct=5.0)
+        w_neg = FeaturePipeline._compute_outcome_weight(base_weight=2.0, confidence=0.8, return_pct=-5.0)
+        assert w_pos == w_neg
+
+
+class TestTrainingJobRunOutcomeWiring:
+    """Tests for TrainingJob.run() outcome-aware training wiring."""
+
+    def _mock_supabase_for_run(self):
+        """Helper to set up mocked Supabase for TrainingJob.run()."""
+        mock_client = MagicMock()
+        mock_table = MagicMock()
+        mock_client.table.return_value = mock_table
+        mock_table.insert.return_value.execute.return_value = MagicMock(
+            data=[{"id": "model-uuid"}]
+        )
+        mock_table.update.return_value.eq.return_value.execute.return_value = MagicMock()
+        mock_table.update.return_value.eq.return_value.neq.return_value.execute.return_value = MagicMock()
+        return mock_client
+
+    @pytest.mark.asyncio
+    async def test_use_outcomes_true_calls_prepare_outcome_training_data(self):
+        """Test that use_outcomes=True calls prepare_outcome_training_data instead of prepare_training_data."""
+        config = TrainingConfig(use_outcomes=True, outcome_weight=2.0)
+        job = TrainingJob(job_id="test-outcome", config=config)
+
+        feature_names = config.get_feature_names()
+        features_df = pd.DataFrame({name: [1.0] * 150 for name in feature_names})
+        labels = np.array([0] * 50 + [1] * 50 + [-1] * 50)
+        weights = np.array([2.0] * 50 + [1.0] * 100)
+
+        with patch("app.services.feature_pipeline.get_supabase") as mock_get_supabase:
+            mock_get_supabase.return_value = self._mock_supabase_for_run()
+
+            with patch("app.services.feature_pipeline.FeaturePipeline") as mock_pipeline_class:
+                mock_pipeline = MagicMock()
+                mock_pipeline_class.return_value = mock_pipeline
+                mock_pipeline.prepare_outcome_training_data = AsyncMock(
+                    return_value=(features_df, labels, weights)
+                )
+                mock_pipeline.prepare_training_data = AsyncMock()
+
+                with patch("app.services.ml_signal_model.CongressSignalModel") as mock_model_class:
+                    mock_model = MagicMock()
+                    mock_model_class.return_value = mock_model
+                    mock_model.train.return_value = {
+                        'metrics': {'accuracy': 0.8, 'training_samples': 120, 'validation_samples': 30},
+                        'feature_importance': {},
+                        'hyperparameters': {},
+                    }
+
+                    with patch("app.services.ml_signal_model.upload_model_to_storage", return_value="path"):
+                        await job.run()
+
+                # prepare_outcome_training_data should be called, not prepare_training_data
+                mock_pipeline.prepare_outcome_training_data.assert_called_once_with(config=config)
+                mock_pipeline.prepare_training_data.assert_not_called()
+
+        assert job.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_use_outcomes_false_calls_prepare_training_data(self):
+        """Test that use_outcomes=False (default) calls prepare_training_data."""
+        config = TrainingConfig(use_outcomes=False)
+        job = TrainingJob(job_id="test-no-outcome", config=config)
+
+        feature_names = config.get_feature_names()
+        features_df = pd.DataFrame({name: [1.0] * 150 for name in feature_names})
+        labels = np.array([0] * 50 + [1] * 50 + [-1] * 50)
+
+        with patch("app.services.feature_pipeline.get_supabase") as mock_get_supabase:
+            mock_get_supabase.return_value = self._mock_supabase_for_run()
+
+            with patch("app.services.feature_pipeline.FeaturePipeline") as mock_pipeline_class:
+                mock_pipeline = MagicMock()
+                mock_pipeline_class.return_value = mock_pipeline
+                mock_pipeline.prepare_training_data = AsyncMock(
+                    return_value=(features_df, labels)
+                )
+                mock_pipeline.prepare_outcome_training_data = AsyncMock()
+
+                with patch("app.services.ml_signal_model.CongressSignalModel") as mock_model_class:
+                    mock_model = MagicMock()
+                    mock_model_class.return_value = mock_model
+                    mock_model.train.return_value = {
+                        'metrics': {'accuracy': 0.8, 'training_samples': 120, 'validation_samples': 30},
+                        'feature_importance': {},
+                        'hyperparameters': {},
+                    }
+
+                    with patch("app.services.ml_signal_model.upload_model_to_storage", return_value="path"):
+                        await job.run()
+
+                # prepare_training_data should be called, not prepare_outcome_training_data
+                mock_pipeline.prepare_training_data.assert_called_once_with(
+                    lookback_days=config.lookback_days,
+                    config=config,
+                )
+                mock_pipeline.prepare_outcome_training_data.assert_not_called()
+
+        assert job.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_sample_weights_passed_to_model_train(self):
+        """Test that sample_weights from outcome training is passed through to model.train()."""
+        config = TrainingConfig(use_outcomes=True, outcome_weight=3.0)
+        job = TrainingJob(job_id="test-weights", config=config)
+
+        feature_names = config.get_feature_names()
+        features_df = pd.DataFrame({name: [1.0] * 150 for name in feature_names})
+        labels = np.array([0] * 50 + [1] * 50 + [-1] * 50)
+        weights = np.array([3.0] * 50 + [1.0] * 100)
+
+        with patch("app.services.feature_pipeline.get_supabase") as mock_get_supabase:
+            mock_get_supabase.return_value = self._mock_supabase_for_run()
+
+            with patch("app.services.feature_pipeline.FeaturePipeline") as mock_pipeline_class:
+                mock_pipeline = MagicMock()
+                mock_pipeline_class.return_value = mock_pipeline
+                mock_pipeline.prepare_outcome_training_data = AsyncMock(
+                    return_value=(features_df, labels, weights)
+                )
+
+                with patch("app.services.ml_signal_model.CongressSignalModel") as mock_model_class:
+                    mock_model = MagicMock()
+                    mock_model_class.return_value = mock_model
+                    mock_model.train.return_value = {
+                        'metrics': {'accuracy': 0.8, 'training_samples': 120, 'validation_samples': 30},
+                        'feature_importance': {},
+                        'hyperparameters': {},
+                    }
+
+                    with patch("app.services.ml_signal_model.upload_model_to_storage", return_value="path"):
+                        await job.run()
+
+                    # Verify sample_weights was passed to model.train
+                    mock_model.train.assert_called_once()
+                    call_kwargs = mock_model.train.call_args
+                    assert call_kwargs.kwargs.get('sample_weights') is not None
+                    np.testing.assert_array_equal(call_kwargs.kwargs['sample_weights'], weights)
+
+    @pytest.mark.asyncio
+    async def test_sample_weights_none_when_no_outcomes(self):
+        """Test that sample_weights is None when use_outcomes=False."""
+        config = TrainingConfig(use_outcomes=False)
+        job = TrainingJob(job_id="test-no-weights", config=config)
+
+        feature_names = config.get_feature_names()
+        features_df = pd.DataFrame({name: [1.0] * 150 for name in feature_names})
+        labels = np.array([0] * 50 + [1] * 50 + [-1] * 50)
+
+        with patch("app.services.feature_pipeline.get_supabase") as mock_get_supabase:
+            mock_get_supabase.return_value = self._mock_supabase_for_run()
+
+            with patch("app.services.feature_pipeline.FeaturePipeline") as mock_pipeline_class:
+                mock_pipeline = MagicMock()
+                mock_pipeline_class.return_value = mock_pipeline
+                mock_pipeline.prepare_training_data = AsyncMock(
+                    return_value=(features_df, labels)
+                )
+
+                with patch("app.services.ml_signal_model.CongressSignalModel") as mock_model_class:
+                    mock_model = MagicMock()
+                    mock_model_class.return_value = mock_model
+                    mock_model.train.return_value = {
+                        'metrics': {'accuracy': 0.8, 'training_samples': 120, 'validation_samples': 30},
+                        'feature_importance': {},
+                        'hyperparameters': {},
+                    }
+
+                    with patch("app.services.ml_signal_model.upload_model_to_storage", return_value="path"):
+                        await job.run()
+
+                    # Verify sample_weights is None
+                    call_kwargs = mock_model.train.call_args
+                    assert call_kwargs.kwargs.get('sample_weights') is None

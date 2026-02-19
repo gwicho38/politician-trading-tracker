@@ -175,6 +175,104 @@ class FeaturePipeline:
 
         return features_df, labels_array
 
+    @staticmethod
+    def _compute_outcome_weight(
+        base_weight: float,
+        confidence: float,
+        return_pct: float,
+    ) -> float:
+        """Compute per-sample weight for an outcome record.
+
+        Weight = base_weight * confidence * log(1 + |return_pct|)
+
+        High-confidence trades with large returns teach the model the most.
+        Low-confidence breakevens teach the least (but still more than market data).
+        """
+        import math
+        conf = max(0.0, min(1.0, confidence or 0.5))
+        magnitude = math.log1p(abs(return_pct or 0.0))
+        # Floor at 0.5 * base_weight so even low-signal outcomes outweigh market data
+        return max(0.5 * base_weight, base_weight * conf * max(magnitude, 0.1))
+
+    async def prepare_outcome_training_data(
+        self,
+        config: Optional["TrainingConfig"] = None,
+    ) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:
+        """Prepare training data blending outcome-labeled and market-labeled records.
+
+        Returns (features_df, labels, sample_weights) where sample_weights
+        are per-sample: outcome records get confidence * magnitude weighting,
+        market records get 1.0.
+        """
+        from app.models.training_config import TrainingConfig as _TrainingConfig
+
+        if config is None:
+            config = _TrainingConfig(use_outcomes=True)
+
+        feature_names = config.get_feature_names()
+        outcome_weight = config.outcome_weight
+
+        # --- Outcome-labeled data from closed trades ---
+        outcome_records = await self._fetch_outcome_data(window_days=config.lookback_days)
+
+        outcome_features_list = []
+        outcome_labels = []
+        outcome_weights = []
+        for rec in outcome_records:
+            features = rec.get("features", {})
+            if not features or not all(name in features for name in feature_names):
+                continue
+
+            feature_vec = {name: float(features.get(name, 0.0)) for name in feature_names}
+            outcome_features_list.append(feature_vec)
+
+            outcome = rec["outcome"]
+            return_pct = rec.get("return_pct", 0.0)
+            if outcome == "win":
+                label = generate_label(abs(return_pct) / 100.0, config.num_classes, config.thresholds)
+                if label <= 0:
+                    label = 1
+            elif outcome == "loss":
+                label = generate_label(-abs(return_pct) / 100.0, config.num_classes, config.thresholds)
+                if label >= 0:
+                    label = -1
+            else:
+                label = 0
+            outcome_labels.append(label)
+
+            # Per-sample weight: confidence * return magnitude
+            confidence = rec.get("signal_confidence", 0.5)
+            outcome_weights.append(
+                self._compute_outcome_weight(outcome_weight, confidence, return_pct)
+            )
+
+        # --- Market-labeled data from yfinance forward returns ---
+        market_features_df, market_labels = await self.prepare_training_data(
+            lookback_days=config.lookback_days, config=config,
+        )
+
+        # --- Blend both sources ---
+        all_features = []
+        all_labels = []
+        all_weights = []
+
+        if outcome_features_list:
+            outcome_df = pd.DataFrame(outcome_features_list)
+            all_features.append(outcome_df)
+            all_labels.extend(outcome_labels)
+            all_weights.extend(outcome_weights)
+
+        if len(market_features_df) > 0:
+            all_features.append(market_features_df)
+            all_labels.extend(market_labels.tolist())
+            all_weights.extend([1.0] * len(market_labels))
+
+        if not all_features:
+            return pd.DataFrame(), np.array([]), np.array([])
+
+        combined_df = pd.concat(all_features, ignore_index=True)
+        return combined_df, np.array(all_labels), np.array(all_weights)
+
     async def _fetch_disclosures(
         self,
         lookback_days: int,
@@ -209,6 +307,24 @@ class FeaturePipeline:
                 break
 
         return all_disclosures
+
+    async def _fetch_outcome_data(self, window_days: int = 90) -> list:
+        """Fetch closed trade outcomes from signal_outcomes for training labels."""
+        if not self.supabase:
+            return []
+
+        cutoff = (datetime.now() - timedelta(days=window_days)).strftime("%Y-%m-%d")
+
+        result = (
+            self.supabase.table("signal_outcomes")
+            .select("ticker, signal_type, signal_confidence, outcome, return_pct, "
+                    "entry_price, exit_price, holding_days, features, signal_date")
+            .in_("outcome", ["win", "loss", "breakeven"])
+            .gte("signal_date", cutoff)
+            .execute()
+        )
+
+        return result.data or []
 
     def _aggregate_by_week(
         self,
@@ -692,10 +808,16 @@ class TrainingJob:
 
             # Prepare training data with config
             pipeline = FeaturePipeline()
-            features_df, labels = await pipeline.prepare_training_data(
-                lookback_days=config.lookback_days,
-                config=config,
-            )
+            sample_weights = None
+            if config.use_outcomes:
+                features_df, labels, sample_weights = await pipeline.prepare_outcome_training_data(
+                    config=config,
+                )
+            else:
+                features_df, labels = await pipeline.prepare_training_data(
+                    lookback_days=config.lookback_days,
+                    config=config,
+                )
 
             if len(features_df) < 100:
                 raise ValueError(f"Insufficient training data: {len(features_df)} samples")
@@ -710,6 +832,7 @@ class TrainingJob:
                 labels,
                 hyperparams=config.hyperparams,
                 config=config,
+                sample_weights=sample_weights,
             )
 
             self.current_step = "Saving model..."

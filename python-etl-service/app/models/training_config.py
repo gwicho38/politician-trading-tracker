@@ -50,6 +50,8 @@ class TrainingConfig(BaseModel):
         "learning_rate": 0.1,
     })
     triggered_by: str = Field(default="api")
+    use_outcomes: bool = Field(default=False, description="Use signal_outcomes for training labels")
+    outcome_weight: float = Field(default=2.0, ge=0.1, le=10.0, description="Weight multiplier for outcome-labeled data vs yfinance-labeled data")
 
     @model_validator(mode="after")
     def validate_config(self):
@@ -100,6 +102,8 @@ class TrainingConfig(BaseModel):
             "features": self.features.model_dump(),
             "hyperparams": self.hyperparams,
             "triggered_by": self.triggered_by,
+            "use_outcomes": self.use_outcomes,
+            "outcome_weight": self.outcome_weight,
             "feature_names": self.get_feature_names(),
         }
 
@@ -116,4 +120,6 @@ class TrainingConfig(BaseModel):
             features=FeatureToggles(**features_data) if features_data else FeatureToggles(),
             hyperparams=data.get("hyperparams", {}),
             triggered_by=data.get("triggered_by", "api"),
+            use_outcomes=data.get("use_outcomes", False),
+            outcome_weight=data.get("outcome_weight", 2.0),
         )
