@@ -1605,6 +1605,7 @@ const DEFAULT_WEIGHTS: SignalWeights = {
 // ML Integration Configuration
 // Call ETL directly for ML (Phoenix proxy adds latency)
 const ETL_API_URL = Deno.env.get('ETL_API_URL') || 'https://politician-trading-etl.fly.dev'
+const ETL_API_KEY = Deno.env.get('ETL_API_KEY') || ''
 // ML enabled by default - quick health check prevents blocking on cold starts
 const ML_ENABLED = Deno.env.get('ML_ENABLED') !== 'false'
 const ML_BLEND_WEIGHT = 0.2 // 20% ML, 80% heuristic (reduced from 0.4 to test if ML is adding noise)
@@ -1976,6 +1977,7 @@ async function checkMlModelAvailable(): Promise<boolean> {
 
     const response = await fetch(`${ETL_API_URL}/ml/models/active`, {
       method: 'GET',
+      headers: { 'X-API-Key': ETL_API_KEY },
       signal: controller.signal,
     })
 
@@ -2051,7 +2053,7 @@ async function getBatchMlPredictions(
 
     const response = await fetch(`${ETL_API_URL}/ml/batch-predict`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': ETL_API_KEY },
       body: JSON.stringify({ tickers, use_cache: true }),
       signal: controller.signal,
     })
@@ -2170,7 +2172,7 @@ async function applyUserLambda(
 
     const response = await fetch(`${ETL_API_URL}/signals/apply-lambda`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': ETL_API_KEY },
       body: JSON.stringify({
         signals,
         lambdaCode,

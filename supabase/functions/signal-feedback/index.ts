@@ -13,6 +13,15 @@ const log = {
       ...metadata
     }))
   },
+  warn: (message: string, metadata?: any) => {
+    console.warn(JSON.stringify({
+      level: 'WARN',
+      timestamp: new Date().toISOString(),
+      service: 'signal-feedback',
+      message,
+      ...metadata
+    }))
+  },
   error: (message: string, error?: any, metadata?: any) => {
     console.error(JSON.stringify({
       level: 'ERROR',
