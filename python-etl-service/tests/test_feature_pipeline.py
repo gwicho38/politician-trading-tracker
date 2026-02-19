@@ -1987,3 +1987,176 @@ class TestPrepareOutcomeTrainingData:
                 assert labels[0] == 1   # win -> buy (3-class max positive is 1)
                 assert labels[1] == -1  # loss -> sell (3-class max negative is -1)
                 assert labels[2] == 0   # breakeven -> hold
+
+
+class TestTrainingJobRunOutcomeWiring:
+    """Tests for TrainingJob.run() outcome-aware training wiring."""
+
+    def _mock_supabase_for_run(self):
+        """Helper to set up mocked Supabase for TrainingJob.run()."""
+        mock_client = MagicMock()
+        mock_table = MagicMock()
+        mock_client.table.return_value = mock_table
+        mock_table.insert.return_value.execute.return_value = MagicMock(
+            data=[{"id": "model-uuid"}]
+        )
+        mock_table.update.return_value.eq.return_value.execute.return_value = MagicMock()
+        mock_table.update.return_value.eq.return_value.neq.return_value.execute.return_value = MagicMock()
+        return mock_client
+
+    @pytest.mark.asyncio
+    async def test_use_outcomes_true_calls_prepare_outcome_training_data(self):
+        """Test that use_outcomes=True calls prepare_outcome_training_data instead of prepare_training_data."""
+        config = TrainingConfig(use_outcomes=True, outcome_weight=2.0)
+        job = TrainingJob(job_id="test-outcome", config=config)
+
+        feature_names = config.get_feature_names()
+        features_df = pd.DataFrame({name: [1.0] * 150 for name in feature_names})
+        labels = np.array([0] * 50 + [1] * 50 + [-1] * 50)
+        weights = np.array([2.0] * 50 + [1.0] * 100)
+
+        with patch("app.services.feature_pipeline.get_supabase") as mock_get_supabase:
+            mock_get_supabase.return_value = self._mock_supabase_for_run()
+
+            with patch("app.services.feature_pipeline.FeaturePipeline") as mock_pipeline_class:
+                mock_pipeline = MagicMock()
+                mock_pipeline_class.return_value = mock_pipeline
+                mock_pipeline.prepare_outcome_training_data = AsyncMock(
+                    return_value=(features_df, labels, weights)
+                )
+                mock_pipeline.prepare_training_data = AsyncMock()
+
+                with patch("app.services.ml_signal_model.CongressSignalModel") as mock_model_class:
+                    mock_model = MagicMock()
+                    mock_model_class.return_value = mock_model
+                    mock_model.train.return_value = {
+                        'metrics': {'accuracy': 0.8, 'training_samples': 120, 'validation_samples': 30},
+                        'feature_importance': {},
+                        'hyperparameters': {},
+                    }
+
+                    with patch("app.services.ml_signal_model.upload_model_to_storage", return_value="path"):
+                        await job.run()
+
+                # prepare_outcome_training_data should be called, not prepare_training_data
+                mock_pipeline.prepare_outcome_training_data.assert_called_once_with(config=config)
+                mock_pipeline.prepare_training_data.assert_not_called()
+
+        assert job.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_use_outcomes_false_calls_prepare_training_data(self):
+        """Test that use_outcomes=False (default) calls prepare_training_data."""
+        config = TrainingConfig(use_outcomes=False)
+        job = TrainingJob(job_id="test-no-outcome", config=config)
+
+        feature_names = config.get_feature_names()
+        features_df = pd.DataFrame({name: [1.0] * 150 for name in feature_names})
+        labels = np.array([0] * 50 + [1] * 50 + [-1] * 50)
+
+        with patch("app.services.feature_pipeline.get_supabase") as mock_get_supabase:
+            mock_get_supabase.return_value = self._mock_supabase_for_run()
+
+            with patch("app.services.feature_pipeline.FeaturePipeline") as mock_pipeline_class:
+                mock_pipeline = MagicMock()
+                mock_pipeline_class.return_value = mock_pipeline
+                mock_pipeline.prepare_training_data = AsyncMock(
+                    return_value=(features_df, labels)
+                )
+                mock_pipeline.prepare_outcome_training_data = AsyncMock()
+
+                with patch("app.services.ml_signal_model.CongressSignalModel") as mock_model_class:
+                    mock_model = MagicMock()
+                    mock_model_class.return_value = mock_model
+                    mock_model.train.return_value = {
+                        'metrics': {'accuracy': 0.8, 'training_samples': 120, 'validation_samples': 30},
+                        'feature_importance': {},
+                        'hyperparameters': {},
+                    }
+
+                    with patch("app.services.ml_signal_model.upload_model_to_storage", return_value="path"):
+                        await job.run()
+
+                # prepare_training_data should be called, not prepare_outcome_training_data
+                mock_pipeline.prepare_training_data.assert_called_once_with(
+                    lookback_days=config.lookback_days,
+                    config=config,
+                )
+                mock_pipeline.prepare_outcome_training_data.assert_not_called()
+
+        assert job.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_sample_weights_passed_to_model_train(self):
+        """Test that sample_weights from outcome training is passed through to model.train()."""
+        config = TrainingConfig(use_outcomes=True, outcome_weight=3.0)
+        job = TrainingJob(job_id="test-weights", config=config)
+
+        feature_names = config.get_feature_names()
+        features_df = pd.DataFrame({name: [1.0] * 150 for name in feature_names})
+        labels = np.array([0] * 50 + [1] * 50 + [-1] * 50)
+        weights = np.array([3.0] * 50 + [1.0] * 100)
+
+        with patch("app.services.feature_pipeline.get_supabase") as mock_get_supabase:
+            mock_get_supabase.return_value = self._mock_supabase_for_run()
+
+            with patch("app.services.feature_pipeline.FeaturePipeline") as mock_pipeline_class:
+                mock_pipeline = MagicMock()
+                mock_pipeline_class.return_value = mock_pipeline
+                mock_pipeline.prepare_outcome_training_data = AsyncMock(
+                    return_value=(features_df, labels, weights)
+                )
+
+                with patch("app.services.ml_signal_model.CongressSignalModel") as mock_model_class:
+                    mock_model = MagicMock()
+                    mock_model_class.return_value = mock_model
+                    mock_model.train.return_value = {
+                        'metrics': {'accuracy': 0.8, 'training_samples': 120, 'validation_samples': 30},
+                        'feature_importance': {},
+                        'hyperparameters': {},
+                    }
+
+                    with patch("app.services.ml_signal_model.upload_model_to_storage", return_value="path"):
+                        await job.run()
+
+                    # Verify sample_weights was passed to model.train
+                    mock_model.train.assert_called_once()
+                    call_kwargs = mock_model.train.call_args
+                    assert call_kwargs.kwargs.get('sample_weights') is not None
+                    np.testing.assert_array_equal(call_kwargs.kwargs['sample_weights'], weights)
+
+    @pytest.mark.asyncio
+    async def test_sample_weights_none_when_no_outcomes(self):
+        """Test that sample_weights is None when use_outcomes=False."""
+        config = TrainingConfig(use_outcomes=False)
+        job = TrainingJob(job_id="test-no-weights", config=config)
+
+        feature_names = config.get_feature_names()
+        features_df = pd.DataFrame({name: [1.0] * 150 for name in feature_names})
+        labels = np.array([0] * 50 + [1] * 50 + [-1] * 50)
+
+        with patch("app.services.feature_pipeline.get_supabase") as mock_get_supabase:
+            mock_get_supabase.return_value = self._mock_supabase_for_run()
+
+            with patch("app.services.feature_pipeline.FeaturePipeline") as mock_pipeline_class:
+                mock_pipeline = MagicMock()
+                mock_pipeline_class.return_value = mock_pipeline
+                mock_pipeline.prepare_training_data = AsyncMock(
+                    return_value=(features_df, labels)
+                )
+
+                with patch("app.services.ml_signal_model.CongressSignalModel") as mock_model_class:
+                    mock_model = MagicMock()
+                    mock_model_class.return_value = mock_model
+                    mock_model.train.return_value = {
+                        'metrics': {'accuracy': 0.8, 'training_samples': 120, 'validation_samples': 30},
+                        'feature_importance': {},
+                        'hyperparameters': {},
+                    }
+
+                    with patch("app.services.ml_signal_model.upload_model_to_storage", return_value="path"):
+                        await job.run()
+
+                    # Verify sample_weights is None
+                    call_kwargs = mock_model.train.call_args
+                    assert call_kwargs.kwargs.get('sample_weights') is None

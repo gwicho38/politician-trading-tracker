@@ -781,10 +781,16 @@ class TrainingJob:
 
             # Prepare training data with config
             pipeline = FeaturePipeline()
-            features_df, labels = await pipeline.prepare_training_data(
-                lookback_days=config.lookback_days,
-                config=config,
-            )
+            sample_weights = None
+            if config.use_outcomes:
+                features_df, labels, sample_weights = await pipeline.prepare_outcome_training_data(
+                    config=config,
+                )
+            else:
+                features_df, labels = await pipeline.prepare_training_data(
+                    lookback_days=config.lookback_days,
+                    config=config,
+                )
 
             if len(features_df) < 100:
                 raise ValueError(f"Insufficient training data: {len(features_df)} samples")
@@ -799,6 +805,7 @@ class TrainingJob:
                 labels,
                 hyperparams=config.hyperparams,
                 config=config,
+                sample_weights=sample_weights,
             )
 
             self.current_step = "Saving model..."

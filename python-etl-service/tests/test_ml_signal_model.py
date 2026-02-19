@@ -1205,3 +1205,151 @@ class TestGetFeatureNames:
         )
         result = get_feature_names(config)
         assert result == config.get_feature_names()
+
+
+class TestCongressSignalModelTrainWithSampleWeights:
+    """Tests for CongressSignalModel.train() with the sample_weights parameter."""
+
+    def test_train_with_sample_weights_splits_weights(self):
+        """Test that sample_weights are split alongside X/y and passed to fit."""
+        model = CongressSignalModel()
+
+        np.random.seed(42)
+        n_samples = 100
+        X = pd.DataFrame(
+            np.random.rand(n_samples, len(DEFAULT_FEATURE_NAMES)),
+            columns=DEFAULT_FEATURE_NAMES
+        )
+        y = np.array([i % 5 - 2 for i in range(n_samples)])
+        weights = np.array([2.0 if i < 30 else 1.0 for i in range(n_samples)])
+
+        mock_xgb_module = MagicMock()
+        mock_classifier = MagicMock()
+        mock_classifier.feature_importances_ = np.array([0.1] * len(DEFAULT_FEATURE_NAMES))
+        mock_classifier.predict.return_value = np.array([2] * 20)
+        mock_xgb_module.XGBClassifier.return_value = mock_classifier
+
+        mock_sklearn_model_selection = MagicMock()
+        # Split returns 6 values when sample_weights is provided
+        X_train = X.iloc[:80]
+        X_val = X.iloc[80:]
+        y_train = y[:80]
+        y_val = y[80:]
+        w_train = weights[:80]
+        w_val = weights[80:]
+        mock_sklearn_model_selection.train_test_split.return_value = (
+            X_train, X_val, y_train, y_val, w_train, w_val
+        )
+
+        mock_sklearn_metrics = MagicMock()
+        mock_sklearn_metrics.accuracy_score.return_value = 0.85
+        mock_sklearn_metrics.f1_score.return_value = 0.82
+        mock_sklearn_metrics.classification_report.return_value = {'accuracy': 0.85}
+
+        with patch.dict('sys.modules', {
+            'xgboost': mock_xgb_module,
+            'sklearn.model_selection': mock_sklearn_model_selection,
+            'sklearn.metrics': mock_sklearn_metrics,
+        }):
+            result = model.train(X, y, sample_weights=weights)
+
+        # Verify train_test_split was called with weights
+        split_call = mock_sklearn_model_selection.train_test_split.call_args
+        assert len(split_call[0]) == 3  # X, y, sample_weights
+
+        # Verify fit was called with sample_weight
+        fit_call = mock_classifier.fit.call_args
+        fit_sample_weight = fit_call.kwargs.get('sample_weight')
+        assert fit_sample_weight is not None
+        np.testing.assert_array_equal(fit_sample_weight, w_train)
+
+        assert model.is_trained is True
+
+    def test_train_without_sample_weights_no_weight_in_fit(self):
+        """Test that without sample_weights, fit is called with sample_weight=None."""
+        model = CongressSignalModel()
+
+        np.random.seed(42)
+        n_samples = 100
+        X = pd.DataFrame(
+            np.random.rand(n_samples, len(DEFAULT_FEATURE_NAMES)),
+            columns=DEFAULT_FEATURE_NAMES
+        )
+        y = np.array([i % 5 - 2 for i in range(n_samples)])
+
+        mock_xgb_module = MagicMock()
+        mock_classifier = MagicMock()
+        mock_classifier.feature_importances_ = np.array([0.1] * len(DEFAULT_FEATURE_NAMES))
+        mock_classifier.predict.return_value = np.array([2] * 20)
+        mock_xgb_module.XGBClassifier.return_value = mock_classifier
+
+        mock_sklearn_model_selection = MagicMock()
+        X_train = X.iloc[:80]
+        X_val = X.iloc[80:]
+        y_train = y[:80]
+        y_val = y[80:]
+        mock_sklearn_model_selection.train_test_split.return_value = (
+            X_train, X_val, y_train, y_val
+        )
+
+        mock_sklearn_metrics = MagicMock()
+        mock_sklearn_metrics.accuracy_score.return_value = 0.85
+        mock_sklearn_metrics.f1_score.return_value = 0.82
+        mock_sklearn_metrics.classification_report.return_value = {'accuracy': 0.85}
+
+        with patch.dict('sys.modules', {
+            'xgboost': mock_xgb_module,
+            'sklearn.model_selection': mock_sklearn_model_selection,
+            'sklearn.metrics': mock_sklearn_metrics,
+        }):
+            result = model.train(X, y)
+
+        # Verify train_test_split was called with only X and y (no weights)
+        split_call = mock_sklearn_model_selection.train_test_split.call_args
+        assert len(split_call[0]) == 2  # Only X, y
+
+        # Verify fit was called with sample_weight=None
+        fit_call = mock_classifier.fit.call_args
+        fit_sample_weight = fit_call.kwargs.get('sample_weight')
+        assert fit_sample_weight is None
+
+    def test_train_with_sample_weights_preserves_stratify(self):
+        """Test that stratified splitting is preserved when using sample_weights."""
+        model = CongressSignalModel()
+
+        np.random.seed(42)
+        n_samples = 100
+        X = pd.DataFrame(
+            np.random.rand(n_samples, len(DEFAULT_FEATURE_NAMES)),
+            columns=DEFAULT_FEATURE_NAMES
+        )
+        y = np.array([i % 5 - 2 for i in range(n_samples)])
+        weights = np.ones(n_samples) * 1.5
+
+        mock_xgb_module = MagicMock()
+        mock_classifier = MagicMock()
+        mock_classifier.feature_importances_ = np.array([0.1] * len(DEFAULT_FEATURE_NAMES))
+        mock_classifier.predict.return_value = np.array([2] * 20)
+        mock_xgb_module.XGBClassifier.return_value = mock_classifier
+
+        mock_sklearn_model_selection = MagicMock()
+        mock_sklearn_model_selection.train_test_split.return_value = (
+            X.iloc[:80], X.iloc[80:], y[:80], y[80:], weights[:80], weights[80:]
+        )
+
+        mock_sklearn_metrics = MagicMock()
+        mock_sklearn_metrics.accuracy_score.return_value = 0.85
+        mock_sklearn_metrics.f1_score.return_value = 0.82
+        mock_sklearn_metrics.classification_report.return_value = {}
+
+        with patch.dict('sys.modules', {
+            'xgboost': mock_xgb_module,
+            'sklearn.model_selection': mock_sklearn_model_selection,
+            'sklearn.metrics': mock_sklearn_metrics,
+        }):
+            model.train(X, y, sample_weights=weights)
+
+        # Verify stratify=y is still passed
+        split_call = mock_sklearn_model_selection.train_test_split.call_args
+        assert split_call.kwargs.get('stratify') is not None
+        np.testing.assert_array_equal(split_call.kwargs['stratify'], y)
