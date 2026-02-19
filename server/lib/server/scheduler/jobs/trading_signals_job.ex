@@ -22,10 +22,10 @@ defmodule Server.Scheduler.Jobs.TradingSignalsJob do
   def job_name, do: "Trading Signals Generation"
 
   @impl true
-  # Hourly during market hours: 14:00-20:00 UTC (9 AM - 3 PM EST), Monday-Friday
-  # This ensures fresh ML-enhanced signals for each trading window
+  # Hourly during extended hours: 09:00-00:00 UTC (~4 AM - 7 PM ET), Monday-Friday
+  # This ensures fresh ML-enhanced signals for pre-market, regular, and post-market sessions
   # TODO: Review this function
-  def schedule, do: "0 14-20 * * 1-5"
+  def schedule, do: "0 9-23,0 * * 1-5"
 
   # TODO: Review this function
   @impl true
@@ -61,7 +61,7 @@ defmodule Server.Scheduler.Jobs.TradingSignalsJob do
     %{
       description: "Generates ML-enhanced trading signals from politician trading patterns",
       edge_function: "trading-signals",
-      schedule_note: "Runs hourly during market hours (9 AM - 3 PM EST, Mon-Fri)"
+      schedule_note: "Runs hourly during extended hours (4 AM - 8 PM ET, Mon-Fri)"
     }
   end
 end

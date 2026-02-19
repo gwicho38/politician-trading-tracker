@@ -198,6 +198,11 @@ export function HoldingsTable() {
                         <Badge variant="outline" className="text-xs">
                           {position.side}
                         </Badge>
+                        {position.asset_type === 'crypto' && (
+                          <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                            Crypto
+                          </Badge>
+                        )}
                       </div>
                       {position.asset_name && (
                         <p className="text-xs text-muted-foreground truncate max-w-[150px]">
@@ -206,7 +211,9 @@ export function HoldingsTable() {
                       )}
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {position.quantity}
+                      {position.asset_type === 'crypto'
+                        ? parseFloat(String(position.quantity)).toFixed(6)
+                        : position.quantity}
                     </TableCell>
                     <TableCell className="text-right">
                       {formatCurrency(position.entry_price)}

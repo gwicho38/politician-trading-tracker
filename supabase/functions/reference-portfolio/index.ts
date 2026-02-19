@@ -54,6 +54,14 @@ interface ReferencePortfolioConfig {
   base_position_size_pct: number
   confidence_multiplier: number
   is_active: boolean
+  // Extended hours + crypto config
+  extended_hours_enabled?: boolean
+  extended_hours_limit_buffer_pct?: number
+  crypto_enabled?: boolean
+  crypto_base_position_size_pct?: number
+  crypto_max_positions?: number
+  crypto_stop_loss_pct?: number
+  crypto_take_profit_pct?: number
 }
 
 interface ReferencePortfolioState {
@@ -112,10 +120,15 @@ function calculatePositionSize(
   portfolioValue: number,
   confidence: number,
   currentPrice: number,
-  config: ReferencePortfolioConfig
+  config: ReferencePortfolioConfig,
+  assetType: string = 'stock'
 ): { shares: number; positionValue: number; multiplier: number } {
-  // Base position size
-  const baseSize = portfolioValue * (config.base_position_size_pct / 100)
+  // Use crypto-specific base size if applicable
+  const basePct = assetType === 'crypto'
+    ? (config.crypto_base_position_size_pct || 0.5)
+    : config.base_position_size_pct
+
+  const baseSize = portfolioValue * (basePct / 100)
 
   // Calculate confidence multiplier (1x to max based on confidence)
   const confidenceRange = 1.0 - config.min_confidence_threshold
@@ -133,26 +146,186 @@ function calculatePositionSize(
   const maxTrade = portfolioValue * (config.max_single_trade_pct / 100)
   positionValue = Math.min(positionValue, maxTrade)
 
-  // Calculate shares
-  const shares = Math.floor(positionValue / currentPrice)
+  // Fractional for crypto, integer for stocks
+  const shares = assetType === 'crypto'
+    ? parseFloat((positionValue / currentPrice).toFixed(8))
+    : Math.floor(positionValue / currentPrice)
 
   return { shares, positionValue: shares * currentPrice, multiplier }
 }
 
-// TODO: Review - Checks if US stock market is currently open based on Eastern Time
-// Returns true if within market hours (9:30 AM - 4:00 PM ET) on weekdays
-function isMarketOpen(): boolean {
-  const now = new Date()
-  const etOffset = -5 // EST (simplified - should handle DST)
-  const utcHour = now.getUTCHours()
-  const etHour = (utcHour + etOffset + 24) % 24
-  const dayOfWeek = now.getUTCDay()
+// Market status from Alpaca Clock API — handles DST, half-days, holidays automatically
+interface MarketStatus {
+  isOpen: boolean           // true during regular hours (9:30 AM - 4:00 PM ET)
+  isExtendedHours: boolean  // true during pre-market (4 AM-9:30 AM) or post-market (4 PM-8 PM ET)
+  nextOpen: string
+  nextClose: string
+}
 
-  // Market hours: 9:30 AM - 4:00 PM ET, Monday-Friday
-  const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5
-  const isMarketHours = (etHour >= 9 && etHour < 16) || (etHour === 9 && now.getUTCMinutes() >= 30)
+async function getMarketStatus(credentials: ReturnType<typeof getAlpacaCredentials>): Promise<MarketStatus> {
+  if (!credentials) {
+    return { isOpen: false, isExtendedHours: false, nextOpen: '', nextClose: '' }
+  }
 
-  return isWeekday && isMarketHours
+  try {
+    const response = await fetch(`${credentials.baseUrl}/v2/clock`, {
+      headers: {
+        'APCA-API-KEY-ID': credentials.apiKey,
+        'APCA-API-SECRET-KEY': credentials.secretKey,
+      }
+    })
+
+    if (!response.ok) {
+      log.error('Failed to fetch market clock', { status: response.status })
+      return { isOpen: false, isExtendedHours: false, nextOpen: '', nextClose: '' }
+    }
+
+    const clock = await response.json()
+    // clock: { timestamp, is_open, next_open, next_close }
+
+    let isExtendedHours = false
+    if (!clock.is_open) {
+      const now = new Date(clock.timestamp)
+      const dayOfWeek = now.getUTCDay()
+      const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5
+
+      if (isWeekday) {
+        const nextOpen = new Date(clock.next_open)
+        const nextClose = new Date(clock.next_close)
+        const hoursUntilOpen = (nextOpen.getTime() - now.getTime()) / (1000 * 60 * 60)
+        const hoursSinceClose = nextClose < now ? (now.getTime() - nextClose.getTime()) / (1000 * 60 * 60) : -1
+
+        // Pre-market: within 5.5 hours of open (4 AM ET = 5.5 hrs before 9:30 AM)
+        // Post-market: within 4 hours of close (8 PM ET = 4 hrs after 4 PM)
+        isExtendedHours = (hoursUntilOpen > 0 && hoursUntilOpen <= 5.5) ||
+                          (hoursSinceClose >= 0 && hoursSinceClose <= 4)
+      }
+    }
+
+    return {
+      isOpen: clock.is_open,
+      isExtendedHours,
+      nextOpen: clock.next_open,
+      nextClose: clock.next_close,
+    }
+  } catch (error) {
+    log.error('Market clock request failed', { error })
+    return { isOpen: false, isExtendedHours: false, nextOpen: '', nextClose: '' }
+  }
+}
+
+// Backward-compatible wrapper for callers that just need a boolean
+async function isMarketOpenAsync(credentials: ReturnType<typeof getAlpacaCredentials>): Promise<boolean> {
+  const status = await getMarketStatus(credentials)
+  return status.isOpen
+}
+
+// Fetch latest bid/ask quote from Alpaca (stocks or crypto)
+async function fetchLatestQuote(
+  ticker: string,
+  credentials: ReturnType<typeof getAlpacaCredentials>
+): Promise<{ bidPrice: number; askPrice: number }> {
+  if (!credentials) throw new Error('Alpaca credentials not configured')
+
+  const isCrypto = ticker.includes('/')
+  const endpoint = isCrypto
+    ? `${credentials.dataUrl}/v1beta3/crypto/us/latest/quotes?symbols=${encodeURIComponent(ticker)}`
+    : `${credentials.dataUrl}/v2/stocks/${ticker}/quotes/latest`
+
+  const response = await fetch(endpoint, {
+    headers: {
+      'APCA-API-KEY-ID': credentials.apiKey,
+      'APCA-API-SECRET-KEY': credentials.secretKey,
+    }
+  })
+
+  if (!response.ok) {
+    throw new Error(`Quote fetch failed for ${ticker}: ${response.status}`)
+  }
+
+  const data = await response.json()
+
+  if (isCrypto) {
+    const quoteData = data.quotes?.[ticker]
+    return { bidPrice: quoteData?.bp || 0, askPrice: quoteData?.ap || 0 }
+  }
+
+  return { bidPrice: data.quote?.bp || 0, askPrice: data.quote?.ap || 0 }
+}
+
+// Build order request with appropriate type/TIF based on market status and asset type
+interface OrderRequest {
+  symbol: string
+  qty: string | number
+  side: 'buy' | 'sell'
+  type: 'market' | 'limit'
+  time_in_force: 'day' | 'gtc'
+  limit_price?: string
+  extended_hours?: boolean
+}
+
+async function buildOrderRequest(
+  ticker: string,
+  qty: number,
+  side: 'buy' | 'sell',
+  assetType: string,
+  marketStatus: MarketStatus,
+  credentials: ReturnType<typeof getAlpacaCredentials>,
+  config: ReferencePortfolioConfig
+): Promise<OrderRequest> {
+  // Crypto: always GTC, market order, fractional qty
+  if (assetType === 'crypto') {
+    return {
+      symbol: ticker,
+      qty: qty.toFixed(8).replace(/\.?0+$/, ''),
+      side,
+      type: 'market',
+      time_in_force: 'gtc',
+    }
+  }
+
+  // Regular market hours: market order, day TIF
+  if (marketStatus.isOpen) {
+    return {
+      symbol: ticker,
+      qty: Math.floor(qty),
+      side,
+      type: 'market',
+      time_in_force: 'day',
+    }
+  }
+
+  // Extended hours: limit order with buffer, extended_hours flag
+  if (marketStatus.isExtendedHours && config.extended_hours_enabled) {
+    const bufferPct = (config.extended_hours_limit_buffer_pct || 0.5) / 100
+    const quote = await fetchLatestQuote(ticker, credentials)
+    let limitPrice: number
+
+    if (side === 'buy') {
+      limitPrice = (quote.askPrice || quote.bidPrice) * (1 + bufferPct)
+    } else {
+      limitPrice = (quote.bidPrice || quote.askPrice) * (1 - bufferPct)
+    }
+
+    return {
+      symbol: ticker,
+      qty: Math.floor(qty),
+      side,
+      type: 'limit',
+      time_in_force: 'day',
+      limit_price: limitPrice.toFixed(2),
+      extended_hours: true,
+    }
+  }
+
+  // Market closed and extended hours disabled: market order (Alpaca will reject if truly closed)
+  return {
+    symbol: ticker,
+    qty: Math.floor(qty),
+    side,
+    type: 'market',
+    time_in_force: 'day',
+  }
 }
 
 // TODO: Review - Main HTTP request handler that routes actions to appropriate handlers
@@ -339,6 +512,9 @@ async function handleGetState(supabaseClient: any, requestId: string) {
       }
     }
 
+    // Get authoritative market status from Alpaca Clock API
+    const marketStatus = await getMarketStatus(credentials)
+
     // Use Alpaca values if available, otherwise fall back to database
     const portfolioValue = alpacaData.equity ?? state.portfolio_value
     const cashValue = alpacaData.cash ?? state.cash
@@ -367,7 +543,8 @@ async function handleGetState(supabaseClient: any, requestId: string) {
           total_return_pct: totalReturnPct,
           current_drawdown: currentDrawdown,
           peak_portfolio_value: peakValue,
-          is_market_open: isMarketOpen(),
+          is_market_open: marketStatus.isOpen,
+          is_extended_hours: marketStatus.isExtendedHours,
           data_source: alpacaData.source
         }
       }),
@@ -758,13 +935,7 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
       )
     }
 
-    if (state.open_positions >= config.max_portfolio_positions) {
-      log.info('Max positions reached', { requestId, openPositions: state.open_positions, limit: config.max_portfolio_positions })
-      return new Response(
-        JSON.stringify({ success: true, message: 'Maximum positions reached', executed: 0 }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+    // Note: position limit checks are done per-signal below (stock vs crypto counted separately)
 
     // Get pending signals from queue
     const { data: queuedSignals, error: queueError } = await supabaseClient
@@ -805,6 +976,10 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
       )
     }
 
+    // Get market status for order type selection
+    const marketStatus = await getMarketStatus(credentials)
+    log.info('Market status for execution', { requestId, isOpen: marketStatus.isOpen, isExtendedHours: marketStatus.isExtendedHours })
+
     // Get existing positions with full details for sell signal handling
     const { data: existingPositions } = await supabaseClient
       .from('reference_portfolio_positions')
@@ -814,6 +989,10 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
     const existingTickers = new Set((existingPositions || []).map((p: any) => p.ticker.toUpperCase()))
     const positionsByTicker = new Map((existingPositions || []).map((p: any) => [p.ticker.toUpperCase(), p]))
     const openPositionCount = existingPositions?.length || 0
+    // Count positions by asset type for independent caps
+    let stockPositionCount = (existingPositions || []).filter((p: any) => (p.asset_type || 'stock') === 'stock').length
+    let cryptoPositionCount = (existingPositions || []).filter((p: any) => p.asset_type === 'crypto').length
+    const cryptoMaxPositions = config.crypto_max_positions || 5
 
     let executed = 0
     let skipped = 0
@@ -880,17 +1059,14 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
             currentPrice = quote.quote?.bp || quote.quote?.ap || position.current_price
           }
 
-          // Place sell order with Alpaca
+          // Place sell order with Alpaca (order type based on market status)
           const orderUrl = `${credentials.baseUrl}/v2/orders`
-          const orderRequest = {
-            symbol: ticker,
-            qty: position.quantity,
-            side: 'sell',
-            type: 'market',
-            time_in_force: 'day'
-          }
+          const orderRequest = await buildOrderRequest(
+            ticker, position.quantity, 'sell',
+            position.asset_type || 'stock', marketStatus, credentials, config
+          )
 
-          log.info('Placing sell order from signal', { requestId, ticker, shares: position.quantity, signalType: signal.signal_type })
+          log.info('Placing sell order from signal', { requestId, ticker, shares: position.quantity, signalType: signal.signal_type, orderType: orderRequest.type })
 
           const orderResponse = await fetch(orderUrl, {
             method: 'POST',
@@ -1027,9 +1203,33 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
         continue
       }
 
+      // Check asset-type-specific position limits
+      const signalAssetType = (signal as any).asset_type || 'stock'
+      if (signalAssetType === 'crypto') {
+        if (!config.crypto_enabled) {
+          await updateQueueStatus(supabaseClient, queued.id, 'skipped', 'Crypto trading disabled')
+          skipped++
+          continue
+        }
+        if (cryptoPositionCount >= cryptoMaxPositions) {
+          await updateQueueStatus(supabaseClient, queued.id, 'skipped', 'Max crypto positions reached')
+          skipped++
+          continue
+        }
+      } else {
+        if (stockPositionCount >= config.max_portfolio_positions) {
+          await updateQueueStatus(supabaseClient, queued.id, 'skipped', 'Max stock positions reached')
+          skipped++
+          continue
+        }
+      }
+
       try {
-        // Get current price from Alpaca (market data uses separate API)
-        const quoteUrl = `${credentials.dataUrl}/v2/stocks/${signal.ticker}/quotes/latest`
+        // Get current price from Alpaca (use crypto endpoint for crypto pairs)
+        const isCryptoBuy = signalAssetType === 'crypto'
+        const quoteUrl = isCryptoBuy
+          ? `${credentials.dataUrl}/v1beta3/crypto/us/latest/quotes?symbols=${encodeURIComponent(signal.ticker)}`
+          : `${credentials.dataUrl}/v2/stocks/${signal.ticker}/quotes/latest`
         const quoteResponse = await fetch(quoteUrl, {
           headers: {
             'APCA-API-KEY-ID': credentials.apiKey,
@@ -1044,7 +1244,13 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
         }
 
         const quote = await quoteResponse.json()
-        const currentPrice = quote.quote?.ap || quote.quote?.bp || 0
+        let currentPrice: number
+        if (isCryptoBuy) {
+          const cryptoQuote = quote.quotes?.[signal.ticker]
+          currentPrice = cryptoQuote?.ap || cryptoQuote?.bp || 0
+        } else {
+          currentPrice = quote.quote?.ap || quote.quote?.bp || 0
+        }
 
         if (currentPrice <= 0) {
           await updateQueueStatus(supabaseClient, queued.id, 'failed', 'Invalid price')
@@ -1052,12 +1258,13 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
           continue
         }
 
-        // Calculate position size
+        // Calculate position size (asset-type-aware for fractional crypto)
         const { shares, positionValue, multiplier } = calculatePositionSize(
           state.portfolio_value,
           signal.confidence_score,
           currentPrice,
-          config
+          config,
+          signalAssetType
         )
 
         if (shares <= 0) {
@@ -1073,17 +1280,15 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
           continue
         }
 
-        // Place order with Alpaca
+        // Place order with Alpaca (order type based on market status)
         const orderUrl = `${credentials.baseUrl}/v2/orders`
-        const orderRequest = {
-          symbol: signal.ticker.toUpperCase(),
-          qty: shares,
-          side: 'buy',
-          type: 'market',
-          time_in_force: 'day'
-        }
+        const signalAssetType = signal.asset_type || 'stock'
+        const orderRequest = await buildOrderRequest(
+          signal.ticker.toUpperCase(), shares, 'buy',
+          signalAssetType, marketStatus, credentials, config
+        )
 
-        log.info('Placing order', { requestId, ticker: signal.ticker, shares, positionValue })
+        log.info('Placing order', { requestId, ticker: signal.ticker, shares, positionValue, orderType: orderRequest.type, assetType: signalAssetType })
 
         const orderResponse = await fetch(orderUrl, {
           method: 'POST',
@@ -1106,10 +1311,12 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
 
         log.info('Order placed successfully', { requestId, orderId: orderResult.id, ticker: signal.ticker })
 
-        // Calculate stop loss, take profit, and trailing stop prices
-        const stopLossPrice = currentPrice * (1 - config.default_stop_loss_pct / 100)
-        const takeProfitPrice = currentPrice * (1 + config.default_take_profit_pct / 100)
-        const trailingStopPrice = config.trailing_stop_pct 
+        // Calculate stop loss, take profit, and trailing stop prices (crypto uses wider bands)
+        const slPct = signalAssetType === 'crypto' ? (config.crypto_stop_loss_pct || 15) : config.default_stop_loss_pct
+        const tpPct = signalAssetType === 'crypto' ? (config.crypto_take_profit_pct || 25) : config.default_take_profit_pct
+        const stopLossPrice = currentPrice * (1 - slPct / 100)
+        const takeProfitPrice = currentPrice * (1 + tpPct / 100)
+        const trailingStopPrice = config.trailing_stop_pct
           ? currentPrice * (1 - config.trailing_stop_pct / 100)
           : null
 
@@ -1130,11 +1337,12 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
             market_value: positionValue,
             stop_loss_price: stopLossPrice,
             take_profit_price: takeProfitPrice,
-            highest_price: currentPrice,  // Initialize highest price at entry
-            trailing_stop_price: trailingStopPrice,  // Initialize trailing stop
+            highest_price: currentPrice,
+            trailing_stop_price: trailingStopPrice,
             position_size_pct: (positionValue / state.portfolio_value) * 100,
             confidence_weight: multiplier,
-            is_open: true
+            is_open: true,
+            asset_type: signalAssetType,
           })
           .select()
           .single()
@@ -1162,7 +1370,8 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
             position_size_pct: (positionValue / state.portfolio_value) * 100,
             confidence_weight: multiplier,
             portfolio_value_at_trade: state.portfolio_value,
-            status: 'executed'
+            status: 'executed',
+            asset_type: signalAssetType,
           })
 
         // Update portfolio state
@@ -1187,12 +1396,17 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
         existingTickers.add(signal.ticker.toUpperCase())
 
         executed++
+        // Track position counts by asset type
+        if (signalAssetType === 'crypto') cryptoPositionCount++
+        else stockPositionCount++
+
         results.push({
           ticker: signal.ticker,
           shares,
           price: currentPrice,
           value: positionValue,
-          orderId: orderResult.id
+          orderId: orderResult.id,
+          assetType: signalAssetType,
         })
 
         // Small delay between orders
@@ -2047,6 +2261,9 @@ async function handleCheckExits(supabaseClient: any, requestId: string) {
       )
     }
 
+    // Get market status for order type selection
+    const marketStatus = await getMarketStatus(credentials)
+
     let closed = 0
     let wins = 0
     let losses = 0
@@ -2054,8 +2271,11 @@ async function handleCheckExits(supabaseClient: any, requestId: string) {
 
     for (const position of positions) {
       try {
-        // Get current price from Alpaca
-        const quoteUrl = `${credentials.dataUrl}/v2/stocks/${position.ticker}/quotes/latest`
+        // Get current price from Alpaca (use fetchLatestQuote for crypto support)
+        const isCrypto = (position.asset_type || 'stock') === 'crypto'
+        const quoteUrl = isCrypto
+          ? `${credentials.dataUrl}/v1beta3/crypto/us/latest/quotes?symbols=${encodeURIComponent(position.ticker)}`
+          : `${credentials.dataUrl}/v2/stocks/${position.ticker}/quotes/latest`
         const quoteResponse = await fetch(quoteUrl, {
           headers: {
             'APCA-API-KEY-ID': credentials.apiKey,
@@ -2069,13 +2289,23 @@ async function handleCheckExits(supabaseClient: any, requestId: string) {
         }
 
         const quote = await quoteResponse.json()
-        const currentPrice = quote.quote?.bp || quote.quote?.ap || position.current_price
+        let currentPrice: number
+        if (isCrypto) {
+          const cryptoQuote = quote.quotes?.[position.ticker]
+          currentPrice = cryptoQuote?.bp || cryptoQuote?.ap || position.current_price
+        } else {
+          currentPrice = quote.quote?.bp || quote.quote?.ap || position.current_price
+        }
 
         if (!currentPrice || currentPrice <= 0) continue
 
+        // Use crypto-specific exit thresholds if applicable
+        const stopLossPct = isCrypto ? (config.crypto_stop_loss_pct || 15) : config.default_stop_loss_pct
+        const takeProfitPct = isCrypto ? (config.crypto_take_profit_pct || 25) : config.default_take_profit_pct
+
         // Update highest price and trailing stop (for all positions, even if not exiting)
         const highestPrice = Math.max(position.highest_price || position.entry_price, currentPrice)
-        const trailingStopPrice = config.trailing_stop_pct 
+        const trailingStopPrice = config.trailing_stop_pct
           ? highestPrice * (1 - config.trailing_stop_pct / 100)
           : null
 
@@ -2144,8 +2374,12 @@ async function handleCheckExits(supabaseClient: any, requestId: string) {
           takeProfit: position.take_profit_price
         })
 
-        // Place sell order with Alpaca
+        // Place sell order with Alpaca (order type based on market status)
         const orderUrl = `${credentials.baseUrl}/v2/orders`
+        const exitOrderRequest = await buildOrderRequest(
+          position.ticker.toUpperCase(), position.quantity, 'sell',
+          position.asset_type || 'stock', marketStatus, credentials, config
+        )
         const orderResponse = await fetch(orderUrl, {
           method: 'POST',
           headers: {
@@ -2153,13 +2387,7 @@ async function handleCheckExits(supabaseClient: any, requestId: string) {
             'APCA-API-SECRET-KEY': credentials.secretKey,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            symbol: position.ticker.toUpperCase(),
-            qty: position.quantity,
-            side: 'sell',
-            type: 'market',
-            time_in_force: 'day'
-          })
+          body: JSON.stringify(exitOrderRequest)
         })
 
         const orderResult = await orderResponse.json()
