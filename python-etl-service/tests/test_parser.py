@@ -157,10 +157,34 @@ class TestParseValueRange:
         assert result == {"value_low": 15001.0, "value_high": 50000.0}
 
     def test_returns_none_for_invalid_text(self):
-        """Should return None values for text without valid range."""
+        """Should return None values for text without valid range or amounts."""
         assert parse_value_range("no value here") == {"value_low": None, "value_high": None}
         assert parse_value_range("") == {"value_low": None, "value_high": None}
-        assert parse_value_range("$1000") == {"value_low": None, "value_high": None}  # Single amount
+
+    def test_extracts_single_exact_amount(self):
+        """Should extract single dollar amounts as exact values."""
+        assert parse_value_range("$1000") == {"value_low": 1000.0, "value_high": 1000.0}
+        assert parse_value_range("$20,000.00") == {"value_low": 20000.0, "value_high": 20000.0}
+
+    def test_extracts_schedule_c_beginning_ending_values(self):
+        """Should handle Schedule C format: beginning value / ending value."""
+        # Common House financial disclosure format: $beginning $ending
+        result = parse_value_range("Akorn Environmental Contract for consulting $.00 $16,750.00")
+        assert result == {"value_low": 16750.0, "value_high": 16750.0}
+
+        result = parse_value_range("Inseparable Consulting $.00 $20,000.00")
+        assert result == {"value_low": 20000.0, "value_high": 20000.0}
+
+        result = parse_value_range("Harvest Realty and Construction, Inc. Salary $.00 $48,301.24")
+        assert result == {"value_low": 48301.24, "value_high": 48301.24}
+
+        result = parse_value_range("US Army Reserve salary $.00 $8,065.00")
+        assert result == {"value_low": 8065.0, "value_high": 8065.0}
+
+    def test_handles_zero_only_amounts(self):
+        """Should return None when all amounts are zero."""
+        assert parse_value_range("$.00") == {"value_low": None, "value_high": None}
+        assert parse_value_range("$.00 $.00") == {"value_low": None, "value_high": None}
 
     def test_handles_ocr_tolerance(self):
         """Should handle minor OCR errors with tolerance."""

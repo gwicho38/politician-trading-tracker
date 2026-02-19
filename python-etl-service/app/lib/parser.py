@@ -97,24 +97,32 @@ def parse_value_range(text: str) -> Dict[str, Optional[float]]:
     """
     Parse value range from text like '$1,001 - $15,000'.
 
-    Handles cases where PDF parsing splits the range across lines with
-    intervening text, e.g., "$15,001 -\nCommon Stock (PLTR) [ST] $50,000"
+    Also handles:
+    - Decimal dollar amounts: '$.00', '$16,750.00'
+    - Schedule C beginning/ending value pairs: '$.00 $16,750.00'
+    - Single exact amounts: '$20,000.00'
+    - PDF parsing splits: "$15,001 -\nCommon Stock (PLTR) [ST] $50,000"
     """
-    # First try exact pattern matching (most reliable)
+    # First try exact pattern matching for standard Congressional ranges
     for pattern, low, high in VALUE_PATTERNS:
         if re.search(pattern, text, re.IGNORECASE):
             return {"value_low": float(low), "value_high": float(high)}
 
-    # If exact match fails, try extracting all dollar amounts and matching pairs
-    # This handles PDF parsing issues where text appears between amount values
-    dollar_amounts = re.findall(r'\$[\d,]+', text)
-    if len(dollar_amounts) >= 2:
-        # Parse the dollar amounts to numeric values
-        def parse_dollar(s: str) -> int:
-            return int(s.replace('$', '').replace(',', ''))
+    # Check for "Over $5,000,000" pattern
+    if re.search(r"over\s*\$5,000,000", text, re.IGNORECASE):
+        return {"value_low": 5000001.0, "value_high": 50000000.0}
 
-        amounts = [parse_dollar(d) for d in dollar_amounts]
+    # Extract all dollar amounts (including decimals like $.00 and $16,750.00)
+    dollar_amounts = re.findall(r'\$[\d,]*\.?\d+', text)
+    if not dollar_amounts:
+        return {"value_low": None, "value_high": None}
 
+    def parse_dollar(s: str) -> float:
+        return float(s.replace('$', '').replace(',', ''))
+
+    amounts = [parse_dollar(d) for d in dollar_amounts]
+
+    if len(amounts) >= 2:
         # Known disclosure ranges (low, high)
         known_ranges = [
             (1001, 15000),
@@ -126,20 +134,26 @@ def parse_value_range(text: str) -> Dict[str, Optional[float]]:
             (1000001, 5000000),
         ]
 
-        # Try to find a matching pair (check first two amounts found)
+        # Try to match a known Congressional range pair
         low_val, high_val = amounts[0], amounts[1]
         for range_low, range_high in known_ranges:
-            # Check if amounts match a known range (with some tolerance for OCR errors)
             if (abs(low_val - range_low) <= 10 and abs(high_val - range_high) <= 10):
                 return {"value_low": float(range_low), "value_high": float(range_high)}
-            # Also check if they found the range boundaries in any order
             if low_val == range_low or high_val == range_high:
                 if low_val <= high_val:
                     return {"value_low": float(range_low), "value_high": float(range_high)}
 
-    # Check for "Over $5,000,000" pattern
-    if re.search(r"over\s*\$5,000,000", text, re.IGNORECASE):
-        return {"value_low": 5000001.0, "value_high": 50000000.0}
+        # No known range matched — treat as beginning/ending value pair
+        # (common in Schedule C filings: "$.00 $16,750.00")
+        # Use the maximum non-zero amount as the value
+        max_amount = max(amounts)
+        if max_amount > 0:
+            return {"value_low": max_amount, "value_high": max_amount}
+
+    elif len(amounts) == 1:
+        # Single dollar amount — use as exact value
+        if amounts[0] > 0:
+            return {"value_low": amounts[0], "value_high": amounts[0]}
 
     return {"value_low": None, "value_high": None}
 
