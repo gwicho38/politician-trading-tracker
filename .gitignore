@@ -127,3 +127,4 @@ client/playwright/.cache/
 *.dmg
 *.pkg
 *.app
+.worktrees/
