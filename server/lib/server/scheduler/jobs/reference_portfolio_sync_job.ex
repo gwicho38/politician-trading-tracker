@@ -20,10 +20,10 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioSyncJob do
   def job_name, do: "Reference Portfolio Position Sync"
 
   @impl true
-  # Run every minute during US market hours (14:30-21:00 UTC = 9:30 AM-4:00 PM EST)
-  # Cron: every minute of hours 14-20 UTC, Monday-Friday
+  # Run every minute during extended market hours (09:00-00:00 UTC = ~4 AM-7 PM ET)
+  # Cron: every minute, hours 9-23 and 0, Monday-Friday
   # TODO: Review this function
-  def schedule, do: "* 14-20 * * 1-5"
+  def schedule, do: "* 9-23,0 * * 1-5"
 
   # TODO: Review this function
   @impl true
@@ -71,14 +71,14 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioSyncJob do
   end
 
   # TODO: Review this function
-  # Quick check if we're likely in market hours (UTC-based)
+  # Quick check if we're likely in extended market hours (UTC-based)
   defp market_likely_open? do
     now = DateTime.utc_now()
     day_of_week = Date.day_of_week(DateTime.to_date(now))
     hour = now.hour
 
-    # Weekday (Monday=1 to Friday=5) and between 14:00-21:00 UTC
-    day_of_week >= 1 and day_of_week <= 5 and hour >= 14 and hour < 21
+    # Weekday (Monday=1 to Friday=5) and between 09:00-00:00 UTC (covers pre/post market)
+    day_of_week >= 1 and day_of_week <= 5 and (hour >= 9 or hour == 0)
   end
 
   # TODO: Review this function
@@ -88,7 +88,7 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioSyncJob do
       description: "Syncs reference portfolio positions with current Alpaca prices",
       edge_function: "reference-portfolio",
       action: "update-positions",
-      schedule_note: "Runs every minute during US market hours (9:30 AM - 4:00 PM EST)"
+      schedule_note: "Runs every minute during extended hours (4 AM - 8 PM ET, Mon-Fri)"
     }
   end
 end

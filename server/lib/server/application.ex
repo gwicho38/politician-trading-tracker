@@ -108,6 +108,7 @@ defmodule Server.Application do
       # Reference portfolio automation
       Server.Scheduler.Jobs.ReferencePortfolioExecuteJob,
       Server.Scheduler.Jobs.ReferencePortfolioExitCheckJob,
+      Server.Scheduler.Jobs.CryptoExitCheckJob,
       Server.Scheduler.Jobs.ReferencePortfolioSyncJob,
       Server.Scheduler.Jobs.ReferencePortfolioDailyResetJob,
       # Data quality jobs

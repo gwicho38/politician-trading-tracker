@@ -25,10 +25,10 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioExecuteJob do
   def job_name, do: "Reference Portfolio Signal Execution"
 
   @impl true
-  # Run every 15 minutes during US market hours (14:30-21:00 UTC = 9:30 AM-4:00 PM EST)
-  # Cron: minute 0,15,30,45 of hours 14-20 UTC, Monday-Friday
+  # Run every 15 minutes during extended market hours (09:00-00:00 UTC = ~4 AM-7 PM ET)
+  # Covers pre-market, regular, and post-market sessions
   # TODO: Review this function
-  def schedule, do: "0,15,30,45 14-20 * * 1-5"
+  def schedule, do: "0,15,30,45 9-23,0 * * 1-5"
 
   # TODO: Review this function
   @impl true
@@ -71,16 +71,16 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioExecuteJob do
     end
   end
 
-  # Quick check if we're likely in market hours (UTC-based)
-  # This is approximate - the edge function does the authoritative check
+  # Quick check if we're likely in extended market hours (UTC-based)
+  # This is approximate - the edge function does the authoritative check via Alpaca Clock API
   # TODO: Review this function
   defp market_likely_open? do
     now = DateTime.utc_now()
     day_of_week = Date.day_of_week(DateTime.to_date(now))
     hour = now.hour
 
-    # Weekday (Monday=1 to Friday=5) and between 14:00-21:00 UTC
-    day_of_week >= 1 and day_of_week <= 5 and hour >= 14 and hour < 21
+    # Weekday (Monday=1 to Friday=5) and between 09:00-00:00 UTC (covers pre/post market)
+    day_of_week >= 1 and day_of_week <= 5 and (hour >= 9 or hour == 0)
   end
 
   # TODO: Review this function
@@ -90,7 +90,7 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioExecuteJob do
       description: "Executes queued ML-enhanced trading signals for the reference portfolio",
       edge_function: "reference-portfolio",
       action: "execute-signals",
-      schedule_note: "Runs every 15 minutes during US market hours (9:30 AM - 4:00 PM EST)"
+      schedule_note: "Runs every 15 minutes during extended hours (4 AM - 8 PM ET, Mon-Fri)"
     }
   end
 end
