@@ -86,6 +86,7 @@ export interface ReferencePortfolioPosition {
   position_size_pct: number | null;
   confidence_weight: number | null;
   is_open: boolean;
+  asset_type?: 'stock' | 'crypto';
   created_at: string;
   updated_at: string;
 }
@@ -321,13 +322,14 @@ export function useReferencePortfolioConfig() {
 export function useMarketStatus() {
   return useQuery({
     queryKey: ['market-status'],
-    queryFn: async (): Promise<{ isOpen: boolean; nextOpen: string | null }> => {
+    queryFn: async (): Promise<{ isOpen: boolean; isExtendedHours: boolean; nextOpen: string | null }> => {
       const now = new Date();
       const utcHour = now.getUTCHours();
       const utcMinutes = now.getUTCMinutes();
       const dayOfWeek = now.getUTCDay();
 
       // Convert to ET (simplified - doesn't handle DST precisely)
+      // Note: the edge function uses Alpaca Clock API for authoritative status
       const etOffset = -5; // EST
       const etHour = (utcHour + etOffset + 24) % 24;
 
@@ -337,9 +339,15 @@ export function useMarketStatus() {
       const beforeClose = etHour < 16;
       const isOpen = isWeekday && afterOpen && beforeClose;
 
+      // Extended hours: 4 AM - 9:30 AM ET (pre-market) or 4 PM - 8 PM ET (post-market)
+      const isPreMarket = isWeekday && !isOpen && etHour >= 4 && (etHour < 9 || (etHour === 9 && utcMinutes < 30));
+      const isPostMarket = isWeekday && !isOpen && etHour >= 16 && etHour < 20;
+      const isExtendedHours = isPreMarket || isPostMarket;
+
       return {
         isOpen,
-        nextOpen: null, // Could calculate next market open
+        isExtendedHours,
+        nextOpen: null,
       };
     },
     refetchInterval: 60000, // Check every minute

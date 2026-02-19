@@ -56,11 +56,15 @@ export default function ReferencePortfolio() {
               <div className="flex items-center gap-2">
                 <div
                   className={`h-2 w-2 rounded-full ${
-                    marketStatus?.isOpen ? 'bg-success animate-pulse' : 'bg-muted-foreground'
+                    marketStatus?.isOpen ? 'bg-success animate-pulse' :
+                    marketStatus?.isExtendedHours ? 'bg-amber-500 animate-pulse' :
+                    'bg-muted-foreground'
                   }`}
                 />
                 <span className="text-xs text-muted-foreground">
-                  Market {marketStatus?.isOpen ? 'Open' : 'Closed'}
+                  {marketStatus?.isOpen ? 'Market Open' :
+                   marketStatus?.isExtendedHours ? 'Extended Hours' :
+                   'Market Closed'}
                 </span>
               </div>
 

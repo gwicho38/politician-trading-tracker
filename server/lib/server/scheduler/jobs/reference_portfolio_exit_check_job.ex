@@ -24,10 +24,10 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioExitCheckJob do
   def job_name, do: "Reference Portfolio Exit Check"
 
   @impl true
-  # Run every 5 minutes during US market hours (14:30-21:00 UTC = 9:30 AM-4:00 PM EST)
-  # Cron: every 5 minutes (0,5,10,...,55) of hours 14-20 UTC, Monday-Friday
+  # Run every 5 minutes during extended market hours (09:00-00:00 UTC = ~4 AM-7 PM ET)
+  # Cron: every 5 minutes, hours 9-23 and 0, Monday-Friday
   # TODO: Review this function
-  def schedule, do: "*/5 14-20 * * 1-5"
+  def schedule, do: "*/5 9-23,0 * * 1-5"
 
   # TODO: Review this function
   @impl true
@@ -78,14 +78,14 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioExitCheckJob do
   end
 
   # TODO: Review this function
-  # Quick check if we're likely in market hours (UTC-based)
+  # Quick check if we're likely in extended market hours (UTC-based)
   defp market_likely_open? do
     now = DateTime.utc_now()
     day_of_week = Date.day_of_week(DateTime.to_date(now))
     hour = now.hour
 
-    # Weekday (Monday=1 to Friday=5) and between 14:00-21:00 UTC
-    day_of_week >= 1 and day_of_week <= 5 and hour >= 14 and hour < 21
+    # Weekday (Monday=1 to Friday=5) and between 09:00-00:00 UTC (covers pre/post market)
+    day_of_week >= 1 and day_of_week <= 5 and (hour >= 9 or hour == 0)
   end
 
   # TODO: Review this function
@@ -95,7 +95,7 @@ defmodule Server.Scheduler.Jobs.ReferencePortfolioExitCheckJob do
       description: "Monitors positions for stop-loss and take-profit triggers, closes positions when hit",
       edge_function: "reference-portfolio",
       action: "check-exits",
-      schedule_note: "Runs every 5 minutes during US market hours (9:30 AM - 4:00 PM EST)"
+      schedule_note: "Runs every 5 minutes during extended hours (4 AM - 8 PM ET, Mon-Fri)"
     }
   end
 end

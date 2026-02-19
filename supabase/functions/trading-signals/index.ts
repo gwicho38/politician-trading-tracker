@@ -1331,13 +1331,14 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
       mlFeaturesCount: mlFeaturesList.length
     })
 
-    // Read dynamic ML blend weight from config
+    // Read dynamic ML blend weight and crypto config
     const { data: blendConfig } = await supabaseClient
       .from('reference_portfolio_config')
-      .select('ml_blend_weight')
+      .select('ml_blend_weight, crypto_enabled')
       .limit(1)
       .maybeSingle()
     const mlBlendWeight = blendConfig?.ml_blend_weight ?? ML_BLEND_WEIGHT
+    const cryptoEnabled = blendConfig?.crypto_enabled ?? false
 
     // Single batch ML prediction call (instead of N sequential calls)
     let mlPredictionCount = 0
@@ -1471,6 +1472,63 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
       log.info('Audit trail entries recorded', { requestId })
     }
 
+    // Derive crypto signals from crypto-adjacent ETF signals
+    let cryptoSignalsGenerated = 0
+    if (cryptoEnabled && insertedSignals && insertedSignals.length > 0) {
+      log.info('Deriving crypto signals from ETF signals', { requestId })
+
+      for (const stockSignal of insertedSignals) {
+        const cryptoPairs = CRYPTO_ETF_MAP[stockSignal.ticker?.toUpperCase()]
+        if (!cryptoPairs) continue
+
+        for (const cryptoPair of cryptoPairs) {
+          // Skip if we already have a recent signal for this crypto pair
+          const { data: existing } = await supabaseClient
+            .from('trading_signals')
+            .select('id')
+            .eq('ticker', cryptoPair)
+            .eq('asset_type', 'crypto')
+            .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+            .limit(1)
+
+          if (existing && existing.length > 0) continue
+
+          // Insert crypto signal derived from ETF signal (price fetched at execution time)
+          const { error: cryptoInsertError } = await supabaseClient
+            .from('trading_signals')
+            .insert({
+              ticker: cryptoPair,
+              asset_name: cryptoPair.replace('/', ' '),
+              signal_type: stockSignal.signal_type,
+              confidence_score: stockSignal.confidence_score * 0.8,
+              asset_type: 'crypto',
+              current_price: null,
+              disclosure_id: stockSignal.disclosure_id,
+              politician_id: stockSignal.politician_id,
+              model_id: modelId,
+              model_version: modelVersion,
+              is_active: true,
+              metadata: {
+                ...(stockSignal.metadata || {}),
+                derived_from_etf: stockSignal.ticker,
+                crypto_pair: cryptoPair,
+                source: 'crypto_etf_derivation',
+              }
+            })
+
+          if (cryptoInsertError) {
+            log.warn('Failed to insert crypto signal', { requestId, pair: cryptoPair, error: cryptoInsertError.message })
+          } else {
+            cryptoSignalsGenerated++
+          }
+        }
+      }
+
+      if (cryptoSignalsGenerated > 0) {
+        log.info('Crypto signals generated', { requestId, count: cryptoSignalsGenerated })
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -1481,6 +1539,7 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
           totalDisclosures: disclosures.length,
           uniqueTickers: Object.keys(tickerData).length,
           signalsGenerated: insertedSignals?.length || 0,
+          cryptoSignalsGenerated,
           modelId,
           modelVersion,
           mlEnabled: useML,
@@ -1606,6 +1665,22 @@ const DEFAULT_WEIGHTS: SignalWeights = {
 // Call ETL directly for ML (Phoenix proxy adds latency)
 const ETL_API_URL = Deno.env.get('ETL_API_URL') || 'https://politician-trading-etl.fly.dev'
 const ETL_API_KEY = Deno.env.get('ETL_API_KEY') || ''
+
+// Crypto ETF mapping: politician ETF disclosures → Alpaca crypto pairs
+const CRYPTO_ETF_MAP: Record<string, string[]> = {
+  'GBTC': ['BTC/USD'],      // Grayscale Bitcoin Trust
+  'IBIT': ['BTC/USD'],      // iShares Bitcoin Trust (BlackRock)
+  'BITO': ['BTC/USD'],      // ProShares Bitcoin Strategy ETF
+  'ETHE': ['ETH/USD'],      // Grayscale Ethereum Trust
+  'ETHA': ['ETH/USD'],      // iShares Ethereum Trust (BlackRock)
+  'COIN': ['BTC/USD', 'ETH/USD'],  // Coinbase — broad crypto exposure
+  'MARA': ['BTC/USD'],      // Marathon Digital — Bitcoin miner
+  'RIOT': ['BTC/USD'],      // Riot Platforms — Bitcoin miner
+  'BITX': ['BTC/USD'],      // 2x Bitcoin Strategy ETF
+  'ARKB': ['BTC/USD'],      // ARK 21Shares Bitcoin ETF
+  'FBTC': ['BTC/USD'],      // Fidelity Wise Origin Bitcoin Fund
+}
+
 // ML enabled by default - quick health check prevents blocking on cold starts
 const ML_ENABLED = Deno.env.get('ML_ENABLED') !== 'false'
 const ML_BLEND_WEIGHT = 0.2 // 20% ML, 80% heuristic (reduced from 0.4 to test if ML is adding noise)
