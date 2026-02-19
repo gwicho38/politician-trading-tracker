@@ -523,6 +523,85 @@ def portfolio_snapshot():
         raise SystemExit(1)
 
 
+@app.command("regenerate-signals")
+@click.option("--min-confidence", "-c", type=float, default=0.65, help="Minimum confidence threshold (default: 0.65)")
+@click.option("--limit", "-l", type=int, default=100, help="Max signals to generate (default: 100)")
+@click.option("--lookback-days", "-d", type=int, default=90, help="Lookback period in days (default: 90)")
+def regenerate_signals(min_confidence: float, limit: int, lookback_days: int):
+    """
+    Regenerate trading signals with ML predictions.
+
+    Creates fresh signals by analyzing recent congressional trading activity
+    and blending heuristic scores with ML model predictions.
+
+    Examples:
+        mcli run jobs regenerate-signals
+        mcli run jobs regenerate-signals -c 0.70 -l 50
+        mcli run jobs regenerate-signals --lookback-days 180
+    """
+    service_key = get_supabase_key()
+    if not service_key:
+        click.echo("Error: Could not get Supabase service key", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Regenerating signals (confidence >= {min_confidence}, limit {limit}, {lookback_days}d lookback)...")
+
+    try:
+        response = httpx.post(
+            f"{SUPABASE_URL}/functions/v1/trading-signals/regenerate-signals",
+            json={
+                "minConfidence": min_confidence,
+                "limit": limit,
+                "lookbackDays": lookback_days,
+            },
+            headers={
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": "application/json"
+            },
+            timeout=120.0
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                stats = data.get("stats", {})
+                click.echo(f"\n✓ {data.get('message', 'Signals regenerated')}")
+                click.echo(f"\nStats:")
+                click.echo(f"  Disclosures analyzed: {stats.get('totalDisclosures', 0)}")
+                click.echo(f"  Unique tickers: {stats.get('uniqueTickers', 0)}")
+                click.echo(f"  Signals generated: {stats.get('signalsGenerated', 0)}")
+                click.echo(f"  ML predictions: {stats.get('mlPredictionCount', 0)}")
+                click.echo(f"  ML enhanced: {stats.get('mlEnhancedCount', 0)}")
+                click.echo(f"  Model: {stats.get('modelVersion', 'Unknown')}")
+
+                # Show signal type breakdown from signals list
+                signals = data.get("signals", [])
+                if signals:
+                    types = {}
+                    for s in signals:
+                        t = s.get("signal_type", "unknown")
+                        types[t] = types.get(t, 0) + 1
+                    click.echo("\nSignal Breakdown:")
+                    for t, count in sorted(types.items(), key=lambda x: -x[1]):
+                        click.echo(f"  {t}: {count}")
+
+                    # Show confidence distribution
+                    confidences = [s.get("confidence_score", 0) for s in signals]
+                    if confidences:
+                        click.echo(f"\nConfidence: avg={sum(confidences)/len(confidences):.3f}, "
+                                   f"min={min(confidences):.3f}, max={max(confidences):.3f}")
+            else:
+                click.echo(f"Error: {data.get('error', 'Unknown error')}", err=True)
+                raise SystemExit(1)
+        else:
+            click.echo(f"Failed: HTTP {response.status_code}", err=True)
+            click.echo(response.text[:300], err=True)
+            raise SystemExit(1)
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
 @app.command("execute-signals")
 def execute_signals():
     """
@@ -579,6 +658,107 @@ def execute_signals():
             click.echo(f"Failed: HTTP {response.status_code}", err=True)
             click.echo(response.text[:200], err=True)
             raise SystemExit(1)
+    except httpx.HTTPError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@app.command("train-model")
+@click.option("--lookback-days", "-d", type=int, default=365, help="Training data lookback (default: 365)")
+@click.option("--use-outcomes/--no-outcomes", default=True, help="Include outcome data in training (default: yes)")
+@click.option("--outcome-weight", "-w", type=float, default=2.0, help="Weight multiplier for outcome samples (default: 2.0)")
+@click.option("--wait/--no-wait", default=True, help="Wait for training to complete (default: yes)")
+def train_model(lookback_days: int, use_outcomes: bool, outcome_weight: float, wait: bool):
+    """
+    Train a new ML model via the ETL service.
+
+    Trains an XGBoost model on congressional trading data, optionally
+    incorporating trade outcome data for feedback-aware learning.
+
+    Examples:
+        mcli run jobs train-model
+        mcli run jobs train-model --lookback-days 180
+        mcli run jobs train-model --no-outcomes
+        mcli run jobs train-model --no-wait
+    """
+    import time as _time
+
+    load_env()
+    etl_api_key = os.environ.get("ETL_ADMIN_API_KEY") or os.environ.get("ETL_API_KEY", "")
+
+    if not etl_api_key:
+        click.echo("Error: No ETL API key found (set ETL_ADMIN_API_KEY or ETL_API_KEY)", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Training model (lookback={lookback_days}d, outcomes={use_outcomes}, weight={outcome_weight})...")
+
+    try:
+        response = httpx.post(
+            f"{ETL_SERVICE_URL}/ml/train",
+            json={
+                "lookback_days": lookback_days,
+                "use_outcomes": use_outcomes,
+                "outcome_weight": outcome_weight,
+                "triggered_by": "mcli",
+            },
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": etl_api_key,
+            },
+            timeout=30.0
+        )
+
+        if response.status_code != 200:
+            click.echo(f"Failed: HTTP {response.status_code}", err=True)
+            click.echo(response.text[:300], err=True)
+            raise SystemExit(1)
+
+        data = response.json()
+        job_id = data.get("job_id")
+        click.echo(f"Training job started: {job_id}")
+
+        if not wait:
+            click.echo(f"\nCheck status: mcli run etl ml status {job_id}")
+            return
+
+        # Poll for completion
+        click.echo("Waiting for completion...")
+        start = _time.time()
+        max_wait = 300  # 5 minutes
+
+        while _time.time() - start < max_wait:
+            _time.sleep(10)
+            try:
+                status_resp = httpx.get(
+                    f"{ETL_SERVICE_URL}/ml/train/{job_id}",
+                    headers={"X-API-Key": etl_api_key},
+                    timeout=10.0
+                )
+                if status_resp.status_code == 200:
+                    status_data = status_resp.json()
+                    job_status = status_data.get("status", "unknown")
+                    elapsed = int(_time.time() - start)
+                    click.echo(f"  [{elapsed}s] Status: {job_status}")
+
+                    if job_status == "completed":
+                        metrics = status_data.get("metrics", {})
+                        model_id = status_data.get("model_id", "?")
+                        click.echo(f"\n✓ Training complete!")
+                        click.echo(f"  Model ID: {model_id}")
+                        click.echo(f"  Accuracy: {metrics.get('accuracy', 0):.1%}")
+                        click.echo(f"  F1 Score: {metrics.get('f1_weighted', 0):.3f}")
+                        click.echo(f"  Samples: {metrics.get('training_samples', '?')}")
+                        return
+
+                    if job_status == "failed":
+                        error = status_data.get("error", "Unknown error")
+                        click.echo(f"\n✗ Training failed: {error}", err=True)
+                        raise SystemExit(1)
+            except httpx.HTTPError:
+                pass
+
+        click.echo(f"\n⚠ Timeout after {max_wait}s. Check: mcli run etl ml status {job_id}")
+
     except httpx.HTTPError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)

@@ -6,7 +6,7 @@ import { corsHeaders } from '../_shared/cors.ts'
 // Configuration
 // ---------------------------------------------------------------------------
 const ETL_API_URL = Deno.env.get('ETL_API_URL') || 'https://politician-trading-etl.fly.dev'
-const ADMIN_KEY = Deno.env.get('ETL_ADMIN_KEY') || ''
+const ETL_API_KEY = Deno.env.get('ETL_ADMIN_API_KEY') || Deno.env.get('ETL_API_KEY') || ''
 
 // Champion/Challenger thresholds
 const MIN_ACCURACY_IMPROVEMENT = 0.02 // 2 percentage-point improvement
@@ -129,7 +129,7 @@ serve(async (req: Request) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Admin-Key': ADMIN_KEY,
+        'X-API-Key': ETL_API_KEY,
       },
       body: JSON.stringify({
         lookback_days: lookbackDays,
@@ -160,7 +160,7 @@ serve(async (req: Request) => {
       await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
 
       const statusResponse = await fetch(`${ETL_API_URL}/ml/train/${jobId}`, {
-        headers: { 'X-Admin-Key': ADMIN_KEY },
+        headers: { 'X-API-Key': ETL_API_KEY },
       })
 
       if (statusResponse.ok) {
