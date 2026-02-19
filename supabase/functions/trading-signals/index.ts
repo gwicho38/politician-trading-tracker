@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { corsHeaders } from '../_shared/cors.ts'
 
 // Reference portfolio configuration
-const REFERENCE_PORTFOLIO_MIN_CONFIDENCE = 0.70
+const REFERENCE_PORTFOLIO_MIN_CONFIDENCE = 0.75
 const REFERENCE_PORTFOLIO_SIGNAL_TYPES = ['buy', 'strong_buy', 'sell', 'strong_sell']
 
 // TODO: Review queueSignalsForReferencePortfolio - queues high-confidence signals for automated portfolio
@@ -1050,7 +1050,7 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
   const handlerStartTime = Date.now()
   try {
     const body = await req.json().catch(() => ({}))
-    const { lookbackDays = 90, minConfidence = 0.60, clearOld = true, useML = ML_ENABLED } = body
+    const { lookbackDays = 90, minConfidence = 0.65, clearOld = true, useML = ML_ENABLED } = body
 
     log.info('Regenerating signals (service-level) - handler started', {
       requestId,
@@ -2102,6 +2102,20 @@ function blendSignals(
 
   const heuristicNumeric = SIGNAL_TYPE_MAP[heuristicType] ?? 0
 
+  // Direction disagreement filter: if one says buy and other says sell, heavily penalize
+  const heuristicIsBuy = heuristicNumeric > 0
+  const heuristicIsSell = heuristicNumeric < 0
+  const mlIsBuy = mlPrediction > 0
+  const mlIsSell = mlPrediction < 0
+
+  if ((heuristicIsBuy && mlIsSell) || (heuristicIsSell && mlIsBuy)) {
+    return {
+      signalType: heuristicType,
+      confidence: Math.min(heuristicConfidence, mlConfidence) * 0.5,
+      mlEnhanced: true,
+    }
+  }
+
   // Calculate blended confidence using dynamic weight
   const blendedConfidence = heuristicConfidence * (1 - blendWeight) + mlConfidence * blendWeight
 
@@ -2114,7 +2128,7 @@ function blendSignals(
     }
   }
 
-  // If signals disagree, use heuristic but reduce confidence
+  // If signals partially disagree (same direction, different strength), use heuristic but reduce confidence
   return {
     signalType: heuristicType,
     confidence: blendedConfidence * 0.85,
