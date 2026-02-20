@@ -87,11 +87,9 @@ const App = () => (
               } />
               <Route path="/trading-signals" element={
                 <ErrorBoundary name="Trading Signals">
-                  <ProtectedRoute>
-                    <Suspense fallback={<PageLoader />}>
-                      <TradingSignals />
-                    </Suspense>
-                  </ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <TradingSignals />
+                  </Suspense>
                 </ErrorBoundary>
               } />
               <Route path="/admin/data-quality" element={
