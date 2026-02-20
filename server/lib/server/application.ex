@@ -122,8 +122,9 @@ defmodule Server.Application do
       # ML model training jobs
       Server.Scheduler.Jobs.MlTrainingJob,
       Server.Scheduler.Jobs.BatchRetrainingJob,
-      # ML feedback loop jobs (outcomes → feature analysis → retraining)
+      # ML feedback loop jobs (outcomes → eval → feature analysis → retraining)
       Server.Scheduler.Jobs.SignalOutcomeJob,
+      Server.Scheduler.Jobs.DailyModelEvalJob,
       Server.Scheduler.Jobs.FeatureAnalysisJob,
       Server.Scheduler.Jobs.ModelFeedbackRetrainJob,
       # Data quality monitoring jobs

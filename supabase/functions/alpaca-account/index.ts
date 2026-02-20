@@ -446,7 +446,8 @@ async function handleConnectionStatus(
 }
 
 // TODO: Review serve handler - main Alpaca account management endpoint
-// - Actions: get-account, get-positions, health-check, validate-credentials, connection-status, test-connection
+// - Actions: get-account, get-positions, get-orders, close-position, close-all-shorts,
+//            health-check, validate-credentials, connection-status, test-connection
 // - Supports user-specific and service role authentication
 // - Implements circuit breaker protection for API calls
 serve(async (req) => {
@@ -680,6 +681,186 @@ serve(async (req) => {
         }),
         { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
+    }
+
+    // Close a specific position by symbol
+    if (action === 'close-position') {
+      const symbol = bodyParams.symbol
+      if (!symbol) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Symbol is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      try {
+        const closeUrl = `${credentials.baseUrl}/v2/positions/${encodeURIComponent(symbol)}`
+        log.info('Closing position', { requestId, symbol, url: closeUrl })
+
+        const closeResponse = await fetch(closeUrl, {
+          method: 'DELETE',
+          headers: {
+            'APCA-API-KEY-ID': credentials.apiKey,
+            'APCA-API-SECRET-KEY': credentials.secretKey,
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (!closeResponse.ok) {
+          recordFailure()
+          const errorText = await closeResponse.text()
+          log.error('Failed to close position', { requestId, symbol, status: closeResponse.status, error: errorText })
+          return new Response(
+            JSON.stringify({ success: false, error: `Failed to close ${symbol} (${closeResponse.status}): ${errorText}` }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        recordSuccess()
+        const order = await closeResponse.json()
+        log.info('Position close order submitted', { requestId, symbol, orderId: order.id, side: order.side })
+
+        return new Response(
+          JSON.stringify({ success: true, symbol, order }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      } catch (fetchError) {
+        recordFailure()
+        throw fetchError
+      }
+    }
+
+    // Close all short positions
+    if (action === 'close-all-shorts') {
+      try {
+        // First get all positions
+        const positionsUrl = `${credentials.baseUrl}/v2/positions`
+        const posResponse = await fetch(positionsUrl, {
+          method: 'GET',
+          headers: {
+            'APCA-API-KEY-ID': credentials.apiKey,
+            'APCA-API-SECRET-KEY': credentials.secretKey,
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (!posResponse.ok) {
+          recordFailure()
+          return new Response(
+            JSON.stringify({ success: false, error: `Failed to fetch positions (${posResponse.status})` }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const positions = await posResponse.json()
+        const shorts = positions.filter((p: any) => p.side === 'short')
+        log.info('Found short positions to close', { requestId, count: shorts.length })
+
+        if (shorts.length === 0) {
+          return new Response(
+            JSON.stringify({ success: true, message: 'No short positions found', closed: [] }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        // Close each short position sequentially
+        const results: any[] = []
+        for (const pos of shorts) {
+          const symbol = pos.symbol
+          try {
+            const closeUrl = `${credentials.baseUrl}/v2/positions/${encodeURIComponent(symbol)}`
+            const closeResponse = await fetch(closeUrl, {
+              method: 'DELETE',
+              headers: {
+                'APCA-API-KEY-ID': credentials.apiKey,
+                'APCA-API-SECRET-KEY': credentials.secretKey,
+                'Content-Type': 'application/json'
+              }
+            })
+
+            if (closeResponse.ok) {
+              const order = await closeResponse.json()
+              results.push({ symbol, success: true, orderId: order.id, qty: parseFloat(pos.qty), market_value: parseFloat(pos.market_value) })
+              log.info('Closed short position', { requestId, symbol, orderId: order.id })
+            } else {
+              const errorText = await closeResponse.text()
+              results.push({ symbol, success: false, error: `${closeResponse.status}: ${errorText}` })
+              log.error('Failed to close short', { requestId, symbol, status: closeResponse.status, error: errorText })
+            }
+          } catch (err) {
+            results.push({ symbol, success: false, error: err.message })
+            log.error('Error closing short', err, { requestId, symbol })
+          }
+        }
+
+        recordSuccess()
+        const closedCount = results.filter(r => r.success).length
+        const totalValue = results.filter(r => r.success).reduce((sum, r) => sum + Math.abs(r.market_value || 0), 0)
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: `Closed ${closedCount}/${shorts.length} short positions`,
+            totalMarketValue: totalValue,
+            results
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      } catch (fetchError) {
+        recordFailure()
+        throw fetchError
+      }
+    }
+
+    // Get all orders (recent)
+    if (action === 'get-orders') {
+      const status = bodyParams.status || 'all'
+      const limit = bodyParams.limit || 50
+
+      try {
+        const ordersUrl = `${credentials.baseUrl}/v2/orders?status=${status}&limit=${limit}&direction=desc`
+        const ordResponse = await fetch(ordersUrl, {
+          method: 'GET',
+          headers: {
+            'APCA-API-KEY-ID': credentials.apiKey,
+            'APCA-API-SECRET-KEY': credentials.secretKey,
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (!ordResponse.ok) {
+          recordFailure()
+          const errorText = await ordResponse.text()
+          return new Response(
+            JSON.stringify({ success: false, error: `Failed to fetch orders (${ordResponse.status})` }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        recordSuccess()
+        const orders = await ordResponse.json()
+        const formattedOrders = orders.map((o: any) => ({
+          id: o.id,
+          symbol: o.symbol,
+          side: o.side,
+          type: o.type,
+          qty: o.qty,
+          filled_qty: o.filled_qty,
+          status: o.status,
+          submitted_at: o.submitted_at,
+          filled_at: o.filled_at,
+          filled_avg_price: o.filled_avg_price,
+          time_in_force: o.time_in_force,
+        }))
+
+        return new Response(
+          JSON.stringify({ success: true, orders: formattedOrders, count: formattedOrders.length }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      } catch (fetchError) {
+        recordFailure()
+        throw fetchError
+      }
     }
 
     if (action === 'get-positions') {

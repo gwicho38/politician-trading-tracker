@@ -250,6 +250,8 @@ class TestTrainingConfigSerialization:
             "triggered_by",
             "use_outcomes",
             "outcome_weight",
+            "fine_tune",
+            "base_model_id",
             "feature_names",
         }
         assert set(d.keys()) == expected_keys

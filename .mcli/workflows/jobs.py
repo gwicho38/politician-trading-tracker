@@ -741,7 +741,7 @@ def train_model(lookback_days: int, use_outcomes: bool, outcome_weight: float, w
                     click.echo(f"  [{elapsed}s] Status: {job_status}")
 
                     if job_status == "completed":
-                        metrics = status_data.get("metrics", {})
+                        metrics = status_data.get("metrics") or {}
                         model_id = status_data.get("model_id", "?")
                         click.echo(f"\n✓ Training complete!")
                         click.echo(f"  Model ID: {model_id}")
