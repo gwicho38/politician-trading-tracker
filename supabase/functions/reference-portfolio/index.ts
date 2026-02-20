@@ -328,6 +328,114 @@ async function buildOrderRequest(
   }
 }
 
+// =============================================================================
+// RECALCULATE TRADE METRICS - Recompute all trade metrics from ground truth
+// =============================================================================
+// Queries all closed positions and recomputes winning_trades, losing_trades,
+// win_rate, avg_win, avg_loss, and profit_factor from the actual data.
+// This prevents counter drift from concurrent updates or failed transactions.
+async function recalculateTradeMetrics(supabaseClient: any, stateId: string) {
+  const { data: closedPositions } = await supabaseClient
+    .from('reference_portfolio_positions')
+    .select('realized_pl, realized_pl_pct')
+    .eq('is_open', false)
+    .not('realized_pl', 'is', null)
+
+  if (!closedPositions || closedPositions.length === 0) {
+    await supabaseClient
+      .from('reference_portfolio_state')
+      .update({
+        winning_trades: 0,
+        losing_trades: 0,
+        win_rate: 0,
+        avg_win: 0,
+        avg_loss: 0,
+        profit_factor: 0,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', stateId)
+    return
+  }
+
+  const wins = closedPositions.filter((p: any) => p.realized_pl > 0)
+  const losses = closedPositions.filter((p: any) => p.realized_pl <= 0)
+
+  const winningTrades = wins.length
+  const losingTrades = losses.length
+  const totalClosed = winningTrades + losingTrades
+  const winRate = totalClosed > 0 ? Math.round((winningTrades / totalClosed) * 10000) / 100 : 0
+
+  // avg_win and avg_loss are in percentage terms (from realized_pl_pct)
+  const winsWithPct = wins.filter((p: any) => p.realized_pl_pct != null)
+  const lossesWithPct = losses.filter((p: any) => p.realized_pl_pct != null)
+
+  const avgWin = winsWithPct.length > 0
+    ? Math.round(winsWithPct.reduce((sum: number, p: any) => sum + p.realized_pl_pct, 0) / winsWithPct.length * 100) / 100
+    : 0
+  const avgLoss = lossesWithPct.length > 0
+    ? Math.round(lossesWithPct.reduce((sum: number, p: any) => sum + p.realized_pl_pct, 0) / lossesWithPct.length * 100) / 100
+    : 0
+
+  // profit_factor = sum of dollar wins / sum of dollar losses
+  const totalWinDollars = wins.reduce((sum: number, p: any) => sum + p.realized_pl, 0)
+  const totalLossDollars = Math.abs(losses.reduce((sum: number, p: any) => sum + p.realized_pl, 0))
+  const profitFactor = totalLossDollars > 0
+    ? Math.round((totalWinDollars / totalLossDollars) * 10000) / 10000
+    : (totalWinDollars > 0 ? 99.99 : 0)
+
+  await supabaseClient
+    .from('reference_portfolio_state')
+    .update({
+      winning_trades: winningTrades,
+      losing_trades: losingTrades,
+      win_rate: winRate,
+      avg_win: avgWin,
+      avg_loss: avgLoss,
+      profit_factor: profitFactor,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', stateId)
+
+  log.info('Trade metrics recalculated from ground truth', {
+    winningTrades, losingTrades, winRate, avgWin, avgLoss, profitFactor
+  })
+}
+
+// =============================================================================
+// VERIFY ALPACA POSITION - Check if a position exists in Alpaca before selling
+// =============================================================================
+// Returns { exists, alpacaQty } or { exists: false } if position not found.
+// Prevents creating unintended short positions by selling non-existent positions.
+async function verifyAlpacaPosition(
+  ticker: string,
+  credentials: ReturnType<typeof getAlpacaCredentials>
+): Promise<{ exists: boolean; alpacaQty: number; side: string }> {
+  if (!credentials) return { exists: false, alpacaQty: 0, side: '' }
+
+  try {
+    const response = await fetch(`${credentials.baseUrl}/v2/positions/${encodeURIComponent(ticker.toUpperCase())}`, {
+      headers: {
+        'APCA-API-KEY-ID': credentials.apiKey,
+        'APCA-API-SECRET-KEY': credentials.secretKey,
+      }
+    })
+
+    if (!response.ok) {
+      // 404 means position doesn't exist
+      return { exists: false, alpacaQty: 0, side: '' }
+    }
+
+    const position = await response.json()
+    return {
+      exists: true,
+      alpacaQty: Math.abs(parseFloat(position.qty)),
+      side: position.side || 'long'
+    }
+  } catch {
+    return { exists: false, alpacaQty: 0, side: '' }
+  }
+}
+
 // TODO: Review - Main HTTP request handler that routes actions to appropriate handlers
 // Supports actions: get-state, get-positions, get-trades, get-performance, execute-signals, update-positions, take-snapshot, reset-daily-trades, check-exits
 serve(async (req) => {
@@ -611,15 +719,19 @@ async function handleGetPositions(supabaseClient: any, requestId: string, bodyPa
             const alpacaPositions = await alpacaResponse.json()
             const alpacaPositionMap = new Map(alpacaPositions.map((p: any) => [p.symbol, p]))
 
-            // Merge Alpaca live data with database records
+            // Merge Alpaca live data with database records (skip shorts)
             positions = positions.map((dbPos: any) => {
               const alpacaPos = alpacaPositionMap.get(dbPos.ticker.toUpperCase())
               if (alpacaPos) {
+                // Skip short positions — our system is long-only
+                if (alpacaPos.side === 'short') {
+                  return { ...dbPos, data_source: 'database' }
+                }
                 return {
                   ...dbPos,
                   // Override with live Alpaca values
                   current_price: parseFloat(alpacaPos.current_price),
-                  market_value: parseFloat(alpacaPos.market_value),
+                  market_value: Math.max(0, parseFloat(alpacaPos.market_value)),
                   unrealized_pl: parseFloat(alpacaPos.unrealized_pl),
                   unrealized_pl_pct: parseFloat(alpacaPos.unrealized_plpc) * 100,
                   quantity: parseInt(alpacaPos.qty),
@@ -1044,6 +1156,41 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
         }
 
         try {
+          // Verify position exists in Alpaca before selling (prevents creating shorts)
+          const alpacaCheck = await verifyAlpacaPosition(ticker, credentials)
+          if (!alpacaCheck.exists) {
+            log.warn('Position not found in Alpaca, closing DB record without order', { requestId, ticker })
+            const currentPrice = position.current_price || position.entry_price
+            const exitValue = currentPrice * position.quantity
+            const realizedPL = exitValue - (position.entry_price * position.quantity)
+            const realizedPLPct = ((currentPrice - position.entry_price) / position.entry_price) * 100
+
+            await supabaseClient
+              .from('reference_portfolio_positions')
+              .update({
+                is_open: false,
+                exit_price: currentPrice,
+                exit_date: new Date().toISOString(),
+                exit_reason: 'position_not_found',
+                realized_pl: realizedPL,
+                realized_pl_pct: realizedPLPct,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', position.id)
+
+            state.open_positions -= 1
+            existingTickers.delete(ticker)
+            positionsByTicker.delete(ticker)
+            sellsExecuted++
+            executed++
+            results.push({ ticker, action: 'sell', exitReason: 'position_not_found', realizedPL })
+            await updateQueueStatus(supabaseClient, queued.id, 'executed', null, position.id)
+            continue
+          }
+
+          // Use Alpaca's actual quantity to prevent selling more than we hold
+          const sellQty = Math.min(position.quantity, alpacaCheck.alpacaQty)
+
           // Get current price from Alpaca
           const quoteUrl = `${credentials.dataUrl}/v2/stocks/${ticker}/quotes/latest`
           const quoteResponse = await fetch(quoteUrl, {
@@ -1062,11 +1209,11 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
           // Place sell order with Alpaca (order type based on market status)
           const orderUrl = `${credentials.baseUrl}/v2/orders`
           const orderRequest = await buildOrderRequest(
-            ticker, position.quantity, 'sell',
+            ticker, sellQty, 'sell',
             position.asset_type || 'stock', marketStatus, credentials, config
           )
 
-          log.info('Placing sell order from signal', { requestId, ticker, shares: position.quantity, signalType: signal.signal_type, orderType: orderRequest.type })
+          log.info('Placing sell order from signal', { requestId, ticker, shares: sellQty, dbQty: position.quantity, alpacaQty: alpacaCheck.alpacaQty, signalType: signal.signal_type, orderType: orderRequest.type })
 
           const orderResponse = await fetch(orderUrl, {
             method: 'POST',
@@ -1419,6 +1566,11 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
       }
     }
 
+    // Recalculate trade metrics from ground truth after any sells
+    if (sellsExecuted > 0) {
+      await recalculateTradeMetrics(supabaseClient, state.id)
+    }
+
     log.info('Signal execution completed', { requestId, executed, skipped, failed, sellsExecuted })
 
     return new Response(
@@ -1584,8 +1736,17 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
             const alpacaPosition = alpacaPositionMap.get(position.ticker.toUpperCase())
 
             if (alpacaPosition) {
+              // Skip short positions — our system is long-only
+              if (alpacaPosition.side === 'short') {
+                log.warn('Skipping short position from Alpaca sync', { requestId, ticker: position.ticker })
+                const dbMarketValue = Math.max(0, position.quantity * (position.current_price || position.entry_price))
+                totalPositionsValue += dbMarketValue
+                continue
+              }
+
               const currentPrice = parseFloat(alpacaPosition.current_price)
-              const marketValue = parseFloat(alpacaPosition.market_value)
+              // Ensure market_value is non-negative for long positions
+              const marketValue = Math.max(0, parseFloat(alpacaPosition.market_value))
               const unrealizedPL = parseFloat(alpacaPosition.unrealized_pl)
               const unrealizedPLPct = parseFloat(alpacaPosition.unrealized_plpc) * 100
 
@@ -1698,6 +1859,11 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
     const summaryPositionsValue = alpacaPositionsValue !== null
       ? alpacaPositionsValue
       : Math.max(0, totalPositionsValue)
+
+    // Self-healing: recalculate trade metrics from ground truth on every position update
+    if (state) {
+      await recalculateTradeMetrics(supabaseClient, state.id)
+    }
 
     log.info('Positions updated', {
       requestId,
@@ -1824,8 +1990,17 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
             const alpacaPosition = alpacaPositionMap.get(position.ticker.toUpperCase())
 
             if (alpacaPosition) {
+              // Skip short positions — our system is long-only
+              if (alpacaPosition.side === 'short') {
+                log.warn('Skipping short position from Alpaca sync (snapshot)', { requestId, ticker: position.ticker })
+                const dbMarketValue = Math.max(0, position.quantity * (position.current_price || position.entry_price))
+                totalPositionsValue += dbMarketValue
+                continue
+              }
+
               const currentPrice = parseFloat(alpacaPosition.current_price)
-              const marketValue = parseFloat(alpacaPosition.market_value)
+              // Ensure market_value is non-negative for long positions
+              const marketValue = Math.max(0, parseFloat(alpacaPosition.market_value))
               const unrealizedPL = parseFloat(alpacaPosition.unrealized_pl)
               const unrealizedPLPct = parseFloat(alpacaPosition.unrealized_plpc) * 100
 
@@ -2374,10 +2549,50 @@ async function handleCheckExits(supabaseClient: any, requestId: string) {
           takeProfit: position.take_profit_price
         })
 
+        // Verify position exists in Alpaca before selling (prevents creating shorts)
+        const alpacaExitCheck = await verifyAlpacaPosition(position.ticker.toUpperCase(), credentials)
+        if (!alpacaExitCheck.exists) {
+          log.warn('Position not found in Alpaca during exit check, closing DB record without order', {
+            requestId, ticker: position.ticker, exitReason
+          })
+          const exitValue = currentPrice * position.quantity
+          const entryValue = position.entry_price * position.quantity
+          const realizedPL = exitValue - entryValue
+          const realizedPLPct = ((currentPrice - position.entry_price) / position.entry_price) * 100
+          const isWin = realizedPL > 0
+          if (isWin) wins++
+          else losses++
+
+          await supabaseClient
+            .from('reference_portfolio_positions')
+            .update({
+              is_open: false,
+              exit_price: currentPrice,
+              exit_date: new Date().toISOString(),
+              exit_reason: 'position_not_found',
+              realized_pl: realizedPL,
+              realized_pl_pct: realizedPLPct,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', position.id)
+
+          state.open_positions -= 1
+          closed++
+          results.push({
+            ticker: position.ticker, exitReason: 'position_not_found',
+            exitPrice: currentPrice, entryPrice: position.entry_price,
+            quantity: position.quantity, realizedPL, isWin
+          })
+          continue
+        }
+
+        // Use Alpaca's actual quantity to prevent selling more than we hold
+        const exitSellQty = Math.min(position.quantity, alpacaExitCheck.alpacaQty)
+
         // Place sell order with Alpaca (order type based on market status)
         const orderUrl = `${credentials.baseUrl}/v2/orders`
         const exitOrderRequest = await buildOrderRequest(
-          position.ticker.toUpperCase(), position.quantity, 'sell',
+          position.ticker.toUpperCase(), exitSellQty, 'sell',
           position.asset_type || 'stock', marketStatus, credentials, config
         )
         const orderResponse = await fetch(orderUrl, {
@@ -2397,7 +2612,7 @@ async function handleCheckExits(supabaseClient: any, requestId: string) {
           continue
         }
 
-        log.info('Sell order placed', { requestId, orderId: orderResult.id, ticker: position.ticker })
+        log.info('Sell order placed', { requestId, orderId: orderResult.id, ticker: position.ticker, sellQty: exitSellQty })
 
         // Calculate realized P&L
         const exitValue = currentPrice * position.quantity
@@ -2493,42 +2708,9 @@ async function handleCheckExits(supabaseClient: any, requestId: string) {
       }
     }
 
-    // Update win rate and avg win/loss in state
+    // Recalculate all trade metrics from ground truth (closed positions)
     if (closed > 0) {
-      const totalClosed = state.winning_trades + state.losing_trades
-      const winRate = totalClosed > 0 ? (state.winning_trades / totalClosed) * 100 : 0
-
-      // Calculate avg win and avg loss from closed positions
-      const { data: closedPositions } = await supabaseClient
-        .from('reference_portfolio_positions')
-        .select('realized_pl_pct')
-        .eq('is_open', false)
-        .not('realized_pl_pct', 'is', null)
-
-      let avgWin = 0
-      let avgLoss = 0
-
-      if (closedPositions && closedPositions.length > 0) {
-        const wins = closedPositions.filter((p: any) => p.realized_pl_pct > 0)
-        const losses = closedPositions.filter((p: any) => p.realized_pl_pct <= 0)
-
-        if (wins.length > 0) {
-          avgWin = wins.reduce((sum: number, p: any) => sum + p.realized_pl_pct, 0) / wins.length
-        }
-        if (losses.length > 0) {
-          avgLoss = losses.reduce((sum: number, p: any) => sum + p.realized_pl_pct, 0) / losses.length
-        }
-      }
-
-      await supabaseClient
-        .from('reference_portfolio_state')
-        .update({
-          win_rate: Math.round(winRate * 100) / 100,
-          avg_win: Math.round(avgWin * 100) / 100,
-          avg_loss: Math.round(avgLoss * 100) / 100,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', state.id)
+      await recalculateTradeMetrics(supabaseClient, state.id)
     }
 
     log.info('Exit check completed', { requestId, checked: positions.length, closed, wins, losses })

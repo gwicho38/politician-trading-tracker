@@ -210,13 +210,13 @@ export function RiskMetrics() {
           <div>
             <p className="text-xs text-muted-foreground">Avg Win</p>
             <p className="text-sm font-semibold text-success">
-              {state?.avg_win ? `$${state.avg_win.toFixed(2)}` : 'N/A'}
+              {state?.avg_win ? `${state.avg_win.toFixed(2)}%` : 'N/A'}
             </p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Avg Loss</p>
             <p className="text-sm font-semibold text-destructive">
-              {state?.avg_loss ? `$${Math.abs(state.avg_loss).toFixed(2)}` : 'N/A'}
+              {state?.avg_loss ? `${Math.abs(state.avg_loss).toFixed(2)}%` : 'N/A'}
             </p>
           </div>
         </div>
