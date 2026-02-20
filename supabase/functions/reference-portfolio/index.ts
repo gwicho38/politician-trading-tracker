@@ -504,6 +504,9 @@ serve(async (req) => {
       case 'check-exits':
         response = await handleCheckExits(supabaseClient, requestId)
         break
+      case 'backfill-snapshots':
+        response = await handleBackfillSnapshots(supabaseClient, requestId)
+        break
       default:
         // Default to get-state for general requests
         response = await handleGetState(supabaseClient, requestId)
@@ -2372,6 +2375,243 @@ async function handleTakeSnapshot(supabaseClient: any, requestId: string) {
 
   } catch (error) {
     log.error('Error in handleTakeSnapshot', error, { requestId })
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+}
+
+// =============================================================================
+// BACKFILL SNAPSHOTS - Reconstruct historical snapshots from Alpaca equity history
+// =============================================================================
+// Fetches 1 year of daily equity from Alpaca portfolio history API, then upserts
+// corrected snapshot rows. Preserves existing cash/positions_value columns since
+// Alpaca history only provides total equity. Idempotent via snapshot_date conflict.
+async function handleBackfillSnapshots(supabaseClient: any, requestId: string) {
+  try {
+    log.info('Starting snapshot backfill from Alpaca history', { requestId })
+
+    // 1. Fetch config for initial_capital
+    const { data: config, error: configError } = await supabaseClient
+      .from('reference_portfolio_config')
+      .select('*')
+      .single()
+
+    if (configError || !config) {
+      return new Response(
+        JSON.stringify({ error: 'Portfolio config not found' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const initialCapital = config.initial_capital || 100000
+
+    // 2. Call Alpaca portfolio history — 1 year of daily data
+    const credentials = getAlpacaCredentials()
+    if (!credentials) {
+      return new Response(
+        JSON.stringify({ error: 'Alpaca credentials not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const historyUrl = `${credentials.baseUrl}/v2/account/portfolio/history?period=1A&timeframe=1D&extended_hours=true`
+    log.info('Fetching Alpaca portfolio history for backfill', { requestId, url: historyUrl })
+
+    const alpacaResponse = await fetch(historyUrl, {
+      headers: {
+        'APCA-API-KEY-ID': credentials.apiKey,
+        'APCA-API-SECRET-KEY': credentials.secretKey
+      }
+    })
+
+    if (!alpacaResponse.ok) {
+      const errorText = await alpacaResponse.text()
+      log.error('Alpaca portfolio history failed', { status: alpacaResponse.status, error: errorText }, { requestId })
+      return new Response(
+        JSON.stringify({ error: `Alpaca API error: ${alpacaResponse.status}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const alpacaHistory = await alpacaResponse.json()
+    const timestamps = alpacaHistory.timestamp || []
+    const equities = alpacaHistory.equity || []
+
+    log.info('Alpaca history received', { requestId, dataPoints: timestamps.length })
+
+    // 3. Fetch existing snapshots to preserve cash/positions_value
+    const { data: existingSnapshots } = await supabaseClient
+      .from('reference_portfolio_snapshots')
+      .select('snapshot_date, cash, positions_value, open_positions, total_trades, win_rate, benchmark_value, benchmark_return, benchmark_return_pct, alpha')
+      .order('snapshot_date', { ascending: true })
+
+    const existingByDate: Record<string, any> = {}
+    if (existingSnapshots) {
+      for (const snap of existingSnapshots) {
+        existingByDate[snap.snapshot_date] = snap
+      }
+    }
+
+    // 4. Build corrected series from Alpaca equity
+    let peakEquity = initialCapital
+    let maxDrawdown = 0
+    let currentDrawdown = 0
+    const correctedRows: any[] = []
+
+    for (let i = 0; i < timestamps.length; i++) {
+      const equity = equities[i]
+      if (equity === null || equity === 0) continue
+
+      const date = new Date(timestamps[i] * 1000)
+      const snapshotDate = date.toISOString().split('T')[0]
+
+      // Day return: compare to previous equity or initial capital for first day
+      const prevEquity = i > 0 && equities[i - 1] !== null ? equities[i - 1] : initialCapital
+      const dayReturn = equity - prevEquity
+      const dayReturnPct = prevEquity > 0 ? (dayReturn / prevEquity) * 100 : 0
+
+      // Cumulative return from initial capital
+      const cumulativeReturn = equity - initialCapital
+      const cumulativeReturnPct = (cumulativeReturn / initialCapital) * 100
+
+      // Track peak and drawdown
+      if (equity > peakEquity) {
+        peakEquity = equity
+      }
+      currentDrawdown = peakEquity > 0 ? ((peakEquity - equity) / peakEquity) * 100 : 0
+      if (currentDrawdown > maxDrawdown) {
+        maxDrawdown = currentDrawdown
+      }
+
+      // Preserve existing columns that Alpaca doesn't provide
+      const existing = existingByDate[snapshotDate]
+
+      correctedRows.push({
+        snapshot_date: snapshotDate,
+        snapshot_time: date.toISOString(),
+        portfolio_value: equity,
+        cash: existing?.cash ?? 0,
+        positions_value: existing?.positions_value ?? 0,
+        day_return: Math.round(dayReturn * 100) / 100,
+        day_return_pct: Math.round(dayReturnPct * 10000) / 10000,
+        cumulative_return: Math.round(cumulativeReturn * 100) / 100,
+        cumulative_return_pct: Math.round(cumulativeReturnPct * 10000) / 10000,
+        max_drawdown: Math.round(maxDrawdown * 10000) / 10000,
+        current_drawdown: Math.round(currentDrawdown * 10000) / 10000,
+        open_positions: existing?.open_positions ?? null,
+        total_trades: existing?.total_trades ?? null,
+        win_rate: existing?.win_rate ?? null,
+        benchmark_value: existing?.benchmark_value ?? null,
+        benchmark_return: existing?.benchmark_return ?? null,
+        benchmark_return_pct: existing?.benchmark_return_pct ?? null,
+        alpha: existing?.alpha ?? null,
+        sharpe_ratio: null // Will be computed below for rows with enough history
+      })
+    }
+
+    // 5. Compute rolling 30-day Sharpe ratio for each row
+    for (let i = 0; i < correctedRows.length; i++) {
+      // Need at least 5 data points in the 30-day window
+      const windowStart = Math.max(0, i - 29)
+      const window = correctedRows.slice(windowStart, i + 1)
+
+      if (window.length >= 5) {
+        const dailyReturns = window
+          .map((r: any) => r.day_return_pct)
+          .filter((r: number | null) => r !== null && r !== undefined)
+
+        if (dailyReturns.length >= 5) {
+          const meanReturn = dailyReturns.reduce((sum: number, r: number) => sum + r, 0) / dailyReturns.length
+          const squaredDiffs = dailyReturns.map((r: number) => Math.pow(r - meanReturn, 2))
+          const variance = squaredDiffs.reduce((sum: number, d: number) => sum + d, 0) / dailyReturns.length
+          const stdDev = Math.sqrt(variance)
+
+          if (stdDev > 0) {
+            const dailySharpe = meanReturn / stdDev
+            correctedRows[i].sharpe_ratio = Math.round(dailySharpe * Math.sqrt(252) * 10000) / 10000
+          } else {
+            correctedRows[i].sharpe_ratio = meanReturn > 0 ? 3.0 : 0
+          }
+        }
+      }
+    }
+
+    log.info('Corrected series built', {
+      requestId,
+      totalRows: correctedRows.length,
+      peakEquity,
+      maxDrawdown: Math.round(maxDrawdown * 100) / 100,
+      latestEquity: correctedRows.length > 0 ? correctedRows[correctedRows.length - 1].portfolio_value : null
+    })
+
+    // 6. Batch upsert — 50 rows per batch
+    const BATCH_SIZE = 50
+    let upsertedCount = 0
+    let errorCount = 0
+
+    for (let i = 0; i < correctedRows.length; i += BATCH_SIZE) {
+      const batch = correctedRows.slice(i, i + BATCH_SIZE)
+      const { error: upsertError } = await supabaseClient
+        .from('reference_portfolio_snapshots')
+        .upsert(batch, { onConflict: 'snapshot_date' })
+
+      if (upsertError) {
+        log.error('Batch upsert failed', upsertError, { requestId, batchStart: i, batchSize: batch.length })
+        errorCount += batch.length
+      } else {
+        upsertedCount += batch.length
+      }
+    }
+
+    // 7. Update reference_portfolio_state with corrected metrics from final snapshot
+    const lastRow = correctedRows[correctedRows.length - 1]
+    if (lastRow) {
+      const { error: stateError } = await supabaseClient
+        .from('reference_portfolio_state')
+        .update({
+          sharpe_ratio: lastRow.sharpe_ratio,
+          max_drawdown: Math.round(maxDrawdown * 10000) / 10000,
+          current_drawdown: Math.round(currentDrawdown * 10000) / 10000,
+          peak_portfolio_value: Math.round(peakEquity * 100) / 100,
+          updated_at: new Date().toISOString()
+        })
+        .eq('config_id', config.id)
+
+      if (stateError) {
+        log.error('Failed to update portfolio state', stateError, { requestId })
+      } else {
+        log.info('Portfolio state updated with corrected metrics', {
+          requestId,
+          sharpeRatio: lastRow.sharpe_ratio,
+          maxDrawdown: Math.round(maxDrawdown * 10000) / 10000,
+          peakEquity: Math.round(peakEquity * 100) / 100
+        })
+      }
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        correctedSnapshots: upsertedCount,
+        errors: errorCount,
+        alpacaDataPoints: timestamps.length,
+        initialCapital,
+        peakEquity: Math.round(peakEquity * 100) / 100,
+        maxDrawdown: Math.round(maxDrawdown * 10000) / 10000,
+        currentDrawdown: Math.round(currentDrawdown * 10000) / 10000,
+        latestSharpe: lastRow?.sharpe_ratio ?? null,
+        latestEquity: lastRow?.portfolio_value ?? null,
+        dateRange: correctedRows.length > 0
+          ? { from: correctedRows[0].snapshot_date, to: correctedRows[correctedRows.length - 1].snapshot_date }
+          : null
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+
+  } catch (error) {
+    log.error('Error in handleBackfillSnapshots', error, { requestId })
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
