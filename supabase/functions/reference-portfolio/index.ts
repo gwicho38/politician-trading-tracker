@@ -1643,8 +1643,9 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
       )
     }
 
-    // Always count open positions from database (fix for position count mismatch)
-    const openPositionsCount = positions?.length || 0
+    // Count open positions from database — will be adjusted after Alpaca reconciliation
+    let openPositionsCount = positions?.length || 0
+    let reconciledCount = 0
 
     if (!positions || positions.length === 0) {
       // No positions - update state to reflect this
@@ -1727,10 +1728,12 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
         if (alpacaResponse.ok) {
           const alpacaPositions = await alpacaResponse.json()
           const alpacaPositionMap = new Map(alpacaPositions.map((p: any) => [p.symbol, p]))
+          log.info('Alpaca positions fetched', { requestId, alpacaCount: alpacaPositions.length, dbCount: positions.length })
 
           // Reset totals for Alpaca data
           totalPositionsValue = 0
           totalUnrealizedPL = 0
+          let reconciled = 0
 
           for (const position of positions) {
             const alpacaPosition = alpacaPositionMap.get(position.ticker.toUpperCase())
@@ -1766,12 +1769,44 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
               updated++
               alpacaSyncSuccess = true
             } else {
-              // Position not in Alpaca - use database value
-              const dbMarketValue = position.market_value || (position.quantity * (position.current_price || position.entry_price))
-              totalPositionsValue += dbMarketValue
-              totalUnrealizedPL += position.unrealized_pl || 0
-              log.warn('Position not found in Alpaca, using DB value', { requestId, ticker: position.ticker, value: dbMarketValue })
+              // Position marked open in DB but absent from Alpaca — Alpaca already closed it
+              // (e.g., stop-loss or take-profit filled externally)
+              log.warn('DB-open position absent from Alpaca — marking closed', {
+                requestId,
+                ticker: position.ticker,
+                entryPrice: position.entry_price,
+                quantity: position.quantity
+              })
+
+              const exitPrice = position.current_price || position.entry_price
+              const exitValue = exitPrice * position.quantity
+              const entryValue = position.entry_price * position.quantity
+              const realizedPL = exitValue - entryValue
+              const realizedPLPct = position.entry_price > 0
+                ? ((exitPrice - position.entry_price) / position.entry_price) * 100
+                : 0
+
+              await supabaseClient
+                .from('reference_portfolio_positions')
+                .update({
+                  is_open: false,
+                  exit_price: exitPrice,
+                  exit_date: new Date().toISOString(),
+                  exit_reason: 'alpaca_closed',
+                  realized_pl: realizedPL,
+                  realized_pl_pct: realizedPLPct,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', position.id)
+
+              // Do NOT add this position's value to totals — it's closed
+              reconciled++
+              reconciledCount++
             }
+          }
+
+          if (reconciled > 0) {
+            log.info('Reconciled orphaned positions', { requestId, reconciled, remainingOpen: openPositionsCount - reconciledCount })
           }
         } else {
           log.warn('Alpaca API failed, using database values', { requestId, status: alpacaResponse.status })
@@ -1848,7 +1883,7 @@ async function handleUpdatePositions(supabaseClient: any, requestId: string) {
           peak_portfolio_value: peakValue,
           current_drawdown: currentDrawdown,
           max_drawdown: maxDrawdown,
-          open_positions: openPositionsCount, // FIX: Always update from actual position count
+          open_positions: Math.max(0, openPositionsCount - reconciledCount), // Subtract positions closed during reconciliation
           last_sync_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -1916,7 +1951,8 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
       return
     }
 
-    const openPositionsCount = positions?.length || 0
+    let openPositionsCount = positions?.length || 0
+    let syncReconciledCount = 0
 
     if (!positions || positions.length === 0) {
       // No positions - update state to reflect this
@@ -2018,11 +2054,40 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
               totalPositionsValue += marketValue
               totalUnrealizedPL += unrealizedPL
             } else {
-              // Position not in Alpaca - use database value
-              const dbMarketValue = position.market_value || (position.quantity * (position.current_price || position.entry_price))
-              totalPositionsValue += dbMarketValue
-              totalUnrealizedPL += position.unrealized_pl || 0
+              // Position marked open in DB but absent from Alpaca — close it
+              log.warn('Snapshot sync: DB-open position absent from Alpaca — marking closed', {
+                requestId, ticker: position.ticker, entryPrice: position.entry_price
+              })
+
+              const exitPrice = position.current_price || position.entry_price
+              const exitValue = exitPrice * position.quantity
+              const entryValue = position.entry_price * position.quantity
+              const realizedPL = exitValue - entryValue
+              const realizedPLPct = position.entry_price > 0
+                ? ((exitPrice - position.entry_price) / position.entry_price) * 100
+                : 0
+
+              await supabaseClient
+                .from('reference_portfolio_positions')
+                .update({
+                  is_open: false,
+                  exit_price: exitPrice,
+                  exit_date: new Date().toISOString(),
+                  exit_reason: 'alpaca_closed',
+                  realized_pl: realizedPL,
+                  realized_pl_pct: realizedPLPct,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', position.id)
+
+              syncReconciledCount++
             }
+          }
+
+          if (syncReconciledCount > 0) {
+            log.info('Snapshot sync reconciled orphaned positions', {
+              requestId, reconciled: syncReconciledCount
+            })
           }
         } else {
           log.warn('Alpaca API failed during sync, using database values', { requestId, status: alpacaResponse.status })
@@ -2087,7 +2152,7 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
           peak_portfolio_value: peakValue,
           current_drawdown: currentDrawdown,
           max_drawdown: maxDrawdown,
-          open_positions: openPositionsCount,
+          open_positions: Math.max(0, openPositionsCount - syncReconciledCount),
           last_sync_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -2095,7 +2160,7 @@ async function syncPositionsWithAlpaca(supabaseClient: any, requestId: string, i
 
       log.info('Positions synced for snapshot', {
         requestId,
-        openPositionsCount,
+        openPositionsCount: Math.max(0, openPositionsCount - syncReconciledCount),
         positionsValue: finalPositionsValue,
         portfolioValue,
         totalReturn,
@@ -2496,64 +2561,13 @@ async function handleCheckExits(supabaseClient: any, requestId: string) {
             .eq('id', position.id)
         }
 
-        // Check exit conditions
-        let exitReason: string | null = null
-
-        // 1. Check time-based exit (stale position)
-        if (config.max_hold_days) {
-          const entryDate = new Date(position.entry_date)
-          const now = new Date()
-          const daysHeld = Math.floor((now.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24))
-          
-          if (daysHeld >= config.max_hold_days) {
-            exitReason = 'time_exit'
-            log.info('Time-based exit triggered', {
-              requestId,
-              ticker: position.ticker,
-              daysHeld,
-              maxHoldDays: config.max_hold_days
-            })
-          }
-        }
-
-        // 2. Check trailing stop (dynamic stop that follows price up)
-        if (!exitReason && trailingStopPrice && currentPrice <= trailingStopPrice) {
-          exitReason = 'trailing_stop'
-          log.info('Trailing stop triggered', {
-            requestId,
-            ticker: position.ticker,
-            currentPrice,
-            trailingStopPrice,
-            highestPrice
-          })
-        }
-
-        // 3. Check fixed stop-loss (only if trailing stop not triggered)
-        if (!exitReason && position.stop_loss_price && currentPrice <= position.stop_loss_price) {
-          exitReason = 'stop_loss'
-        }
-        
-        // 4. Check take-profit
-        if (!exitReason && position.take_profit_price && currentPrice >= position.take_profit_price) {
-          exitReason = 'take_profit'
-        }
-
-        if (!exitReason) continue
-
-        log.info('Exit triggered', {
-          requestId,
-          ticker: position.ticker,
-          exitReason,
-          currentPrice,
-          stopLoss: position.stop_loss_price,
-          takeProfit: position.take_profit_price
-        })
-
-        // Verify position exists in Alpaca before selling (prevents creating shorts)
+        // FIRST: Verify position still exists in Alpaca before any threshold checks.
+        // This catches positions closed externally (e.g., by Alpaca stop-loss fills)
+        // that would otherwise be orphaned in the DB forever.
         const alpacaExitCheck = await verifyAlpacaPosition(position.ticker.toUpperCase(), credentials)
         if (!alpacaExitCheck.exists) {
-          log.warn('Position not found in Alpaca during exit check, closing DB record without order', {
-            requestId, ticker: position.ticker, exitReason
+          log.warn('Position not found in Alpaca during exit check, closing DB record', {
+            requestId, ticker: position.ticker
           })
           const exitValue = currentPrice * position.quantity
           const entryValue = position.entry_price * position.quantity
@@ -2585,6 +2599,59 @@ async function handleCheckExits(supabaseClient: any, requestId: string) {
           })
           continue
         }
+
+        // Position exists in Alpaca — now check exit conditions
+        let exitReason: string | null = null
+
+        // 1. Check time-based exit (stale position)
+        if (config.max_hold_days) {
+          const entryDate = new Date(position.entry_date)
+          const now = new Date()
+          const daysHeld = Math.floor((now.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24))
+
+          if (daysHeld >= config.max_hold_days) {
+            exitReason = 'timeout'
+            log.info('Time-based exit triggered', {
+              requestId,
+              ticker: position.ticker,
+              daysHeld,
+              maxHoldDays: config.max_hold_days
+            })
+          }
+        }
+
+        // 2. Check trailing stop (dynamic stop that follows price up)
+        if (!exitReason && trailingStopPrice && currentPrice <= trailingStopPrice) {
+          exitReason = 'trailing_stop'
+          log.info('Trailing stop triggered', {
+            requestId,
+            ticker: position.ticker,
+            currentPrice,
+            trailingStopPrice,
+            highestPrice
+          })
+        }
+
+        // 3. Check fixed stop-loss (only if trailing stop not triggered)
+        if (!exitReason && position.stop_loss_price && currentPrice <= position.stop_loss_price) {
+          exitReason = 'stop_loss'
+        }
+
+        // 4. Check take-profit
+        if (!exitReason && position.take_profit_price && currentPrice >= position.take_profit_price) {
+          exitReason = 'take_profit'
+        }
+
+        if (!exitReason) continue
+
+        log.info('Exit triggered', {
+          requestId,
+          ticker: position.ticker,
+          exitReason,
+          currentPrice,
+          stopLoss: position.stop_loss_price,
+          takeProfit: position.take_profit_price
+        })
 
         // Use Alpaca's actual quantity to prevent selling more than we hold
         const exitSellQty = Math.min(position.quantity, alpacaExitCheck.alpacaQty)

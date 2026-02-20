@@ -296,55 +296,28 @@ async function handleGetSignals(supabaseClient: any, req: Request, requestId: st
       request: sanitizeRequestForLogging(req)
     })
 
-    // First, let's check if the table exists and get a simple count
-    log.info('Checking table existence', { requestId })
-    const { count: tableCheck, error: tableError } = await supabaseClient
-      .from('trading_signals')
-      .select('*', { count: 'exact', head: true })
-
-    if (tableError) {
-      log.error('Table check failed', tableError, { requestId })
-      throw new Error(`Table check failed: ${tableError.message}`)
-    }
-
-    log.info('Table exists, count:', { requestId, count: tableCheck })
-
-    // Now try to get some data
+    // Single query: fetch data + exact count in one round-trip
+    // Uses the composite partial index: idx_trading_signals_active_created
     let query = supabaseClient
       .from('trading_signals')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('is_active', true)
-      .order('created_at', { ascending: false }) // Use created_at instead of confidence_score initially
+      .order('created_at', { ascending: false })
       .limit(limit)
 
-    // Remove filters that might cause issues
-    // if (signalType && signalType !== 'all') {
-    //   query = query.eq('signal_type', signalType)
-    // }
+    if (offset > 0) {
+      query = query.range(offset, offset + limit - 1)
+    }
 
-    // if (minConfidence > 0) {
-    //   query = query.gte('confidence_score', minConfidence)
-    // }
-
-    log.info('Executing query', { requestId })
-    const { data: signals, error } = await query
+    log.info('Executing signals query', { requestId })
+    const { data: signals, count, error } = await query
 
     if (error) {
       log.error('Database query failed', error, { requestId })
       throw new Error(`Failed to fetch signals: ${error.message}`)
     }
 
-    log.info('Query successful', { requestId, signalCount: signals?.length || 0 })
-
-    // Get total count for pagination
-    const { count, error: countError } = await supabaseClient
-      .from('trading_signals')
-      .select('*', { count: 'exact', head: true })
-      .eq('is_active', true)
-
-    if (countError) {
-      log.warn('Count query failed', { requestId, error: countError })
-    }
+    log.info('Query successful', { requestId, signalCount: signals?.length || 0, totalCount: count })
 
     const responseData = {
       success: true,
