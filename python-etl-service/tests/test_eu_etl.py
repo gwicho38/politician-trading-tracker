@@ -388,14 +388,16 @@ class TestSplitSections:
 
 class TestExtractFinancialInterests:
 
-    def test_extracts_from_sections_b_c_d(self):
+    def test_extracts_from_sections_a_b_c_d(self):
         interests = extract_financial_interests(SAMPLE_DPI_TEXT)
         sections_found = {i["section"] for i in interests}
-        assert sections_found == {"B", "C", "D"}
+        assert sections_found == {"A", "B", "C", "D"}
 
-    def test_does_not_extract_section_a(self):
+    def test_section_a_is_income_type(self):
         interests = extract_financial_interests(SAMPLE_DPI_TEXT)
-        assert all(i["section"] != "A" for i in interests)
+        a_interests = [i for i in interests if i["section"] == "A"]
+        assert len(a_interests) > 0
+        assert all(i["transaction_type"] == "income" for i in a_interests)
 
     def test_does_not_extract_section_e_f(self):
         interests = extract_financial_interests(SAMPLE_DPI_TEXT)
@@ -1316,3 +1318,105 @@ class TestDutchDPIFormat:
         interests = extract_financial_interests(DUTCH_DPI_TEXT)
         entities = [i["entity"] for i in interests]
         assert all(e.strip() != "NL" for e in entities)
+
+
+# ===========================================================================
+# Slovenian DPI Format Integration
+# ===========================================================================
+
+
+SLOVENIAN_DPI_TEXT = """Izjava o finančnih interesih
+
+Ime: Matej TONIN
+
+(A) "V skladu s členom 4(2)(a) kodeksa ravnanja izjavljam:"
+
+Poklic ali članstvo Ustvarjeni prihodki Znesek prihodkov Narava ugodnosti Periodičnost
+(če ne ustvarja
+prihodkov)
+1. minister za obrambo RS 4189 EUR mesečno
+2. poslanec DZ RS X
+3. predsednik stranke NSi 5446 EUR mesečno
+
+(B) "V skladu s členom 4(2)(b) kodeksa ravnanja izjavljam:"
+
+Jih ni.
+
+(C) "V skladu s členom 4(2)(c) kodeksa ravnanja izjavljam:"
+
+Jih ni.
+
+(D) "V skladu s členom 4(2)(d) kodeksa ravnanja izjavljam:"
+
+Jih ni.
+
+(E) Podpora tretjih oseb
+
+Jih ni.
+
+(F) Drugi interesi
+
+SL
+"""
+
+
+class TestSlovenianDPIFormat:
+
+    def test_sections_split_correctly(self):
+        sections = split_sections(SLOVENIAN_DPI_TEXT)
+        assert "A" in sections
+        assert "B" in sections
+
+    def test_slovenian_section_a_amounts_extracted(self):
+        """Slovenian Section A with 4189 EUR and 5446 EUR should be extracted."""
+        interests = extract_financial_interests(SLOVENIAN_DPI_TEXT)
+        a_interests = [i for i in interests if i["section"] == "A"]
+        amounts = [(i["value_low"], i["value_high"]) for i in a_interests]
+        assert any(low == 4189.0 for low, _ in amounts), f"Expected 4189 EUR, got {amounts}"
+        assert any(low == 5446.0 for low, _ in amounts), f"Expected 5446 EUR, got {amounts}"
+
+    def test_slovenian_section_a_is_income_type(self):
+        """Section A entries should map to transaction_type='income'."""
+        interests = extract_financial_interests(SLOVENIAN_DPI_TEXT)
+        a_interests = [i for i in interests if i["section"] == "A"]
+        assert len(a_interests) > 0
+        assert all(i["transaction_type"] == "income" for i in a_interests)
+
+    def test_slovenian_boilerplate_filtered(self):
+        """Slovenian column headers should not appear as entity names."""
+        interests = extract_financial_interests(SLOVENIAN_DPI_TEXT)
+        entities = [i["entity"] for i in interests]
+        for boilerplate in ["Znesek prihodkov", "Periodičnost", "Narava ugodnosti"]:
+            assert all(boilerplate not in e for e in entities)
+
+    def test_slovenian_entity_names_cleaned(self):
+        """Entity names should not contain EUR amounts or 'mesečno'."""
+        interests = extract_financial_interests(SLOVENIAN_DPI_TEXT)
+        for i in interests:
+            assert "4189 EUR" not in i["entity"]
+            assert "5446 EUR" not in i["entity"]
+            assert "mesečno" not in i["entity"].lower()
+
+    def test_slovenian_x_marker_no_amount(self):
+        """Entry 2 with 'X' marker should have null amounts."""
+        interests = extract_financial_interests(SLOVENIAN_DPI_TEXT)
+        a_interests = [i for i in interests if i["section"] == "A"]
+        # Entry 2 is "poslanec DZ RS X" — X means no income
+        x_entries = [i for i in a_interests if "poslanec" in i["entity"].lower()]
+        assert len(x_entries) > 0
+        for entry in x_entries:
+            assert entry["value_low"] is None
+            assert entry["value_high"] is None
+
+    def test_slovenian_jih_ni_produces_no_entries(self):
+        """Sections with 'Jih ni.' (Slovenian 'None') should produce no entries."""
+        interests = extract_financial_interests(SLOVENIAN_DPI_TEXT)
+        b_interests = [i for i in interests if i["section"] == "B"]
+        assert len(b_interests) == 0
+
+    def test_mesecno_stripped_from_entity(self):
+        """'mesečno' periodicity word should be stripped from entity names."""
+        result = _clean_entity_name("minister za obrambo RS 5446 EUR mesečno")
+        assert "mesečno" not in result.lower()
+        assert "5446" not in result
+        assert "minister" in result.lower()
