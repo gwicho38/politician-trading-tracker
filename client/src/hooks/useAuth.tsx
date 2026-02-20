@@ -58,8 +58,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     // Fallback: if auth listener doesn't fire within 2s, mark as ready anyway
+    // Must also clear loading — otherwise ProtectedRoute spinner hangs forever
     const timeout = setTimeout(() => {
       setAuthReady(true);
+      setLoading(false);
     }, 2000);
 
     return () => {
