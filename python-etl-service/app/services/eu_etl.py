@@ -56,7 +56,7 @@ SECTION_ASSET_TYPES: Dict[str, str] = {
 }
 
 # Sections we extract financial interests from
-EXTRACTABLE_SECTIONS = {"B", "C", "D"}
+EXTRACTABLE_SECTIONS = {"A", "B", "C", "D"}
 
 # Lines to skip during extraction
 SKIP_PATTERNS = [
@@ -140,6 +140,15 @@ SKIP_PATTERNS = [
     re.compile(r"^regelmäßigkeit", re.IGNORECASE),
     re.compile(r"^keine\s*$", re.IGNORECASE),
     re.compile(r"^siehe\s+oben", re.IGNORECASE),
+    # Slovenian boilerplate
+    re.compile(r"^znesek\s+prihodkov", re.IGNORECASE),
+    re.compile(r"^narava\s+ugodnosti", re.IGNORECASE),
+    re.compile(r"^periodi[čc]nost\s*$", re.IGNORECASE),
+    re.compile(r"^jih\s+ni\s*\.?\s*$", re.IGNORECASE),
+    re.compile(r"ustvarjeni\s+prihodki", re.IGNORECASE),
+    re.compile(r"poklic\s+ali\s+[čc]lanstvo", re.IGNORECASE),
+    re.compile(r"\([čc]e\s+ne\s+ustvarja", re.IGNORECASE),
+    re.compile(r"prihodkov\)\s*$", re.IGNORECASE),
 ]
 
 # Batch size for MEP processing
@@ -561,7 +570,7 @@ def extract_financial_interests(text: str) -> List[Dict[str, Any]]:
             continue
 
         asset_type = SECTION_ASSET_TYPES.get(section_letter, "Other Interest")
-        transaction_type = "income" if section_letter == "B" else "holding"
+        transaction_type = "income" if section_letter in {"A", "B"} else "holding"
 
         entries = _parse_section_entries(body, section_letter)
 
@@ -756,11 +765,11 @@ def _parse_eur_number(s: str) -> Optional[float]:
 
 # Pattern to strip EUR amounts and periodicity from entity names
 _EUR_AMOUNT_PATTERN = re.compile(
-    r"\s*[\d][\d,.\s]*\s*(?:eur|€)(?:\s+(?:per|par|pro)\s+\w+)?\s*",
+    r"\s*[\d][\d,.\s]*\s*(?:eur|€)(?:\s+(?:per|par|pro)\s+\w+|\s+mese[čc]no|\s+mensile|\s+m[eě]s[ií][čc]n[eě])?\s*",
     re.IGNORECASE,
 )
 _EUR_PREFIX_PATTERN = re.compile(
-    r"\s*(?:eur|€)\s*[\d][\d,.\s]*(?:\s+(?:per|par|pro)\s+\w+)?\s*",
+    r"\s*(?:eur|€)\s*[\d][\d,.\s]*(?:\s+(?:per|par|pro)\s+\w+|\s+mese[čc]no|\s+mensile|\s+m[eě]s[ií][čc]n[eě])?\s*",
     re.IGNORECASE,
 )
 
