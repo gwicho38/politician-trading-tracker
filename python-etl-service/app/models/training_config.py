@@ -5,7 +5,7 @@ Flows through the entire pipeline: admin UI -> API -> TrainingJob -> FeaturePipe
 Stored in ml_models.hyperparameters JSONB column for reproducibility.
 """
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -52,6 +52,8 @@ class TrainingConfig(BaseModel):
     triggered_by: str = Field(default="api")
     use_outcomes: bool = Field(default=False, description="Use signal_outcomes for training labels")
     outcome_weight: float = Field(default=2.0, ge=0.1, le=10.0, description="Weight multiplier for outcome-labeled data vs yfinance-labeled data")
+    fine_tune: bool = Field(default=False, description="Fine-tune from base_model_id instead of training from scratch")
+    base_model_id: Optional[str] = Field(default=None, description="Model ID to fine-tune from (used when fine_tune=True)")
 
     @model_validator(mode="after")
     def validate_config(self):
@@ -104,6 +106,8 @@ class TrainingConfig(BaseModel):
             "triggered_by": self.triggered_by,
             "use_outcomes": self.use_outcomes,
             "outcome_weight": self.outcome_weight,
+            "fine_tune": self.fine_tune,
+            "base_model_id": self.base_model_id,
             "feature_names": self.get_feature_names(),
         }
 
@@ -122,4 +126,6 @@ class TrainingConfig(BaseModel):
             triggered_by=data.get("triggered_by", "api"),
             use_outcomes=data.get("use_outcomes", False),
             outcome_weight=data.get("outcome_weight", 2.0),
+            fine_tune=data.get("fine_tune", False),
+            base_model_id=data.get("base_model_id"),
         )
