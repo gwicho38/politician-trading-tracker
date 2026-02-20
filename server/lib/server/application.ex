@@ -137,7 +137,11 @@ defmodule Server.Application do
       # Data cleanup
       Server.Scheduler.Jobs.PoliticianNormalizationJob,
       Server.Scheduler.Jobs.PoliticianDedupJob,
-      Server.Scheduler.Jobs.JobExecutionCleanupJob
+      Server.Scheduler.Jobs.JobExecutionCleanupJob,
+      # LLM prompt pipeline jobs
+      Server.Scheduler.Jobs.LLMValidationJob,
+      Server.Scheduler.Jobs.LLMAnomalyDetectionJob,
+      Server.Scheduler.Jobs.LLMFeedbackJob
     ]
 
     all_jobs = etl_modules ++ static_jobs

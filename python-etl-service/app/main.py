@@ -15,6 +15,7 @@ from fastapi.responses import Response
 
 from app.routes import health, etl, enrichment, ml, quality, error_reports, dedup, signals, admin
 from app.routes import admin_sections
+from app.routes import llm_pipeline
 from app.lib.logging_config import configure_logging, get_logger
 from app.middleware.correlation import CorrelationMiddleware
 from app.middleware.auth import AuthMiddleware
@@ -132,6 +133,10 @@ for s in signals:
         s['signal_type'] = 'strong_' + s['signal_type']
 ```
 """,
+    },
+    {
+        "name": "llm",
+        "description": "LLM prompt pipeline for validation, anomaly detection, lineage audit, and feedback.",
     },
     {
         "name": "admin",
@@ -272,6 +277,7 @@ app.include_router(dedup.router, tags=["deduplication"])
 app.include_router(signals.router, prefix="/signals", tags=["signals"])
 app.include_router(admin.router, prefix="/admin", tags=["admin"])
 app.include_router(admin_sections.router, prefix="/admin", tags=["admin"])
+app.include_router(llm_pipeline.router, prefix="/llm", tags=["llm"])
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -319,5 +325,11 @@ async def root():
             "admin_enrichment": "GET /admin/enrichment?key=YOUR_ADMIN_KEY",
             "admin_errors": "GET /admin/errors?key=YOUR_ADMIN_KEY",
             "admin_audit_log": "GET /admin/audit-log?key=YOUR_ADMIN_KEY",
+            "llm_validate_batch": "POST /llm/validate-batch",
+            "llm_detect_anomalies": "POST /llm/detect-anomalies",
+            "llm_audit_lineage": "POST /llm/audit-lineage",
+            "llm_run_feedback": "POST /llm/run-feedback",
+            "llm_audit_trail": "GET /llm/audit-trail",
+            "llm_health": "GET /llm/health",
         },
     }
