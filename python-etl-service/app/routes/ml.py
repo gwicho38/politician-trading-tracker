@@ -103,6 +103,8 @@ class TrainRequest(BaseModel):
     )
     use_outcomes: bool = Field(default=False, description="Use signal_outcomes for training labels")
     outcome_weight: float = Field(default=2.0, ge=0.1, le=10.0, description="Weight multiplier for outcome-labeled data")
+    fine_tune: bool = Field(default=False, description="Fine-tune existing model instead of training from scratch")
+    base_model_id: Optional[str] = Field(default=None, description="Model ID to fine-tune from (required if fine_tune=True)")
 
 
 class ModelInfo(BaseModel):
@@ -330,6 +332,8 @@ async def trigger_training(
         triggered_by=request.triggered_by,
         use_outcomes=request.use_outcomes,
         outcome_weight=request.outcome_weight,
+        fine_tune=request.fine_tune,
+        base_model_id=request.base_model_id,
     )
 
     job = create_training_job(config=config)

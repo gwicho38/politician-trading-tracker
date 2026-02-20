@@ -3,11 +3,13 @@ defmodule Server.Scheduler.Jobs.ModelFeedbackRetrainJob do
   Retrains the ML model using actual trade outcome data.
 
   This job closes the full feedback loop by:
-  1. Collecting signal outcomes (actual P&L from trades)
-  2. Using outcomes as training labels (instead of just price movements)
-  3. Incorporating feature importance analysis into weight adjustments
-  4. Comparing new model performance to existing model
-  5. Deploying new model if it shows improvement
+  1. Evaluating current model over a 30-day window (monthly sanity check)
+  2. Deciding whether to fine-tune or train from scratch
+  3. Triggering training with outcome labels
+  4. Champion/challenger gate (handled by ml-training edge function)
+
+  The fine-tune vs scratch decision is delegated to the ml-training edge
+  function which inspects model age and recent performance trends.
 
   Runs monthly to accumulate enough outcome data for meaningful retraining.
   """
@@ -16,25 +18,21 @@ defmodule Server.Scheduler.Jobs.ModelFeedbackRetrainJob do
 
   require Logger
 
-  # TODO: Review this function
   @impl true
   def job_id, do: "model-feedback-retrain"
 
-  # TODO: Review this function
   @impl true
   def job_name, do: "ML Model Feedback Retraining"
 
-  # TODO: Review this function
   @impl true
   # Run monthly on the 1st at 3 AM UTC
   def schedule, do: "0 3 1 * *"
 
-  # TODO: Review this function
   @impl true
   def run do
     Logger.info("[ModelFeedbackRetrainJob] Starting outcome-based model retraining")
 
-    # Step 1: Evaluate current model performance
+    # Step 1: Evaluate current model performance (30-day window for monthly check)
     Logger.info("[ModelFeedbackRetrainJob] Evaluating current model performance")
 
     current_performance =
@@ -53,7 +51,7 @@ defmodule Server.Scheduler.Jobs.ModelFeedbackRetrainJob do
       )
     end
 
-    # Step 2: Trigger retraining with outcome labels
+    # Step 2: Trigger retraining — ml-training edge function decides fine-tune vs scratch
     Logger.info("[ModelFeedbackRetrainJob] Triggering model retraining with outcome data")
 
     case Server.SupabaseClient.invoke("ml-training",
@@ -61,14 +59,17 @@ defmodule Server.Scheduler.Jobs.ModelFeedbackRetrainJob do
              "action" => "train",
              "use_outcomes" => true,
              "outcome_window_days" => 90,
-             "compare_to_current" => true
+             "compare_to_current" => true,
+             "auto_training_mode" => true
            },
            timeout: 300_000
          ) do
-      {:ok, %{"success" => true, "model_id" => model_id, "metrics" => metrics}} ->
+      {:ok, %{"success" => true, "model_id" => model_id, "metrics" => metrics} = result} ->
+        training_mode = result["training_mode"] || "unknown"
+
         Logger.info(
-          "[ModelFeedbackRetrainJob] New model trained: #{model_id}, " <>
-            "accuracy=#{metrics["accuracy"]}, improvement over baseline"
+          "[ModelFeedbackRetrainJob] New model trained (#{training_mode}): #{model_id}, " <>
+            "accuracy=#{metrics["accuracy"]}, promoted=#{result["promoted"]}"
         )
 
         {:ok, 1}
@@ -87,13 +88,12 @@ defmodule Server.Scheduler.Jobs.ModelFeedbackRetrainJob do
     end
   end
 
-  # TODO: Review this function
   @impl true
   def metadata do
     %{
-      description: "Retrains ML model using actual trade outcomes as labels",
+      description: "Retrains ML model using actual trade outcomes with auto fine-tune/scratch decision",
       edge_function: "ml-training",
-      action: "train with outcomes",
+      action: "train with outcomes (auto training mode)",
       schedule_note: "Runs monthly on the 1st at 3 AM UTC"
     }
   end

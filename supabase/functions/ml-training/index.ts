@@ -12,6 +12,11 @@ const ETL_API_KEY = Deno.env.get('ETL_ADMIN_API_KEY') || Deno.env.get('ETL_API_K
 const MIN_ACCURACY_IMPROVEMENT = 0.02 // 2 percentage-point improvement
 const MIN_F1_IMPROVEMENT = 0.03       // 3 percentage-point improvement
 
+// Training mode decision thresholds
+const FINE_TUNE_MAX_AGE_DAYS = 30     // Fine-tune if model is younger than 30 days
+const SCRATCH_MIN_PERF_DROP = 0.10    // Train from scratch if accuracy dropped >10pp from peak
+const MIN_OUTCOMES_FOR_FINE_TUNE = 20 // Need at least 20 new outcomes for fine-tuning to be meaningful
+
 // Polling limits
 const MAX_WAIT_MS = 300_000    // 5 minutes
 const POLL_INTERVAL_MS = 10_000 // 10 seconds
@@ -23,6 +28,15 @@ const log = {
   info: (message: string, metadata?: Record<string, unknown>) => {
     console.log(JSON.stringify({
       level: 'INFO',
+      timestamp: new Date().toISOString(),
+      service: 'ml-training',
+      message,
+      ...metadata,
+    }))
+  },
+  warn: (message: string, metadata?: Record<string, unknown>) => {
+    console.warn(JSON.stringify({
+      level: 'WARN',
       timestamp: new Date().toISOString(),
       service: 'ml-training',
       message,
@@ -74,6 +88,8 @@ serve(async (req: Request) => {
     const compareToCurrent = (body.compare_to_current as boolean) ?? true
     const lookbackDays = (body.lookback_days as number) ?? 365
     const triggeredBy = (body.triggered_by as string) || 'scheduler'
+    const autoTrainingMode = (body.auto_training_mode as boolean) ?? false
+    const explicitFineTune = body.fine_tune as boolean | undefined
 
     if (action !== 'train') {
       return new Response(
@@ -88,6 +104,7 @@ serve(async (req: Request) => {
       compareToCurrent,
       lookbackDays,
       triggeredBy,
+      autoTrainingMode,
     })
 
     // ------------------------------------------------------------------
@@ -96,11 +113,12 @@ serve(async (req: Request) => {
     let currentModelMetrics: Record<string, number> | null = null
     let currentModelId: string | null = null
     let currentModelVersion: string | null = null
+    let currentModelCreatedAt: string | null = null
 
     if (compareToCurrent) {
       const { data: currentModel } = await supabaseClient
         .from('ml_models')
-        .select('id, metrics, model_version')
+        .select('id, metrics, model_version, created_at')
         .eq('status', 'active')
         .order('created_at', { ascending: false })
         .limit(1)
@@ -110,12 +128,14 @@ serve(async (req: Request) => {
         currentModelMetrics = currentModel.metrics
         currentModelId = currentModel.id
         currentModelVersion = currentModel.model_version
+        currentModelCreatedAt = currentModel.created_at
         log.info('Current active model found', {
           requestId,
           modelId: currentModelId,
           modelVersion: currentModelVersion,
           accuracy: currentModelMetrics?.accuracy,
           f1Weighted: currentModelMetrics?.f1_weighted,
+          createdAt: currentModelCreatedAt,
         })
       } else {
         log.info('No active model found — new model will be promoted unconditionally', { requestId })
@@ -123,20 +143,90 @@ serve(async (req: Request) => {
     }
 
     // ------------------------------------------------------------------
+    // Step 1b: Decide training mode (fine-tune vs scratch)
+    // ------------------------------------------------------------------
+    let fineTune = false
+    let trainingModeReason = 'default: train from scratch'
+
+    if (explicitFineTune !== undefined) {
+      // Caller explicitly chose
+      fineTune = explicitFineTune
+      trainingModeReason = `explicit: ${fineTune ? 'fine-tune' : 'from scratch'}`
+    } else if (autoTrainingMode && currentModelId) {
+      // Auto-decide based on model age, performance trend, and outcome data volume
+      const modelAgeDays = currentModelCreatedAt
+        ? Math.floor((Date.now() - new Date(currentModelCreatedAt).getTime()) / (1000 * 60 * 60 * 24))
+        : 999
+
+      // Check how many new outcomes exist since last training
+      const { count: newOutcomeCount } = await supabaseClient
+        .from('signal_outcomes')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', currentModelCreatedAt || '2020-01-01')
+
+      // Check peak accuracy from model_performance_history
+      const { data: peakPerf } = await supabaseClient
+        .from('model_performance_history')
+        .select('win_rate')
+        .order('win_rate', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const currentAccuracy = currentModelMetrics?.accuracy ?? 0
+      const peakWinRate = peakPerf?.win_rate ?? currentAccuracy
+      const perfDrop = peakWinRate - (currentModelMetrics?.accuracy ?? peakWinRate)
+
+      log.info('Training mode decision inputs', {
+        requestId,
+        modelAgeDays,
+        newOutcomeCount: newOutcomeCount ?? 0,
+        currentAccuracy,
+        peakWinRate,
+        perfDrop,
+      })
+
+      if (perfDrop >= SCRATCH_MIN_PERF_DROP) {
+        // Large performance degradation — market regime has shifted, start fresh
+        fineTune = false
+        trainingModeReason = `scratch: performance dropped ${(perfDrop * 100).toFixed(1)}pp from peak (threshold: ${(SCRATCH_MIN_PERF_DROP * 100).toFixed(0)}pp)`
+      } else if (modelAgeDays <= FINE_TUNE_MAX_AGE_DAYS && (newOutcomeCount ?? 0) >= MIN_OUTCOMES_FOR_FINE_TUNE) {
+        // Model is recent and we have enough new outcomes — fine-tune
+        fineTune = true
+        trainingModeReason = `fine-tune: model is ${modelAgeDays}d old (<${FINE_TUNE_MAX_AGE_DAYS}d), ${newOutcomeCount} new outcomes (>=${MIN_OUTCOMES_FOR_FINE_TUNE})`
+      } else if (modelAgeDays > FINE_TUNE_MAX_AGE_DAYS) {
+        // Model is old — train from scratch with full data
+        fineTune = false
+        trainingModeReason = `scratch: model is ${modelAgeDays}d old (>${FINE_TUNE_MAX_AGE_DAYS}d threshold)`
+      } else {
+        // Not enough new outcomes to justify fine-tuning, but model isn't old
+        fineTune = false
+        trainingModeReason = `scratch: only ${newOutcomeCount ?? 0} new outcomes (<${MIN_OUTCOMES_FOR_FINE_TUNE} threshold for fine-tune)`
+      }
+    }
+
+    log.info('Training mode decided', { requestId, fineTune, trainingModeReason })
+
+    // ------------------------------------------------------------------
     // Step 2: Trigger training via Python ETL service
     // ------------------------------------------------------------------
+    const trainPayload: Record<string, unknown> = {
+      lookback_days: lookbackDays,
+      use_outcomes: useOutcomes,
+      outcome_weight: 2.0,
+      triggered_by: triggeredBy,
+      fine_tune: fineTune,
+    }
+    if (fineTune && currentModelId) {
+      trainPayload.base_model_id = currentModelId
+    }
+
     const trainResponse = await fetch(`${ETL_API_URL}/ml/train`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-API-Key': ETL_API_KEY,
       },
-      body: JSON.stringify({
-        lookback_days: lookbackDays,
-        use_outcomes: useOutcomes,
-        outcome_weight: 2.0,
-        triggered_by: triggeredBy,
-      }),
+      body: JSON.stringify(trainPayload),
     })
 
     if (!trainResponse.ok) {
@@ -281,7 +371,7 @@ serve(async (req: Request) => {
         old_model_id: currentModelId,
         new_model_id: newModelId,
         trigger_type: triggeredBy === 'scheduler' ? 'scheduled' : 'manual',
-        trigger_reason: `use_outcomes=${useOutcomes}, lookback=${lookbackDays}d`,
+        trigger_reason: `${fineTune ? 'fine-tune' : 'scratch'}, use_outcomes=${useOutcomes}, lookback=${lookbackDays}d`,
         old_model_metrics: currentModelMetrics,
         new_model_metrics: newModelMetrics,
         improvement_pct: improvementPct,
@@ -304,6 +394,8 @@ serve(async (req: Request) => {
         promoted,
         reason,
         metrics: newModelMetrics,
+        training_mode: fineTune ? 'fine-tune' : 'from-scratch',
+        training_mode_reason: trainingModeReason,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
