@@ -149,6 +149,21 @@ SKIP_PATTERNS = [
     re.compile(r"poklic\s+ali\s+[čc]lanstvo", re.IGNORECASE),
     re.compile(r"\([čc]e\s+ne\s+ustvarja", re.IGNORECASE),
     re.compile(r"prihodkov\)\s*$", re.IGNORECASE),
+    # Italian boilerplate
+    re.compile(r"^importo\s+del\s+reddito", re.IGNORECASE),
+    re.compile(r"^natura\s+del\s+beneficio", re.IGNORECASE),
+    re.compile(r"^periodicit[àa]\s*$", re.IGNORECASE),
+    re.compile(r"^nulla\s*$", re.IGNORECASE),
+    re.compile(r"reddito\s+generato", re.IGNORECASE),
+    re.compile(r"se\s+non\s+genera\s*$", re.IGNORECASE),
+    re.compile(r"^reddito\)\s*$", re.IGNORECASE),
+    re.compile(r"^attivit[àa]\s+o\s+partecipazione", re.IGNORECASE),
+    re.compile(r"^partecipazione\s+o\s+attivit[àa]", re.IGNORECASE),
+    re.compile(r"^settore\s+e\s+natura\s+dell", re.IGNORECASE),
+    re.compile(r"^partecipazione\s+o\s+partenariato", re.IGNORECASE),
+    re.compile(r"^stima\s*$", re.IGNORECASE),
+    re.compile(r"^remunerazione\s*$", re.IGNORECASE),
+    re.compile(r"^annuale\s*$", re.IGNORECASE),
 ]
 
 # Batch size for MEP processing
@@ -765,11 +780,21 @@ def _parse_eur_number(s: str) -> Optional[float]:
 
 # Pattern to strip EUR amounts and periodicity from entity names
 _EUR_AMOUNT_PATTERN = re.compile(
-    r"\s*[\d][\d,.\s]*\s*(?:eur|€)(?:\s+(?:per|par|pro)\s+\w+|\s+mese[čc]no|\s+mensile|\s+m[eě]s[ií][čc]n[eě])?\s*",
+    r"\s*[\d][\d,.\s]*\s*(?:eur|€)"
+    r"(?:\s+(?:per|par|pro)\s+\w+"
+    r"|\s+mese[čc]no|\s+mensile|\s+m[eě]s[ií][čc]n[eě]"
+    r"|\s+annuale|\s+trimestrale|\s+semestrale"
+    r"|\s+stima(?:\s+remunerazione(?:\s+annuale)?)?"
+    r")?\s*",
     re.IGNORECASE,
 )
 _EUR_PREFIX_PATTERN = re.compile(
-    r"\s*(?:eur|€)\s*[\d][\d,.\s]*(?:\s+(?:per|par|pro)\s+\w+|\s+mese[čc]no|\s+mensile|\s+m[eě]s[ií][čc]n[eě])?\s*",
+    r"\s*(?:eur|€)\s*[\d][\d,.\s]*"
+    r"(?:\s+(?:per|par|pro)\s+\w+"
+    r"|\s+mese[čc]no|\s+mensile|\s+m[eě]s[ií][čc]n[eě]"
+    r"|\s+annuale|\s+trimestrale|\s+semestrale"
+    r"|\s+stima(?:\s+remunerazione(?:\s+annuale)?)?"
+    r")?\s*",
     re.IGNORECASE,
 )
 
