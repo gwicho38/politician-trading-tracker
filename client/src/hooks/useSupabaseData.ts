@@ -305,14 +305,11 @@ export const useTradingDisclosures = (options: {
         query = query.not('transaction_type', 'in', '(unknown,Unknown)');
       }
 
-      // Filter out entries without disclosed amounts (both min and max are null)
-      // Skip when: no jurisdiction selected (All Jurisdictions), or EU/UK selected
-      // EU/UK declarations often have no monetary amounts (positions, memberships)
-      const isUSOnly = jurisdiction === 'us';
-      const isUSChamber = chamber === 'Representative' || chamber === 'Senator';
-      if (isUSOnly || isUSChamber) {
-        query = query.or('amount_range_min.not.is.null,amount_range_max.not.is.null');
-      }
+      // Filter out entries without disclosed amounts (both min and max are null).
+      // Applies to ALL jurisdictions - undisclosed entries (unpaid EU board memberships,
+      // committee positions marked "X") are noise on a financial trading tracker.
+      // EU/UK records with actual amounts (e.g. 6,880 EUR income) are still shown.
+      query = query.or('amount_range_min.not.is.null,amount_range_max.not.is.null');
 
       if (ticker) {
         query = query.ilike('asset_ticker', `%${ticker}%`);
