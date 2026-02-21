@@ -164,6 +164,21 @@ SKIP_PATTERNS = [
     re.compile(r"^stima\s*$", re.IGNORECASE),
     re.compile(r"^remunerazione\s*$", re.IGNORECASE),
     re.compile(r"^annuale\s*$", re.IGNORECASE),
+    # Spanish boilerplate
+    re.compile(r"^ninguno\b", re.IGNORECASE),
+    re.compile(r"^importe\s+de\s+los", re.IGNORECASE),
+    re.compile(r"^naturaleza\s+del", re.IGNORECASE),
+    re.compile(r"^periodicidad\s*$", re.IGNORECASE),
+    re.compile(r"ingresos\s+generados", re.IGNORECASE),
+    re.compile(r"actividad\s+profesional\s+o\s+pertenencia", re.IGNORECASE),
+    re.compile(r"genera\s+ingresos\)", re.IGNORECASE),
+    re.compile(r"^beneficio\s*\(si\s+no", re.IGNORECASE),
+    re.compile(r"^aproximado\s*$", re.IGNORECASE),
+    re.compile(r"^pertenencia\s+o\s+actividad", re.IGNORECASE),
+    re.compile(r"participaciones\s+en\s+empresas", re.IGNORECASE),
+    re.compile(r"participaciones\s+que\s+otorguen", re.IGNORECASE),
+    re.compile(r"influencia\s+importante\s*$", re.IGNORECASE),
+    re.compile(r"implicaciones\s+pol[ií]ticas", re.IGNORECASE),
 ]
 
 # Batch size for MEP processing
@@ -781,8 +796,8 @@ def _parse_eur_number(s: str) -> Optional[float]:
 # Pattern to strip EUR amounts and periodicity from entity names
 _EUR_AMOUNT_PATTERN = re.compile(
     r"\s*[\d][\d,.\s]*\s*(?:eur|€)"
-    r"(?:\s+(?:per|par|pro)\s+\w+"
-    r"|\s+mese[čc]no|\s+mensile|\s+m[eě]s[ií][čc]n[eě]"
+    r"(?:\s+(?:per|par|pro|promedio)\s+\w+(?:\s+aproximado)?"
+    r"|\s+mese[čc]no|\s+mensile|\s+m[eě]s[ií][čc]n[eě]|\s+mensual"
     r"|\s+annuale|\s+trimestrale|\s+semestrale"
     r"|\s+stima(?:\s+remunerazione(?:\s+annuale)?)?"
     r")?\s*",
@@ -790,8 +805,8 @@ _EUR_AMOUNT_PATTERN = re.compile(
 )
 _EUR_PREFIX_PATTERN = re.compile(
     r"\s*(?:eur|€)\s*[\d][\d,.\s]*"
-    r"(?:\s+(?:per|par|pro)\s+\w+"
-    r"|\s+mese[čc]no|\s+mensile|\s+m[eě]s[ií][čc]n[eě]"
+    r"(?:\s+(?:per|par|pro|promedio)\s+\w+(?:\s+aproximado)?"
+    r"|\s+mese[čc]no|\s+mensile|\s+m[eě]s[ií][čc]n[eě]|\s+mensual"
     r"|\s+annuale|\s+trimestrale|\s+semestrale"
     r"|\s+stima(?:\s+remunerazione(?:\s+annuale)?)?"
     r")?\s*",
@@ -813,8 +828,10 @@ def _clean_entity_name(entity: str) -> str:
     """
     cleaned = _EUR_AMOUNT_PATTERN.sub(" ", entity)
     cleaned = _EUR_PREFIX_PATTERN.sub(" ", cleaned)
-    # Also strip "X" markers (no-income indicator in DPI tables)
-    cleaned = re.sub(r"\s+X\s*$", "", cleaned)
+    # Strip standalone "aproximado" leftover from multi-line periodicity
+    cleaned = re.sub(r"\s+aproximado\b", "", cleaned, flags=re.IGNORECASE)
+    # Strip "X" markers (no-income indicator in DPI tables) — trailing or mid-string
+    cleaned = re.sub(r",?\s+X\s*(?=-|$)", " ", cleaned)
     # Collapse whitespace
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     # Strip trailing separators
