@@ -1551,3 +1551,152 @@ class TestItalianDPIFormat:
         assert "remunerazione" not in result.lower()
         assert "15000" not in result
         assert "Cacciola" in result
+
+
+# ===========================================================================
+# Spanish DPI Format Integration
+# ===========================================================================
+
+
+SPANISH_DPI_TEXT = """DECLARACIÓN RELATIVA A LOS INTERESES PRIVADOS DE LOS DIPUTADOS
+
+Apellido(s): ABADÍA JOVER
+Nombre de pila: Maravillas
+
+(A) "De conformidad con el artículo 4, apartado 2, letra a), del Código de conducta:"
+
+Actividad profesional o pertenencia Ingresos generados u otros beneficios
+Ninguno Importe de los Naturaleza del Periodicidad
+ingresos beneficio (si no
+genera ingresos)
+1. Funcionaria habilitada nacional - Secretaria 5485 EUR Mensual
+General Ayuntamiento de Alcantarilla, Murcia
+2. Presidenta Colegio Oficial de Secretarios, X
+Interventores y Tesoreros de Administración
+local con habilitación nacional de la Región de
+Murcia
+3. Vocal Asociación de padres y protectores de X
+minusválidos psíquicos (ASPAPROS)
+4. Formadora en cursos de diferentes 500 EUR promedio anual
+plataformas aproximado
+5. Autora de diferentes publicaciones 250 EUR promedio anual
+aproximado
+
+(B) "De conformidad con el artículo 4, apartado 2, letra b), del Código de conducta:"
+
+Ámbito y naturaleza de la actividad, incluido el nombre de la entidad Ingresos generados u otros beneficios
+Importe de los Naturaleza del Periodicidad
+ingresos beneficio (si no
+genera ingresos)
+
+(C) "De conformidad con el artículo 4, apartado 2, letra c), del Código de conducta:"
+
+Pertenencia o actividad Ingresos generados u otros beneficios
+Ninguno Importe de los Naturaleza del Periodicidad
+ingresos beneficio (si no
+genera ingresos)
+
+(D) "De conformidad con el artículo 4, apartado 2, letra d), del Código de conducta:"
+
+Participaciones en Participaciones que Ingresos generados u otros beneficios
+empresas o sociedades, otorguen una influencia
+cuando puedan tener importante
+implicaciones políticas
+Ninguno Importe de los Naturaleza del Periodicidad
+ingresos beneficio (si no
+genera ingresos)
+
+(E) Declaro el siguiente apoyo
+
+(F) Declaro los siguientes intereses privados
+
+ES
+"""
+
+
+class TestSpanishDPIFormat:
+
+    def test_sections_split_correctly(self):
+        sections = split_sections(SPANISH_DPI_TEXT)
+        assert "A" in sections
+        assert "B" in sections
+        assert "C" in sections
+        assert "D" in sections
+
+    def test_spanish_section_a_amounts_extracted(self):
+        """Spanish Section A with 5485 EUR and 500/250 EUR should be extracted."""
+        interests = extract_financial_interests(SPANISH_DPI_TEXT)
+        a_interests = [i for i in interests if i["section"] == "A"]
+        amounts = [(i["value_low"], i["value_high"]) for i in a_interests]
+        assert any(low == 5485.0 for low, _ in amounts), f"Expected 5485 EUR, got {amounts}"
+        assert any(low == 500.0 for low, _ in amounts), f"Expected 500 EUR, got {amounts}"
+        assert any(low == 250.0 for low, _ in amounts), f"Expected 250 EUR, got {amounts}"
+
+    def test_spanish_section_a_is_income_type(self):
+        """Spanish Section A entries should map to transaction_type='income'."""
+        interests = extract_financial_interests(SPANISH_DPI_TEXT)
+        a_interests = [i for i in interests if i["section"] == "A"]
+        assert len(a_interests) == 5
+        assert all(i["transaction_type"] == "income" for i in a_interests)
+
+    def test_spanish_boilerplate_filtered(self):
+        """Spanish column headers should be filtered by SKIP_PATTERNS."""
+        from app.services.eu_etl import SKIP_PATTERNS
+        boilerplate = [
+            "Ninguno",
+            "Importe de los ingresos",
+            "Naturaleza del beneficio",
+            "Periodicidad",
+            "Ingresos generados u otros beneficios",
+            "Actividad profesional o pertenencia",
+            "genera ingresos)",
+            "aproximado",
+        ]
+        for text in boilerplate:
+            assert any(p.search(text) for p in SKIP_PATTERNS), f"Not filtered: {text!r}"
+
+    def test_spanish_entity_names_cleaned(self):
+        """Spanish entity names should not contain 'Mensual' or 'promedio anual'."""
+        interests = extract_financial_interests(SPANISH_DPI_TEXT)
+        for i in interests:
+            assert "mensual" not in i["entity"].lower(), f"'Mensual' in: {i['entity']}"
+            assert "promedio" not in i["entity"].lower(), f"'promedio' in: {i['entity']}"
+            assert "aproximado" not in i["entity"].lower(), f"'aproximado' in: {i['entity']}"
+
+    def test_spanish_x_marker_no_amount(self):
+        """Entries 2 and 3 with 'X' should have null amounts."""
+        interests = extract_financial_interests(SPANISH_DPI_TEXT)
+        a_interests = [i for i in interests if i["section"] == "A"]
+        # Entry 2 (Presidenta) and Entry 3 (Vocal) have X markers
+        x_entries = [i for i in a_interests if i["value_low"] is None]
+        assert len(x_entries) == 2, f"Expected 2 null-amount entries, got {len(x_entries)}"
+
+    def test_spanish_x_marker_stripped_from_entity(self):
+        """X markers should be stripped from entity names."""
+        interests = extract_financial_interests(SPANISH_DPI_TEXT)
+        for i in interests:
+            # X should not appear as standalone word (but ok in names like "Xavi")
+            words = i["entity"].split()
+            assert "X" not in words, f"Standalone 'X' in: {i['entity']}"
+
+    def test_spanish_empty_sections_produce_no_entries(self):
+        """Sections B, C, D with only 'Ninguno' and boilerplate produce no entries."""
+        interests = extract_financial_interests(SPANISH_DPI_TEXT)
+        for section in ["B", "C", "D"]:
+            section_entries = [i for i in interests if i["section"] == section]
+            assert len(section_entries) == 0, f"Section {section} should be empty, got {len(section_entries)}"
+
+    def test_mensual_stripped_from_entity(self):
+        """_clean_entity_name strips 'Mensual' after EUR amount."""
+        result = _clean_entity_name("Secretaria 5485 EUR Mensual")
+        assert "mensual" not in result.lower()
+        assert "5485" not in result
+        assert "Secretaria" in result
+
+    def test_promedio_anual_stripped_from_entity(self):
+        """_clean_entity_name strips 'promedio anual aproximado' after EUR amount."""
+        result = _clean_entity_name("Formadora 500 EUR promedio anual aproximado")
+        assert "promedio" not in result.lower()
+        assert "aproximado" not in result.lower()
+        assert "500" not in result
+        assert "Formadora" in result
