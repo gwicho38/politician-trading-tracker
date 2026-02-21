@@ -1420,3 +1420,134 @@ class TestSlovenianDPIFormat:
         assert "mesečno" not in result.lower()
         assert "5446" not in result
         assert "minister" in result.lower()
+
+
+# ── Italian DPI fixture (based on Francesco Torselli's declaration) ──
+
+ITALIAN_DPI_TEXT = """DICHIARAZIONE DEGLI INTERESSI PRIVATI DEI DEPUTATI
+
+Cognome: TORSELLI
+Cognome: Francesco
+
+(A) "A norma dell'articolo 4, paragrafo 2, lettera a), del codice di condotta:"
+
+Attività o partecipazione Reddito generato o altri benefici
+Nulla Importo del reddito Natura del beneficio Periodicità
+(se non genera
+reddito)
+1. Consulente assicurativo previdenziale e 18000 EUR Annuale
+finanziario presso Cacciola Assicurazioni snc
+2. Consigliere Regione Toscana 101550 EUR Annuale
+3. Dirigente regionale Fratelli d'Italia X
+
+(B) "Ai sensi dell'articolo 4, paragrafo 2, lettera b), del codice di condotta:"
+
+Settore e natura dell'attività, compreso il nome dell'entità Reddito generato o altri benefici
+Importo del reddito Natura del beneficio Periodicità
+(se non genera
+reddito)
+1. Consulente assicurativo previdenziale e finanziario - Cacciola 15000 EUR Stima
+Assicurazioni snc remunerazione
+annuale
+
+(C) "A norma dell'articolo 4, paragrafo 2, lettera c), del codice di condotta:"
+
+Partecipazione o attività Reddito generato o altri benefici
+Nulla Importo del reddito Natura del beneficio Periodicità
+(se non genera
+reddito)
+1. Dirigente regionale Fratelli d'Italia X
+
+(D) "A norma dell'articolo 4, paragrafo 2, lettera d), del codice di condotta:"
+
+Partecipazione o Partecipazione che Reddito generato o altri benefici
+partenariato con conferisce un'influenza
+possibili implicazioni significativa
+di politica pubblica
+Nulla Importo del reddito Natura del beneficio Periodicità
+
+(E) Dichiaro qualsiasi sostegno
+
+(F) Dichiaro qualsiasi interesse privato
+
+IT
+"""
+
+
+class TestItalianDPIFormat:
+
+    def test_sections_split_correctly(self):
+        sections = split_sections(ITALIAN_DPI_TEXT)
+        assert "A" in sections
+        assert "B" in sections
+        assert "C" in sections
+        assert "D" in sections
+
+    def test_section_a_amounts_extracted(self):
+        """Italian Section A with 18000 EUR and 101550 EUR should be extracted."""
+        interests = extract_financial_interests(ITALIAN_DPI_TEXT)
+        a_interests = [i for i in interests if i["section"] == "A"]
+        amounts = [(i["value_low"], i["value_high"]) for i in a_interests]
+        assert any(low == 18000.0 for low, _ in amounts), f"Expected 18000 EUR, got {amounts}"
+        assert any(low == 101550.0 for low, _ in amounts), f"Expected 101550 EUR, got {amounts}"
+
+    def test_section_a_is_income_type(self):
+        """Italian Section A entries should map to transaction_type='income'."""
+        interests = extract_financial_interests(ITALIAN_DPI_TEXT)
+        a_interests = [i for i in interests if i["section"] == "A"]
+        assert len(a_interests) > 0
+        assert all(i["transaction_type"] == "income" for i in a_interests)
+
+    def test_section_b_amount_extracted(self):
+        """Italian Section B with 15000 EUR should be extracted."""
+        interests = extract_financial_interests(ITALIAN_DPI_TEXT)
+        b_interests = [i for i in interests if i["section"] == "B"]
+        assert len(b_interests) > 0
+        amounts = [(i["value_low"], i["value_high"]) for i in b_interests]
+        assert any(low == 15000.0 for low, _ in amounts), f"Expected 15000 EUR, got {amounts}"
+
+    def test_italian_boilerplate_filtered(self):
+        """Italian column headers should not appear as entity names."""
+        interests = extract_financial_interests(ITALIAN_DPI_TEXT)
+        entities = [i["entity"] for i in interests]
+        for boilerplate in ["Importo del reddito", "Natura del beneficio", "Periodicità"]:
+            assert all(boilerplate not in e for e in entities), f"'{boilerplate}' leaked into entities: {entities}"
+
+    def test_annuale_stripped_from_entity(self):
+        """'Annuale' periodicity word should be stripped from entity names."""
+        interests = extract_financial_interests(ITALIAN_DPI_TEXT)
+        for i in interests:
+            assert "annuale" not in i["entity"].lower(), f"'annuale' in entity: {i['entity']}"
+            assert "18000" not in i["entity"]
+            assert "101550" not in i["entity"]
+
+    def test_x_marker_no_amount(self):
+        """Entry 3 with 'X' marker should have null amounts."""
+        interests = extract_financial_interests(ITALIAN_DPI_TEXT)
+        a_interests = [i for i in interests if i["section"] == "A"]
+        x_entries = [i for i in a_interests if "dirigente" in i["entity"].lower()]
+        assert len(x_entries) > 0
+        for entry in x_entries:
+            assert entry["value_low"] is None
+            assert entry["value_high"] is None
+
+    def test_nulla_produces_no_numbered_entries(self):
+        """Section D with 'Nulla' (Italian 'None') and no numbered items produces no entries."""
+        interests = extract_financial_interests(ITALIAN_DPI_TEXT)
+        d_interests = [i for i in interests if i["section"] == "D"]
+        assert len(d_interests) == 0
+
+    def test_clean_entity_name_annuale(self):
+        """_clean_entity_name strips 'Annuale' after EUR amount."""
+        result = _clean_entity_name("Consulente assicurativo 18000 EUR Annuale")
+        assert "annuale" not in result.lower()
+        assert "18000" not in result
+        assert "Consulente" in result
+
+    def test_clean_entity_name_stima(self):
+        """_clean_entity_name strips 'Stima remunerazione annuale' after EUR."""
+        result = _clean_entity_name("Cacciola Assicurazioni 15000 EUR Stima remunerazione annuale")
+        assert "stima" not in result.lower()
+        assert "remunerazione" not in result.lower()
+        assert "15000" not in result
+        assert "Cacciola" in result
