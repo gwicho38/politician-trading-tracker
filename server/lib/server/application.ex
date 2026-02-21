@@ -86,6 +86,13 @@ defmodule Server.Application do
       source: "california",
       schedule: "0 */6 * * *",
       params: %{}
+    },
+    %{
+      job_id: "politician-trading-uk",
+      job_name: "UK Parliament Register of Interests",
+      source: "uk_parliament",
+      schedule: "0 */6 * * *",
+      params: %{}
     }
   ]
 
