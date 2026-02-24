@@ -5,22 +5,17 @@ Generates politician biographies using Ollama LLM with template fallback.
 Stores bios in the database to avoid re-generating on every UI modal open.
 """
 
-import os
 import re
 import asyncio
 import logging
 import uuid
-import httpx
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 from app.lib.database import get_supabase
+from app.services.llm.client import LLMClient
+from app.services.llm.providers import AllProvidersExhaustedError
 
 logger = logging.getLogger(__name__)
-
-# Configuration (reuses same Ollama config as party_enrichment)
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "https://ollama.lefv.info")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
-OLLAMA_API_KEY = os.environ.get("OLLAMA_API_KEY")
 
 # Rate limiting
 REQUEST_DELAY = 0.5  # seconds between Ollama requests
@@ -136,66 +131,45 @@ def clean_llm_response(text: str) -> str:
 
 
 async def query_ollama_for_bio(
-    client: httpx.AsyncClient,
+    llm_client: LLMClient,
     politician: Dict[str, Any],
     stats: Dict[str, Any],
 ) -> Optional[str]:
     """
-    Query Ollama to generate a politician biography.
+    Query the LLM provider chain to generate a politician biography.
 
-    Returns the generated bio text, or None on failure.
+    Uses LLMClient with multi-provider failover instead of a direct
+    httpx call.  Returns the generated bio text, or None on failure.
     """
     prompt = build_ollama_prompt(politician, stats)
 
     try:
-        headers = {"Content-Type": "application/json"}
-        if OLLAMA_API_KEY:
-            headers["Authorization"] = f"Bearer {OLLAMA_API_KEY}"
-
-        response = await client.post(
-            f"{OLLAMA_URL}/v1/chat/completions",
-            headers=headers,
-            json={
-                "model": OLLAMA_MODEL,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a political analyst writing concise, factual "
-                            "politician biographies. Focus on their public service "
-                            "and disclosed trading activity. Be objective and "
-                            "informative."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0.3,
-                "max_tokens": 300,
-            },
-            timeout=60.0,
+        response = await llm_client.generate(
+            prompt=prompt,
+            system_prompt=(
+                "You are a political analyst writing concise, factual "
+                "politician biographies. Focus on their public service "
+                "and disclosed trading activity. Be objective and "
+                "informative."
+            ),
+            max_tokens=300,
+            temperature=0.3,
         )
-        response.raise_for_status()
 
-        result = response.json()
-        answer = (
-            result.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-            .strip()
-        )
+        answer = response.text.strip()
 
         if not answer:
             return None
 
         return clean_llm_response(answer)
 
-    except httpx.HTTPError as e:
+    except AllProvidersExhaustedError as e:
         name = politician.get("full_name", "Unknown")
-        logger.error(f"Ollama request failed for {name}: {e}")
+        logger.error(f"All LLM providers failed for {name}: {e}")
         return None
     except Exception as e:
         name = politician.get("full_name", "Unknown")
-        logger.error(f"Unexpected error querying Ollama for {name}: {e}")
+        logger.error(f"Unexpected error querying LLM for {name}: {e}")
         return None
 
 
@@ -324,56 +298,57 @@ class BiographyJob:
                 f"[{self.job_id}] Starting biography generation for {self.total} politicians"
             )
 
-            async with httpx.AsyncClient() as client:
-                for i, politician in enumerate(politicians):
-                    self.progress = i + 1
-                    name = politician["full_name"]
-                    pol_id = politician["id"]
+            llm_client = LLMClient()
 
-                    # Fetch trading stats
-                    stats = _fetch_trading_stats(supabase, pol_id)
+            for i, politician in enumerate(politicians):
+                self.progress = i + 1
+                name = politician["full_name"]
+                pol_id = politician["id"]
 
-                    # Try Ollama first
-                    bio = await query_ollama_for_bio(client, politician, stats)
-                    source = "ollama"
+                # Fetch trading stats
+                stats = _fetch_trading_stats(supabase, pol_id)
 
-                    if not bio:
-                        # Fall back to template
-                        bio = generate_fallback_bio(politician, stats)
-                        source = "fallback"
+                # Try LLM provider chain first
+                bio = await query_ollama_for_bio(llm_client, politician, stats)
+                source = "llm"
 
-                    if bio:
-                        try:
-                            supabase.table("politicians").update(
-                                {
-                                    "biography": bio,
-                                    "biography_updated_at": datetime.now(
-                                        timezone.utc
-                                    ).isoformat(),
-                                }
-                            ).eq("id", pol_id).execute()
+                if not bio:
+                    # Fall back to template
+                    bio = generate_fallback_bio(politician, stats)
+                    source = "fallback"
 
-                            self.updated += 1
-                            logger.info(
-                                f"[{self.job_id}] Updated {name}: bio generated ({source})"
-                            )
-                        except Exception as e:
-                            self.errors += 1
-                            logger.error(
-                                f"[{self.job_id}] Failed to update {name}: {e}"
-                            )
-                    else:
-                        self.skipped += 1
+                if bio:
+                    try:
+                        supabase.table("politicians").update(
+                            {
+                                "biography": bio,
+                                "biography_updated_at": datetime.now(
+                                    timezone.utc
+                                ).isoformat(),
+                            }
+                        ).eq("id", pol_id).execute()
 
-                    # Rate limiting
-                    await asyncio.sleep(REQUEST_DELAY)
-
-                    # Update message periodically
-                    if (i + 1) % 10 == 0:
-                        self.message = (
-                            f"Processed {i + 1}/{self.total} "
-                            f"(updated: {self.updated}, skipped: {self.skipped})"
+                        self.updated += 1
+                        logger.info(
+                            f"[{self.job_id}] Updated {name}: bio generated ({source})"
                         )
+                    except Exception as e:
+                        self.errors += 1
+                        logger.error(
+                            f"[{self.job_id}] Failed to update {name}: {e}"
+                        )
+                else:
+                    self.skipped += 1
+
+                # Rate limiting
+                await asyncio.sleep(REQUEST_DELAY)
+
+                # Update message periodically
+                if (i + 1) % 10 == 0:
+                    self.message = (
+                        f"Processed {i + 1}/{self.total} "
+                        f"(updated: {self.updated}, skipped: {self.skipped})"
+                    )
 
             self.status = "completed"
             self.message = (
