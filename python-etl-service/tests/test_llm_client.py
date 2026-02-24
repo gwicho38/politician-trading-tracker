@@ -505,7 +505,7 @@ async def test_generate_auto_logs_when_audit_logger_provided(mock_audit_logger):
     mock_audit_logger.log.assert_awaited_once()
     log_kwargs = mock_audit_logger.log.call_args[1]
     assert log_kwargs["service_name"] == "llm_client"
-    assert log_kwargs["model_used"] == "test-model"
+    assert log_kwargs["model_used"] == "testprov/test-model"
     assert isinstance(log_kwargs["response"], LLMResponse)
     assert log_kwargs["response"].provider == "testprov"
 
@@ -780,7 +780,7 @@ def test_compute_prompt_hash_returns_consistent_sha256():
 
 @pytest.mark.asyncio
 async def test_generate_uses_provider_default_model():
-    """generate() should use the provider's default_model when model is DEFAULT_MODEL."""
+    """generate() should use the provider's default_model when model is None."""
     provider = _make_provider(name="xai", default_model="grok-3-mini-fast")
     ok_resp = _mock_httpx_response(200, _openai_response(model="grok-3-mini-fast"))
 
