@@ -16,18 +16,15 @@ from collections import defaultdict, Counter
 
 import numpy as np
 import pandas as pd
-import httpx
 from app.lib.database import get_supabase
 from app.models.training_config import TrainingConfig, DEFAULT_THRESHOLDS_5CLASS
+from app.services.llm.client import LLMClient
 
 logger = logging.getLogger(__name__)
 
 # Configuration
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "https://ollama.lefv.info")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
-OLLAMA_API_KEY = os.environ.get("OLLAMA_API_KEY")
 
 # Legacy label thresholds (kept for backward compat with tests importing this)
 LABEL_THRESHOLDS = {
@@ -694,35 +691,20 @@ News: {news_text[:1000]}
 Return ONLY a number between -1 and 1:"""
 
         try:
-            headers = {"Content-Type": "application/json"}
-            if OLLAMA_API_KEY:
-                headers["Authorization"] = f"Bearer {OLLAMA_API_KEY}"
+            llm_client = LLMClient()
+            response = await llm_client.generate(
+                prompt=prompt,
+                system_prompt="You are a financial analyst. Respond only with a number.",
+                max_tokens=10,
+                temperature=0.1,
+            )
+            answer = response.text.strip()
 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{OLLAMA_URL}/v1/chat/completions",
-                    headers=headers,
-                    json={
-                        "model": OLLAMA_MODEL,
-                        "messages": [
-                            {"role": "system", "content": "You are a financial analyst. Respond only with a number."},
-                            {"role": "user", "content": prompt}
-                        ],
-                        "temperature": 0.1,
-                        "max_tokens": 10,
-                    },
-                    timeout=30.0,
-                )
-                response.raise_for_status()
-
-                result = response.json()
-                answer = result.get("choices", [{}])[0].get("message", {}).get("content", "0").strip()
-
-                try:
-                    score = float(answer)
-                    return max(-1.0, min(1.0, score))
-                except ValueError:
-                    return 0.0
+            try:
+                score = float(answer)
+                return max(-1.0, min(1.0, score))
+            except ValueError:
+                return 0.0
 
         except Exception as e:
             logger.warning(f"Sentiment extraction failed for {ticker}: {e}")

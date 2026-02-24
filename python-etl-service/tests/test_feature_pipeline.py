@@ -513,72 +513,61 @@ class TestFeaturePipelineExtractSentiment:
             mock_get_supabase.return_value = MagicMock()
             return FeaturePipeline()
 
+    def _mock_llm_response(self, text):
+        """Build a mock LLMResponse with the given text."""
+        from app.services.llm.client import LLMResponse
+        return LLMResponse(
+            text=text,
+            model="test-model",
+            input_tokens=10,
+            output_tokens=5,
+            latency_ms=100,
+            provider="test",
+        )
+
     @pytest.mark.asyncio
     async def test_extract_sentiment_success(self, pipeline):
-        """Test successful sentiment extraction."""
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client_class.return_value.__aenter__.return_value = mock_client
+        """Test successful sentiment extraction via LLMClient."""
+        mock_client = AsyncMock()
+        mock_client.generate = AsyncMock(return_value=self._mock_llm_response("0.75"))
 
-            mock_response = MagicMock()
-            mock_response.json.return_value = {
-                "choices": [{"message": {"content": "0.75"}}]
-            }
-            mock_response.raise_for_status = MagicMock()
-            mock_client.post.return_value = mock_response
-
+        with patch("app.services.feature_pipeline.LLMClient", return_value=mock_client):
             result = await pipeline.extract_sentiment("AAPL", "Apple stock rises on earnings")
 
-            assert result == 0.75
+        assert result == 0.75
 
     @pytest.mark.asyncio
     async def test_extract_sentiment_clamps_to_range(self, pipeline):
         """Test sentiment is clamped to [-1, 1]."""
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_client = AsyncMock()
+        mock_client.generate = AsyncMock(return_value=self._mock_llm_response("2.5"))
 
-            # Return value outside range
-            mock_response = MagicMock()
-            mock_response.json.return_value = {
-                "choices": [{"message": {"content": "2.5"}}]
-            }
-            mock_response.raise_for_status = MagicMock()
-            mock_client.post.return_value = mock_response
-
+        with patch("app.services.feature_pipeline.LLMClient", return_value=mock_client):
             result = await pipeline.extract_sentiment("AAPL", "Very bullish news")
 
-            assert result == 1.0  # Clamped to max
+        assert result == 1.0  # Clamped to max
 
     @pytest.mark.asyncio
     async def test_extract_sentiment_invalid_response(self, pipeline):
         """Test invalid response returns 0."""
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_client = AsyncMock()
+        mock_client.generate = AsyncMock(return_value=self._mock_llm_response("not a number"))
 
-            mock_response = MagicMock()
-            mock_response.json.return_value = {
-                "choices": [{"message": {"content": "not a number"}}]
-            }
-            mock_response.raise_for_status = MagicMock()
-            mock_client.post.return_value = mock_response
-
+        with patch("app.services.feature_pipeline.LLMClient", return_value=mock_client):
             result = await pipeline.extract_sentiment("AAPL", "Some news")
 
-            assert result == 0.0
+        assert result == 0.0
 
     @pytest.mark.asyncio
     async def test_extract_sentiment_api_error(self, pipeline):
         """Test API error returns 0."""
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client_class.return_value.__aenter__.return_value = mock_client
-            mock_client.post.side_effect = Exception("Connection error")
+        mock_client = AsyncMock()
+        mock_client.generate = AsyncMock(side_effect=Exception("Connection error"))
 
+        with patch("app.services.feature_pipeline.LLMClient", return_value=mock_client):
             result = await pipeline.extract_sentiment("AAPL", "Some news")
 
-            assert result == 0.0
+        assert result == 0.0
 
 
 class TestTrainingJob:
@@ -1356,8 +1345,8 @@ class TestAddStockReturnsWithYfinance:
                 assert agg.get('forward_return_7d') is None
 
 
-class TestExtractSentimentWithApiKey:
-    """Tests for extract_sentiment with OLLAMA_API_KEY set."""
+class TestExtractSentimentUsesLLMClient:
+    """Tests for extract_sentiment using LLMClient with provider failover."""
 
     @pytest.fixture
     def pipeline(self):
@@ -1366,49 +1355,48 @@ class TestExtractSentimentWithApiKey:
             mock_get_supabase.return_value = MagicMock()
             return FeaturePipeline()
 
-    @pytest.mark.asyncio
-    async def test_extract_sentiment_with_api_key(self, pipeline):
-        """Test that Authorization header is set when OLLAMA_API_KEY is present (line 405)."""
-        with patch("app.services.feature_pipeline.OLLAMA_API_KEY", "test-api-key"):
-            with patch("httpx.AsyncClient") as mock_client_class:
-                mock_client = AsyncMock()
-                mock_client_class.return_value.__aenter__.return_value = mock_client
-
-                mock_response = MagicMock()
-                mock_response.json.return_value = {
-                    "choices": [{"message": {"content": "0.5"}}]
-                }
-                mock_response.raise_for_status = MagicMock()
-                mock_client.post.return_value = mock_response
-
-                await pipeline.extract_sentiment("AAPL", "Test news")
-
-                # Verify the Authorization header was included
-                call_args = mock_client.post.call_args
-                headers = call_args.kwargs.get('headers', {})
-                assert headers.get('Authorization') == 'Bearer test-api-key'
+    def _mock_llm_response(self, text):
+        """Build a mock LLMResponse with the given text."""
+        from app.services.llm.client import LLMResponse
+        return LLMResponse(
+            text=text,
+            model="test-model",
+            input_tokens=10,
+            output_tokens=5,
+            latency_ms=100,
+            provider="test",
+        )
 
     @pytest.mark.asyncio
-    async def test_extract_sentiment_without_api_key(self, pipeline):
-        """Test that Authorization header is not set when OLLAMA_API_KEY is None."""
-        with patch("app.services.feature_pipeline.OLLAMA_API_KEY", None):
-            with patch("httpx.AsyncClient") as mock_client_class:
-                mock_client = AsyncMock()
-                mock_client_class.return_value.__aenter__.return_value = mock_client
+    async def test_extract_sentiment_calls_llm_client_generate(self, pipeline):
+        """Test that extract_sentiment creates an LLMClient and calls generate()."""
+        mock_client = AsyncMock()
+        mock_client.generate = AsyncMock(return_value=self._mock_llm_response("0.5"))
 
-                mock_response = MagicMock()
-                mock_response.json.return_value = {
-                    "choices": [{"message": {"content": "0.5"}}]
-                }
-                mock_response.raise_for_status = MagicMock()
-                mock_client.post.return_value = mock_response
+        with patch("app.services.feature_pipeline.LLMClient", return_value=mock_client):
+            await pipeline.extract_sentiment("AAPL", "Test news")
 
-                await pipeline.extract_sentiment("AAPL", "Test news")
+            mock_client.generate.assert_awaited_once()
+            call_kwargs = mock_client.generate.call_args[1]
+            assert call_kwargs["system_prompt"] == "You are a financial analyst. Respond only with a number."
+            assert call_kwargs["max_tokens"] == 10
+            assert call_kwargs["temperature"] == 0.1
+            assert "AAPL" in call_kwargs["prompt"]
 
-                # Verify no Authorization header
-                call_args = mock_client.post.call_args
-                headers = call_args.kwargs.get('headers', {})
-                assert 'Authorization' not in headers
+    @pytest.mark.asyncio
+    async def test_extract_sentiment_returns_zero_on_all_providers_exhausted(self, pipeline):
+        """Test that AllProvidersExhaustedError is caught and returns 0.0."""
+        from app.services.llm.providers import AllProvidersExhaustedError
+
+        mock_client = AsyncMock()
+        mock_client.generate = AsyncMock(
+            side_effect=AllProvidersExhaustedError({"ollama": "timeout"})
+        )
+
+        with patch("app.services.feature_pipeline.LLMClient", return_value=mock_client):
+            result = await pipeline.extract_sentiment("AAPL", "Test news")
+
+        assert result == 0.0
 
 
 class TestTrainingJobRunSuccess:
@@ -1579,16 +1567,18 @@ class TestTrainingJobRunModelUpdateFailure:
 class TestModuleConstants:
     """Tests for module-level constants and configuration."""
 
-    def test_ollama_url_default(self):
-        """Test OLLAMA_URL has expected default."""
-        from app.services.feature_pipeline import OLLAMA_URL
-        # Default or env var
-        assert OLLAMA_URL is not None
+    def test_label_thresholds_present(self):
+        """Test LABEL_THRESHOLDS has expected keys."""
+        from app.services.feature_pipeline import LABEL_THRESHOLDS
+        assert "strong_buy" in LABEL_THRESHOLDS
+        assert "buy" in LABEL_THRESHOLDS
+        assert "sell" in LABEL_THRESHOLDS
+        assert "strong_sell" in LABEL_THRESHOLDS
 
-    def test_ollama_model_default(self):
-        """Test OLLAMA_MODEL has expected default."""
-        from app.services.feature_pipeline import OLLAMA_MODEL
-        assert OLLAMA_MODEL is not None
+    def test_llm_client_importable(self):
+        """Test LLMClient is importable from feature_pipeline's dependency."""
+        from app.services.llm.client import LLMClient
+        assert LLMClient is not None
 
 
 class TestFetchOutcomeData:
