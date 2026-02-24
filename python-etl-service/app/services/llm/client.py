@@ -20,7 +20,6 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 import httpx
 
@@ -31,8 +30,6 @@ from app.services.llm.providers import (
 )
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_MODEL = "llama3.1:8b"
 
 # Retry configuration
 MAX_RETRIES = 3
@@ -85,7 +82,7 @@ class LLMClient:
     def __init__(
         self,
         providers: list[LLMProvider] | None = None,
-        audit_logger: Optional[object] = None,
+        audit_logger: object | None = None,
     ):
         self.providers = providers if providers is not None else build_provider_chain()
         self.audit_logger = audit_logger
@@ -115,9 +112,9 @@ class LLMClient:
         messages.append({"role": "user", "content": prompt})
         return messages
 
-    def _resolve_model(self, model: str, provider: LLMProvider) -> str:
+    def _resolve_model(self, model: str | None, provider: LLMProvider) -> str:
         """Return the model to use: explicit override or provider default."""
-        if model != DEFAULT_MODEL:
+        if model is not None:
             return model
         return provider.default_model
 
@@ -222,8 +219,8 @@ class LLMClient:
     async def generate(
         self,
         prompt: str,
-        model: str = DEFAULT_MODEL,
-        system_prompt: str = None,
+        model: str | None = None,
+        system_prompt: str | None = None,
         temperature: float = 0.1,
         max_tokens: int = 4096,
     ) -> LLMResponse:
@@ -233,8 +230,8 @@ class LLMClient:
 
         Args:
             prompt: The prompt text to send.
-            model: Model name (default: llama3.1:8b).  When the default is
-                   used the provider's own default_model is substituted.
+            model: Model name override. When None (default), the provider's
+                   own default_model is used.
             system_prompt: Optional system prompt for the model.
             temperature: Sampling temperature (default: 0.1).
             max_tokens: Maximum tokens to generate (default: 4096).
@@ -261,7 +258,7 @@ class LLMClient:
                             service_name="llm_client",
                             prompt_version="direct",
                             prompt_hash="",
-                            model_used=model,
+                            model_used=f"{llm_response.provider}/{llm_response.model}",
                             response=llm_response,
                         )
                     except Exception as log_err:
