@@ -29,31 +29,55 @@ class TestLLMHealth:
         return TestClient(app)
 
     def test_health_endpoint_returns_200(self, client):
-        """GET /llm/health returns 200 when Ollama is reachable."""
+        """GET /llm/health returns 200 when at least one provider is reachable."""
+        from app.services.llm.providers import LLMProvider
+
         with patch("app.routes.llm_pipeline.LLMClient") as MockClient:
             instance = MockClient.return_value
-            instance.test_connection = AsyncMock(return_value=True)
-            instance.base_url = "https://ollama.lefv.info"
+            instance.providers = [
+                LLMProvider(
+                    name="ollama",
+                    base_url="https://ollama.lefv.info",
+                    api_key="",
+                    default_model="llama3.1:8b",
+                ),
+            ]
+            instance.test_connections = AsyncMock(
+                return_value={"ollama": True}
+            )
 
             response = client.get("/llm/health")
 
         assert response.status_code == 200
         data = response.json()
-        assert data["ollama_connected"] is True
-        assert data["ollama_url"] == "https://ollama.lefv.info"
+        assert data["any_connected"] is True
+        assert len(data["providers"]) == 1
+        assert data["providers"][0]["name"] == "ollama"
+        assert data["providers"][0]["connected"] is True
 
     def test_health_endpoint_ollama_down(self, client):
-        """GET /llm/health returns 200 with connected=false when Ollama is down."""
+        """GET /llm/health returns 200 with any_connected=false when all providers down."""
+        from app.services.llm.providers import LLMProvider
+
         with patch("app.routes.llm_pipeline.LLMClient") as MockClient:
             instance = MockClient.return_value
-            instance.test_connection = AsyncMock(return_value=False)
-            instance.base_url = "https://ollama.lefv.info"
+            instance.providers = [
+                LLMProvider(
+                    name="ollama",
+                    base_url="https://ollama.lefv.info",
+                    api_key="",
+                    default_model="llama3.1:8b",
+                ),
+            ]
+            instance.test_connections = AsyncMock(
+                return_value={"ollama": False}
+            )
 
             response = client.get("/llm/health")
 
         assert response.status_code == 200
         data = response.json()
-        assert data["ollama_connected"] is False
+        assert data["any_connected"] is False
 
 
 # =============================================================================
