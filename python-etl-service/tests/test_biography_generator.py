@@ -13,7 +13,6 @@ Tests:
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from datetime import datetime
-import httpx
 
 
 # =============================================================================
@@ -310,14 +309,17 @@ class TestQueryOllamaForBio:
     async def test_returns_bio_on_success(self):
         """query_ollama_for_bio() returns cleaned bio text on success."""
         from app.services.biography_generator import query_ollama_for_bio
+        from app.services.llm.client import LLMResponse
 
         mock_client = AsyncMock()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "choices": [{"message": {"content": "Nancy Pelosi is a Democratic leader."}}]
-        }
-        mock_response.raise_for_status = MagicMock()
-        mock_client.post.return_value = mock_response
+        mock_client.generate.return_value = LLMResponse(
+            text="Nancy Pelosi is a Democratic leader.",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+            latency_ms=200,
+            provider="test",
+        )
 
         politician = {"full_name": "Nancy Pelosi", "party": "D"}
         stats = {"total_trades": 100, "total_volume": 1000000, "top_tickers": ["AAPL"]}
@@ -327,12 +329,15 @@ class TestQueryOllamaForBio:
         assert result == "Nancy Pelosi is a Democratic leader."
 
     @pytest.mark.asyncio
-    async def test_returns_none_on_http_error(self):
-        """query_ollama_for_bio() returns None on HTTP error."""
+    async def test_returns_none_on_all_providers_exhausted(self):
+        """query_ollama_for_bio() returns None when all providers fail."""
         from app.services.biography_generator import query_ollama_for_bio
+        from app.services.llm.providers import AllProvidersExhaustedError
 
         mock_client = AsyncMock()
-        mock_client.post.side_effect = httpx.HTTPError("Connection failed")
+        mock_client.generate.side_effect = AllProvidersExhaustedError(
+            {"test": "Connection failed"}
+        )
 
         politician = {"full_name": "Test"}
         stats = {"total_trades": 0, "total_volume": 0, "top_tickers": []}
@@ -345,14 +350,17 @@ class TestQueryOllamaForBio:
     async def test_returns_none_on_empty_response(self):
         """query_ollama_for_bio() returns None when LLM returns empty content."""
         from app.services.biography_generator import query_ollama_for_bio
+        from app.services.llm.client import LLMResponse
 
         mock_client = AsyncMock()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "choices": [{"message": {"content": ""}}]
-        }
-        mock_response.raise_for_status = MagicMock()
-        mock_client.post.return_value = mock_response
+        mock_client.generate.return_value = LLMResponse(
+            text="",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=0,
+            latency_ms=200,
+            provider="test",
+        )
 
         politician = {"full_name": "Test"}
         stats = {"total_trades": 0, "total_volume": 0, "top_tickers": []}
@@ -365,14 +373,17 @@ class TestQueryOllamaForBio:
     async def test_cleans_preamble_from_response(self):
         """query_ollama_for_bio() cleans preamble from LLM response."""
         from app.services.biography_generator import query_ollama_for_bio
+        from app.services.llm.client import LLMResponse
 
         mock_client = AsyncMock()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "choices": [{"message": {"content": "Here's a brief biography: Ted Cruz is a Republican Senator."}}]
-        }
-        mock_response.raise_for_status = MagicMock()
-        mock_client.post.return_value = mock_response
+        mock_client.generate.return_value = LLMResponse(
+            text="Here's a brief biography: Ted Cruz is a Republican Senator.",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+            latency_ms=200,
+            provider="test",
+        )
 
         politician = {"full_name": "Ted Cruz", "party": "R"}
         stats = {"total_trades": 10, "total_volume": 50000, "top_tickers": []}
@@ -387,7 +398,7 @@ class TestQueryOllamaForBio:
         from app.services.biography_generator import query_ollama_for_bio
 
         mock_client = AsyncMock()
-        mock_client.post.side_effect = ValueError("Unexpected")
+        mock_client.generate.side_effect = ValueError("Unexpected")
 
         politician = {"full_name": "Test"}
         stats = {"total_trades": 0, "total_volume": 0, "top_tickers": []}
