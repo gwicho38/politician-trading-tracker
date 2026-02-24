@@ -122,10 +122,17 @@ class AuditTrailResponse(BaseModel):
     entries: List[dict] = Field(default_factory=list, description="Audit trail entries")
 
 
+class ProviderStatus(BaseModel):
+    """Status of a single LLM provider."""
+    name: str = Field(..., description="Provider name")
+    connected: bool = Field(..., description="Whether provider is reachable")
+    base_url: str = Field(..., description="Provider base URL")
+
+
 class LLMHealthResponse(BaseModel):
     """Response for LLM health check."""
-    ollama_connected: bool = Field(..., description="Whether Ollama is reachable")
-    ollama_url: str = Field(..., description="Ollama base URL")
+    providers: List[ProviderStatus] = Field(..., description="Status of each provider")
+    any_connected: bool = Field(..., description="Whether at least one provider is reachable")
 
 
 # ============================================================================
@@ -318,15 +325,22 @@ async def get_audit_trail(
 @router.get("/health", response_model=LLMHealthResponse)
 async def check_llm_health():
     """
-    Test connectivity to the Ollama LLM service.
+    Test connectivity to all configured LLM providers.
 
-    Returns whether the Ollama API is reachable and the base URL
-    being used for LLM calls.
+    Returns per-provider status and whether at least one provider
+    is reachable.
     """
     client = LLMClient()
-    connected = await client.test_connection()
-
+    statuses = await client.test_connections()
+    providers = [
+        ProviderStatus(
+            name=p.name,
+            connected=statuses.get(p.name, False),
+            base_url=p.base_url,
+        )
+        for p in client.providers
+    ]
     return LLMHealthResponse(
-        ollama_connected=connected,
-        ollama_url=client.base_url,
+        providers=providers,
+        any_connected=any(s.connected for s in providers),
     )
