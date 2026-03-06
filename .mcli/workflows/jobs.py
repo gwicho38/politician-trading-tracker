@@ -1716,7 +1716,7 @@ EDGE_FUNCTIONS = [
     ("trading-signals",           "POST", {"action": "get-signals"},   {200, 404}),
     ("alpaca-account",            "POST", {"action": "get-account"},   {200}),
     ("portfolio",                 "POST", {"action": "get-portfolio"},  {200}),
-    ("orders",                    "POST", {"action": "list-orders"},   {200, 401}),
+    ("orders",                    "POST", {"action": "list-orders"},   {200, 401, 404}),
     ("credential-health",         "POST", {},                          {200}),
     ("politician-profile",        "POST", {"politicianId": "test"},    {200, 400}),
     ("sync-data",                 "POST", {"action": "sync"},          {200, 404}),
@@ -1772,10 +1772,12 @@ def _probe_edge_function(
             resp = httpx.get(url, headers=headers, timeout=timeout)
 
         code = resp.status_code
-        if code == 404:
-            return ("critical", code, "NOT DEPLOYED (404)")
+        # Check expected statuses FIRST — some deployed functions return 404
+        # for unrecognised actions, which is different from "not deployed"
         if code in ok_statuses:
             return ("ok", code, f"HTTP {code}")
+        if code == 404:
+            return ("critical", code, "NOT DEPLOYED (404)")
         if code in {500, 502, 503}:
             return ("critical", code, f"SERVER ERROR (HTTP {code})")
         # 401/403 mean alive but auth issue — warning not critical
