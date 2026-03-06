@@ -44,7 +44,9 @@ defmodule Server.Scheduler.Jobs.LLMAnomalyDetectionJob do
     url = "#{@etl_service_url}/llm/detect-anomalies"
     api_key = System.get_env("ETL_API_KEY") || ""
 
-    body = Jason.encode!(%{days_back: 30})
+    end_date = Date.utc_today() |> Date.to_string()
+    start_date = Date.utc_today() |> Date.add(-30) |> Date.to_string()
+    body = Jason.encode!(%{start_date: start_date, end_date: end_date})
 
     request =
       Finch.build(
