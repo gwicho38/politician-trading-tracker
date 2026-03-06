@@ -47,6 +47,7 @@ defmodule Server.Scheduler.Jobs.PoliticianDedupJob do
   # TODO: Review this function
   defp trigger_dedup do
     url = "#{@etl_service_url}/dedup/process"
+    api_key = System.get_env("ETL_API_KEY") || ""
 
     # Process up to 100 duplicate groups per run
     body = Jason.encode!(%{limit: 100, dry_run: false})
@@ -57,7 +58,8 @@ defmodule Server.Scheduler.Jobs.PoliticianDedupJob do
         url,
         [
           {"Content-Type", "application/json"},
-          {"Accept", "application/json"}
+          {"Accept", "application/json"},
+          {"X-API-Key", api_key}
         ],
         body
       )

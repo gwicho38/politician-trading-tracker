@@ -46,6 +46,7 @@ defmodule Server.Scheduler.Jobs.PartyEnrichmentJob do
   # TODO: Review this function
   defp trigger_enrichment do
     url = "#{@etl_service_url}/enrichment/trigger"
+    api_key = System.get_env("ETL_API_KEY") || ""
 
     # Process up to 100 politicians per run to avoid overwhelming Ollama
     body = Jason.encode!(%{limit: 100})
@@ -56,7 +57,8 @@ defmodule Server.Scheduler.Jobs.PartyEnrichmentJob do
         url,
         [
           {"Content-Type", "application/json"},
-          {"Accept", "application/json"}
+          {"Accept", "application/json"},
+          {"X-API-Key", api_key}
         ],
         body
       )

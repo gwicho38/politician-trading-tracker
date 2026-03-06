@@ -44,6 +44,7 @@ defmodule Server.Scheduler.Jobs.JobExecutionCleanupJob do
   # TODO: Review this function
   defp trigger_cleanup do
     url = "#{@etl_service_url}/etl/cleanup-executions"
+    api_key = System.get_env("ETL_API_KEY") || ""
 
     body =
       Jason.encode!(%{
@@ -56,7 +57,8 @@ defmodule Server.Scheduler.Jobs.JobExecutionCleanupJob do
         url,
         [
           {"Content-Type", "application/json"},
-          {"Accept", "application/json"}
+          {"Accept", "application/json"},
+          {"X-API-Key", api_key}
         ],
         body
       )

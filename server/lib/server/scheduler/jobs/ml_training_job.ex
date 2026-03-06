@@ -48,6 +48,8 @@ defmodule Server.Scheduler.Jobs.MlTrainingJob do
   # TODO: Review this function
   defp trigger_training do
     url = "#{@etl_service_url}/ml/train"
+    # /ml/train requires admin-level auth: both X-API-Key and X-Admin-Key
+    admin_key = System.get_env("ETL_ADMIN_API_KEY") || System.get_env("ETL_API_KEY") || ""
 
     # Training configuration
     body =
@@ -63,7 +65,9 @@ defmodule Server.Scheduler.Jobs.MlTrainingJob do
         url,
         [
           {"Content-Type", "application/json"},
-          {"Accept", "application/json"}
+          {"Accept", "application/json"},
+          {"X-API-Key", admin_key},
+          {"X-Admin-Key", admin_key}
         ],
         body
       )

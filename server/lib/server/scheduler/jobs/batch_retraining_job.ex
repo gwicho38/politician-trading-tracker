@@ -163,6 +163,8 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
   # Trigger ML training via Python ETL service
   defp trigger_training do
     url = "#{@etl_base_url}/ml/train"
+    # /ml/train requires admin-level auth: both X-API-Key and X-Admin-Key
+    admin_key = System.get_env("ETL_ADMIN_API_KEY") || System.get_env("ETL_API_KEY") || ""
 
     body =
       Jason.encode!(%{
@@ -173,7 +175,9 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
 
     headers = [
       {"Content-Type", "application/json"},
-      {"Accept", "application/json"}
+      {"Accept", "application/json"},
+      {"X-API-Key", admin_key},
+      {"X-Admin-Key", admin_key}
     ]
 
     request = Finch.build(:post, url, headers, body)

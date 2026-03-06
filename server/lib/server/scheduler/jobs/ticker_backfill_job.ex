@@ -46,6 +46,7 @@ defmodule Server.Scheduler.Jobs.TickerBackfillJob do
   # TODO: Review this function
   defp trigger_backfill do
     url = "#{@etl_service_url}/etl/backfill-tickers"
+    api_key = System.get_env("ETL_API_KEY") || ""
 
     body = Jason.encode!(%{})
 
@@ -55,7 +56,8 @@ defmodule Server.Scheduler.Jobs.TickerBackfillJob do
         url,
         [
           {"Content-Type", "application/json"},
-          {"Accept", "application/json"}
+          {"Accept", "application/json"},
+          {"X-API-Key", api_key}
         ],
         body
       )
