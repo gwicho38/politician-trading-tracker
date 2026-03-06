@@ -141,15 +141,36 @@ def status(verbose: bool):
     _check_services_health()
 
 
+def get_etl_api_key() -> str | None:
+    """Get ETL/Phoenix server API key."""
+    load_env()
+    key = os.environ.get("ETL_API_KEY") or os.environ.get("ETL_ADMIN_API_KEY")
+    if not key:
+        try:
+            result = subprocess.run(
+                ["lsh", "get", "ETL_API_KEY"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                key = result.stdout.strip()
+        except FileNotFoundError:
+            pass
+    return key
+
+
 def _fetch_phoenix_jobs() -> list[dict] | None:
-    """Fetch jobs from Phoenix server."""
+    """Fetch jobs from Phoenix server (requires ETL_API_KEY)."""
+    api_key = get_etl_api_key()
+    headers = {"X-API-Key": api_key} if api_key else {}
     try:
         response = httpx.get(
             f"{PHOENIX_SERVER_URL}/api/jobs",
+            headers=headers,
             timeout=10.0
         )
         if response.status_code == 200:
             return response.json().get("jobs", [])
+        logger.warning(f"Phoenix /api/jobs returned HTTP {response.status_code}")
     except Exception as e:
         logger.warning(f"Failed to fetch Phoenix jobs: {e}")
     return None
@@ -1683,3 +1704,296 @@ def alpaca_reset_portfolio(initial_capital: float):
 
     click.echo(f"\n✓ Portfolio reset to ${initial_capital:,.2f}")
     click.echo("\nThe reference portfolio is now ready to trade with new credentials.")
+
+
+# ---------------------------------------------------------------------------
+# audit command
+# ---------------------------------------------------------------------------
+
+EDGE_FUNCTIONS = [
+    # (name, probe_method, probe_body_or_path, expected_ok_statuses)
+    ("reference-portfolio",       "POST", {"action": "status"},        {200}),
+    ("trading-signals",           "POST", {"action": "get-signals"},   {200, 404}),
+    ("alpaca-account",            "POST", {"action": "get-account"},   {200}),
+    ("portfolio",                 "POST", {"action": "get-portfolio"},  {200}),
+    ("orders",                    "POST", {"action": "list-orders"},   {200, 401}),
+    ("credential-health",         "POST", {},                          {200}),
+    ("politician-profile",        "POST", {"politicianId": "test"},    {200, 400}),
+    ("sync-data",                 "POST", {"action": "sync"},          {200, 404}),
+    ("scheduled-sync",            "POST", {"action": "run"},           {200, 404}),
+    ("ml-training",               "POST", {"action": "status"},        {200, 404}),
+    ("signal-feedback",           "POST", {"action": "list"},          {200}),
+    ("process-error-reports",     "POST", {},                          {200}),
+    ("strategy-follow",           "POST", {"action": "list"},          {200, 401}),
+    ("politician-trading-collect","POST", {"action": "status"},        {200, 404}),
+]
+
+# Staleness thresholds: how long after a job's expected cadence before it's stale
+# Format: (hours_stale_warning, hours_stale_critical)
+JOB_STALENESS = {
+    # High-frequency jobs
+    "trading-signals":              (3, 8),
+    "reference-portfolio-execute":  (1, 4),
+    "reference-portfolio-sync":     (6, 24),
+    # Daily/periodic jobs
+    "house-etl":                    (48, 96),
+    "senate-etl":                   (48, 96),
+    "quiverquant-etl":              (48, 96),
+    "eu-parliament-etl":            (72, 168),
+    "uk-parliament-etl":            (72, 168),
+    # Default for unknown jobs
+    "__default__":                  (24, 72),
+}
+
+
+def _probe_edge_function(
+    name: str,
+    method: str,
+    body: dict,
+    ok_statuses: set[int],
+    service_key: str,
+    timeout: float = 12.0,
+) -> tuple[str, int | None, str]:
+    """
+    Probe a single Supabase edge function.
+
+    Returns (status_level, http_code, message)
+    where status_level is 'ok', 'warning', or 'critical'.
+    """
+    url = f"{SUPABASE_URL}/functions/v1/{name}"
+    headers = {
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json",
+    }
+    try:
+        if method == "POST":
+            resp = httpx.post(url, json=body, headers=headers, timeout=timeout)
+        else:
+            resp = httpx.get(url, headers=headers, timeout=timeout)
+
+        code = resp.status_code
+        if code == 404:
+            return ("critical", code, "NOT DEPLOYED (404)")
+        if code in ok_statuses:
+            return ("ok", code, f"HTTP {code}")
+        if code in {500, 502, 503}:
+            return ("critical", code, f"SERVER ERROR (HTTP {code})")
+        # 401/403 mean alive but auth issue — warning not critical
+        return ("warning", code, f"HTTP {code}")
+
+    except httpx.TimeoutException:
+        return ("warning", None, "TIMEOUT (>12s)")
+    except Exception as exc:
+        return ("critical", None, f"ERROR: {str(exc)[:60]}")
+
+
+def _staleness_level(last_ok_str: str | None, job_name: str, now: datetime) -> tuple[str, str]:
+    """
+    Return (level, age_str) for a Phoenix job based on last_successful_run.
+    level is 'ok', 'warning', or 'critical'.
+    """
+    if not last_ok_str:
+        return ("critical", "never ran")
+
+    try:
+        last_ok = datetime.fromisoformat(last_ok_str.replace("Z", "+00:00"))
+        hours_since = (now - last_ok).total_seconds() / 3600
+        age_str = format_time_ago(last_ok_str)
+
+        # Find threshold by matching job_name substring
+        warn_h, crit_h = JOB_STALENESS["__default__"]
+        for key, thresholds in JOB_STALENESS.items():
+            if key != "__default__" and key.lower() in job_name.lower():
+                warn_h, crit_h = thresholds
+                break
+
+        if hours_since >= crit_h:
+            return ("critical", age_str)
+        if hours_since >= warn_h:
+            return ("warning", age_str)
+        return ("ok", age_str)
+    except Exception:
+        return ("warning", "unknown")
+
+
+@app.command("audit")
+@click.option("--verbose", "-v", is_flag=True, help="Show all jobs, not just problems")
+@click.option("--fail-fast", is_flag=True, help="Exit 1 if any CRITICAL issue found")
+def audit(verbose: bool, fail_fast: bool):
+    """
+    Comprehensive health audit of all jobs and edge functions.
+
+    Checks:
+      - Phoenix server reachability + all 45 Elixir cron jobs (staleness, failures)
+      - ETL service reachability
+      - Supabase reachability + scheduled_jobs table
+      - All 14 Supabase edge functions (HTTP probe)
+
+    Exit codes:
+      0 = all OK (or only warnings)
+      1 = one or more CRITICAL issues
+
+    Examples:
+        mcli run jobs audit
+        mcli run jobs audit --verbose
+        mcli run jobs audit --fail-fast
+    """
+    service_key = get_supabase_key()
+    api_key = get_etl_api_key()
+    now = datetime.now(timezone.utc)
+
+    issues_critical: list[str] = []
+    issues_warning:  list[str] = []
+
+    def crit(msg: str):
+        issues_critical.append(msg)
+        click.echo(f"  [CRITICAL] {msg}")
+
+    def warn(msg: str):
+        issues_warning.append(msg)
+        click.echo(f"  [WARNING]  {msg}")
+
+    def ok(msg: str):
+        if verbose:
+            click.echo(f"  [OK]       {msg}")
+
+    # ------------------------------------------------------------------ #
+    # 1. Service reachability
+    # ------------------------------------------------------------------ #
+    click.echo("\n=== Service Reachability ===")
+
+    for svc_name, url in [
+        ("Phoenix Server", f"{PHOENIX_SERVER_URL}/health"),
+        ("ETL Service",    f"{ETL_SERVICE_URL}/health"),
+        ("Supabase",       f"{SUPABASE_URL}/rest/v1/"),
+    ]:
+        try:
+            headers = {"apikey": service_key} if "supabase" in url and service_key else {}
+            resp = httpx.get(url, headers=headers, timeout=8.0)
+            if resp.status_code in {200, 204}:
+                ok(f"{svc_name}: reachable")
+            else:
+                crit(f"{svc_name}: HTTP {resp.status_code} at {url}")
+        except httpx.TimeoutException:
+            crit(f"{svc_name}: TIMEOUT at {url}")
+        except Exception as exc:
+            crit(f"{svc_name}: {str(exc)[:60]}")
+
+    if not api_key:
+        warn("ETL_API_KEY not set — Phoenix /api/jobs will be unauthenticated (may fail)")
+
+    # ------------------------------------------------------------------ #
+    # 2. Phoenix / Elixir cron jobs
+    # ------------------------------------------------------------------ #
+    click.echo("\n=== Phoenix / Elixir Cron Jobs ===")
+    phoenix_jobs = _fetch_phoenix_jobs()
+
+    if phoenix_jobs is None:
+        crit("Cannot fetch Phoenix jobs — server unreachable or /api/jobs returned error")
+    else:
+        ok(f"Fetched {len(phoenix_jobs)} Phoenix jobs")
+        for job in phoenix_jobs:
+            job_name = job.get("job_name") or job.get("job_id") or "unknown"
+            enabled   = job.get("enabled", False)
+            failures  = job.get("consecutive_failures", 0)
+            last_ok   = job.get("last_successful_run")
+
+            if not enabled:
+                ok(f"{job_name}: disabled (skipping staleness check)")
+                continue
+
+            if failures >= 5:
+                crit(f"{job_name}: {failures} consecutive failures")
+            elif failures >= 1:
+                warn(f"{job_name}: {failures} consecutive failure(s)")
+
+            level, age = _staleness_level(last_ok, job_name, now)
+            msg = f"{job_name}: last success {age}"
+            if level == "critical":
+                crit(msg)
+            elif level == "warning":
+                warn(msg)
+            else:
+                ok(msg)
+
+    # ------------------------------------------------------------------ #
+    # 3. Supabase scheduled_jobs table
+    # ------------------------------------------------------------------ #
+    click.echo("\n=== Supabase scheduled_jobs ===")
+    if not service_key:
+        warn("No SUPABASE_SERVICE_ROLE_KEY — cannot check scheduled_jobs table")
+    else:
+        sb_jobs = _fetch_supabase_jobs()
+        if sb_jobs is None:
+            crit("Cannot fetch scheduled_jobs from Supabase")
+        else:
+            ok(f"Fetched {len(sb_jobs)} Supabase scheduled jobs")
+            for job in sb_jobs:
+                job_name = job.get("job_name", "unknown")
+                enabled  = job.get("is_enabled", True)
+                failures = job.get("failure_count", 0) or 0
+                last_ok  = job.get("last_successful_run") or job.get("last_run_at")
+
+                if not enabled:
+                    ok(f"{job_name}: disabled")
+                    continue
+
+                if failures >= 5:
+                    crit(f"supabase/{job_name}: {failures} failures")
+                elif failures >= 1:
+                    warn(f"supabase/{job_name}: {failures} failure(s)")
+
+                level, age = _staleness_level(last_ok, job_name, now)
+                msg = f"supabase/{job_name}: last success {age}"
+                if level == "critical":
+                    crit(msg)
+                elif level == "warning":
+                    warn(msg)
+                else:
+                    ok(msg)
+
+    # ------------------------------------------------------------------ #
+    # 4. Supabase edge functions
+    # ------------------------------------------------------------------ #
+    click.echo("\n=== Supabase Edge Functions ===")
+    if not service_key:
+        crit("No SUPABASE_SERVICE_ROLE_KEY — cannot probe edge functions")
+    else:
+        for fn_name, method, body, ok_codes in EDGE_FUNCTIONS:
+            level, code, msg = _probe_edge_function(
+                fn_name, method, body, ok_codes, service_key
+            )
+            label = f"{fn_name} ({msg})"
+            if level == "critical":
+                crit(label)
+            elif level == "warning":
+                warn(label)
+            else:
+                ok(label)
+
+    # ------------------------------------------------------------------ #
+    # 5. Summary
+    # ------------------------------------------------------------------ #
+    click.echo("\n" + "=" * 60)
+    click.echo("AUDIT SUMMARY")
+    click.echo("=" * 60)
+
+    if issues_critical:
+        click.echo(f"\nCRITICAL ({len(issues_critical)}):")
+        for i in issues_critical:
+            click.echo(f"  • {i}")
+
+    if issues_warning:
+        click.echo(f"\nWARNING ({len(issues_warning)}):")
+        for i in issues_warning:
+            click.echo(f"  • {i}")
+
+    if not issues_critical and not issues_warning:
+        click.echo("\nAll systems healthy.")
+    elif not issues_critical:
+        click.echo(f"\n{len(issues_warning)} warning(s) — no critical issues.")
+    else:
+        click.echo(f"\n{len(issues_critical)} critical issue(s), {len(issues_warning)} warning(s).")
+
+    if fail_fast and issues_critical:
+        raise SystemExit(1)
