@@ -1052,7 +1052,7 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
 
     // Note: position limit checks are done per-signal below (stock vs crypto counted separately)
 
-    // Get pending signals from queue
+    // Get pending signals from queue - newest first so fresh signals are never buried under stale ones
     const { data: queuedSignals, error: queueError } = await supabaseClient
       .from('reference_portfolio_signal_queue')
       .select(`
@@ -1060,8 +1060,17 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
         signal:trading_signals(*)
       `)
       .eq('status', 'pending')
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(config.max_daily_trades - state.trades_today)
+
+    // Sort locally by confidence_score descending to prioritize high-confidence signals
+    if (queuedSignals && queuedSignals.length > 0) {
+      queuedSignals.sort((a, b) => {
+        const confA = a.signal?.confidence_score ?? 0
+        const confB = b.signal?.confidence_score ?? 0
+        return confB - confA
+      })
+    }
 
     if (queueError) {
       log.error('Failed to fetch signal queue', queueError, { requestId })
@@ -1432,7 +1441,6 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
 
         // Place order with Alpaca (order type based on market status)
         const orderUrl = `${credentials.baseUrl}/v2/orders`
-        const signalAssetType = signal.asset_type || 'stock'
         const orderRequest = await buildOrderRequest(
           signal.ticker.toUpperCase(), shares, 'buy',
           signalAssetType, marketStatus, credentials, config

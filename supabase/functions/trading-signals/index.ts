@@ -1034,15 +1034,35 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
     // Clear old signals if requested
     if (clearOld) {
       log.info('Clearing old signals', { requestId })
-      const { error: deleteError } = await supabaseClient
+
+      // Expire pending queue entries BEFORE deactivating signals (prevents orphaned pending entries)
+      // The queue's FK prevents deleting signals while pending entries reference them,
+      // and the signal_audit_trail immutability trigger blocks DELETE on trading_signals entirely.
+      const { error: queueExpireError } = await supabaseClient
+        .from('reference_portfolio_signal_queue')
+        .update({
+          status: 'skipped',
+          skip_reason: 'signal_regenerated',
+          processed_at: new Date().toISOString()
+        })
+        .eq('status', 'pending')
+
+      if (queueExpireError) {
+        log.warn('Failed to expire pending queue entries', { requestId, error: queueExpireError.message })
+      } else {
+        log.info('Pending queue entries expired before signal refresh', { requestId })
+      }
+
+      // Deactivate old signals via UPDATE (DELETE is blocked by signal_audit_trail immutability trigger)
+      const { error: deactivateError } = await supabaseClient
         .from('trading_signals')
-        .delete()
+        .update({ is_active: false })
         .eq('is_active', true)
 
-      if (deleteError) {
-        log.warn('Failed to clear old signals', { requestId, error: deleteError.message })
+      if (deactivateError) {
+        log.warn('Failed to deactivate old signals', { requestId, error: deactivateError.message })
       } else {
-        log.info('Old signals cleared', { requestId })
+        log.info('Old signals deactivated', { requestId })
       }
     }
 
