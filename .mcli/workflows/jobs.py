@@ -1726,8 +1726,8 @@ EDGE_FUNCTIONS = [
     # ml-training doesn't support "status" action → 400 "Unknown action" = deployed
     ("ml-training",               "POST", {"action": "status"},        {200, 400, 404}),
     ("signal-feedback",           "POST", {"action": "list"},          {200}),
-    # process-error-reports needs ANTHROPIC_API_KEY secret; returns 500 until set
-    ("process-error-reports",     "POST", {},                          {200, 500}),
+    # process-error-reports uses Ollama; returns 404 for base path (no action specified)
+    ("process-error-reports",     "POST", {},                          {200, 404}),
     ("strategy-follow",           "POST", {"action": "list"},          {200, 401}),
     # politician-trading-collect is a web scraper — always times out the 12s probe
     ("politician-trading-collect","POST", {"action": "status"},        {200, 404, "timeout"}),

@@ -1,6 +1,5 @@
 import { createClient } from 'supabase'
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import Anthropic from 'npm:@anthropic-ai/sdk'
 import { corsHeaders } from '../_shared/cors.ts'
 
 interface ErrorReport {
@@ -27,7 +26,12 @@ interface ProcessingResult {
   admin_notes: string
 }
 
-// TODO: Review log object - structured JSON logging with levels (info, error)
+interface OllamaConfig {
+  baseUrl: string
+  apiKey: string
+  model: string
+}
+
 const log = {
   info: (message: string, metadata?: any) => {
     console.log(JSON.stringify({
@@ -50,9 +54,6 @@ const log = {
   }
 }
 
-// TODO: Review serve handler - routes error report processing requests
-// - Endpoints: process-pending, process-one, preview
-// - Uses Claude API for LLM-powered correction interpretation
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -64,12 +65,16 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
-    if (!anthropicKey) {
-      throw new Error('ANTHROPIC_API_KEY not configured')
+    const ollamaBaseUrl = Deno.env.get('OLLAMA_API_BASE')
+    if (!ollamaBaseUrl) {
+      throw new Error('OLLAMA_API_BASE not configured')
     }
 
-    const anthropic = new Anthropic({ apiKey: anthropicKey })
+    const ollama: OllamaConfig = {
+      baseUrl: ollamaBaseUrl,
+      apiKey: Deno.env.get('OLLAMA_API_KEY') ?? '',
+      model: Deno.env.get('OLLAMA_MODEL') ?? 'llama3.1:8b',
+    }
 
     const url = new URL(req.url)
     const path = url.pathname.split('/').pop()
@@ -78,15 +83,15 @@ serve(async (req) => {
 
     switch (path) {
       case 'process-pending':
-        response = await handleProcessPending(supabase, anthropic)
+        response = await handleProcessPending(supabase, ollama)
         break
       case 'process-one':
         const body = await req.json()
-        response = await handleProcessOne(supabase, anthropic, body.report_id)
+        response = await handleProcessOne(supabase, ollama, body.report_id)
         break
       case 'preview':
         const previewBody = await req.json()
-        response = await handlePreview(supabase, anthropic, previewBody.report_id)
+        response = await handlePreview(supabase, ollama, previewBody.report_id)
         break
       default:
         response = new Response(
@@ -106,19 +111,15 @@ serve(async (req) => {
   }
 })
 
-// TODO: Review handleProcessPending - batch processes pending error reports
-// - Fetches up to 10 pending reports
-// - Processes each through LLM interpretation pipeline
-async function handleProcessPending(supabase: any, anthropic: any): Promise<Response> {
+async function handleProcessPending(supabase: any, ollama: OllamaConfig): Promise<Response> {
   log.info('Processing all pending error reports')
 
-  // Fetch pending reports
   const { data: reports, error } = await supabase
     .from('user_error_reports')
     .select('*')
     .eq('status', 'pending')
     .order('created_at', { ascending: true })
-    .limit(10) // Process in batches
+    .limit(10)
 
   if (error) {
     throw new Error(`Failed to fetch reports: ${error.message}`)
@@ -137,7 +138,7 @@ async function handleProcessPending(supabase: any, anthropic: any): Promise<Resp
 
   for (const report of reports) {
     try {
-      const result = await processReport(supabase, anthropic, report)
+      const result = await processReport(supabase, ollama, report)
       results.push(result)
     } catch (e) {
       log.error('Failed to process report', e, { reportId: report.id })
@@ -154,19 +155,12 @@ async function handleProcessPending(supabase: any, anthropic: any): Promise<Resp
   const needsReview = results.filter(r => r.status === 'needs_review').length
 
   return new Response(
-    JSON.stringify({
-      success: true,
-      processed: results.length,
-      fixed,
-      needs_review: needsReview,
-      results
-    }),
+    JSON.stringify({ success: true, processed: results.length, fixed, needs_review: needsReview, results }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   )
 }
 
-// TODO: Review handleProcessOne - processes a single error report by ID
-async function handleProcessOne(supabase: any, anthropic: any, reportId: string): Promise<Response> {
+async function handleProcessOne(supabase: any, ollama: OllamaConfig, reportId: string): Promise<Response> {
   if (!reportId) {
     return new Response(
       JSON.stringify({ error: 'report_id is required' }),
@@ -187,7 +181,7 @@ async function handleProcessOne(supabase: any, anthropic: any, reportId: string)
     )
   }
 
-  const result = await processReport(supabase, anthropic, report)
+  const result = await processReport(supabase, ollama, report)
 
   return new Response(
     JSON.stringify({ success: true, result }),
@@ -195,9 +189,7 @@ async function handleProcessOne(supabase: any, anthropic: any, reportId: string)
   )
 }
 
-// TODO: Review handlePreview - previews corrections without applying them
-// - Returns proposed corrections and confidence levels
-async function handlePreview(supabase: any, anthropic: any, reportId: string): Promise<Response> {
+async function handlePreview(supabase: any, ollama: OllamaConfig, reportId: string): Promise<Response> {
   if (!reportId) {
     return new Response(
       JSON.stringify({ error: 'report_id is required' }),
@@ -218,8 +210,7 @@ async function handlePreview(supabase: any, anthropic: any, reportId: string): P
     )
   }
 
-  // Get corrections without applying them
-  const corrections = await interpretCorrections(anthropic, report)
+  const corrections = await interpretCorrections(ollama, report)
 
   return new Response(
     JSON.stringify({
@@ -236,18 +227,12 @@ async function handlePreview(supabase: any, anthropic: any, reportId: string): P
   )
 }
 
-// TODO: Review processReport - main processing logic for a single report
-// - Uses LLM to interpret user correction request
-// - Auto-applies high-confidence corrections, flags low-confidence for review
-// - Updates trading_disclosures table with corrections
-async function processReport(supabase: any, anthropic: any, report: ErrorReport): Promise<ProcessingResult> {
+async function processReport(supabase: any, ollama: OllamaConfig, report: ErrorReport): Promise<ProcessingResult> {
   log.info('Processing report', { reportId: report.id, errorType: report.error_type })
 
-  // Use LLM to interpret the correction
-  const corrections = await interpretCorrections(anthropic, report)
+  const corrections = await interpretCorrections(ollama, report)
 
   if (corrections.length === 0) {
-    // Mark as needs review - couldn't determine correction
     await updateReportStatus(supabase, report.id, 'reviewed', 'Could not automatically determine correction from description')
     return {
       report_id: report.id,
@@ -257,15 +242,12 @@ async function processReport(supabase: any, anthropic: any, report: ErrorReport)
     }
   }
 
-  // Check if all corrections have high confidence
   const allHighConfidence = corrections.every(c => c.confidence >= 0.8)
 
   if (!allHighConfidence) {
-    // Mark for human review
     const notes = corrections.map(c =>
       `${c.field}: ${c.old_value} → ${c.new_value} (confidence: ${(c.confidence * 100).toFixed(0)}%)`
     ).join('; ')
-
     await updateReportStatus(supabase, report.id, 'reviewed', `Low confidence corrections suggested: ${notes}`)
     return {
       report_id: report.id,
@@ -275,7 +257,6 @@ async function processReport(supabase: any, anthropic: any, report: ErrorReport)
     }
   }
 
-  // Apply corrections
   const updateData: Record<string, any> = {}
   for (const correction of corrections) {
     updateData[correction.field] = correction.new_value
@@ -298,13 +279,11 @@ async function processReport(supabase: any, anthropic: any, report: ErrorReport)
     }
   }
 
-  // Check for related disclosures (same source PDF)
   const sourceUrl = report.disclosure_snapshot.source_url
   if (sourceUrl) {
     await applyToRelatedDisclosures(supabase, report.disclosure_id, sourceUrl, updateData, corrections)
   }
 
-  // Mark report as fixed
   const correctionSummary = corrections.map(c =>
     `${c.field}: ${c.old_value} → ${c.new_value}`
   ).join('; ')
@@ -321,10 +300,8 @@ async function processReport(supabase: any, anthropic: any, report: ErrorReport)
   }
 }
 
-// TODO: Review interpretCorrections - uses Claude to interpret user correction requests
-// - Parses error type and description into structured field corrections
-// - Returns confidence scores and reasoning for each correction
-async function interpretCorrections(anthropic: any, report: ErrorReport): Promise<CorrectionResult[]> {
+// Uses Ollama's OpenAI-compatible /v1/chat/completions endpoint
+async function interpretCorrections(ollama: OllamaConfig, report: ErrorReport): Promise<CorrectionResult[]> {
   const prompt = `You are analyzing a user-submitted error report for a financial disclosure database record.
 
 ERROR REPORT:
@@ -367,19 +344,30 @@ RULES:
 Respond with ONLY the JSON object, no other text.`
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: prompt }]
+    const response = await fetch(`${ollama.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${ollama.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: ollama.model,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1024,
+        temperature: 0,
+      }),
     })
 
-    const content = response.content[0]
-    if (content.type !== 'text') {
-      return []
+    if (!response.ok) {
+      throw new Error(`Ollama API error: ${response.status} ${await response.text()}`)
     }
 
-    // Parse the JSON response
-    const result = JSON.parse(content.text)
+    const data = await response.json()
+    const text = data.choices?.[0]?.message?.content ?? ''
+
+    // Strip markdown code fences if present
+    const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+    const result = JSON.parse(cleaned)
     return result.corrections || []
 
   } catch (e) {
@@ -388,9 +376,6 @@ Respond with ONLY the JSON object, no other text.`
   }
 }
 
-// TODO: Review applyToRelatedDisclosures - propagates amount corrections to related records
-// - Finds disclosures from same source_url with null amounts
-// - Applies same amount correction to maintain consistency
 async function applyToRelatedDisclosures(
   supabase: any,
   excludeId: string,
@@ -398,14 +383,12 @@ async function applyToRelatedDisclosures(
   updateData: Record<string, any>,
   corrections: CorrectionResult[]
 ): Promise<void> {
-  // Only apply amount corrections to related disclosures
   const amountCorrections = corrections.filter(c =>
     c.field === 'amount_range_min' || c.field === 'amount_range_max'
   )
 
   if (amountCorrections.length === 0) return
 
-  // Find related disclosures with same source URL and missing amounts
   const { data: related, error } = await supabase
     .from('trading_disclosures')
     .select('id')
@@ -415,12 +398,8 @@ async function applyToRelatedDisclosures(
 
   if (error || !related || related.length === 0) return
 
-  log.info('Applying corrections to related disclosures', {
-    count: related.length,
-    sourceUrl
-  })
+  log.info('Applying corrections to related disclosures', { count: related.length, sourceUrl })
 
-  // Apply same amount correction to related records
   const amountUpdate: Record<string, any> = {}
   for (const c of amountCorrections) {
     amountUpdate[c.field] = c.new_value
@@ -435,7 +414,6 @@ async function applyToRelatedDisclosures(
   }
 }
 
-// TODO: Review updateReportStatus - updates error report status and admin notes
 async function updateReportStatus(
   supabase: any,
   reportId: string,
