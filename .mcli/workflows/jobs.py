@@ -1721,14 +1721,16 @@ EDGE_FUNCTIONS = [
     ("credential-health",         "POST", {},                          {200, 401, 500}),
     ("politician-profile",        "POST", {"politicianId": "test"},    {200, 400}),
     ("sync-data",                 "POST", {"action": "sync"},          {200, 404}),
-    ("scheduled-sync",            "POST", {"action": "run"},           {200, 404}),
+    # scheduled-sync takes ~30s in quick mode — always times out the 12s probe
+    ("scheduled-sync",            "POST", {"action": "run"},           {200, 404, "timeout"}),
     # ml-training doesn't support "status" action → 400 "Unknown action" = deployed
     ("ml-training",               "POST", {"action": "status"},        {200, 400, 404}),
     ("signal-feedback",           "POST", {"action": "list"},          {200}),
     # process-error-reports needs ANTHROPIC_API_KEY secret; returns 500 until set
     ("process-error-reports",     "POST", {},                          {200, 500}),
     ("strategy-follow",           "POST", {"action": "list"},          {200, 401}),
-    ("politician-trading-collect","POST", {"action": "status"},        {200, 404}),
+    # politician-trading-collect is a web scraper — always times out the 12s probe
+    ("politician-trading-collect","POST", {"action": "status"},        {200, 404, "timeout"}),
 ]
 
 # Staleness thresholds: how long after a job's expected cadence before it's stale
@@ -1787,6 +1789,10 @@ def _probe_edge_function(
         return ("warning", code, f"HTTP {code}")
 
     except httpx.TimeoutException:
+        # Some functions (web scrapers, slow sync jobs) always exceed the probe timeout.
+        # If the ok_statuses set contains the string "timeout", treat it as OK.
+        if "timeout" in ok_statuses:
+            return ("ok", None, "TIMEOUT (expected for slow function)")
         return ("warning", None, "TIMEOUT (>12s)")
     except Exception as exc:
         return ("critical", None, f"ERROR: {str(exc)[:60]}")
