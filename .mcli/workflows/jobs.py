@@ -1941,8 +1941,9 @@ def audit(verbose: bool, fail_fast: bool):
             ok(f"Fetched {len(sb_jobs)} Supabase scheduled jobs")
             for job in sb_jobs:
                 job_name = job.get("job_name", "unknown")
-                enabled  = job.get("is_enabled", True)
-                failures = job.get("failure_count", 0) or 0
+                # column is "enabled" in public.scheduled_jobs schema
+                enabled  = job.get("enabled", job.get("is_enabled", True))
+                failures = job.get("consecutive_failures", job.get("failure_count", 0)) or 0
                 last_ok  = job.get("last_successful_run") or job.get("last_run_at")
 
                 if not enabled:
