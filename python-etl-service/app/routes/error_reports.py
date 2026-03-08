@@ -47,14 +47,14 @@ class ReportStatus(str, Enum):
 class ProcessRequest(BaseModel):
     """Request body for processing error reports."""
     limit: int = Field(default=10, ge=1, le=100, description="Maximum number of reports to process")
-    model: str = Field(default="llama3.1:8b", description="Ollama model to use for analysis")
+    model: str = Field(default="qwen3:8b", description="Ollama model to use for analysis")
     dry_run: bool = Field(default=False, description="If true, analyze but don't apply corrections")
 
 
 class ProcessOneRequest(BaseModel):
     """Request body for processing a single report."""
     report_id: str = Field(..., description="UUID of the error report to process")
-    model: str = Field(default="llama3.1:8b", description="Ollama model to use for analysis")
+    model: str = Field(default="qwen3:8b", description="Ollama model to use for analysis")
     dry_run: bool = Field(default=False, description="If true, analyze but don't apply corrections")
 
 
@@ -470,7 +470,7 @@ async def force_apply_correction(
 class ReanalyzeRequest(BaseModel):
     """Request to reanalyze a report with lower confidence threshold."""
     report_id: str = Field(..., description="UUID of the error report")
-    model: str = Field(default="llama3.1:8b", description="Ollama model to use")
+    model: str = Field(default="qwen3:8b", description="Ollama model to use")
     confidence_threshold: float = Field(
         default=0.5,
         ge=0.1,
@@ -572,7 +572,7 @@ async def reanalyze_report(
 class GenerateSuggestionRequest(BaseModel):
     """Request to generate a suggestion for a report using Ollama."""
     report_id: str = Field(..., description="UUID of the error report")
-    model: str = Field(default="llama3.1:8b", description="Ollama model to use")
+    model: str = Field(default="qwen3:8b", description="Ollama model to use")
 
 
 @router.post("/generate-suggestion", response_model=SuggestionResponse)

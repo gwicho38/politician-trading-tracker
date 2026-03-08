@@ -57,7 +57,7 @@ _PROVIDER_SPECS: list[dict] = [
         "base_url_env": "OLLAMA_BASE_URL",
         "base_url_default": "https://ollama.lefv.info",
         "api_key_env": "OLLAMA_API_KEY",
-        "default_model": "llama3.1:8b",
+        "default_model": "qwen3:8b",
         "always_include": True,
     },
     {

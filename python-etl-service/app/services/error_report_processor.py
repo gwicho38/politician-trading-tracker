@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "https://ollama.lefv.info")
 OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "")
-DEFAULT_MODEL = "llama3.1:8b"
+DEFAULT_MODEL = "qwen3:8b"
 
 
 @dataclass

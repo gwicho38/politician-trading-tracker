@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "https://ollama.lefv.info")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")  # Available: gpt-oss:20b, llama3.1:8b
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:8b")  # Available: gpt-oss:20b, qwen3:8b
 OLLAMA_API_KEY = os.environ.get("OLLAMA_API_KEY")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")

@@ -10,7 +10,7 @@ Usage:
         service_name="validation_gate",
         prompt_version="v1.0",
         prompt_hash=LLMAuditLogger.compute_prompt_hash(template),
-        model_used="llama3.1:8b",
+        model_used="qwen3:8b",
         response=llm_response,
         request_context={"disclosure_id": "abc-123"},
         parsed_output={"result": "ok"},
