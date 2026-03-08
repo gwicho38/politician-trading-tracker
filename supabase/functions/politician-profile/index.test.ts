@@ -254,7 +254,7 @@ async function callOllamaApi(
         Authorization: `Bearer ${ollamaApiKey}`,
       },
       body: JSON.stringify({
-        model: "llama3.1:8b",
+        model: "qwen3:8b",
         prompt: prompt,
         stream: false,
         options: {
@@ -302,7 +302,7 @@ Deno.test("Ollama API - returns source 'ollama' on successful response", async (
     response:
       "Nancy Pelosi is a Democratic Representative from California. She has disclosed over 150 trades with significant trading volume in technology stocks.",
     done: true,
-    model: "llama3.1:8b",
+    model: "qwen3:8b",
   };
 
   const mockFetch = createMockFetch({
@@ -522,7 +522,7 @@ Deno.test("Ollama API - request includes correct headers and body", async () => 
 
   // Verify body
   const body = JSON.parse(capturedRequest!.options.body as string);
-  assertEquals(body.model, "llama3.1:8b");
+  assertEquals(body.model, "qwen3:8b");
   assertEquals(body.stream, false);
   assertStringIncludes(body.prompt, "Request Test");
   assertStringIncludes(body.prompt, "Senator");
@@ -545,7 +545,7 @@ Deno.test("Ollama API - full profile generation flow with real-like data", async
     response:
       "Marjorie Taylor Greene is a Republican Representative from Georgia. With 45 disclosed trades totaling approximately $2.5M in volume, her portfolio shows significant activity in technology stocks including TSLA, AMZN, and META.",
     done: true,
-    model: "llama3.1:8b",
+    model: "qwen3:8b",
     total_duration: 3000000000,
     eval_count: 50,
   };

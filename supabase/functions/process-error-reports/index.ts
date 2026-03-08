@@ -73,7 +73,7 @@ serve(async (req) => {
     const ollama: OllamaConfig = {
       baseUrl: ollamaBaseUrl,
       apiKey: Deno.env.get('OLLAMA_API_KEY') ?? '',
-      model: Deno.env.get('OLLAMA_MODEL') ?? 'llama3.1:8b',
+      model: Deno.env.get('OLLAMA_MODEL') ?? 'qwen3:8b',
     }
 
     const url = new URL(req.url)

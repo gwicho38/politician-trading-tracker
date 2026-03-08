@@ -1189,7 +1189,7 @@ def suggestion_reanalyze(report_id: str, threshold: float, dry_run: bool):
 
 @etl.command(name="suggestion-generate")
 @click.argument("report_id")
-@click.option("--model", "-m", default="llama3.1:8b", help="Ollama model to use")
+@click.option("--model", "-m", default="qwen3:8b", help="Ollama model to use")
 def suggestion_generate(report_id: str, model: str):
     """
     Force Ollama to generate suggested corrections for a report.

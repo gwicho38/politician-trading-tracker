@@ -77,7 +77,7 @@ serve(async (req) => {
           "Authorization": `Bearer ${ollamaApiKey}`,
         },
         body: JSON.stringify({
-          model: "llama3.1:8b",
+          model: Deno.env.get('OLLAMA_MODEL') ?? 'qwen3:8b',
           prompt: prompt,
           stream: false,
           options: {

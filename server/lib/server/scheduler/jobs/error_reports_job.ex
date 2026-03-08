@@ -97,7 +97,7 @@ defmodule Server.Scheduler.Jobs.ErrorReportsJob do
     url = "#{@etl_service_url}/error-reports/process"
 
     # Process up to 10 reports per run to avoid overwhelming Ollama
-    body = Jason.encode!(%{limit: 10, model: "llama3.1:8b"})
+    body = Jason.encode!(%{limit: 10, model: "qwen3:8b"})
 
     request =
       Finch.build(
