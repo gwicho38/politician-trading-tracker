@@ -1,11 +1,11 @@
 {
   "version": "2.0",
-  "generated_at": "2026-02-07T14:21:52.529154Z",
+  "generated_at": "2026-02-17T14:26:18.082942Z",
   "commands": {
     "admin": {
       "file": "admin.py",
       "language": "python",
-      "content_hash": "sha256:643c0cc8ed3bb9d026e771963a63f6975e4a625d947579d199b36d022a5259d9",
+      "content_hash": "sha256:c3c701f9a810b62e0b3b1b3d31c6edc8ef6f3b61dc8897f1f9abaa4766736528",
       "version": "1.0.0",
       "group": "workflows",
       "description": "admin command",
@@ -13,7 +13,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-02-07T15:20:26.278084Z"
+      "last_modified": "2026-02-12T11:17:31.794067Z"
     },
     "client": {
       "file": "client.py",
@@ -26,7 +26,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-01-13T23:23:53.257370Z"
+      "last_modified": "2026-02-12T11:17:31.794777Z"
     },
     "context": {
       "file": "context.py",
@@ -39,12 +39,12 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-01-19T21:29:23.719811Z"
+      "last_modified": "2026-02-12T11:17:31.797230Z"
     },
     "etl": {
       "file": "etl.py",
       "language": "python",
-      "content_hash": "sha256:ce20c35940c5928d541a0f1cafaa4b4d0ca05282aba7b972ee9054d5e6aed879",
+      "content_hash": "sha256:6836efaa52e881d0810a52de98ab66e1755da7ccd018e63ad8d7844b25159cd0",
       "version": "1.0.0",
       "group": "workflows",
       "description": "etl command",
@@ -52,7 +52,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-02-05T12:21:04.174748Z"
+      "last_modified": "2026-02-17T15:25:55.764794Z"
     },
     "jobs": {
       "file": "jobs.py",
@@ -65,7 +65,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-01-13T23:23:53.257782Z"
+      "last_modified": "2026-02-12T11:17:31.799097Z"
     },
     "politician_trading_tracker": {
       "file": "politician_trading_tracker.py",
@@ -78,7 +78,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-01-13T23:23:53.257972Z"
+      "last_modified": "2026-02-12T11:17:31.799474Z"
     },
     "server": {
       "file": "server.py",
@@ -91,7 +91,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-01-17T19:12:13.912427Z"
+      "last_modified": "2026-02-12T11:17:31.799745Z"
     },
     "services": {
       "file": "services.sh",
@@ -104,7 +104,7 @@
       "requires": [],
       "tags": [],
       "shell": "zsh",
-      "last_modified": "2026-01-17T14:58:06.319718Z"
+      "last_modified": "2026-02-12T11:17:31.800278Z"
     },
     "supabase": {
       "file": "supabase.py",
@@ -117,7 +117,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-01-13T23:23:53.258314Z"
+      "last_modified": "2026-02-12T11:17:31.800383Z"
     }
   }
 }

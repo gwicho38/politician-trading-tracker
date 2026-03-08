@@ -61,7 +61,8 @@ defmodule Server.Scheduler.Jobs.LLMFeedbackJob do
       )
 
     case Finch.request(request, Server.Finch, receive_timeout: 600_000) do
-      {:ok, %Finch.Response{status: 200, body: response_body}} ->
+      # /llm/run-feedback returns 202 Accepted (async background task)
+      {:ok, %Finch.Response{status: status, body: response_body}} when status in [200, 202] ->
         case Jason.decode(response_body) do
           {:ok, %{"improvements" => improvements}} ->
             count = length(improvements)

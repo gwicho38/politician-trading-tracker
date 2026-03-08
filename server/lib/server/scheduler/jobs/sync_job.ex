@@ -27,8 +27,9 @@ defmodule Server.Scheduler.Jobs.SyncJob do
   def run do
     Logger.info("[SyncJob] Starting scheduled sync (quick mode)")
 
-    # Use quick mode for faster execution (skips politician-parties update)
-    case Server.SupabaseClient.invoke("scheduled-sync", query: %{mode: "quick"}, timeout: 60_000) do
+    # Use quick mode for faster execution (skips politician-parties update).
+    # Function takes ~30s normally; allow 120s for cold starts and DB load spikes.
+    case Server.SupabaseClient.invoke("scheduled-sync", query: %{mode: "quick"}, timeout: 120_000) do
       {:ok, response} ->
         Logger.info("[SyncJob] Scheduled sync completed: #{inspect(response)}")
         :ok

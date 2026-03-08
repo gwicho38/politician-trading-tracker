@@ -57,7 +57,8 @@ defmodule Server.Scheduler.Jobs.LLMValidationJob do
       )
 
     case Finch.request(request, Server.Finch, receive_timeout: 300_000) do
-      {:ok, %Finch.Response{status: 200, body: response_body}} ->
+      # /llm/validate-batch returns 202 Accepted (async background task)
+      {:ok, %Finch.Response{status: status, body: response_body}} when status in [200, 202] ->
         case Jason.decode(response_body) do
           {:ok, %{"validated" => validated, "flagged" => flagged}} ->
             Logger.info(

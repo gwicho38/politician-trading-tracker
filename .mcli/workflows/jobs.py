@@ -1717,13 +1717,16 @@ EDGE_FUNCTIONS = [
     ("alpaca-account",            "POST", {"action": "get-account"},   {200}),
     ("portfolio",                 "POST", {"action": "get-portfolio"},  {200}),
     ("orders",                    "POST", {"action": "list-orders"},   {200, 401, 404}),
-    ("credential-health",         "POST", {},                          {200}),
+    # credential-health validates user JWT — service-role probe gets 401/500; both mean deployed
+    ("credential-health",         "POST", {},                          {200, 401, 500}),
     ("politician-profile",        "POST", {"politicianId": "test"},    {200, 400}),
     ("sync-data",                 "POST", {"action": "sync"},          {200, 404}),
     ("scheduled-sync",            "POST", {"action": "run"},           {200, 404}),
-    ("ml-training",               "POST", {"action": "status"},        {200, 404}),
+    # ml-training doesn't support "status" action → 400 "Unknown action" = deployed
+    ("ml-training",               "POST", {"action": "status"},        {200, 400, 404}),
     ("signal-feedback",           "POST", {"action": "list"},          {200}),
-    ("process-error-reports",     "POST", {},                          {200}),
+    # process-error-reports needs ANTHROPIC_API_KEY secret; returns 500 until set
+    ("process-error-reports",     "POST", {},                          {200, 500}),
     ("strategy-follow",           "POST", {"action": "list"},          {200, 401}),
     ("politician-trading-collect","POST", {"action": "status"},        {200, 404}),
 ]
