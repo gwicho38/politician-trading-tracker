@@ -48,6 +48,25 @@ function passesQualityGate(signal: any): boolean {
   return passes
 }
 
+/**
+ * Fetch the active challenger model (status = 'challenger').
+ * Returns null if no challenger exists. Used for shadow scoring.
+ */
+async function getChallengerModel(supabase: any): Promise<{ id: string; model_name: string; model_version: string } | null> {
+  try {
+    const { data } = await supabase
+      .from('ml_models')
+      .select('id, model_name, model_version')
+      .eq('status', 'challenger')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+    return data || null
+  } catch {
+    return null
+  }
+}
+
 // TODO: Review queueSignalsForReferencePortfolio - queues high-confidence signals for automated portfolio
 // - Filters signals meeting min confidence threshold (0.70)
 // - Upserts to reference_portfolio_signal_queue table for background processing
@@ -786,9 +805,23 @@ async function handleGenerateSignals(supabaseClient: any, req: Request, requestI
       reproducibility_hash: computeReproducibilityHash(signal.features, modelId),
     }))
 
+    // Fetch challenger model for shadow scoring (returns null if none active)
+    const challengerModel = await getChallengerModel(supabaseClient)
+
+    // Attach challenger scoring to each signal
+    const signalsWithShadow = signalsToInsert.map((signal: any) => ({
+      ...signal,
+      challenger_model_id: challengerModel?.id ?? null,
+      // Challenger uses 95% of production confidence as placeholder until
+      // the Python ETL serves independent challenger predictions
+      challenger_confidence_score: challengerModel != null
+        ? parseFloat((signal.confidence_score * 0.95).toFixed(4))
+        : null,
+    }))
+
     const { data: insertedSignals, error: insertError } = await supabaseClient
       .from('trading_signals')
-      .insert(signalsToInsert)
+      .insert(signalsWithShadow)
       .select()
 
     if (insertError) {
@@ -1465,10 +1498,24 @@ async function handleRegenerateSignals(supabaseClient: any, req: Request, reques
       reproducibility_hash: computeReproducibilityHash(signal.features, modelId),
     }))
 
+    // Fetch challenger model for shadow scoring (returns null if none active)
+    const challengerModel = await getChallengerModel(supabaseClient)
+
+    // Attach challenger scoring to each signal
+    const signalsWithShadow = signalsWithLineage.map((signal: any) => ({
+      ...signal,
+      challenger_model_id: challengerModel?.id ?? null,
+      // Challenger uses 95% of production confidence as placeholder until
+      // the Python ETL serves independent challenger predictions
+      challenger_confidence_score: challengerModel != null
+        ? parseFloat((signal.confidence_score * 0.95).toFixed(4))
+        : null,
+    }))
+
     // Insert signals into database (no user_id for service-level)
     const { data: insertedSignals, error: insertError } = await supabaseClient
       .from('trading_signals')
-      .insert(signalsWithLineage)
+      .insert(signalsWithShadow)
       .select()
 
     if (insertError) {

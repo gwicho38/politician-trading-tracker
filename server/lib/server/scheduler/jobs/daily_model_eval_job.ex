@@ -77,6 +77,9 @@ defmodule Server.Scheduler.Jobs.DailyModelEvalJob do
             :ok
         end
 
+        # Check challenger model promotion regardless of retrain outcome
+        check_challenger_promotion()
+
         {:ok, 1}
 
       {:ok, %{"success" => true, "message" => message}} ->
@@ -110,6 +113,30 @@ defmodule Server.Scheduler.Jobs.DailyModelEvalJob do
       action: "evaluate-model",
       schedule_note: "Runs daily at 23:30 UTC (after outcomes are recorded at 23:00)"
     }
+  end
+
+  defp check_challenger_promotion do
+    Logger.info("[DailyModelEvalJob] Checking challenger model promotion eligibility")
+
+    case Server.SupabaseClient.invoke("signal-feedback",
+           body: %{"action" => "check-challenger-promotion"},
+           timeout: 30_000
+         ) do
+      {:ok, %{"success" => true, "promoted" => true, "model_id" => model_id}} ->
+        Logger.info("[DailyModelEvalJob] Challenger promoted: #{model_id}")
+
+      {:ok, %{"success" => true, "promoted" => false}} ->
+        Logger.info("[DailyModelEvalJob] No challenger promotion needed")
+
+      {:ok, %{"success" => true, "message" => msg}} ->
+        Logger.info("[DailyModelEvalJob] Challenger check: #{msg}")
+
+      {:ok, unexpected} ->
+        Logger.warning("[DailyModelEvalJob] Challenger check unexpected: #{inspect(unexpected)}")
+
+      {:error, reason} ->
+        Logger.error("[DailyModelEvalJob] Challenger check failed: #{inspect(reason)}")
+    end
   end
 
   defp trigger_emergency_retrain do
