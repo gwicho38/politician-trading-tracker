@@ -13,9 +13,10 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 interface DashboardProps {
   initialTickerSearch?: string;
   onTickerSearchClear?: () => void;
+  initialJurisdiction?: string;
 }
 
-const Dashboard = ({ initialTickerSearch, onTickerSearchClear }: DashboardProps) => {
+const Dashboard = ({ initialTickerSearch, onTickerSearchClear, initialJurisdiction }: DashboardProps) => {
   const { data: stats, isLoading } = useDashboardStats();
   const { data: chartData } = useChartData('all');
 
@@ -112,6 +113,7 @@ const Dashboard = ({ initialTickerSearch, onTickerSearchClear }: DashboardProps)
         <LandingTradesTable
           initialSearchQuery={initialTickerSearch}
           onSearchClear={onTickerSearchClear}
+          initialJurisdiction={initialJurisdiction}
         />
       </ErrorBoundary>
 

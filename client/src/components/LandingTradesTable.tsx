@@ -91,9 +91,10 @@ const SORTABLE_COLUMNS: SortableColumn[] = [
 interface LandingTradesTableProps {
   initialSearchQuery?: string;
   onSearchClear?: () => void;
+  initialJurisdiction?: string;
 }
 
-const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTradesTableProps = {}) => {
+const LandingTradesTable = ({ initialSearchQuery, onSearchClear, initialJurisdiction }: LandingTradesTableProps = {}) => {
   // Dynamic party data
   const { data: parties = [] } = useParties();
   const partyMap = useMemo(() => buildPartyMap(parties), [parties]);
@@ -111,7 +112,7 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear }: LandingTrades
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [transactionType, setTransactionType] = useState('');
   const [party, setParty] = useState('');
-  const [jurisdiction, setJurisdiction] = useState('');
+  const [jurisdiction, setJurisdiction] = useState(initialJurisdiction ?? '');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 

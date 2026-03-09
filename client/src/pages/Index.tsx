@@ -55,6 +55,18 @@ const Index = () => {
             <FilingsView />
           </ErrorBoundary>
         );
+      case 'us':
+        return (
+          <ErrorBoundary name="US Trades" resetKeys={[activeSection]}>
+            <Dashboard initialJurisdiction="us" />
+          </ErrorBoundary>
+        );
+      case 'eu':
+        return (
+          <ErrorBoundary name="EU Trades" resetKeys={[activeSection]}>
+            <Dashboard initialJurisdiction="eu" />
+          </ErrorBoundary>
+        );
       default:
         return (
           <ErrorBoundary name="Dashboard" resetKeys={[activeSection]}>

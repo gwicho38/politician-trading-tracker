@@ -8,9 +8,10 @@ import {
   ChevronRight,
   Sliders,
   Sparkles,
-  Wallet,
   Activity,
   MessageSquare,
+  Flag,
+  Globe,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -25,11 +26,12 @@ const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard, view: null },
   { path: '/?view=politicians', label: 'Politicians', icon: Users, view: 'politicians' },
   { path: '/?view=filings', label: 'Filings', icon: FileText, view: 'filings' },
+  { path: '/?view=us', label: 'United States', icon: Flag, view: 'us' },
+  { path: '/?view=eu', label: 'Europe', icon: Globe, view: 'eu' },
 ];
 
 // Standalone pages with their own routes
 const standalonePages = [
-  { path: '/trading', label: 'Trading', icon: Wallet, ownerOnly: false },
   { path: '/reference-portfolio', label: 'Reference Strategy', icon: Activity, ownerOnly: true },
   { path: '/playground', label: 'Signal Playground', icon: Sliders, ownerOnly: true },
   { path: '/showcase', label: 'Strategy Showcase', icon: Sparkles, ownerOnly: true },
