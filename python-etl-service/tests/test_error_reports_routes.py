@@ -987,7 +987,7 @@ class TestRequestModels:
         from app.routes.error_reports import ProcessRequest
         request = ProcessRequest()
         assert request.limit == 10
-        assert request.model == "llama3.1:8b"
+        assert request.model == "qwen3:8b"
         assert request.dry_run is False
 
     def test_process_one_request_defaults(self):
@@ -995,7 +995,7 @@ class TestRequestModels:
         from app.routes.error_reports import ProcessOneRequest
         request = ProcessOneRequest(report_id="test-id")
         assert request.report_id == "test-id"
-        assert request.model == "llama3.1:8b"
+        assert request.model == "qwen3:8b"
         assert request.dry_run is False
 
     def test_force_apply_request_structure(self):
@@ -1016,7 +1016,7 @@ class TestRequestModels:
         from app.routes.error_reports import ReanalyzeRequest
         request = ReanalyzeRequest(report_id="test-id")
         assert request.report_id == "test-id"
-        assert request.model == "llama3.1:8b"
+        assert request.model == "qwen3:8b"
         assert request.confidence_threshold == 0.5
         assert request.dry_run is False
 
@@ -1025,4 +1025,4 @@ class TestRequestModels:
         from app.routes.error_reports import GenerateSuggestionRequest
         request = GenerateSuggestionRequest(report_id="test-id")
         assert request.report_id == "test-id"
-        assert request.model == "llama3.1:8b"
+        assert request.model == "qwen3:8b"

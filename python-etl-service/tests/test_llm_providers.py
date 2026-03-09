@@ -174,7 +174,7 @@ class TestBuildProviderChain:
         """Each provider should carry its correct default model."""
         chain = build_provider_chain()
         model_map = {p.name: p.default_model for p in chain}
-        assert model_map["ollama"] == "llama3.1:8b"
+        assert model_map["ollama"] == "qwen3:8b"
         assert model_map["xai"] == "grok-3-mini-fast"
 
     @patch.dict(
