@@ -876,6 +876,132 @@ class TrainingJob:
             logger.error(f"[{self.job_id}] Training failed: {e}")
 
 
+# ── Signal quality features ───────────────────────────────────────────────────
+# Market cap decile breakpoints (USD)
+_MARKET_CAP_BREAKPOINTS = [
+    100_000_000,     # < $100M → decile 1
+    300_000_000,
+    500_000_000,
+    1_000_000_000,
+    2_000_000_000,
+    5_000_000_000,
+    10_000_000_000,
+    50_000_000_000,
+    200_000_000_000,
+]  # > $200B → decile 10
+
+
+def compute_clustering_count(
+    ticker: str,
+    signal_date: str,
+    disclosures: list,
+    window_days: int = 30,
+) -> int:
+    """Count distinct politicians who bought `ticker` within `window_days` before `signal_date`."""
+    sig_dt = datetime.fromisoformat(signal_date.replace("Z", "+00:00")).replace(tzinfo=None)
+    cutoff = sig_dt - timedelta(days=window_days)
+    seen: set = set()
+    for d in disclosures:
+        if d.get("transaction_type", "").lower() not in ("purchase", "buy"):
+            continue
+        try:
+            txn_dt = datetime.fromisoformat(
+                d["transaction_date"].replace("Z", "+00:00")
+            ).replace(tzinfo=None)
+        except (KeyError, ValueError, TypeError):
+            continue
+        if cutoff <= txn_dt <= sig_dt:
+            seen.add(d.get("politician_id"))
+    return len(seen)
+
+
+def compute_committee_sector_alignment(
+    politician_gics_sectors: list,
+    stock_gics_sector: str,
+) -> int:
+    """Return 1 if stock's GICS sector overlaps with politician's committee sectors, else 0."""
+    if not politician_gics_sectors or not stock_gics_sector:
+        return 0
+    return int(stock_gics_sector in politician_gics_sectors)
+
+
+def compute_disclosure_recency_days(
+    transaction_date: Optional[str],
+    disclosure_date: str,
+) -> int:
+    """Days between trade execution and public disclosure. 999 if transaction_date is missing."""
+    if not transaction_date:
+        return 999
+    try:
+        t = datetime.fromisoformat(transaction_date.replace("Z", "+00:00")).replace(tzinfo=None)
+        d = datetime.fromisoformat(disclosure_date.replace("Z", "+00:00")).replace(tzinfo=None)
+        return max(0, (d - t).days)
+    except (ValueError, AttributeError):
+        return 999
+
+
+def compute_days_to_earnings(ticker: str, signal_date: str) -> Optional[int]:
+    """Days until next earnings release for `ticker`. Returns None if unavailable."""
+    try:
+        import yfinance as yf
+        sig_dt = datetime.fromisoformat(signal_date.replace("Z", "+00:00")).replace(tzinfo=None)
+        stock = yf.Ticker(ticker)
+        cal = stock.calendar
+        if cal is not None and "Earnings Date" in cal:
+            earnings_dt = pd.to_datetime(cal["Earnings Date"]).to_pydatetime()
+            if hasattr(earnings_dt, "__iter__"):
+                earnings_dt = list(earnings_dt)[0]
+            earnings_dt = earnings_dt.replace(tzinfo=None)
+            if earnings_dt >= sig_dt:
+                return (earnings_dt - sig_dt).days
+    except Exception:
+        pass
+    return None
+
+
+def compute_market_cap_decile(market_cap: Optional[float]) -> int:
+    """Map market cap (USD) to a 1–10 decile bucket."""
+    if not market_cap or market_cap <= 0:
+        return 1
+    for i, bp in enumerate(_MARKET_CAP_BREAKPOINTS, start=1):
+        if market_cap < bp:
+            return i
+    return 10
+
+
+def _parse_dt(s: str) -> Optional[datetime]:
+    """Parse ISO date string to naive datetime, return None on failure."""
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).replace(tzinfo=None)
+    except (ValueError, AttributeError):
+        return None
+
+
+def compute_politician_trailing_score(
+    politician_id: str,
+    outcomes: list,
+    window_days: int = 90,
+    reference_date: Optional[str] = None,
+) -> Optional[float]:
+    """Win rate for this politician over the trailing window. None if fewer than 5 outcomes."""
+    ref_dt = (
+        datetime.fromisoformat(reference_date.replace("Z", "+00:00")).replace(tzinfo=None)
+        if reference_date
+        else datetime.utcnow()
+    )
+    cutoff = ref_dt - timedelta(days=window_days)
+    relevant = [
+        o for o in outcomes
+        if o.get("politician_id") == politician_id
+        and _parse_dt(o.get("signal_date", "")) is not None
+        and cutoff <= _parse_dt(o.get("signal_date", "")) <= ref_dt  # type: ignore[operator]
+    ]
+    if len(relevant) < 5:
+        return None
+    wins = sum(1 for o in relevant if o.get("outcome") == "win")
+    return wins / len(relevant)
+
+
 # Global job registry
 _training_jobs: Dict[str, TrainingJob] = {}
 

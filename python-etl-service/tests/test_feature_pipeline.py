@@ -2190,3 +2190,122 @@ class TestTrainingJobRunOutcomeWiring:
                     # Verify sample_weights is None
                     call_kwargs = mock_model.train.call_args
                     assert call_kwargs.kwargs.get('sample_weights') is None
+
+
+# ── New signal quality feature tests ─────────────────────────────────────────
+
+from app.services.feature_pipeline import (
+    compute_clustering_count,
+    compute_committee_sector_alignment,
+    compute_disclosure_recency_days,
+    compute_days_to_earnings,
+    compute_market_cap_decile,
+    compute_politician_trailing_score,
+)
+
+
+class TestClusteringCount:
+    def test_counts_distinct_politicians_in_window(self):
+        disclosures = [
+            {"politician_id": "p1", "transaction_date": "2026-01-05", "transaction_type": "purchase"},
+            {"politician_id": "p2", "transaction_date": "2026-01-10", "transaction_type": "purchase"},
+            {"politician_id": "p3", "transaction_date": "2025-12-01", "transaction_type": "purchase"},  # outside 30d
+        ]
+        count = compute_clustering_count(
+            ticker="AAPL",
+            signal_date="2026-01-15",
+            disclosures=disclosures,
+            window_days=30,
+        )
+        assert count == 2  # p1 and p2 within 30 days
+
+    def test_excludes_sales(self):
+        disclosures = [
+            {"politician_id": "p1", "transaction_date": "2026-01-05", "transaction_type": "sale"},
+        ]
+        count = compute_clustering_count("AAPL", "2026-01-15", disclosures, 30)
+        assert count == 0
+
+
+class TestCommitteeSectorAlignment:
+    def test_aligned_committee(self):
+        politician_gics = ["Financials", "Health Care"]
+        stock_sector = "Financials"
+        score = compute_committee_sector_alignment(politician_gics, stock_sector)
+        assert score == 1
+
+    def test_no_alignment(self):
+        politician_gics = ["Energy"]
+        stock_sector = "Information Technology"
+        score = compute_committee_sector_alignment(politician_gics, stock_sector)
+        assert score == 0
+
+    def test_empty_committees_returns_zero(self):
+        assert compute_committee_sector_alignment([], "Financials") == 0
+
+
+class TestDisclosureRecencyDays:
+    def test_same_day_is_zero(self):
+        assert compute_disclosure_recency_days("2026-01-01", "2026-01-01") == 0
+
+    def test_30_day_delay(self):
+        assert compute_disclosure_recency_days("2026-01-01", "2026-01-31") == 30
+
+    def test_null_transaction_date_returns_max(self):
+        assert compute_disclosure_recency_days(None, "2026-01-31") == 999
+
+
+class TestDaysToEarnings:
+    def test_returns_int_or_none(self):
+        result = compute_days_to_earnings("AAPL", "2026-01-01")
+        assert result is None or isinstance(result, int)
+
+
+class TestMarketCapDecile:
+    def test_returns_1_to_10(self):
+        result = compute_market_cap_decile(1_000_000_000)  # $1B
+        assert 1 <= result <= 10
+
+    def test_mega_cap_is_10(self):
+        result = compute_market_cap_decile(3_000_000_000_000)  # $3T
+        assert result == 10
+
+    def test_micro_cap_is_1(self):
+        result = compute_market_cap_decile(50_000_000)  # $50M
+        assert result == 1
+
+
+class TestPoliticianTrailingScore:
+    def test_empty_outcomes_returns_none(self):
+        result = compute_politician_trailing_score("p1", [])
+        assert result is None
+
+    def test_all_wins(self):
+        outcomes = [
+            {"politician_id": "p1", "outcome": "win", "signal_date": "2025-10-01"},
+            {"politician_id": "p1", "outcome": "win", "signal_date": "2025-11-01"},
+            {"politician_id": "p1", "outcome": "win", "signal_date": "2025-09-01"},
+            {"politician_id": "p1", "outcome": "win", "signal_date": "2025-08-01"},
+            {"politician_id": "p1", "outcome": "win", "signal_date": "2025-07-01"},
+        ]
+        result = compute_politician_trailing_score("p1", outcomes, window_days=365)
+        assert result == pytest.approx(1.0)
+
+    def test_mixed_outcomes(self):
+        outcomes = [
+            {"politician_id": "p1", "outcome": "win",  "signal_date": "2025-10-01"},
+            {"politician_id": "p1", "outcome": "win",  "signal_date": "2025-09-01"},
+            {"politician_id": "p1", "outcome": "loss", "signal_date": "2025-11-01"},
+            {"politician_id": "p1", "outcome": "loss", "signal_date": "2025-08-01"},
+            {"politician_id": "p1", "outcome": "win",  "signal_date": "2025-07-01"},
+        ]
+        result = compute_politician_trailing_score("p1", outcomes, window_days=365)
+        assert result == pytest.approx(0.6)
+
+    def test_fewer_than_5_outcomes_returns_none(self):
+        outcomes = [
+            {"politician_id": "p1", "outcome": "win", "signal_date": "2025-10-01"},
+            {"politician_id": "p1", "outcome": "win", "signal_date": "2025-11-01"},
+        ]
+        result = compute_politician_trailing_score("p1", outcomes, window_days=365)
+        assert result is None
