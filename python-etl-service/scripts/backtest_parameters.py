@@ -68,9 +68,7 @@ def compute_atr(ohlc: pd.DataFrame, period: int = 20) -> Optional[float]:
         tr_list.append(max(hl, hpc, lpc))
 
     tr = np.array(tr_list)
-    # Use the last `period` true-range values (simple average for first ATR, then EMA)
-    if len(tr) < period:
-        return None
+    # Use the last `period` true-range values (simple moving average / SMA)
     return float(np.mean(tr[-period:]))
 
 
@@ -167,11 +165,20 @@ def simulate_position_new_params(
         dict with keys:
             exit_price (float)
             exit_reason (str): 'atr_stop' | 'trailing_stop' | 'time_exit'
-            holding_days (int): number of days held (1-based index of exit bar)
+            holding_days (int): 0-based index of the exit bar (0 means exited on the first day simulated)
             return_pct (float): (exit_price - entry_price) / entry_price
     """
     highest_price = entry_price
     trailing_armed = False  # becomes True once price > entry * 1.05
+
+    if not price_series:
+        return {
+            "exit_price": entry_price,
+            "exit_reason": "time_exit",
+            "holding_days": 0,
+            "return_pct": 0.0,
+            "highest_price": entry_price,
+        }
 
     days_to_simulate = min(len(price_series), max_days)
 

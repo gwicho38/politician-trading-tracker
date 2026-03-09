@@ -272,3 +272,14 @@ class TestSimulatePositionNewParams:
             trailing_pct=0.05,
         )
         assert result["exit_reason"] == "atr_stop"
+
+    def test_empty_price_series_returns_without_crash(self):
+        result = simulate_position_new_params(
+            entry_price=100.0,
+            atr_stop=95.0,
+            price_series=[],
+        )
+        assert result["exit_reason"] == "time_exit"
+        assert result["holding_days"] == 0
+        assert result["return_pct"] == 0.0
+        assert result["exit_price"] == 100.0
