@@ -993,8 +993,8 @@ def compute_politician_trailing_score(
     relevant = [
         o for o in outcomes
         if o.get("politician_id") == politician_id
-        and _parse_dt(o.get("signal_date", "")) is not None
-        and cutoff <= _parse_dt(o.get("signal_date", "")) <= ref_dt  # type: ignore[operator]
+        and (sig_dt := _parse_dt(o.get("signal_date", ""))) is not None
+        and cutoff <= sig_dt <= ref_dt
     ]
     if len(relevant) < 5:
         return None
