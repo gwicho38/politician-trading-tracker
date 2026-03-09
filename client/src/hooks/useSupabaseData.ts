@@ -498,40 +498,54 @@ export const useJurisdictionStats = (jurisdiction?: string) => {
       const roles = JURISDICTION_ROLES[jurisdiction!] || [];
       if (roles.length === 0) return null;
 
-      // Get politician IDs for this jurisdiction
+      // Fetch politician IDs + count (paginate up to 2000 to capture all)
       const { data: politicians, count: politicianCount } = await supabase
         .from('politicians')
         .select('id', { count: 'exact' })
-        .in('role', roles);
+        .in('role', roles)
+        .limit(2000);
 
       const ids = (politicians || []).map((p: { id: string }) => p.id);
       if (ids.length === 0) return null;
 
-      // Run trade count and recent filings queries in parallel
+      // PostgREST encodes IN filters in the URL; ~150 UUIDs is the safe limit
+      // before hitting server URL length caps. Chunk and sum in parallel.
+      const BATCH = 150;
+      const batches: string[][] = [];
+      for (let i = 0; i < ids.length; i += BATCH) batches.push(ids.slice(i, i + BATCH));
+
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
 
-      const [{ count: tradeCount }, { count: recentCount }] = await Promise.all([
-        supabase
-          .from('trading_disclosures')
-          .select('*', { count: 'exact', head: true })
-          .in('politician_id', ids)
-          .or('amount_range_min.not.is.null,amount_range_max.not.is.null'),
-        supabase
-          .from('trading_disclosures')
-          .select('*', { count: 'exact', head: true })
-          .in('politician_id', ids)
-          .gte('disclosure_date', sevenDaysAgoStr)
-          .or('amount_range_min.not.is.null,amount_range_max.not.is.null'),
+      const amountFilter = 'amount_range_min.not.is.null,amount_range_max.not.is.null';
+
+      const [tradeCounts, recentCounts] = await Promise.all([
+        Promise.all(batches.map(batch =>
+          supabase
+            .from('trading_disclosures')
+            .select('*', { count: 'exact', head: true })
+            .in('politician_id', batch)
+            .or(amountFilter)
+            .then(({ count }) => count ?? 0)
+        )),
+        Promise.all(batches.map(batch =>
+          supabase
+            .from('trading_disclosures')
+            .select('*', { count: 'exact', head: true })
+            .in('politician_id', batch)
+            .gte('disclosure_date', sevenDaysAgoStr)
+            .or(amountFilter)
+            .then(({ count }) => count ?? 0)
+        )),
       ]);
 
       return {
-        total_trades: tradeCount ?? 0,
-        total_volume: null as number | null, // Not computed (expensive full scan)
+        total_trades: tradeCounts.reduce((s, c) => s + c, 0),
+        total_volume: null as number | null,
         active_politicians: politicianCount ?? 0,
         average_trade_size: 0,
-        recent_filings: recentCount ?? 0,
+        recent_filings: recentCounts.reduce((s, c) => s + c, 0),
       };
     },
     staleTime: 5 * 60 * 1000,

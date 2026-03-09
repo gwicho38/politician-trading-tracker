@@ -94,8 +94,8 @@ const Dashboard = ({ initialTickerSearch, onTickerSearchClear, initialJurisdicti
         )}
       </div>
 
-      {/* Transaction Type Summary */}
-      {transactionTotals.buys > 0 || transactionTotals.sells > 0 ? (
+      {/* Transaction Type Summary — hidden on jurisdiction views (chart data is global) */}
+      {!initialJurisdiction && (transactionTotals.buys > 0 || transactionTotals.sells > 0) ? (
         <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
           <span className="text-xs sm:text-sm text-muted-foreground">Transaction breakdown:</span>
           <Badge variant="outline" className="gap-1.5 bg-success/10 text-success border-success/30">
