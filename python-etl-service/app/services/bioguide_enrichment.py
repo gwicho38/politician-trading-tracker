@@ -501,6 +501,15 @@ async def run_bioguide_enrichment(
             f"{failed} failed, {final_unmatched} unmatched"
         )
 
+        # Trigger committee enrichment now that bioguide_ids are populated
+        try:
+            from app.services.committee_enrichment import run_committee_enrichment
+            logger.info("[BioguideEnrichment] Starting committee enrichment (post-bioguide)")
+            run_committee_enrichment()
+            logger.info("[BioguideEnrichment] Committee enrichment complete")
+        except Exception as exc:
+            logger.warning(f"[BioguideEnrichment] Committee enrichment failed (non-fatal): {exc}")
+
     except Exception as e:
         logger.exception(f"[BioguideEnrichment] Failed: {e}")
         JOB_STATUS[job_id]["status"] = "failed"

@@ -5,7 +5,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 import httpx
@@ -30,6 +30,7 @@ from app.services.senate_etl import (
 from app.services.ticker_backfill import run_ticker_backfill, run_transaction_type_backfill
 from app.services.bioguide_enrichment import run_bioguide_enrichment
 from app.services.senate_backfill import run_senate_backfill
+from app.middleware.auth import require_api_key
 
 # New framework imports
 from app.lib import ETLRegistry
@@ -374,6 +375,7 @@ async def trigger_bioguide_enrichment(
 async def trigger_committee_enrichment(
     request: BackfillRequest,
     background_tasks: BackgroundTasks,
+    _api_key: str = Depends(require_api_key),
 ):
     """
     Trigger committee assignment enrichment from Congress.gov API.
