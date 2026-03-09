@@ -136,6 +136,9 @@ defmodule Server.Scheduler.Jobs.DailyModelEvalJob do
 
       {:error, reason} ->
         Logger.error("[DailyModelEvalJob] Emergency retrain request failed: #{inspect(reason)}")
+
+      {:ok, unexpected} ->
+        Logger.warning("[DailyModelEvalJob] Emergency retrain unexpected response: #{inspect(unexpected)}")
     end
   end
 end

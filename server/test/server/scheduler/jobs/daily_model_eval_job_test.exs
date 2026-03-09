@@ -24,6 +24,14 @@ defmodule Server.Scheduler.Jobs.DailyModelEvalJobTest do
       assert DailyModelEvalJob.needs_retrain?(perf) == true
     end
 
+    test "win_rate = 0.03 triggers regardless of sharpe (needs_retrain? is sharpe-agnostic)" do
+      # needs_retrain? only checks win_rate; the cond in run/0 handles the sharpe guard separately
+      perf_good_sharpe = %{"win_rate" => 0.03, "sharpe_ratio" => 1.5}
+      perf_bad_sharpe  = %{"win_rate" => 0.03, "sharpe_ratio" => -2.0}
+      assert DailyModelEvalJob.needs_retrain?(perf_good_sharpe) == true
+      assert DailyModelEvalJob.needs_retrain?(perf_bad_sharpe)  == true
+    end
+
     test "nil win_rate does not crash, returns false" do
       perf = %{"win_rate" => nil, "sharpe_ratio" => nil}
       assert DailyModelEvalJob.needs_retrain?(perf) == false
