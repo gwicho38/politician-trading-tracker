@@ -416,3 +416,113 @@ Deno.test("extractSignalFeatures() - single party", () => {
 
   assertEquals(result.bipartisan, false);
 });
+
+// Quality gate filtering
+interface QualityGateSignal {
+  ticker: string;
+  features?: {
+    clustering_count?: number;
+    committee_sector_alignment?: number;
+    disclosure_recency_days?: number;
+  };
+  generation_context?: {
+    clustering_count?: number;
+    committee_sector_alignment?: number;
+    disclosure_recency_days?: number;
+  };
+}
+
+function passesQualityGate(signal: QualityGateSignal): boolean {
+  const features = signal.features || signal.generation_context || {}
+
+  const hasFeatures = (
+    features.clustering_count !== undefined ||
+    features.committee_sector_alignment !== undefined ||
+    features.disclosure_recency_days !== undefined
+  )
+  if (!hasFeatures) return true
+
+  const clusteringCount  = features.clustering_count ?? 0
+  const committeeAligned = features.committee_sector_alignment ?? 0
+  const recencyDays      = features.disclosure_recency_days ?? 999
+
+  return (
+    clusteringCount >= 2 ||
+    committeeAligned === 1 ||
+    recencyDays <= 10
+  )
+}
+
+Deno.test("passesQualityGate() - passes with clustering_count >= 2", () => {
+  const signal: QualityGateSignal = {
+    ticker: 'AAPL',
+    features: { clustering_count: 2, committee_sector_alignment: 0, disclosure_recency_days: 50 },
+  };
+  assertEquals(passesQualityGate(signal), true);
+});
+
+Deno.test("passesQualityGate() - passes with committee_sector_alignment = 1", () => {
+  const signal: QualityGateSignal = {
+    ticker: 'MSFT',
+    features: { clustering_count: 1, committee_sector_alignment: 1, disclosure_recency_days: 50 },
+  };
+  assertEquals(passesQualityGate(signal), true);
+});
+
+Deno.test("passesQualityGate() - passes with disclosure_recency_days <= 10", () => {
+  const signal: QualityGateSignal = {
+    ticker: 'TSLA',
+    features: { clustering_count: 1, committee_sector_alignment: 0, disclosure_recency_days: 5 },
+  };
+  assertEquals(passesQualityGate(signal), true);
+});
+
+Deno.test("passesQualityGate() - passes with no features (rollout pass-through)", () => {
+  const signal: QualityGateSignal = { ticker: 'AMZN' };
+  assertEquals(passesQualityGate(signal), true);
+});
+
+Deno.test("passesQualityGate() - passes with empty features object (rollout pass-through)", () => {
+  const signal: QualityGateSignal = { ticker: 'GOOGL', features: {} };
+  assertEquals(passesQualityGate(signal), true);
+});
+
+Deno.test("passesQualityGate() - filtered when all criteria fail", () => {
+  const signal: QualityGateSignal = {
+    ticker: 'XYZ',
+    features: { clustering_count: 1, committee_sector_alignment: 0, disclosure_recency_days: 50 },
+  };
+  assertEquals(passesQualityGate(signal), false);
+});
+
+Deno.test("passesQualityGate() - passes with clustering exactly 2", () => {
+  const signal: QualityGateSignal = {
+    ticker: 'NVDA',
+    features: { clustering_count: 2, committee_sector_alignment: 0, disclosure_recency_days: 999 },
+  };
+  assertEquals(passesQualityGate(signal), true);
+});
+
+Deno.test("passesQualityGate() - passes with recency exactly 10", () => {
+  const signal: QualityGateSignal = {
+    ticker: 'META',
+    features: { clustering_count: 0, committee_sector_alignment: 0, disclosure_recency_days: 10 },
+  };
+  assertEquals(passesQualityGate(signal), true);
+});
+
+Deno.test("passesQualityGate() - filtered when recency is 11 and other criteria fail", () => {
+  const signal: QualityGateSignal = {
+    ticker: 'INTC',
+    features: { clustering_count: 0, committee_sector_alignment: 0, disclosure_recency_days: 11 },
+  };
+  assertEquals(passesQualityGate(signal), false);
+});
+
+Deno.test("passesQualityGate() - uses generation_context fallback when features absent", () => {
+  const signal: QualityGateSignal = {
+    ticker: 'WMT',
+    generation_context: { clustering_count: 3, committee_sector_alignment: 0, disclosure_recency_days: 30 },
+  };
+  assertEquals(passesQualityGate(signal), true);
+});

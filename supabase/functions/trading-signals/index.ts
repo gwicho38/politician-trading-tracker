@@ -6,15 +6,72 @@ import { corsHeaders } from '../_shared/cors.ts'
 const REFERENCE_PORTFOLIO_MIN_CONFIDENCE = 0.75
 const REFERENCE_PORTFOLIO_SIGNAL_TYPES = ['buy', 'strong_buy', 'sell', 'strong_sell']
 
+/**
+ * Pre-filter gate: only queue signals with documented post-STOCK-Act alpha.
+ * Research shows rank-and-file, stale, isolated disclosures have near-zero alpha.
+ * A signal passes if it meets at least one quality criterion.
+ * Signals with no features populated pass through unconditionally during initial
+ * rollout while the feature pipeline is being backfilled.
+ */
+function passesQualityGate(signal: any): boolean {
+  const features = signal.features || signal.generation_context || {}
+
+  // If no features are populated, pass through to avoid blocking all signals
+  // during the initial rollout period while the feature pipeline is being populated.
+  const hasFeatures = (
+    features.clustering_count !== undefined ||
+    features.committee_sector_alignment !== undefined ||
+    features.disclosure_recency_days !== undefined
+  )
+  if (!hasFeatures) return true
+
+  const clusteringCount  = features.clustering_count ?? 0
+  const committeeAligned = features.committee_sector_alignment ?? 0
+  const recencyDays      = features.disclosure_recency_days ?? 999
+
+  const passes = (
+    clusteringCount >= 2 ||   // 2+ legislators bought same stock in trailing 30 days
+    committeeAligned === 1 ||  // legislator's committee covers this stock's GICS sector
+    recencyDays <= 10          // disclosure filed within 10 days of transaction
+  )
+
+  if (!passes) {
+    console.log(JSON.stringify({
+      level: 'INFO',
+      message: 'Signal filtered by quality gate',
+      ticker: signal.ticker,
+      clustering_count: clusteringCount,
+      committee_aligned: committeeAligned,
+      recency_days: recencyDays,
+    }))
+  }
+  return passes
+}
+
 // TODO: Review queueSignalsForReferencePortfolio - queues high-confidence signals for automated portfolio
 // - Filters signals meeting min confidence threshold (0.70)
 // - Upserts to reference_portfolio_signal_queue table for background processing
 async function queueSignalsForReferencePortfolio(supabaseClient: any, signals: any[], requestId: string) {
   if (!signals || signals.length === 0) return
 
+  // Apply research-backed quality gate before confidence threshold
+  // Signals missing feature data (no features JSONB) pass through to avoid false negatives
+  // during the initial rollout period while features are being backfilled.
+  const qualifiedSignals = signals.filter(passesQualityGate)
+
+  if (qualifiedSignals.length < signals.length) {
+    console.log(JSON.stringify({
+      level: 'INFO',
+      message: 'Quality gate filtered signals',
+      before: signals.length,
+      after: qualifiedSignals.length,
+      filtered_out: signals.length - qualifiedSignals.length,
+    }))
+  }
+
   // Filter signals that meet reference portfolio criteria
   // Use lower confidence threshold for sell signals to exit positions faster
-  const eligibleSignals = signals.filter(signal => {
+  const eligibleSignals = qualifiedSignals.filter(signal => {
     const isSellSignal = ['sell', 'strong_sell'].includes(signal.signal_type)
     const confidenceThreshold = isSellSignal 
       ? REFERENCE_PORTFOLIO_MIN_CONFIDENCE * 0.85  // 85% of buy threshold (0.60 if buy is 0.70)
