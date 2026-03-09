@@ -489,6 +489,55 @@ export const useDashboardStats = () => {
   });
 };
 
+// Fetch jurisdiction-specific dashboard stats (used by US/EU views)
+export const useJurisdictionStats = (jurisdiction?: string) => {
+  return useQuery({
+    queryKey: ['jurisdictionStats', jurisdiction],
+    enabled: !!jurisdiction,
+    queryFn: async () => {
+      const roles = JURISDICTION_ROLES[jurisdiction!] || [];
+      if (roles.length === 0) return null;
+
+      // Get politician IDs for this jurisdiction
+      const { data: politicians, count: politicianCount } = await supabase
+        .from('politicians')
+        .select('id', { count: 'exact' })
+        .in('role', roles);
+
+      const ids = (politicians || []).map((p: { id: string }) => p.id);
+      if (ids.length === 0) return null;
+
+      // Run trade count and recent filings queries in parallel
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+
+      const [{ count: tradeCount }, { count: recentCount }] = await Promise.all([
+        supabase
+          .from('trading_disclosures')
+          .select('*', { count: 'exact', head: true })
+          .in('politician_id', ids)
+          .or('amount_range_min.not.is.null,amount_range_max.not.is.null'),
+        supabase
+          .from('trading_disclosures')
+          .select('*', { count: 'exact', head: true })
+          .in('politician_id', ids)
+          .gte('disclosure_date', sevenDaysAgoStr)
+          .or('amount_range_min.not.is.null,amount_range_max.not.is.null'),
+      ]);
+
+      return {
+        total_trades: tradeCount ?? 0,
+        total_volume: null as number | null, // Not computed (expensive full scan)
+        active_politicians: politicianCount ?? 0,
+        average_trade_size: 0,
+        recent_filings: recentCount ?? 0,
+      };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
 // ============================================================================
 // Detail View Hooks
 // ============================================================================

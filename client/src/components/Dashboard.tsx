@@ -5,7 +5,7 @@ import VolumeChart from '@/components/VolumeChart';
 import TopTraders from '@/components/TopTraders';
 import TopTickers from '@/components/TopTickers';
 import LandingTradesTable from '@/components/LandingTradesTable';
-import { useDashboardStats, useChartData } from '@/hooks/useSupabaseData';
+import { useDashboardStats, useJurisdictionStats, useChartData } from '@/hooks/useSupabaseData';
 import { formatCurrency } from '@/lib/mockData';
 import { Badge } from '@/components/ui/badge';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -17,8 +17,13 @@ interface DashboardProps {
 }
 
 const Dashboard = ({ initialTickerSearch, onTickerSearchClear, initialJurisdiction }: DashboardProps) => {
-  const { data: stats, isLoading } = useDashboardStats();
+  const { data: globalStats, isLoading: globalLoading } = useDashboardStats();
+  const { data: jurisdictionStats, isLoading: jurisdictionLoading } = useJurisdictionStats(initialJurisdiction);
   const { data: chartData } = useChartData('all');
+
+  // Use jurisdiction-specific stats when a jurisdiction is active, else global
+  const stats = initialJurisdiction ? jurisdictionStats : globalStats;
+  const isLoading = initialJurisdiction ? jurisdictionLoading : globalLoading;
 
   // Calculate transaction type totals from chart data
   const transactionTotals = chartData?.reduce(
@@ -56,14 +61,14 @@ const Dashboard = ({ initialTickerSearch, onTickerSearchClear, initialJurisdicti
             <StatsCard
               title="Total Trades"
               value={stats?.total_trades?.toLocaleString() || '0'}
-              change={`Avg ${formatCurrency(stats?.average_trade_size || 0)} per trade`}
+              change={stats?.average_trade_size ? `Avg ${formatCurrency(stats.average_trade_size)} per trade` : 'Filtered trades'}
               changeType="neutral"
               icon={TrendingUp}
               delay={0}
             />
             <StatsCard
               title="Total Volume"
-              value={formatCurrency(stats?.total_volume || 0)}
+              value={stats?.total_volume != null ? formatCurrency(stats.total_volume) : '—'}
               change="Disclosed trading value"
               changeType="neutral"
               icon={DollarSign}

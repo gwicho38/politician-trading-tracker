@@ -116,6 +116,12 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear, initialJurisdic
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
+  // Sync jurisdiction when prop changes (e.g. sidebar nav to US/EU view)
+  useEffect(() => {
+    setJurisdiction(initialJurisdiction ?? '');
+    setPage(0);
+  }, [initialJurisdiction]);
+
   // Copy ticker state
   const [copiedTicker, setCopiedTicker] = useState<string | null>(null);
 
