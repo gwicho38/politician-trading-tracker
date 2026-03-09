@@ -53,18 +53,14 @@ function passesQualityGate(signal: any): boolean {
  * Returns null if no challenger exists. Used for shadow scoring.
  */
 async function getChallengerModel(supabase: any): Promise<{ id: string; model_name: string; model_version: string } | null> {
-  try {
-    const { data } = await supabase
-      .from('ml_models')
-      .select('id, model_name, model_version')
-      .eq('status', 'challenger')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
-    return data || null
-  } catch {
-    return null
-  }
+  const { data } = await supabase
+    .from('ml_models')
+    .select('id, model_name, model_version')
+    .eq('status', 'challenger')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return data ?? null
 }
 
 // TODO: Review queueSignalsForReferencePortfolio - queues high-confidence signals for automated portfolio
