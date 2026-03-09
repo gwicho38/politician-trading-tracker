@@ -383,7 +383,7 @@ async def trigger_committee_enrichment(
     Requires politicians to have bioguide_id set first.
     Upserts into politician_committees with GICS sector mappings.
     """
-    from app.services.committee_enrichment import run_committee_enrichment
+    from app.services.committee_enrichment import run_committee_enrichment_async
 
     job_id = str(uuid.uuid4())
 
@@ -396,7 +396,7 @@ async def trigger_committee_enrichment(
         "completed_at": None,
     }
 
-    background_tasks.add_task(run_committee_enrichment, request.limit)
+    background_tasks.add_task(run_committee_enrichment_async, request.limit, job_id)
 
     limit_msg = f"up to {request.limit}" if request.limit else "all"
     return ETLTriggerResponse(
