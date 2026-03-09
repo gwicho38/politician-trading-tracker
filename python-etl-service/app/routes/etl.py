@@ -370,6 +370,40 @@ async def trigger_bioguide_enrichment(
     )
 
 
+@router.post("/enrich-committees", response_model=ETLTriggerResponse)
+async def trigger_committee_enrichment(
+    request: BackfillRequest,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Trigger committee assignment enrichment from Congress.gov API.
+
+    Requires politicians to have bioguide_id set first.
+    Upserts into politician_committees with GICS sector mappings.
+    """
+    from app.services.committee_enrichment import run_committee_enrichment
+
+    job_id = str(uuid.uuid4())
+
+    JOB_STATUS[job_id] = {
+        "status": "queued",
+        "progress": 0,
+        "total": None,
+        "message": "Job queued",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": None,
+    }
+
+    background_tasks.add_task(run_committee_enrichment, request.limit)
+
+    limit_msg = f"up to {request.limit}" if request.limit else "all"
+    return ETLTriggerResponse(
+        job_id=job_id,
+        status="started",
+        message=f"Committee enrichment job started (limit: {limit_msg})",
+    )
+
+
 # =============================================================================
 # Senate Historical Backfill
 # =============================================================================
