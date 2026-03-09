@@ -57,10 +57,12 @@ vi.mock('@/components/ErrorBoundary', () => ({
 
 // Mock the hooks
 const mockUseDashboardStats = vi.fn();
+const mockUseJurisdictionStats = vi.fn();
 const mockUseChartData = vi.fn();
 
 vi.mock('@/hooks/useSupabaseData', () => ({
   useDashboardStats: () => mockUseDashboardStats(),
+  useJurisdictionStats: () => mockUseJurisdictionStats(),
   useChartData: () => mockUseChartData(),
 }));
 
@@ -88,6 +90,10 @@ describe('Dashboard', () => {
     vi.clearAllMocks();
     // Default mock return values
     mockUseDashboardStats.mockReturnValue({
+      data: null,
+      isLoading: false,
+    });
+    mockUseJurisdictionStats.mockReturnValue({
       data: null,
       isLoading: false,
     });
