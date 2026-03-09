@@ -53,18 +53,27 @@ defmodule Server.Scheduler.Jobs.DailyModelEvalJob do
         sharpe = perf["sharpe_ratio"] || 0
 
         cond do
-          win_rate < 0.05 and sharpe < -1.0 ->
-            Logger.warn(
-              "[DailyModelEvalJob] Model performance critically degraded " <>
-                "(win_rate=#{win_rate}, sharpe=#{sharpe}). Consider emergency retraining."
+          win_rate > 0 and win_rate < 0.05 and sharpe < -1.0 ->
+            Logger.error(
+              "[DailyModelEvalJob] CRITICAL: win_rate=#{win_rate}, sharpe=#{sharpe}. " <>
+                "Triggering emergency retrain."
             )
 
-          win_rate < 0.10 ->
-            Logger.warn(
-              "[DailyModelEvalJob] Model win rate below 10% threshold (#{win_rate})"
+            trigger_emergency_retrain()
+
+          needs_retrain?(%{"win_rate" => win_rate}) ->
+            Logger.warning(
+              "[DailyModelEvalJob] Win rate #{Float.round(win_rate * 100, 1)}% below 35% threshold. " <>
+                "Triggering scheduled retrain."
             )
+
+            trigger_emergency_retrain()
 
           true ->
+            Logger.info(
+              "[DailyModelEvalJob] Model performance acceptable (win_rate=#{Float.round((win_rate || 0) * 100, 1)}%)"
+            )
+
             :ok
         end
 
@@ -84,6 +93,15 @@ defmodule Server.Scheduler.Jobs.DailyModelEvalJob do
     end
   end
 
+  @doc """
+  Returns true if model performance is below the 35% win rate threshold
+  and should trigger retraining.
+  """
+  def needs_retrain?(perf) do
+    win_rate = perf["win_rate"] || 0
+    win_rate > 0 and win_rate < 0.35
+  end
+
   @impl true
   def metadata do
     %{
@@ -92,5 +110,32 @@ defmodule Server.Scheduler.Jobs.DailyModelEvalJob do
       action: "evaluate-model",
       schedule_note: "Runs daily at 23:30 UTC (after outcomes are recorded at 23:00)"
     }
+  end
+
+  defp trigger_emergency_retrain do
+    Logger.info("[DailyModelEvalJob] Invoking ml-training edge function for emergency retrain")
+
+    case Server.SupabaseClient.invoke("ml-training",
+           body: %{
+             "action" => "train",
+             "use_outcomes" => true,
+             "outcome_window_days" => 90,
+             "compare_to_current" => true,
+             "auto_training_mode" => true
+           },
+           timeout: 300_000
+         ) do
+      {:ok, %{"success" => true, "model_id" => model_id}} ->
+        Logger.info("[DailyModelEvalJob] Emergency retrain complete: #{model_id}")
+
+      {:ok, %{"success" => true, "message" => message}} ->
+        Logger.info("[DailyModelEvalJob] Emergency retrain: #{message}")
+
+      {:ok, %{"error" => error}} ->
+        Logger.error("[DailyModelEvalJob] Emergency retrain failed: #{error}")
+
+      {:error, reason} ->
+        Logger.error("[DailyModelEvalJob] Emergency retrain request failed: #{inspect(reason)}")
+    end
   end
 end
