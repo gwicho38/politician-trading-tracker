@@ -10,7 +10,7 @@ import { AlertProvider } from "@/contexts/AlertContext";
 import { FloatingCart } from "@/components/cart";
 import { RootErrorBoundary } from "@/components/RootErrorBoundary";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { ProtectedRoute, AdminRoute } from "@/components/ProtectedRoute";
+import { ProtectedRoute, AdminRoute, OwnerRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 
@@ -57,23 +57,29 @@ const App = () => (
               } />
               <Route path="/playground" element={
                 <ErrorBoundary name="Signal Playground">
-                  <Suspense fallback={<PageLoader />}>
-                    <SignalPlayground />
-                  </Suspense>
+                  <OwnerRoute>
+                    <Suspense fallback={<PageLoader />}>
+                      <SignalPlayground />
+                    </Suspense>
+                  </OwnerRoute>
                 </ErrorBoundary>
               } />
               <Route path="/showcase" element={
                 <ErrorBoundary name="Showcase">
-                  <Suspense fallback={<PageLoader />}>
-                    <Showcase />
-                  </Suspense>
+                  <OwnerRoute>
+                    <Suspense fallback={<PageLoader />}>
+                      <Showcase />
+                    </Suspense>
+                  </OwnerRoute>
                 </ErrorBoundary>
               } />
               <Route path="/drops" element={
                 <ErrorBoundary name="Drops">
-                  <Suspense fallback={<PageLoader />}>
-                    <Drops />
-                  </Suspense>
+                  <OwnerRoute>
+                    <Suspense fallback={<PageLoader />}>
+                      <Drops />
+                    </Suspense>
+                  </OwnerRoute>
                 </ErrorBoundary>
               } />
               <Route path="/trading" element={
@@ -103,11 +109,11 @@ const App = () => (
               } />
               <Route path="/reference-portfolio" element={
                 <ErrorBoundary name="Reference Portfolio">
-                  <ProtectedRoute>
+                  <OwnerRoute>
                     <Suspense fallback={<PageLoader />}>
                       <ReferencePortfolio />
                     </Suspense>
-                  </ProtectedRoute>
+                  </OwnerRoute>
                 </ErrorBoundary>
               } />
               {/* COMMENTED OUT FOR MINIMAL BUILD - Uncomment when ready */}

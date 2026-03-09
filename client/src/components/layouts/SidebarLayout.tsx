@@ -17,6 +17,8 @@ import { Button } from '@/components/ui/button';
 import { SidebarSyncStatus } from '@/components/SyncStatus';
 import { SkipLink } from '@/components/ui/skip-link';
 import Header from '@/components/Header';
+import { useAuth } from '@/hooks/useAuth';
+import { OWNER_EMAIL } from '@/components/ProtectedRoute';
 
 // Main navigation items (link to Index page with view param)
 const navItems = [
@@ -27,11 +29,11 @@ const navItems = [
 
 // Standalone pages with their own routes
 const standalonePages = [
-  { path: '/trading', label: 'Trading', icon: Wallet },
-  { path: '/reference-portfolio', label: 'Reference Strategy', icon: Activity },
-  { path: '/playground', label: 'Signal Playground', icon: Sliders },
-  { path: '/showcase', label: 'Strategy Showcase', icon: Sparkles },
-  { path: '/drops', label: 'Drops', icon: MessageSquare },
+  { path: '/trading', label: 'Trading', icon: Wallet, ownerOnly: false },
+  { path: '/reference-portfolio', label: 'Reference Strategy', icon: Activity, ownerOnly: true },
+  { path: '/playground', label: 'Signal Playground', icon: Sliders, ownerOnly: true },
+  { path: '/showcase', label: 'Strategy Showcase', icon: Sparkles, ownerOnly: true },
+  { path: '/drops', label: 'Drops', icon: MessageSquare, ownerOnly: true },
 ];
 
 interface SidebarLayoutProps {
@@ -42,6 +44,9 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const [searchParams] = useSearchParams();
+  const { user } = useAuth();
+  const isOwner = user?.email === OWNER_EMAIL;
+  const visiblePages = standalonePages.filter(p => !p.ownerOnly || isOwner);
   const currentPath = location.pathname;
   const currentView = searchParams.get('view');
 
@@ -110,8 +115,8 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
                 </Link>
               ))}
 
-              {/* Standalone pages */}
-              {standalonePages.map((page) => (
+              {/* Standalone pages (owner-only pages hidden for other users) */}
+              {visiblePages.map((page) => (
                 <Link
                   key={page.path}
                   to={page.path}

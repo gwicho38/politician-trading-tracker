@@ -3,6 +3,9 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useAdmin } from '@/hooks/useAdmin';
 
+/** The single account that can access owner-only pages. */
+export const OWNER_EMAIL = 'luis@lefv.io';
+
 interface ProtectedRouteProps {
   children: ReactNode;
   requireAuth?: boolean;
@@ -80,6 +83,24 @@ export function AdminRoute({ children, redirectTo }: Omit<ProtectedRouteProps, '
       {children}
     </ProtectedRoute>
   );
+}
+
+/**
+ * A wrapper for owner-only routes (luis@lefv.io).
+ * All other users — authenticated or not — are redirected to home.
+ */
+export function OwnerRoute({ children, redirectTo = '/' }: Omit<ProtectedRouteProps, 'requireAuth' | 'requireAdmin'>) {
+  const { user, isAuthenticated, authReady, loading } = useAuth();
+
+  if (!authReady || loading) {
+    return <LoadingSpinner />;
+  }
+
+  if (!isAuthenticated || user?.email !== OWNER_EMAIL) {
+    return <Navigate to={redirectTo} replace />;
+  }
+
+  return <>{children}</>;
 }
 
 /**
