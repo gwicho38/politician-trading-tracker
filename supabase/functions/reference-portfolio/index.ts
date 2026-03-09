@@ -1512,11 +1512,14 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
 
         // Calculate stop loss, take profit, and trailing stop prices (crypto uses wider bands)
         const slPct = signalAssetType === 'crypto' ? (config.crypto_stop_loss_pct || 15) : config.default_stop_loss_pct
+        // Note: using currentPrice as proxy for entry price — fill price not yet available
+        // at stop-set time. In practice currentPrice ≈ fill price for liquid stocks.
         // ATR-based stop-loss: entry_price − (1.5 × ATR20)
         // Falls back to config percentage if ATR data unavailable (or for crypto)
         const atr = signalAssetType === 'crypto' ? null : await fetchATR(signal.ticker, credentials.apiKey, credentials.secretKey)
-        const stopLossPrice = atr != null
-          ? currentPrice - (1.5 * atr)
+        const atrStop = atr != null ? currentPrice - (1.5 * atr) : null
+        const stopLossPrice = (atrStop != null && atrStop > 0)
+          ? atrStop
           : currentPrice * (1 - slPct / 100)
         // Trailing stop (config.trailing_stop_pct=20%) handles exits — no fixed take-profit
         const takeProfitPrice = null
