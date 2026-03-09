@@ -114,6 +114,47 @@ function getAlpacaCredentials(tradingMode: string = 'paper'): { apiKey: string; 
   return { apiKey, secretKey, baseUrl, dataUrl }
 }
 
+/**
+ * Fetch the 20-day Average True Range (ATR20) for a ticker using Alpaca market data.
+ * Used to set a volatility-anchored stop-loss at entry_price − (1.5 × ATR20).
+ * Returns null if insufficient data or API error — caller falls back to config pct.
+ */
+async function fetchATR(
+  ticker: string,
+  alpacaApiKey: string,
+  alpacaSecretKey: string,
+): Promise<number | null> {
+  try {
+    const end   = new Date().toISOString().split('T')[0]
+    const start = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const url   = `https://data.alpaca.markets/v2/stocks/${ticker}/bars?timeframe=1Day&start=${start}&end=${end}&limit=30`
+    const resp  = await fetch(url, {
+      headers: {
+        'APCA-API-KEY-ID': alpacaApiKey,
+        'APCA-API-SECRET-KEY': alpacaSecretKey,
+      },
+    })
+    if (!resp.ok) return null
+    const data = await resp.json()
+    const bars = (data.bars || []).slice(-21)
+    if (bars.length < 21) return null
+
+    // Compute True Range for each bar: max(H-L, |H-prevClose|, |L-prevClose|)
+    const trValues = bars.slice(1).map((bar: any, i: number) => {
+      const prevClose = bars[i].c
+      return Math.max(
+        bar.h - bar.l,
+        Math.abs(bar.h - prevClose),
+        Math.abs(bar.l - prevClose),
+      )
+    })
+    // 20-period simple moving average of TR
+    return trValues.slice(-20).reduce((a: number, b: number) => a + b, 0) / 20
+  } catch {
+    return null
+  }
+}
+
 // TODO: Review - Calculates position size based on portfolio value, signal confidence, and config constraints
 // Returns shares count, position value, and confidence multiplier applied
 function calculatePositionSize(
@@ -1471,9 +1512,14 @@ async function handleExecuteSignals(supabaseClient: any, requestId: string, body
 
         // Calculate stop loss, take profit, and trailing stop prices (crypto uses wider bands)
         const slPct = signalAssetType === 'crypto' ? (config.crypto_stop_loss_pct || 15) : config.default_stop_loss_pct
-        const tpPct = signalAssetType === 'crypto' ? (config.crypto_take_profit_pct || 25) : config.default_take_profit_pct
-        const stopLossPrice = currentPrice * (1 - slPct / 100)
-        const takeProfitPrice = currentPrice * (1 + tpPct / 100)
+        // ATR-based stop-loss: entry_price − (1.5 × ATR20)
+        // Falls back to config percentage if ATR data unavailable (or for crypto)
+        const atr = signalAssetType === 'crypto' ? null : await fetchATR(signal.ticker, credentials.apiKey, credentials.secretKey)
+        const stopLossPrice = atr != null
+          ? currentPrice - (1.5 * atr)
+          : currentPrice * (1 - slPct / 100)
+        // Trailing stop (config.trailing_stop_pct=20%) handles exits — no fixed take-profit
+        const takeProfitPrice = null
         const trailingStopPrice = config.trailing_stop_pct
           ? currentPrice * (1 - config.trailing_stop_pct / 100)
           : null
