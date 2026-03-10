@@ -499,31 +499,27 @@ export const useJurisdictionStats = (jurisdiction?: string) => {
       const roles = JURISDICTION_ROLES[jurisdiction!] || [];
       if (roles.length === 0) return null;
 
-      // Fast: count politicians by role only (no join to disclosures)
-      const { count: activePoliticians } = await supabase
-        .from('politicians')
-        .select('*', { count: 'exact', head: true })
-        .in('role', roles);
-
-      // Fast: recent filings — pre-query politician IDs then batch-count with 7-day filter.
-      // The 7-day window keeps result sets tiny, so batched IN clauses are fast.
-      const { data: polData } = await supabase
+      // Single query: fetch politician IDs — length gives the active count,
+      // and the IDs are reused for the recent_filings batch below.
+      const { data: polData, error: polError } = await supabase
         .from('politicians')
         .select('id')
         .in('role', roles);
+      if (polError) return null;
       const polIds = (polData ?? []).map((p: { id: string }) => p.id);
 
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
 
+      // Batch-count recent filings using estimated count (faster than exact on large tables).
       let recentFilings = 0;
       const BATCH = 150;
       for (let i = 0; i < polIds.length; i += BATCH) {
         const batch = polIds.slice(i, i + BATCH);
         const { count } = await supabase
           .from('trading_disclosures')
-          .select('*', { count: 'exact', head: true })
+          .select('*', { count: 'estimated', head: true })
           .in('politician_id', batch)
           .eq('status', 'active')
           .gte('disclosure_date', sevenDaysAgoStr)
@@ -534,7 +530,7 @@ export const useJurisdictionStats = (jurisdiction?: string) => {
       return {
         total_trades: null as number | null, // provided by LandingTradesTable via onTotalChange
         total_volume: null as number | null,
-        active_politicians: activePoliticians ?? 0,
+        active_politicians: polIds.length,
         average_trade_size: 0,
         recent_filings: recentFilings,
       };
