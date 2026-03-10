@@ -489,7 +489,8 @@ export const useDashboardStats = () => {
   });
 };
 
-// Fetch jurisdiction-specific dashboard stats (used by US/EU views)
+// Fetch jurisdiction-specific dashboard stats without the slow total_trades count.
+// total_trades is lifted from LandingTradesTable via onTotalChange callback instead.
 export const useJurisdictionStats = (jurisdiction?: string) => {
   return useQuery({
     queryKey: ['jurisdictionStats', jurisdiction],
@@ -498,54 +499,44 @@ export const useJurisdictionStats = (jurisdiction?: string) => {
       const roles = JURISDICTION_ROLES[jurisdiction!] || [];
       if (roles.length === 0) return null;
 
-      // Fetch politician IDs + count (paginate up to 2000 to capture all)
-      const { data: politicians, count: politicianCount } = await supabase
+      // Fast: count politicians by role only (no join to disclosures)
+      const { count: activePoliticians } = await supabase
         .from('politicians')
-        .select('id', { count: 'exact' })
-        .in('role', roles)
-        .limit(2000);
+        .select('*', { count: 'exact', head: true })
+        .in('role', roles);
 
-      const ids = (politicians || []).map((p: { id: string }) => p.id);
-      if (ids.length === 0) return null;
-
-      // PostgREST encodes IN filters in the URL; ~150 UUIDs is the safe limit
-      // before hitting server URL length caps. Chunk and sum in parallel.
-      const BATCH = 150;
-      const batches: string[][] = [];
-      for (let i = 0; i < ids.length; i += BATCH) batches.push(ids.slice(i, i + BATCH));
+      // Fast: recent filings — pre-query politician IDs then batch-count with 7-day filter.
+      // The 7-day window keeps result sets tiny, so batched IN clauses are fast.
+      const { data: polData } = await supabase
+        .from('politicians')
+        .select('id')
+        .in('role', roles);
+      const polIds = (polData ?? []).map((p: { id: string }) => p.id);
 
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
 
-      const amountFilter = 'amount_range_min.not.is.null,amount_range_max.not.is.null';
-
-      const [tradeCounts, recentCounts] = await Promise.all([
-        Promise.all(batches.map(batch =>
-          supabase
-            .from('trading_disclosures')
-            .select('*', { count: 'exact', head: true })
-            .in('politician_id', batch)
-            .or(amountFilter)
-            .then(({ count }) => count ?? 0)
-        )),
-        Promise.all(batches.map(batch =>
-          supabase
-            .from('trading_disclosures')
-            .select('*', { count: 'exact', head: true })
-            .in('politician_id', batch)
-            .gte('disclosure_date', sevenDaysAgoStr)
-            .or(amountFilter)
-            .then(({ count }) => count ?? 0)
-        )),
-      ]);
+      let recentFilings = 0;
+      const BATCH = 150;
+      for (let i = 0; i < polIds.length; i += BATCH) {
+        const batch = polIds.slice(i, i + BATCH);
+        const { count } = await supabase
+          .from('trading_disclosures')
+          .select('*', { count: 'exact', head: true })
+          .in('politician_id', batch)
+          .eq('status', 'active')
+          .gte('disclosure_date', sevenDaysAgoStr)
+          .or('amount_range_min.not.is.null,amount_range_max.not.is.null');
+        recentFilings += count ?? 0;
+      }
 
       return {
-        total_trades: tradeCounts.reduce((s, c) => s + c, 0),
+        total_trades: null as number | null, // provided by LandingTradesTable via onTotalChange
         total_volume: null as number | null,
-        active_politicians: politicianCount ?? 0,
+        active_politicians: activePoliticians ?? 0,
         average_trade_size: 0,
-        recent_filings: recentCounts.reduce((s, c) => s + c, 0),
+        recent_filings: recentFilings,
       };
     },
     staleTime: 5 * 60 * 1000,

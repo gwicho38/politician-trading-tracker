@@ -92,9 +92,10 @@ interface LandingTradesTableProps {
   initialSearchQuery?: string;
   onSearchClear?: () => void;
   initialJurisdiction?: string;
+  onTotalChange?: (total: number) => void;
 }
 
-const LandingTradesTable = ({ initialSearchQuery, onSearchClear, initialJurisdiction }: LandingTradesTableProps = {}) => {
+const LandingTradesTable = ({ initialSearchQuery, onSearchClear, initialJurisdiction, onTotalChange }: LandingTradesTableProps = {}) => {
   // Dynamic party data
   const { data: parties = [] } = useParties();
   const partyMap = useMemo(() => buildPartyMap(parties), [parties]);
@@ -180,6 +181,13 @@ const LandingTradesTable = ({ initialSearchQuery, onSearchClear, initialJurisdic
   const disclosures = data?.disclosures || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / ROWS_PER_PAGE);
+
+  // Notify parent of total count whenever it changes (used by Dashboard for stats cards)
+  useEffect(() => {
+    if (!isLoading && data !== undefined) {
+      onTotalChange?.(total);
+    }
+  }, [total, isLoading, data, onTotalChange]);
 
   // Check if any filters are active
   const hasActiveFilters = debouncedSearch || transactionType || party || jurisdiction || dateFrom || dateTo;

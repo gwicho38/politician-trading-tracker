@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from 'react';
 import { TrendingUp, Users, FileText, DollarSign, Loader2, ArrowUpRight, ArrowDownRight, Wallet } from 'lucide-react';
 import StatsCard from '@/components/StatsCard';
 import TradeChart from '@/components/TradeChart';
@@ -21,8 +22,23 @@ const Dashboard = ({ initialTickerSearch, onTickerSearchClear, initialJurisdicti
   const { data: jurisdictionStats, isLoading: jurisdictionLoading } = useJurisdictionStats(initialJurisdiction);
   const { data: chartData } = useChartData('all');
 
-  // Use jurisdiction-specific stats when a jurisdiction is active, else global
-  const stats = initialJurisdiction ? jurisdictionStats : globalStats;
+  // total_trades is lifted from LandingTradesTable (reuses the working filtered count)
+  const [jurisdictionTradeCount, setJurisdictionTradeCount] = useState<number | null>(null);
+
+  // Reset count when jurisdiction changes to avoid showing stale data
+  useEffect(() => {
+    setJurisdictionTradeCount(null);
+  }, [initialJurisdiction]);
+
+  const handleTotalChange = useCallback((total: number) => {
+    setJurisdictionTradeCount(total);
+  }, []);
+
+  // Use jurisdiction-specific stats when a jurisdiction is active, else global.
+  // Merge in the lifted total_trades count (the RPC total_trades is null intentionally).
+  const stats = initialJurisdiction
+    ? { ...(jurisdictionStats ?? {}), total_trades: jurisdictionTradeCount ?? 0 }
+    : globalStats;
   const isLoading = initialJurisdiction ? jurisdictionLoading : globalLoading;
 
   // Calculate transaction type totals from chart data
@@ -119,6 +135,7 @@ const Dashboard = ({ initialTickerSearch, onTickerSearchClear, initialJurisdicti
           initialSearchQuery={initialTickerSearch}
           onSearchClear={onTickerSearchClear}
           initialJurisdiction={initialJurisdiction}
+          onTotalChange={initialJurisdiction ? handleTotalChange : undefined}
         />
       </ErrorBoundary>
 
