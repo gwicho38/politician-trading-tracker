@@ -521,21 +521,15 @@ export const useJurisdictionStats = (jurisdiction?: string) => {
           .gte('disclosure_date', sevenDaysAgoStr)
           .or('amount_range_min.not.is.null,amount_range_max.not.is.null'),
 
-        // 3. Total volume: PostgREST aggregate SUM with inner join.
-        //    Returns [{ sum: <number> }] via PostgREST's column.agg() syntax.
-        supabase
-          .from('trading_disclosures')
-          .select('amount_range_max.sum(), politician:politicians!inner(role)')
-          .in('politician.role', roles)
-          .eq('status', 'active')
-          .not('amount_range_max', 'is', null),
+        // 3. Total volume: RPC using a covering index for an index-only SUM scan.
+        //    PostgREST aggregate functions are disabled on this plan, so we use
+        //    a dedicated SQL function backed by idx_td_active_amount_sum.
+        supabase.rpc('get_jurisdiction_volume', { p_roles: roles }),
       ]);
 
       if (countResult.error) return null;
 
-      // Extract the aggregate sum from the PostgREST response shape.
-      type SumRow = { sum: number | null };
-      const totalVolume = (volResult.data as SumRow[] | null)?.[0]?.sum ?? null;
+      const totalVolume = (volResult.data as number | null) ?? null;
 
       return {
         total_trades: null as number | null, // provided by LandingTradesTable via onTotalChange

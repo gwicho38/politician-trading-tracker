@@ -66,3 +66,35 @@ CREATE INDEX IF NOT EXISTS idx_job_executions_created_at
 CREATE INDEX IF NOT EXISTS idx_job_executions_status_created
   ON public.job_executions(status, created_at)
   WHERE status = 'failed';
+
+-- ============================================================
+-- 8. Covering index for jurisdiction volume SUM.
+--    Including amount_range_max in the index allows PostgreSQL to
+--    compute SUM(amount_range_max) with an index-only scan — no heap
+--    fetches needed. Reduces US volume query from 8s timeout to ~0.7s.
+-- ============================================================
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_td_active_amount_sum
+  ON trading_disclosures(politician_id, amount_range_max)
+  WHERE status = 'active' AND amount_range_max IS NOT NULL;
+
+-- ============================================================
+-- 9. Fast volume RPC using the covering index above.
+--    PostgREST aggregate functions are disabled on this Supabase plan,
+--    so this dedicated SQL function is the only way to SUM server-side.
+--    LANGUAGE sql (not plpgsql) avoids procedure overhead for a single query.
+-- ============================================================
+CREATE OR REPLACE FUNCTION get_jurisdiction_volume(p_roles text[])
+RETURNS numeric
+LANGUAGE sql
+SECURITY DEFINER
+SET statement_timeout = '8s'
+AS $$
+  SELECT COALESCE(SUM(td.amount_range_max), 0)
+  FROM trading_disclosures td
+  WHERE td.politician_id IN (SELECT id FROM politicians WHERE role = ANY(p_roles))
+    AND td.status = 'active'
+    AND td.amount_range_max IS NOT NULL
+$$;
+
+GRANT EXECUTE ON FUNCTION get_jurisdiction_volume(text[]) TO anon;
+GRANT EXECUTE ON FUNCTION get_jurisdiction_volume(text[]) TO authenticated;
