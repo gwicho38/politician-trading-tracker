@@ -8,8 +8,12 @@ import { PoliticianDetailModal } from '@/components/detail-modals';
 import { useParties } from '@/hooks/useParties';
 import { buildPartyMap, getPartyLabel, partyColorStyle, partyBadgeStyle } from '@/lib/partyUtils';
 
-const TopTraders = () => {
-  const { data: politicians, isLoading, error } = usePoliticians();
+interface TopTradersProps {
+  jurisdiction?: string;
+}
+
+const TopTraders = ({ jurisdiction }: TopTradersProps = {}) => {
+  const { data: politicians, isLoading, error } = usePoliticians(jurisdiction);
   const { data: parties = [] } = useParties();
   const partyMap = useMemo(() => buildPartyMap(parties), [parties]);
   const [selectedPolitician, setSelectedPolitician] = useState<Politician | null>(null);

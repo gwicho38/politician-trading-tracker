@@ -139,23 +139,24 @@ const Dashboard = ({ initialTickerSearch, onTickerSearchClear, initialJurisdicti
         />
       </ErrorBoundary>
 
-      {/* Charts Row */}
+      {/* Charts Row — chart_data view has no jurisdiction breakdown, always global */}
       <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
         <ErrorBoundary name="Trade Chart" minimal>
-          <TradeChart />
+          <TradeChart globalNote={initialJurisdiction ? 'Global activity' : undefined} />
         </ErrorBoundary>
         <ErrorBoundary name="Volume Chart" minimal>
-          <VolumeChart />
+          <VolumeChart globalNote={initialJurisdiction ? 'Global activity' : undefined} />
         </ErrorBoundary>
       </div>
 
       {/* Top Traders & Top Tickers */}
       <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
         <ErrorBoundary name="Top Traders" minimal>
-          <TopTraders />
+          <TopTraders jurisdiction={initialJurisdiction} />
         </ErrorBoundary>
         <ErrorBoundary name="Top Tickers" minimal>
-          <TopTickers />
+          {/* top_tickers view is global — label it clearly when in a jurisdiction view */}
+          <TopTickers globalNote={initialJurisdiction ? 'Global activity' : undefined} />
         </ErrorBoundary>
       </div>
     </div>

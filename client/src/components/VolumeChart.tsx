@@ -43,7 +43,11 @@ const CustomVolumeTooltip = ({ active, payload, label }: TooltipProps<number, st
   return null;
 };
 
-const VolumeChart = () => {
+interface VolumeChartProps {
+  globalNote?: string;
+}
+
+const VolumeChart = ({ globalNote }: VolumeChartProps = {}) => {
   const [timeRange, setTimeRange] = useState<ChartTimeRange>('trailing12');
   const { data: chartData, isLoading } = useChartData(timeRange);
   const { data: availableYears } = useChartYears();
@@ -72,6 +76,7 @@ const VolumeChart = () => {
         <div>
           <h3 className="text-base sm:text-lg font-semibold text-foreground">Trade Volume</h3>
           <p className="text-xs sm:text-sm text-muted-foreground">
+            {globalNote && <span className="text-primary/70">{globalNote} · </span>}
             Total disclosed trading volume by month
             <span className="text-xs ml-2 text-primary/70 hidden sm:inline">• Click chart for details</span>
           </p>

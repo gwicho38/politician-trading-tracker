@@ -46,7 +46,11 @@ const CustomChartTooltip = ({ active, payload, label }: TooltipProps<number, str
   return null;
 };
 
-const TradeChart = () => {
+interface TradeChartProps {
+  globalNote?: string;
+}
+
+const TradeChart = ({ globalNote }: TradeChartProps = {}) => {
   const [timeRange, setTimeRange] = useState<ChartTimeRange>('trailing12');
   const { data: chartData, isLoading } = useChartData(timeRange);
   const { data: availableYears } = useChartYears();
@@ -75,6 +79,7 @@ const TradeChart = () => {
           <div>
             <h3 className="text-base sm:text-lg font-semibold text-foreground">Trading Activity</h3>
             <p className="text-xs sm:text-sm text-muted-foreground">
+              {globalNote && <span className="text-primary/70">{globalNote} · </span>}
               Buy vs Sell transactions over time
               <span className="text-xs ml-2 text-primary/70 hidden sm:inline">• Click bars for details</span>
             </p>

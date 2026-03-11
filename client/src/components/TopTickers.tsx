@@ -4,7 +4,11 @@ import { useTopTickers } from '@/hooks/useSupabaseData';
 import { formatCurrency } from '@/lib/mockData';
 import { TickerDetailModal } from '@/components/detail-modals';
 
-const TopTickers = () => {
+interface TopTickersProps {
+  globalNote?: string;
+}
+
+const TopTickers = ({ globalNote }: TopTickersProps = {}) => {
   const { data: tickers, isLoading, error } = useTopTickers(5);
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
 
@@ -14,7 +18,9 @@ const TopTickers = () => {
         <div className="mb-4 sm:mb-6 flex items-center justify-between">
           <div>
             <h3 className="text-base sm:text-lg font-semibold text-foreground">Most Traded Tickers</h3>
-            <p className="text-xs sm:text-sm text-muted-foreground">By number of transactions</p>
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              {globalNote ? `${globalNote} · By number of transactions` : 'By number of transactions'}
+            </p>
           </div>
           <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" aria-hidden="true" />
         </div>

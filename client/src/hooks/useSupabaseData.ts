@@ -110,27 +110,34 @@ export const useJurisdictions = () => {
 };
 
 // Fetch politicians for top traders
-export const usePoliticians = (jurisdictionId?: string) => {
+// Accepts either a simple jurisdiction code ('us', 'eu', 'uk') or a legacy jurisdictionId ('eu_parliament')
+export const usePoliticians = (jurisdictionOrId?: string) => {
   return useQuery({
-    queryKey: ['politicians', jurisdictionId],
+    queryKey: ['politicians', jurisdictionOrId],
     queryFn: async () => {
       let query = supabase
         .from('politicians')
         .select('*')
         .order('total_volume', { ascending: false });
 
-      if (jurisdictionId) {
-        // Map jurisdiction codes to role filters (must match politician.py chamber_role_map)
-        const jurisdictionMap: Record<string, string> = {
-          'us_house': 'Representative',
-          'us_senate': 'Senator',
-          'eu_parliament': 'MEP',
-          'uk_parliament': 'UK',
-          'california': 'State Legislator',
-        };
-        const role = jurisdictionMap[jurisdictionId];
-        if (role) {
-          query = query.eq('role', role);
+      if (jurisdictionOrId) {
+        // Support simple jurisdiction codes (used by Dashboard sidebar nav)
+        const roles = JURISDICTION_ROLES[jurisdictionOrId];
+        if (roles) {
+          query = roles.length === 1
+            ? query.eq('role', roles[0])
+            : query.in('role', roles);
+        } else {
+          // Legacy: map old jurisdictionId format (e.g. 'eu_parliament') to a role
+          const legacyMap: Record<string, string> = {
+            'us_house': 'Representative',
+            'us_senate': 'Senator',
+            'eu_parliament': 'MEP',
+            'uk_parliament': 'Member of Parliament',
+            'california': 'State Legislator',
+          };
+          const role = legacyMap[jurisdictionOrId];
+          if (role) query = query.eq('role', role);
         }
       }
 
@@ -258,12 +265,11 @@ export const useTradingDisclosures = (options: {
       const effectiveRoles = jurisdiction ? JURISDICTION_ROLES[jurisdiction] || [] : (chamber ? [chamber] : []);
 
       // When filtering by role or party, pre-query politician IDs to avoid
-      // PostgREST inner join timeout. The inner join approach forces PostgreSQL
-      // to scan all disclosures (126K+ rows) checking each row's join — which
-      // times out when the filter matches zero/few politicians (e.g. MEP).
+      // PostgREST inner join URL-length issues and expensive COUNT(*) timeouts.
+      // Use limit(5000) to fetch all politicians in a jurisdiction (US has ~3238).
       let politicianIds: string[] | null = null;
       if (effectiveRoles.length > 0 || party) {
-        let pQuery = supabase.from('politicians').select('id');
+        let pQuery = supabase.from('politicians').select('id').limit(5000);
         if (effectiveRoles.length === 1) {
           pQuery = pQuery.eq('role', effectiveRoles[0]);
         } else if (effectiveRoles.length > 1) {
@@ -280,17 +286,36 @@ export const useTradingDisclosures = (options: {
         }
       }
 
-      // Use IN clause for small politician sets (fast, avoids inner join timeout).
-      // Fall back to inner join for large sets where IN clause URL would be too long.
-      const useInClause = politicianIds && politicianIds.length <= 150;
+      // Strategy selection:
+      // - Small sets (≤150 IDs): IN clause in URL — fast, single query with count.
+      // - Large sets (>150 IDs): inner join for data (fast with disclosure_date index
+      //   + LIMIT 15), paired with count_disclosures_by_roles RPC for counting
+      //   (avoids the expensive inner join COUNT(*) that caused 500 timeouts for US).
+      const useInClause = politicianIds !== null && politicianIds.length <= 150;
+      const useRpcCount = politicianIds !== null && politicianIds.length > 150 && effectiveRoles.length > 0;
       const needsInnerJoin = (party || effectiveRoles.length > 0) && !useInClause;
       const selectQuery = needsInnerJoin
         ? `*, politician:politicians!inner(*)`
         : `*, politician:politicians(*)`;
 
+      // For large role-filtered sets: run the fast count RPC in parallel with the data query.
+      // The RPC uses idx_politicians_role + politician_id FK index for an efficient hash join.
+      const countRpcPromise = useRpcCount
+        ? supabase.rpc('count_disclosures_by_roles', {
+            p_roles: effectiveRoles,
+            p_transaction_type: transactionType || null,
+            p_ticker: ticker || null,
+            p_search: searchQuery || null,
+            p_date_from: dateFrom || null,
+            p_date_to: dateTo || null,
+          })
+        : Promise.resolve(null);
+
       let query = supabase
         .from('trading_disclosures')
-        .select(selectQuery, { count: 'estimated' })
+        // Skip count on the data query when using the RPC count — avoids the slow
+        // implicit COUNT(*) that was causing 500 timeouts on large jurisdictions.
+        .select(selectQuery, { count: useRpcCount ? undefined : 'estimated' })
         .eq('status', 'active')
         .order(sortField, { ascending: sortDirection === 'asc' })
         .range(offset, offset + limit - 1);
@@ -344,8 +369,17 @@ export const useTradingDisclosures = (options: {
         }
       }
 
-      const { data, error, count } = await query;
+      // Run data query and count RPC in parallel
+      const [{ data, error, count }, countRpcResult] = await Promise.all([
+        query,
+        countRpcPromise,
+      ]);
       if (error) throw error;
+
+      // Use RPC count for large role-filtered sets; fall back to PostgREST count otherwise
+      const total = useRpcCount
+        ? ((countRpcResult?.data as number | null) ?? 0)
+        : (count || 0);
 
       return {
         disclosures: (data || []).map(d => ({
@@ -355,7 +389,7 @@ export const useTradingDisclosures = (options: {
             name: d.politician.full_name || `${d.politician.first_name} ${d.politician.last_name}`,
           } : undefined,
         })) as TradingDisclosure[],
-        total: count || 0,
+        total,
       };
     },
     staleTime: 5 * 60 * 1000, // Cache paginated results for 5 minutes
