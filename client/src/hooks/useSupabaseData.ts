@@ -499,40 +499,50 @@ export const useJurisdictionStats = (jurisdiction?: string) => {
       const roles = JURISDICTION_ROLES[jurisdiction!] || [];
       if (roles.length === 0) return null;
 
-      // Single query: fetch politician IDs — length gives the active count,
-      // and the IDs are reused for the recent_filings batch below.
-      const { data: polData, error: polError } = await supabase
-        .from('politicians')
-        .select('id')
-        .in('role', roles);
-      if (polError) return null;
-      const polIds = (polData ?? []).map((p: { id: string }) => p.id);
-
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
 
-      // Batch-count recent filings using estimated count (faster than exact on large tables).
-      let recentFilings = 0;
-      const BATCH = 150;
-      for (let i = 0; i < polIds.length; i += BATCH) {
-        const batch = polIds.slice(i, i + BATCH);
-        const { count } = await supabase
+      // Run all three queries in parallel to minimise total latency.
+      const [countResult, recentResult, volResult] = await Promise.all([
+        // 1. Active politicians: HEAD count — no row data, no 1000-row limit.
+        supabase
+          .from('politicians')
+          .select('*', { count: 'exact', head: true })
+          .in('role', roles),
+
+        // 2. Recent filings: inner join + 7-day window keeps the result tiny.
+        //    No UUID list needed so no URL-length issue.
+        supabase
           .from('trading_disclosures')
-          .select('*', { count: 'estimated', head: true })
-          .in('politician_id', batch)
+          .select('*, politician:politicians!inner(role)', { count: 'estimated', head: true })
+          .in('politician.role', roles)
           .eq('status', 'active')
           .gte('disclosure_date', sevenDaysAgoStr)
-          .or('amount_range_min.not.is.null,amount_range_max.not.is.null');
-        recentFilings += count ?? 0;
-      }
+          .or('amount_range_min.not.is.null,amount_range_max.not.is.null'),
+
+        // 3. Total volume: PostgREST aggregate SUM with inner join.
+        //    Returns [{ sum: <number> }] via PostgREST's column.agg() syntax.
+        supabase
+          .from('trading_disclosures')
+          .select('amount_range_max.sum(), politician:politicians!inner(role)')
+          .in('politician.role', roles)
+          .eq('status', 'active')
+          .not('amount_range_max', 'is', null),
+      ]);
+
+      if (countResult.error) return null;
+
+      // Extract the aggregate sum from the PostgREST response shape.
+      type SumRow = { sum: number | null };
+      const totalVolume = (volResult.data as SumRow[] | null)?.[0]?.sum ?? null;
 
       return {
         total_trades: null as number | null, // provided by LandingTradesTable via onTotalChange
-        total_volume: null as number | null,
-        active_politicians: polIds.length,
+        total_volume: totalVolume,
+        active_politicians: countResult.count ?? 0,
         average_trade_size: 0,
-        recent_filings: recentFilings,
+        recent_filings: recentResult.count ?? 0,
       };
     },
     staleTime: 5 * 60 * 1000,
