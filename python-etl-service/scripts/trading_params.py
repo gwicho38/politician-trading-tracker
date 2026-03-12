@@ -36,10 +36,10 @@ ATR_MULTIPLIER: float = 1.5
 # ============================================================
 
 # Trailing stop distance below the highest observed price.
-# 0.15 = stop trails at 85% of peak.
+# 0.12 = stop trails at 88% of peak.
 # Tighter (0.10) locks in gains faster but exits strong trends early.
 # Wider (0.25–0.30) lets winners run but gives back more.
-TRAILING_STOP_PCT: float = 0.15
+TRAILING_STOP_PCT: float = 0.12
 
 # Arm the trailing stop only after price exceeds entry by this fraction.
 # 0.05 = arm once price is +5% above entry.
