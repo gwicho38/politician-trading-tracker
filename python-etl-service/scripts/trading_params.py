@@ -42,10 +42,10 @@ ATR_MULTIPLIER: float = 1.5
 TRAILING_STOP_PCT: float = 0.12
 
 # Arm the trailing stop only after price exceeds entry by this fraction.
-# 0.07 = arm once price is +7% above entry.
+# 0.09 = arm once price is +9% above entry.
 # Prevents the trailing stop from triggering on an opening-day dip.
 # Range: [0.03, 0.10]
-TRAILING_ARM_PCT: float = 0.07
+TRAILING_ARM_PCT: float = 0.09
 
 # ============================================================
 # Time exit
