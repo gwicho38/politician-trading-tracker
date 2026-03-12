@@ -54,7 +54,7 @@ TRAILING_ARM_PCT: float = 0.05
 # Maximum holding period in calendar days.
 # After this many days, force-close the position at market.
 # Range: [30, 90]
-TIME_EXIT_DAYS: int = 45
+TIME_EXIT_DAYS: int = 35
 
 # ============================================================
 # Position sizing (Half-Kelly)
