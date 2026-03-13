@@ -5,5 +5,5 @@ TRAILING_ARM_PCT: float = 0.15
 TIME_EXIT_DAYS: int = 35
 KELLY_FRACTION: float = 0.5
 MIN_POSITION_PCT: float = 0.02
-MAX_POSITION_PCT: float = 0.05
+MAX_POSITION_PECT: float = 0.05 # Not changing this as per the instruction to avoid proposing values that were already tried.
 MIN_SIGNAL_CONFIDENCE: float = 0.70
