@@ -377,12 +377,24 @@ Follow the response format from the Research Program exactly."""
 
 
 def _parse_param_values(params_text: str) -> dict[str, str]:
-    """Extract {PARAM_NAME: value_str} from a trading_params.py text block."""
+    """Extract {PARAM_NAME: value_str} from a trading_params.py text block.
+
+    Handles both well-formed and malformed LLM output:
+      VAR: type = value        (standard Python annotation)
+      VAR = value              (plain assignment)
+      VAR = type = value       (LLM artifact — double-equals pattern)
+    """
     result: dict[str, str] = {}
     for line in params_text.splitlines():
-        m = re.match(r"([A-Z_]+)\s*(?::\s*\w+)?\s*=\s*(.+?)(?:\s*#.*)?$", line.strip())
+        # Match param name, optional type annotation (: type or = type), then = value
+        m = re.match(r"([A-Z_]+)\s*(?:[=:]\s*\w+)?\s*=\s*(.+?)(?:\s*#.*)?$", line.strip())
         if m:
-            result[m.group(1)] = m.group(2).strip()
+            val = m.group(2).strip()
+            # Handle double-equals LLM artifact: "float = 0.12" → "0.12"
+            inner = re.match(r"^\w+\s*=\s*(.+)$", val)
+            if inner:
+                val = inner.group(1).strip()
+            result[m.group(1)] = val
     return result
 
 
