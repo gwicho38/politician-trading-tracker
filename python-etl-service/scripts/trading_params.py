@@ -1,6 +1,6 @@
 ATR_PERIOD: int = 20
 ATR_MULTIPLIER: float = 1.5
-TRAILING_STOP_PCT: float = 0.11  # Changed from previous trial of 0.08 or higher values which were counterproductive 
+TRAILING_STOP_PCT: float = 0.12 # Increased to improve risk management and profit factor from previous counterproductive values of 0.08 or higher 
 TRAILING_ARM_PCT: float = 0.10
 TIME_EXIT_DAYS: int = 35
 KELLY_FRACTION: float = 0.5
