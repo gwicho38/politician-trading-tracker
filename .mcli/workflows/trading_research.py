@@ -819,6 +819,31 @@ def run(iterations: int, metric: str, baseline_only: bool, provider: str, ollama
                 discarded += 1
                 continue
 
+        # ── Unknown/invalid change filter ──────────────────────────────
+        _LITERAL_RE = re.compile(r"^-?\d+(\.\d+)?$")
+        valid_changed = {
+            k: v for k, v in changed_params.items()
+            if k in current_vals and _LITERAL_RE.match(v)
+        }
+        if not valid_changed:
+            click.echo("  [skip] Changed params are all unknown names or non-literal expressions.")
+            discarded += 1
+            continue
+        if len(valid_changed) < len(changed_params):
+            ignored = {k: v for k, v in changed_params.items() if k not in valid_changed}
+            click.echo(f"  [filter] Ignoring unknown/expression params: "
+                       f"{', '.join(f'{k}={v}' for k, v in ignored.items())}")
+            changed_params = valid_changed
+            lines = []
+            for line in new_params.splitlines():
+                m_ln = re.match(r"([A-Z_]+)\s*(?:[=:]\s*\w+)?\s*=", line.strip())
+                if m_ln and m_ln.group(1) not in current_vals:
+                    continue
+                lines.append(line)
+            new_params = "\n".join(lines)
+            if new_params and not new_params.endswith("\n"):
+                new_params += "\n"
+
         click.echo(f"  → Proposed: {description}")
 
         # Backup current params before applying change (enables reliable restore)
@@ -1474,6 +1499,39 @@ def watch(threshold: float, auto_deploy: bool, metric: str, provider: str,
                     continue
                 _log(f"[guard] Proceeding with unlocked changes: "
                      f"{', '.join(f'{k}={v}' for k, v in changed_params.items())}")
+
+            # ── Unknown/invalid change filter ──────────────────────────────
+            # Reject changes where:
+            #   (a) the param name is not a known param in the current file
+            #       (catches typos like MAX_POSITION_PECT)
+            #   (b) the proposed value is a non-literal expression
+            #       (catches dynamic expressions like "(1 / (1 - KELLY_FRACTION)) * MIN_POSITION_PCT")
+            _LITERAL_RE = re.compile(r"^-?\d+(\.\d+)?$")
+            valid_changed = {
+                k: v for k, v in changed_params.items()
+                if k in current_vals and _LITERAL_RE.match(v)
+            }
+            if not valid_changed:
+                _log("[skip] Changed params are all unknown names or non-literal expressions — skipping.")
+                consecutive_bad += 1
+                _maybe_rotate_model()
+                continue
+            if len(valid_changed) < len(changed_params):
+                ignored = {k: v for k, v in changed_params.items() if k not in valid_changed}
+                _log(f"[filter] Ignoring unknown/expression params: "
+                     f"{', '.join(f'{k}={v}' for k, v in ignored.items())}")
+                changed_params = valid_changed
+                # Rebuild new_params keeping only valid param lines from the proposed block
+                # (restore current values for any invalid/unknown param lines)
+                lines = []
+                for line in new_params.splitlines():
+                    m_ln = re.match(r"([A-Z_]+)\s*(?:[=:]\s*\w+)?\s*=", line.strip())
+                    if m_ln and m_ln.group(1) not in current_vals:
+                        continue  # drop unknown/misspelled param lines entirely
+                    lines.append(line)
+                new_params = "\n".join(lines)
+                if new_params and not new_params.endswith("\n"):
+                    new_params += "\n"
 
             # Track which values were proposed (regardless of outcome) to avoid repeats
             for param_name, val_str in changed_params.items():
