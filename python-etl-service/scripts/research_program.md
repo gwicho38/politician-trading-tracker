@@ -33,17 +33,24 @@ Each iteration:
 
 Only values in `trading_params.py`. Specifically:
 
+**MODIFIABLE parameters (the only ones you should change):**
+
 | Parameter | Current | Range | Effect |
 |-----------|---------|-------|--------|
-| `ATR_PERIOD` | 20 | [10, 30] | Volatility window; shorter = tighter stops in fast markets |
-| `ATR_MULTIPLIER` | 1.5 | [1.0, 3.0] | Stop distance; wider = fewer premature stops but larger losses |
-| `TRAILING_STOP_PCT` | 0.20 | [0.10, 0.35] | Trailing stop width; wider = lets winners run longer |
-| `TRAILING_ARM_PCT` | 0.05 | [0.03, 0.10] | Entry buffer before trailing stop activates |
-| `TIME_EXIT_DAYS` | 60 | [30, 90] | Max holding period; shorter forces earlier exit |
-| `KELLY_FRACTION` | 0.5 | [0.25, 0.75] | Position sizing; affects profit factor via compounding |
-| `MIN_POSITION_PCT` | 0.01 | [0.005, 0.02] | Floor position size |
+| `ATR_PERIOD` | 20 | [10, 30] | Volatility window; shorter = faster ATR adaptation |
+| `KELLY_FRACTION` | 0.5 | [0.25, 0.75] | Position sizing; try 0.25 (conservative) |
+| `MIN_POSITION_PCT` | 0.02 | [0.01, 0.04] | Floor position size |
 | `MAX_POSITION_PCT` | 0.05 | [0.03, 0.08] | Cap position size |
-| `MIN_SIGNAL_CONFIDENCE` | 0.70 | [0.50, 0.80] | Entry gate; filters positions by ML confidence score |
+| `MIN_SIGNAL_CONFIDENCE` | 0.70 | [0.50, 0.75] | Entry gate; try 0.65 (miscalibrated model) |
+
+**LOCKED parameters — the system enforces these, do NOT propose changes:**
+
+| Parameter | Locked Value | Reason |
+|-----------|-------------|--------|
+| `TRAILING_STOP_PCT` | 0.12 | Optimal; tighter creates breakeven artifacts |
+| `TRAILING_ARM_PCT` | 0.15 | Optimal; already tuned |
+| `TIME_EXIT_DAYS` | 35 | Optimal; already tuned |
+| `ATR_MULTIPLIER` | 1.5 | Optimal; 2.0 gave pf=0.965 (worse) |
 
 **IMPORTANT note on MIN_SIGNAL_CONFIDENCE:** The ML confidence score is currently miscalibrated.
 Empirical win rates: [0.70,0.75)=14%, [0.75,0.80)=12%, [0.80+]=5%.
