@@ -29,6 +29,11 @@ defmodule Server.Scheduler.Jobs.DailyModelEvalJob do
   def run do
     Logger.info("[DailyModelEvalJob] Starting daily model evaluation")
 
+    # Always flush any completed-but-unevaluated training jobs first.
+    # This ensures the C/C gate runs even if the previous retrain trigger
+    # happened in a prior run (or via ModelFeedbackRetrainJob).
+    evaluate_pending_training()
+
     case Server.SupabaseClient.invoke("signal-feedback",
            body: %{"action" => "evaluate-model", "windowDays" => 7},
            timeout: 60_000
@@ -140,8 +145,12 @@ defmodule Server.Scheduler.Jobs.DailyModelEvalJob do
   end
 
   defp trigger_emergency_retrain do
-    Logger.info("[DailyModelEvalJob] Invoking ml-training edge function for emergency retrain")
+    Logger.info(
+      "[DailyModelEvalJob] Invoking ml-training edge function for emergency retrain (async)"
+    )
 
+    # ml-training now returns 202 immediately — training runs in the ETL service.
+    # The C/C gate will be applied by evaluate_pending_training() on the next daily run.
     case Server.SupabaseClient.invoke("ml-training",
            body: %{
              "action" => "train",
@@ -150,13 +159,10 @@ defmodule Server.Scheduler.Jobs.DailyModelEvalJob do
              "compare_to_current" => true,
              "auto_training_mode" => true
            },
-           timeout: 300_000
+           timeout: 30_000
          ) do
-      {:ok, %{"success" => true, "model_id" => model_id}} ->
-        Logger.info("[DailyModelEvalJob] Emergency retrain complete: #{model_id}")
-
-      {:ok, %{"success" => true, "message" => message}} ->
-        Logger.info("[DailyModelEvalJob] Emergency retrain: #{message}")
+      {:ok, %{"status" => "training_queued", "job_id" => job_id}} ->
+        Logger.info("[DailyModelEvalJob] Emergency retrain queued: job_id=#{job_id}")
 
       {:ok, %{"error" => error}} ->
         Logger.error("[DailyModelEvalJob] Emergency retrain failed: #{error}")
@@ -165,7 +171,39 @@ defmodule Server.Scheduler.Jobs.DailyModelEvalJob do
         Logger.error("[DailyModelEvalJob] Emergency retrain request failed: #{inspect(reason)}")
 
       {:ok, unexpected} ->
-        Logger.warning("[DailyModelEvalJob] Emergency retrain unexpected response: #{inspect(unexpected)}")
+        Logger.warning(
+          "[DailyModelEvalJob] Emergency retrain unexpected response: #{inspect(unexpected)}"
+        )
+    end
+  end
+
+  defp evaluate_pending_training do
+    Logger.info("[DailyModelEvalJob] Checking for completed-but-unevaluated training jobs")
+
+    case Server.SupabaseClient.invoke("ml-training",
+           body: %{"action" => "evaluate-training"},
+           timeout: 30_000
+         ) do
+      {:ok, %{"success" => true, "job_id" => job_id, "promoted" => promoted, "reason" => reason}} ->
+        Logger.info(
+          "[DailyModelEvalJob] C/C gate applied for job #{job_id}: " <>
+            "promoted=#{promoted}, reason=#{reason}"
+        )
+
+      {:ok, %{"success" => true, "message" => msg}} ->
+        Logger.info("[DailyModelEvalJob] Evaluate-training: #{msg}")
+
+      {:ok, %{"success" => true, "already_evaluated" => true, "message" => msg}} ->
+        Logger.info("[DailyModelEvalJob] Evaluate-training: #{msg}")
+
+      {:ok, %{"error" => error}} ->
+        Logger.error("[DailyModelEvalJob] Evaluate-training failed: #{error}")
+
+      {:error, reason} ->
+        Logger.error("[DailyModelEvalJob] Evaluate-training request failed: #{inspect(reason)}")
+
+      {:ok, unexpected} ->
+        Logger.warning("[DailyModelEvalJob] Evaluate-training unexpected: #{inspect(unexpected)}")
     end
   end
 end

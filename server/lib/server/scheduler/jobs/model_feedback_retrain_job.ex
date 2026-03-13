@@ -51,8 +51,9 @@ defmodule Server.Scheduler.Jobs.ModelFeedbackRetrainJob do
       )
     end
 
-    # Step 2: Trigger retraining — ml-training edge function decides fine-tune vs scratch
-    Logger.info("[ModelFeedbackRetrainJob] Triggering model retraining with outcome data")
+    # Step 2: Trigger retraining — ml-training edge function decides fine-tune vs scratch.
+    # Returns 202 immediately; the C/C gate runs separately via DailyModelEvalJob.
+    Logger.info("[ModelFeedbackRetrainJob] Triggering model retraining with outcome data (async)")
 
     case Server.SupabaseClient.invoke("ml-training",
            body: %{
@@ -62,21 +63,15 @@ defmodule Server.Scheduler.Jobs.ModelFeedbackRetrainJob do
              "compare_to_current" => true,
              "auto_training_mode" => true
            },
-           timeout: 300_000
+           timeout: 30_000
          ) do
-      {:ok, %{"success" => true, "model_id" => model_id, "metrics" => metrics} = result} ->
-        training_mode = result["training_mode"] || "unknown"
-
+      {:ok, %{"status" => "training_queued", "job_id" => job_id, "training_mode" => mode}} ->
         Logger.info(
-          "[ModelFeedbackRetrainJob] New model trained (#{training_mode}): #{model_id}, " <>
-            "accuracy=#{metrics["accuracy"]}, promoted=#{result["promoted"]}"
+          "[ModelFeedbackRetrainJob] Retraining queued (#{mode}): job_id=#{job_id}. " <>
+            "C/C gate will be applied by DailyModelEvalJob."
         )
 
         {:ok, 1}
-
-      {:ok, %{"success" => true, "message" => message}} ->
-        Logger.info("[ModelFeedbackRetrainJob] #{message}")
-        {:ok, 0}
 
       {:ok, %{"error" => error}} ->
         Logger.error("[ModelFeedbackRetrainJob] Retraining failed: #{error}")
@@ -85,13 +80,18 @@ defmodule Server.Scheduler.Jobs.ModelFeedbackRetrainJob do
       {:error, reason} ->
         Logger.error("[ModelFeedbackRetrainJob] Request failed: #{inspect(reason)}")
         {:error, reason}
+
+      {:ok, unexpected} ->
+        Logger.warning("[ModelFeedbackRetrainJob] Unexpected response: #{inspect(unexpected)}")
+        {:ok, 0}
     end
   end
 
   @impl true
   def metadata do
     %{
-      description: "Retrains ML model using actual trade outcomes with auto fine-tune/scratch decision",
+      description:
+        "Retrains ML model using actual trade outcomes with auto fine-tune/scratch decision",
       edge_function: "ml-training",
       action: "train with outcomes (auto training mode)",
       schedule_note: "Runs monthly on the 1st at 3 AM UTC"
