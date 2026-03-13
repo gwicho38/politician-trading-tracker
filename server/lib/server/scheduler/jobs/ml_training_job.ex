@@ -13,157 +13,56 @@ defmodule Server.Scheduler.Jobs.MlTrainingJob do
 
   require Logger
 
-  @etl_service_url "https://politician-trading-etl.fly.dev"
-
-  # TODO: Review this function
   @impl true
   def job_id, do: "ml-training"
 
-  # TODO: Review this function
   @impl true
   def job_name, do: "ML Model Training"
 
-  # TODO: Review this function
   @impl true
   # Run weekly on Sunday at 2 AM UTC
   def schedule, do: "0 2 * * 0"
 
-  # TODO: Review this function
   @impl true
   def run do
-    Logger.info("[MlTrainingJob] Triggering ML model training")
+    Logger.info("[MlTrainingJob] Triggering ML model training via edge function (async)")
 
-    case trigger_training() do
-      {:ok, job_id} ->
-        Logger.info("[MlTrainingJob] Training job started: #{job_id}")
-        # Optionally poll for completion (but don't block the scheduler)
+    # Route through ml-training edge function so the C/C gate runs via DailyModelEvalJob.
+    case Server.SupabaseClient.invoke("ml-training",
+           body: %{
+             "action" => "train",
+             "lookback_days" => 365,
+             "use_outcomes" => false,
+             "compare_to_current" => true,
+             "auto_training_mode" => true,
+             "triggered_by" => "scheduler"
+           },
+           timeout: 30_000
+         ) do
+      {:ok, %{"status" => "training_queued", "job_id" => job_id}} ->
+        Logger.info("[MlTrainingJob] Training queued: job_id=#{job_id}")
         {:ok, job_id}
 
+      {:ok, %{"error" => error}} ->
+        Logger.error("[MlTrainingJob] Training failed: #{error}")
+        {:error, error}
+
       {:error, reason} ->
-        Logger.error("[MlTrainingJob] Training trigger failed: #{inspect(reason)}")
+        Logger.error("[MlTrainingJob] Request failed: #{inspect(reason)}")
         {:error, reason}
+
+      {:ok, unexpected} ->
+        Logger.warning("[MlTrainingJob] Unexpected response: #{inspect(unexpected)}")
+        {:ok, "unknown"}
     end
   end
 
-  # TODO: Review this function
-  defp trigger_training do
-    url = "#{@etl_service_url}/ml/train"
-    # /ml/train requires admin-level auth: both X-API-Key and X-Admin-Key
-    admin_key = System.get_env("ETL_ADMIN_API_KEY") || System.get_env("ETL_API_KEY") || ""
-
-    # Training configuration
-    body =
-      Jason.encode!(%{
-        lookback_days: 365,
-        model_type: "xgboost",
-        triggered_by: "scheduler"
-      })
-
-    request =
-      Finch.build(
-        :post,
-        url,
-        [
-          {"Content-Type", "application/json"},
-          {"Accept", "application/json"},
-          {"X-API-Key", admin_key},
-          {"X-Admin-Key", admin_key}
-        ],
-        body
-      )
-
-    case Finch.request(request, Server.Finch, receive_timeout: 60_000) do
-      {:ok, %Finch.Response{status: 200, body: response_body}} ->
-        case Jason.decode(response_body) do
-          {:ok, %{"job_id" => job_id}} ->
-            {:ok, job_id}
-
-          {:ok, response} ->
-            Logger.warning("[MlTrainingJob] Unexpected response: #{inspect(response)}")
-            {:ok, "unknown"}
-
-          {:error, decode_error} ->
-            {:error, {:decode_error, decode_error}}
-        end
-
-      {:ok, %Finch.Response{status: status, body: response_body}} ->
-        {:error, {:http_error, status, response_body}}
-
-      {:error, reason} ->
-        {:error, {:request_failed, reason}}
-    end
-  end
-
-  # TODO: Review this function
-  @doc """
-  Manually trigger training (useful for testing or on-demand retraining).
-  """
-  def trigger_manual(lookback_days \\ 365, model_type \\ "xgboost") do
-    url = "#{@etl_service_url}/ml/train"
-
-    body =
-      Jason.encode!(%{
-        lookback_days: lookback_days,
-        model_type: model_type
-      })
-
-    request =
-      Finch.build(
-        :post,
-        url,
-        [
-          {"Content-Type", "application/json"},
-          {"Accept", "application/json"}
-        ],
-        body
-      )
-
-    case Finch.request(request, Server.Finch, receive_timeout: 60_000) do
-      {:ok, %Finch.Response{status: 200, body: response_body}} ->
-        Jason.decode(response_body)
-
-      {:ok, %Finch.Response{status: status, body: response_body}} ->
-        {:error, {:http_error, status, response_body}}
-
-      {:error, reason} ->
-        {:error, {:request_failed, reason}}
-    end
-  end
-
-  # TODO: Review this function
-  @doc """
-  Check training job status.
-  """
-  def check_status(job_id) do
-    url = "#{@etl_service_url}/ml/train/#{job_id}"
-
-    request =
-      Finch.build(
-        :get,
-        url,
-        [{"Accept", "application/json"}]
-      )
-
-    case Finch.request(request, Server.Finch, receive_timeout: 10_000) do
-      {:ok, %Finch.Response{status: 200, body: response_body}} ->
-        Jason.decode(response_body)
-
-      {:ok, %Finch.Response{status: status, body: response_body}} ->
-        {:error, {:http_error, status, response_body}}
-
-      {:error, reason} ->
-        {:error, {:request_failed, reason}}
-    end
-  end
-
-  # TODO: Review this function
   @impl true
   def metadata do
     %{
-      description: "Trains XGBoost model for congress trading signal prediction",
-      etl_service: @etl_service_url,
+      description: "Trains XGBoost model for congress trading signal prediction (weekly fallback)",
+      edge_function: "ml-training",
       schedule_description: "Weekly on Sunday at 2 AM UTC",
-      model_type: "xgboost",
       lookback_days: 365
     }
   end

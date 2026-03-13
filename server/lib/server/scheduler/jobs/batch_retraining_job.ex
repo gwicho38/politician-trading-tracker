@@ -18,7 +18,6 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
 
   @job_id "batch-retraining"
   @default_threshold 500
-  @etl_base_url "https://politician-trading-etl.fly.dev"
   @supabase_base_url "https://uljsqvwkomdrlnofmlad.supabase.co"
 
   # TODO: Review this function
@@ -159,49 +158,33 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
     }}
   end
 
-  # TODO: Review this function
-  # Trigger ML training via Python ETL service
+  # Route through ml-training edge function so baseline model is snapshotted
+  # and the C/C gate runs via DailyModelEvalJob after training completes.
   defp trigger_training do
-    url = "#{@etl_base_url}/ml/train"
-    # /ml/train requires admin-level auth: both X-API-Key and X-Admin-Key
-    admin_key = System.get_env("ETL_ADMIN_API_KEY") || System.get_env("ETL_API_KEY") || ""
+    case Server.SupabaseClient.invoke("ml-training",
+           body: %{
+             "action" => "train",
+             "lookback_days" => 365,
+             "use_outcomes" => true,
+             "compare_to_current" => true,
+             "auto_training_mode" => true,
+             "triggered_by" => "batch_retraining"
+           },
+           timeout: 30_000
+         ) do
+      {:ok, %{"status" => "training_queued", "job_id" => job_id}} ->
+        Logger.info("[BatchRetrainingJob] Training queued: job_id=#{job_id}")
+        {:ok, job_id}
 
-    body =
-      Jason.encode!(%{
-        lookback_days: 365,
-        model_type: "xgboost",
-        triggered_by: "batch_retraining"
-      })
-
-    headers = [
-      {"Content-Type", "application/json"},
-      {"Accept", "application/json"},
-      {"X-API-Key", admin_key},
-      {"X-Admin-Key", admin_key}
-    ]
-
-    request = Finch.build(:post, url, headers, body)
-
-    case Finch.request(request, Server.Finch, receive_timeout: 60_000) do
-      {:ok, %Finch.Response{status: 200, body: resp_body}} ->
-        case Jason.decode(resp_body) do
-          {:ok, %{"job_id" => job_id}} ->
-            Logger.info("[BatchRetrainingJob] Training job started: #{job_id}")
-            {:ok, job_id}
-
-          {:ok, response} ->
-            Logger.warning("[BatchRetrainingJob] Unexpected response: #{inspect(response)}")
-            {:ok, "unknown"}
-
-          {:error, decode_error} ->
-            {:error, {:decode_error, decode_error}}
-        end
-
-      {:ok, %Finch.Response{status: status, body: resp_body}} ->
-        {:error, {:etl_error, status, resp_body}}
+      {:ok, %{"error" => error}} ->
+        {:error, {:training_error, error}}
 
       {:error, reason} ->
         {:error, {:http_error, reason}}
+
+      {:ok, unexpected} ->
+        Logger.warning("[BatchRetrainingJob] Unexpected response: #{inspect(unexpected)}")
+        {:ok, "unknown"}
     end
   end
 
@@ -249,14 +232,13 @@ defmodule Server.Scheduler.Jobs.BatchRetrainingJob do
     end
   end
 
-  # TODO: Review this function
   @impl true
   def metadata do
     %{
       description: "Monitors trading disclosures for changes and triggers ML retraining when threshold reached",
+      edge_function: "ml-training",
       threshold: @default_threshold,
       check_interval: "hourly",
-      etl_service: @etl_base_url,
       schedule_description: "Every hour at :00"
     }
   end
