@@ -1,6 +1,6 @@
 ATR_PERIOD: int = 20
 ATR_MULTIPLIER: float = 1.5
-TRAILING_STOP_PCT: float = 0.11 # Reduced from original value to increase profit factor while maintaining a balance between risk management and reward ratio
+TRAILING_STOP_PCT: float = 0.12
 TRAILING_ARM_PCT: float = 0.15
 TIME_EXIT_DAYS: int = 35
 KELLY_FRACTION: float = 0.5

@@ -768,6 +768,45 @@ def run(iterations: int, metric: str, baseline_only: bool, provider: str, ollama
             continue
 
         description, new_params = result
+
+        # ── Locked-parameter guard ─────────────────────────────────────
+        LOCKED_PARAMS: dict[str, str] = {
+            "TRAILING_STOP_PCT": "0.12",
+            "TRAILING_ARM_PCT":  "0.15",
+            "TIME_EXIT_DAYS":    "35",
+            "ATR_MULTIPLIER":    "1.5",
+        }
+        proposed_vals = _parse_param_values(new_params)
+        current_vals  = _parse_param_values(current_params)
+        changed_params = {k: v for k, v in proposed_vals.items() if v != current_vals.get(k)}
+        locked_violations = {k for k in changed_params if k in LOCKED_PARAMS}
+        if locked_violations:
+            viol_str = ", ".join(
+                f"{k}: proposed {changed_params[k]!r} (locked={LOCKED_PARAMS[k]!r})"
+                for k in sorted(locked_violations)
+            )
+            click.echo(f"  [guard] Locked param(s) overridden — {viol_str}")
+            lines = []
+            for line in new_params.splitlines():
+                m = re.match(r"([A-Z_]+)\s*(?::\s*\w+)?\s*=\s*(.+?)(?:\s*#.*)?$", line.strip())
+                if m and m.group(1) in LOCKED_PARAMS:
+                    pname = m.group(1)
+                    lval  = LOCKED_PARAMS[pname]
+                    ann_m = re.match(r"([A-Z_]+)\s*:\s*(\w+)\s*=", line)
+                    lines.append(f"{pname}: {ann_m.group(2)} = {lval}" if ann_m else f"{pname} = {lval}")
+                else:
+                    lines.append(line)
+            new_params = "\n".join(lines)
+            if new_params and not new_params.endswith("\n"):
+                new_params += "\n"
+            # Re-evaluate changed params after restoring locked values
+            proposed_vals = _parse_param_values(new_params)
+            changed_params = {k: v for k, v in proposed_vals.items() if v != current_vals.get(k)}
+            if not changed_params:
+                click.echo("  [guard] No unlocked changes remain — skipping.")
+                discarded += 1
+                continue
+
         click.echo(f"  → Proposed: {description}")
 
         # Backup current params before applying change (enables reliable restore)
