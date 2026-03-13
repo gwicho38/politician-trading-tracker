@@ -3,6 +3,55 @@ defmodule Server.Scheduler.Jobs.DailyModelEvalJobTest do
 
   alias Server.Scheduler.Jobs.DailyModelEvalJob
 
+  describe "job_id/0" do
+    test "returns daily-model-eval" do
+      assert DailyModelEvalJob.job_id() == "daily-model-eval"
+    end
+  end
+
+  describe "job_name/0" do
+    test "returns a binary string" do
+      name = DailyModelEvalJob.job_name()
+
+      assert is_binary(name)
+    end
+  end
+
+  describe "schedule/0" do
+    test "returns a cron string running at 23:30" do
+      schedule = DailyModelEvalJob.schedule()
+
+      assert is_binary(schedule)
+      assert String.starts_with?(schedule, "30 23")
+    end
+  end
+
+  describe "metadata/0" do
+    test "returns a map" do
+      metadata = DailyModelEvalJob.metadata()
+
+      assert is_map(metadata)
+    end
+
+    test "includes :description key" do
+      metadata = DailyModelEvalJob.metadata()
+
+      assert Map.has_key?(metadata, :description)
+    end
+
+    test "includes :edge_function key with value signal-feedback" do
+      metadata = DailyModelEvalJob.metadata()
+
+      assert metadata.edge_function == "signal-feedback"
+    end
+
+    test "includes :action key" do
+      metadata = DailyModelEvalJob.metadata()
+
+      assert Map.has_key?(metadata, :action)
+    end
+  end
+
   describe "needs_retrain?/1" do
     test "win_rate below 0.35 triggers retrain" do
       perf = %{"win_rate" => 0.20, "sharpe_ratio" => 0.5}

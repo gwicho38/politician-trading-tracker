@@ -242,6 +242,123 @@ async def test_closed_loop_pipeline():
     return results
 
 
+async def test_ml_training_async():
+    """
+    TEST 5: ML Training Async — verifies the 202 async pattern of the ml-training
+    Supabase edge function.  Does NOT wait for the training job to finish.
+    """
+    import httpx
+
+    logger.info("=" * 60)
+    logger.info("TEST 5: ML Training Async (edge function 202 pattern)")
+    logger.info("=" * 60)
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    service_key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
+
+    if not supabase_url or not service_key:
+        logger.warning(
+            "SUPABASE_URL or service key env var not set — skipping ML training async test"
+        )
+        return None
+
+    edge_fn_url = f"{supabase_url}/functions/v1/ml-training"
+    headers = {
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        # Step 1: trigger training — expect HTTP 202
+        logger.info("Step 1: POST action=train to ml-training edge function")
+        train_resp = await client.post(
+            edge_fn_url,
+            headers=headers,
+            json={
+                "action": "train",
+                "triggered_by": "e2e_test",
+                "compare_to_current": True,
+                "auto_training_mode": False,
+            },
+        )
+        logger.info(f"  HTTP status: {train_resp.status_code}")
+        train_body = train_resp.json()
+        logger.info(f"  Response body: {json.dumps(train_body, indent=2, default=str)}")
+
+        assert train_resp.status_code == 202, (
+            f"Expected HTTP 202 from action=train, got {train_resp.status_code}. "
+            f"Body: {train_body}"
+        )
+        assert train_body.get("status") == "training_queued", (
+            f"Expected status='training_queued', got: {train_body.get('status')!r}"
+        )
+        job_id = train_body.get("job_id")
+        assert job_id and isinstance(job_id, str) and len(job_id) > 0, (
+            f"Expected non-empty string job_id, got: {job_id!r}"
+        )
+        logger.info(f"  Queued training job_id: {job_id}")
+        logger.info("  Step 1 PASSED: 202 received, status=training_queued, job_id present")
+
+        # Step 2: evaluate-training — expect HTTP 200
+        logger.info("Step 2: POST action=evaluate-training to ml-training edge function")
+        eval_resp = await client.post(
+            edge_fn_url,
+            headers=headers,
+            json={"action": "evaluate-training"},
+        )
+        logger.info(f"  HTTP status: {eval_resp.status_code}")
+        eval_body = eval_resp.json()
+        logger.info(f"  Response body: {json.dumps(eval_body, indent=2, default=str)}")
+
+        assert eval_resp.status_code == 200, (
+            f"Expected HTTP 200 from action=evaluate-training, got {eval_resp.status_code}. "
+            f"Body: {eval_body}"
+        )
+        assert eval_body.get("success") is True, (
+            f"Expected success=True in evaluate-training response, got: {eval_body.get('success')!r}"
+        )
+        has_message_or_job = "message" in eval_body or "job_id" in eval_body
+        assert has_message_or_job, (
+            f"Expected 'message' or 'job_id' in evaluate-training response, got keys: "
+            f"{list(eval_body.keys())}"
+        )
+        logger.info("  Step 2 PASSED: 200 received, success=True, message/job_id present")
+
+    # Step 3: verify cc_evaluated_at column exists in ml_training_jobs
+    logger.info("Step 3: Verify cc_evaluated_at column exists in ml_training_jobs")
+    from app.lib.database import get_supabase
+
+    supabase = get_supabase()
+    if not supabase:
+        logger.warning("  Could not get Supabase client — skipping column check")
+    else:
+        try:
+            col_resp = (
+                supabase.table("ml_training_jobs")
+                .select("id, cc_evaluated_at")
+                .limit(1)
+                .execute()
+            )
+            # If PostgREST returns data (even empty list) the column exists
+            logger.info(
+                f"  cc_evaluated_at column present — query returned {len(col_resp.data)} rows"
+            )
+            logger.info("  Step 3 PASSED: cc_evaluated_at column exists")
+        except Exception as col_err:
+            err_str = str(col_err)
+            if "cc_evaluated_at" in err_str or "column" in err_str.lower():
+                raise AssertionError(
+                    "cc_evaluated_at column missing from ml_training_jobs — "
+                    "migration may not have been applied. "
+                    f"Error: {col_err}"
+                ) from col_err
+            # Other DB errors are logged but don't fail the column-existence check
+            logger.warning(f"  Unexpected error checking cc_evaluated_at column: {col_err}")
+
+    logger.info("SUCCESS: ML Training Async test completed")
+    return {"job_id": job_id}
+
+
 async def main():
     """Run all end-to-end tests."""
     logger.info("Starting end-to-end ETL service tests")
@@ -293,6 +410,14 @@ async def main():
         logger.error(f"Closed-loop pipeline smoke test FAILED: {e}", exc_info=True)
         failures.append(("closed_loop_pipeline", str(e)))
 
+    # Test 5: ML Training Async (202 pattern)
+    ml_training_result = None
+    try:
+        ml_training_result = await test_ml_training_async()
+    except Exception as e:
+        logger.error(f"ML Training Async test FAILED: {e}", exc_info=True)
+        failures.append(("ml_training_async", str(e)))
+
     # Summary
     logger.info("")
     logger.info("=" * 60)
@@ -312,6 +437,13 @@ async def main():
     logger.info(
         f"  {'closed_loop_pipeline':20s}: {'PASS' if closed_loop_results is not None else 'FAIL'}"
     )
+    ml_training_status = (
+        "SKIP" if ml_training_result is None and not any(
+            n == "ml_training_async" for n, _ in failures
+        )
+        else ("PASS" if ml_training_result is not None else "FAIL")
+    )
+    logger.info(f"  {'ml_training_async':20s}: {ml_training_status}")
 
     if failures:
         logger.error(f"\n{len(failures)} test(s) FAILED:")
