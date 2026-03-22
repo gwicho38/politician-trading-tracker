@@ -128,3 +128,24 @@ client/playwright/.cache/
 *.pkg
 *.app
 .worktrees/
+
+# Private keys and certificates
+*.pem
+*.key
+*.p12
+*.p8
+*.pfx
+*-firebase-adminsdk-*.json
+
+# Build artifacts with embedded keys
+client/dist/
+
+# Environment backup files
+.env.backup.*
+
+# Claude local settings (may contain project-specific overrides)
+**/.claude/settings.local.json
+
+# Keep example env files tracked
+!.env.example
+!.env.*.example
