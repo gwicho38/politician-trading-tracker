@@ -13,8 +13,8 @@ export interface SignalWeights {
   baseConfidence: number;
 
   // Politician count bonuses
-  REDACTED: number;
-  REDACTED: number;
+  politicianCount5Plus: number;
+  politicianCount3_4: number;
   politicianCount2: number;
 
   // Recent activity bonuses (trades in last 30 days)

@@ -32,8 +32,8 @@ import {
 describe('DEFAULT_WEIGHTS', () => {
   it('has all required fields', () => {
     expect(DEFAULT_WEIGHTS).toHaveProperty('baseConfidence');
-    expect(DEFAULT_WEIGHTS).toHaveProperty('REDACTED');
-    expect(DEFAULT_WEIGHTS).toHaveProperty('REDACTED');
+    expect(DEFAULT_WEIGHTS).toHaveProperty('politicianCount5Plus');
+    expect(DEFAULT_WEIGHTS).toHaveProperty('politicianCount3_4');
     expect(DEFAULT_WEIGHTS).toHaveProperty('politicianCount2');
     expect(DEFAULT_WEIGHTS).toHaveProperty('recentActivity5Plus');
     expect(DEFAULT_WEIGHTS).toHaveProperty('recentActivity2_4');
@@ -146,7 +146,7 @@ describe('presetToWeights()', () => {
     const weights = presetToWeights(preset as SignalPreset);
 
     expect(weights.baseConfidence).toBe(0.6);
-    expect(weights.REDACTED).toBe(0.2);
+    expect(weights.politicianCount5Plus).toBe(0.2);
     expect(weights.strongBuyThreshold).toBe(3.5);
   });
 
@@ -264,7 +264,7 @@ describe('hasChangesFromDefault()', () => {
     const weights = {
       ...DEFAULT_WEIGHTS,
       baseConfidence: 0.6,
-      REDACTED: 0.2,
+      politicianCount5Plus: 0.2,
     };
     expect(hasChangesFromDefault(weights)).toBe(true);
   });
@@ -284,7 +284,7 @@ describe('countModifiedFields()', () => {
     const weights = {
       ...DEFAULT_WEIGHTS,
       baseConfidence: 0.6,
-      REDACTED: 0.2,
+      politicianCount5Plus: 0.2,
       bipartisanBonus: 0.15,
     };
     expect(countModifiedFields(weights)).toBe(3);

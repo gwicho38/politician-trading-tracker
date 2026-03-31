@@ -15,8 +15,8 @@ import type {
  */
 export const DEFAULT_WEIGHTS: SignalWeights = {
   baseConfidence: 0.5,
-  REDACTED: 0.15,
-  REDACTED: 0.1,
+  politicianCount5Plus: 0.15,
+  politicianCount3_4: 0.1,
   politicianCount2: 0.05,
   recentActivity5Plus: 0.1,
   recentActivity2_4: 0.05,
@@ -57,7 +57,7 @@ export const WEIGHT_CATEGORIES: WeightCategory[] = [
     description: 'Bonus based on number of politicians trading the ticker',
     fields: [
       {
-        key: 'REDACTED',
+        key: 'politicianCount5Plus',
         label: '5+ Politicians',
         description: 'Bonus when 5 or more politicians are trading',
         min: 0,
@@ -66,7 +66,7 @@ export const WEIGHT_CATEGORIES: WeightCategory[] = [
         format: 'percent',
       },
       {
-        key: 'REDACTED',
+        key: 'politicianCount3_4',
         label: '3-4 Politicians',
         description: 'Bonus when 3-4 politicians are trading',
         min: 0,
@@ -261,8 +261,8 @@ export const SIGNAL_TYPE_CONFIG: Record<
 export function presetToWeights(preset: SignalPreset): SignalWeights {
   return {
     baseConfidence: Number(preset.base_confidence),
-    REDACTED: Number(preset.politician_count_5_plus),
-    REDACTED: Number(preset.politician_count_3_4),
+    politicianCount5Plus: Number(preset.politician_count_5_plus),
+    politicianCount3_4: Number(preset.politician_count_3_4),
     politicianCount2: Number(preset.politician_count_2),
     recentActivity5Plus: Number(preset.recent_activity_5_plus),
     recentActivity2_4: Number(preset.recent_activity_2_4),
@@ -286,8 +286,8 @@ export function weightsToPresetFields(
 ): Omit<SignalPreset, 'id' | 'user_id' | 'name' | 'description' | 'is_public' | 'created_at' | 'updated_at'> {
   return {
     base_confidence: weights.baseConfidence,
-    politician_count_5_plus: weights.REDACTED,
-    politician_count_3_4: weights.REDACTED,
+    politician_count_5_plus: weights.politicianCount5Plus,
+    politician_count_3_4: weights.politicianCount3_4,
     politician_count_2: weights.politicianCount2,
     recent_activity_5_plus: weights.recentActivity5Plus,
     recent_activity_2_4: weights.recentActivity2_4,
