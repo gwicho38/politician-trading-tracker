@@ -1,0 +1,4 @@
+# False positives: signal-weights.ts WEIGHT_CATEGORIES config keys
+# These are UI field identifiers (key: 'politicianCount5Plus'), not API keys
+a6eff01385628ef6cf4e8a769fb27df0c052741e:client/src/lib/signal-weights.ts:generic-api-key:60
+a6eff01385628ef6cf4e8a769fb27df0c052741e:client/src/lib/signal-weights.ts:generic-api-key:69
