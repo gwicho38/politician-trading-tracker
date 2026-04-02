@@ -47,7 +47,16 @@ deploy-server() {
 deploy-client() {
     echo "⚛️  Deploying React client..."
     cd "$PROJECT_ROOT/client"
-    fly deploy
+
+    local build_args=""
+    if [ -n "${VITE_SUPABASE_URL:-}" ]; then
+        build_args="$build_args --build-arg VITE_SUPABASE_URL=$VITE_SUPABASE_URL"
+    fi
+    if [ -n "${VITE_SUPABASE_PUBLISHABLE_KEY:-}" ]; then
+        build_args="$build_args --build-arg VITE_SUPABASE_PUBLISHABLE_KEY=$VITE_SUPABASE_PUBLISHABLE_KEY"
+    fi
+
+    fly deploy $build_args
     echo "✅ Client deployed: https://govmarket-client.fly.dev"
 }
 
