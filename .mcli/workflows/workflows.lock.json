@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "generated_at": "2026-04-02T19:17:17.318721Z",
+  "generated_at": "2026-04-02T19:48:42.545276Z",
   "commands": {
     "admin": {
       "file": "admin.py",
@@ -31,7 +31,7 @@
     "client": {
       "file": "client.py",
       "language": "python",
-      "content_hash": "sha256:4ecadf77bbf85a483c3a035715b90ec992a4b91f6736b422297a4f20782d03df",
+      "content_hash": "sha256:c680d27caaf40393c951dcd0d59985248f6356eb970dfa7a9224ed72311713cb",
       "version": "1.0.0",
       "group": "workflows",
       "description": "Deploy and manage GovMarket client on Fly.io",
@@ -39,7 +39,7 @@
       "requires": [],
       "tags": [],
       "shell": null,
-      "last_modified": "2026-04-02T21:17:11.975220Z"
+      "last_modified": "2026-04-02T21:48:38.760552Z"
     },
     "context": {
       "file": "context.py",
@@ -109,7 +109,7 @@
     "services": {
       "file": "services.sh",
       "language": "shell",
-      "content_hash": "sha256:f9a0c39a7341c97c567871b8d7ab3da23a73b98839fd42d77aab641fff75034e",
+      "content_hash": "sha256:4f44c56595910f898c1d85dc656b415044e63f2e34e0ac423eb88d814a350bf2",
       "version": "1.0.0",
       "group": "workflows",
       "description": "Services command",
@@ -117,7 +117,7 @@
       "requires": [],
       "tags": [],
       "shell": "zsh",
-      "last_modified": "2026-04-02T21:16:55.398410Z"
+      "last_modified": "2026-04-02T21:48:30.480228Z"
     },
     "supabase": {
       "file": "supabase.py",
