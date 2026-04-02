@@ -1,3 +1,5 @@
+# False positive: Supabase anon key is intentionally public (client-side, RLS-protected)
+client/fly.toml:jwt:12
 # False positives: signal-weights UI field config identifiers, not secrets
 a6eff01385628ef6cf4e8a769fb27df0c052741e:client/src/lib/signal-weights.ts:generic-api-key:60
 a6eff01385628ef6cf4e8a769fb27df0c052741e:client/src/lib/signal-weights.ts:generic-api-key:69
