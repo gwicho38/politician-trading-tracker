@@ -57,11 +57,21 @@ def deploy(build_only: bool):
         return
 
     try:
+        import os
+
         # Build first
         console.print("\n[yellow]Building...[/yellow]")
         cmd = ["flyctl", "deploy", "--now"]
         if build_only:
             cmd = ["flyctl", "deploy", "--build-only"]
+
+        # Inject Supabase env vars as build args if available
+        supabase_url = os.environ.get("VITE_SUPABASE_URL")
+        supabase_key = os.environ.get("VITE_SUPABASE_PUBLISHABLE_KEY")
+        if supabase_url:
+            cmd.extend(["--build-arg", f"VITE_SUPABASE_URL={supabase_url}"])
+        if supabase_key:
+            cmd.extend(["--build-arg", f"VITE_SUPABASE_PUBLISHABLE_KEY={supabase_key}"])
 
         result = subprocess.run(
             cmd,
