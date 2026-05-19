@@ -10,7 +10,7 @@ jobs:
   # Python ETL Service Tests
   etl-tests:
     name: ETL Service Tests
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     defaults:
       run:
         working-directory: python-etl-service
@@ -39,7 +39,7 @@ jobs:
   # React Client Tests
   client-tests:
     name: Client Tests
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     defaults:
       run:
         working-directory: client
@@ -66,7 +66,7 @@ jobs:
   # Elixir Phoenix Server Tests
   server-tests:
     name: Server Tests
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     defaults:
       run:
         working-directory: server
@@ -126,7 +126,7 @@ jobs:
   # Deploy to Fly.io (only on push to main, after all tests pass)
   deploy:
     name: Deploy to Fly.io
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: [etl-tests, client-tests, server-tests]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
@@ -167,7 +167,7 @@ jobs:
   # Build Summary
   build-summary:
     name: Build Summary
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: [etl-tests, client-tests, server-tests, deploy]
     if: always()
 
